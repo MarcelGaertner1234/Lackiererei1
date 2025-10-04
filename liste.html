@@ -338,6 +338,14 @@
             }
         }
     </style>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <!-- Firebase Konfiguration -->
+    <script src="firebase-config.js"></script>
 </head>
 <body>
     <div class="container">
@@ -380,10 +388,58 @@
     <script>
         let allVehicles = [];
         let currentFilter = 'all';
+        let firebaseInitialized = false;
+        let unsubscribeListener = null;
 
-        // Daten laden
-        function loadData() {
-            allVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+        // Firebase initialisieren
+        window.addEventListener('load', function() {
+            if (typeof firebaseApp !== 'undefined') {
+                firebaseInitialized = firebaseApp.init();
+                if (firebaseInitialized) {
+                    console.log('✅ Firebase für Übersicht initialisiert');
+                    // Echtzeit-Listener aktivieren!
+                    setupRealtimeListener();
+                } else {
+                    loadData();
+                }
+            } else {
+                console.warn('⚠️ Firebase-Config nicht gefunden. LocalStorage wird verwendet.');
+                loadData();
+            }
+        });
+
+        // Echtzeit-Synchronisation (automatische Updates!)
+        function setupRealtimeListener() {
+            if (!firebaseInitialized || !firebaseApp) return;
+
+            console.log('🔄 Echtzeit-Listener aktiviert - Änderungen werden automatisch synchronisiert!');
+
+            unsubscribeListener = firebaseApp.listenToFahrzeuge(function(fahrzeuge) {
+                allVehicles = fahrzeuge;
+                updateStats();
+                renderTable();
+                console.log('🔄 Daten automatisch aktualisiert:', fahrzeuge.length, 'Fahrzeuge');
+            });
+        }
+
+        // Daten laden (Fallback für LocalStorage)
+        async function loadData() {
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Firestore verwenden
+                    allVehicles = await firebaseApp.getAllFahrzeuge();
+                    console.log('✅ Fahrzeuge aus Firestore geladen:', allVehicles.length);
+                } else {
+                    // Fallback: LocalStorage verwenden
+                    allVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    console.log('ℹ️ Fahrzeuge aus LocalStorage geladen:', allVehicles.length);
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Laden:', error);
+                // Fallback zu LocalStorage bei Fehler
+                allVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+            }
+
             updateStats();
             renderTable();
         }
@@ -567,22 +623,56 @@
         }
 
         // Fahrzeug löschen
-        function deleteVehicle(id) {
+        async function deleteVehicle(id) {
             if (!confirm('Dieses Fahrzeug wirklich löschen?')) return;
 
-            allVehicles = allVehicles.filter(v => v.id !== id);
-            localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
-            loadData();
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Firestore verwenden
+                    await firebaseApp.deleteFahrzeug(id);
+                    console.log('✅ Fahrzeug aus Firestore gelöscht');
+                    // Echtzeit-Listener aktualisiert automatisch die Liste
+                } else {
+                    // Fallback: LocalStorage verwenden
+                    allVehicles = allVehicles.filter(v => v.id !== id);
+                    localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
+                    loadData();
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen:', error);
+                // Fallback zu LocalStorage bei Fehler
+                allVehicles = allVehicles.filter(v => v.id !== id);
+                localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
+                loadData();
+            }
         }
 
         // Alle Daten löschen
-        function clearAllData() {
+        async function clearAllData() {
             if (!confirm('ACHTUNG: Alle Fahrzeuge und Daten werden unwiderruflich gelöscht!\n\nFortfahren?')) return;
 
-            localStorage.removeItem('fahrzeuge');
-            allVehicles = [];
-            loadData();
-            alert('✅ Alle Daten wurden gelöscht.');
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Firestore verwenden
+                    await firebaseApp.deleteAllFahrzeuge();
+                    console.log('✅ Alle Fahrzeuge aus Firestore gelöscht');
+                    // Echtzeit-Listener aktualisiert automatisch die Liste
+                    alert('✅ Alle Daten wurden gelöscht.');
+                } else {
+                    // Fallback: LocalStorage verwenden
+                    localStorage.removeItem('fahrzeuge');
+                    allVehicles = [];
+                    loadData();
+                    alert('✅ Alle Daten wurden gelöscht.');
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen aller Daten:', error);
+                // Fallback zu LocalStorage bei Fehler
+                localStorage.removeItem('fahrzeuge');
+                allVehicles = [];
+                loadData();
+                alert('✅ Alle Daten wurden gelöscht (LocalStorage).');
+            }
         }
 
         // Modal schließen bei Klick außerhalb

@@ -305,6 +305,14 @@
             }
         }
     </style>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <!-- Firebase Konfiguration -->
+    <script src="firebase-config.js"></script>
 </head>
 <body>
     <div class="container">
@@ -364,6 +372,19 @@
     </div>
 
     <script>
+        // Firebase initialisieren
+        let firebaseInitialized = false;
+        window.addEventListener('load', function() {
+            if (typeof firebaseApp !== 'undefined') {
+                firebaseInitialized = firebaseApp.init();
+                if (firebaseInitialized) {
+                    console.log('✅ Firebase für Abnahme initialisiert');
+                }
+            } else {
+                console.warn('⚠️ Firebase-Config nicht gefunden. LocalStorage wird verwendet.');
+            }
+        });
+
         // Aktuelles Datum anzeigen
         const heute = new Date();
         document.getElementById('currentDate').textContent = heute.toLocaleDateString('de-DE', {
@@ -376,7 +397,7 @@
         let nachherPhotos = [];
 
         // Fahrzeug suchen
-        function searchVehicle() {
+        async function searchVehicle() {
             const kennzeichen = document.getElementById('kennzeichenSearch').value.trim().toUpperCase();
 
             if (!kennzeichen) {
@@ -384,8 +405,26 @@
                 return;
             }
 
-            const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-            const vehicle = fahrzeuge.find(v => v.kennzeichen.toUpperCase() === kennzeichen && v.status === 'angenommen');
+            let vehicle = null;
+
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Firestore verwenden
+                    const allVehicles = await firebaseApp.getAllFahrzeuge();
+                    vehicle = allVehicles.find(v => v.kennzeichen.toUpperCase() === kennzeichen && v.status === 'angenommen');
+                    console.log('🔍 Suche in Firestore abgeschlossen');
+                } else {
+                    // Fallback: LocalStorage verwenden
+                    const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    vehicle = fahrzeuge.find(v => v.kennzeichen.toUpperCase() === kennzeichen && v.status === 'angenommen');
+                    console.log('🔍 Suche in LocalStorage abgeschlossen');
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Suchen:', error);
+                // Fallback zu LocalStorage bei Fehler
+                const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                vehicle = fahrzeuge.find(v => v.kennzeichen.toUpperCase() === kennzeichen && v.status === 'angenommen');
+            }
 
             if (!vehicle) {
                 showError(`Kein angenommenes Fahrzeug mit Kennzeichen "${kennzeichen}" gefunden!`);
@@ -638,12 +677,32 @@
                 status: 'abgeschlossen'
             };
 
-            // Status in LocalStorage aktualisieren
-            let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-            const index = fahrzeuge.findIndex(v => v.id === currentVehicle.id);
-            if (index !== -1) {
-                fahrzeuge[index] = abnahmeData;
-                localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+            // Status in Firestore ODER LocalStorage aktualisieren
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Firestore verwenden
+                    await firebaseApp.updateFahrzeug(currentVehicle.id, abnahmeData);
+                    console.log('✅ Fahrzeug in Firestore aktualisiert');
+                } else {
+                    // Fallback: LocalStorage verwenden
+                    let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    const index = fahrzeuge.findIndex(v => v.id === currentVehicle.id);
+                    if (index !== -1) {
+                        fahrzeuge[index] = abnahmeData;
+                        localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                    }
+                    console.log('ℹ️ Fahrzeug in LocalStorage aktualisiert');
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Aktualisieren:', error);
+                // Fallback zu LocalStorage bei Fehler
+                let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                const index = fahrzeuge.findIndex(v => v.id === currentVehicle.id);
+                if (index !== -1) {
+                    fahrzeuge[index] = abnahmeData;
+                    localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                }
+                console.log('⚠️ Fahrzeug in LocalStorage aktualisiert (Firestore-Fehler)');
             }
 
             // PDF erstellen

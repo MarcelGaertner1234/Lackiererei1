@@ -323,6 +323,14 @@
             }
         }
     </style>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <!-- Firebase Konfiguration -->
+    <script src="firebase-config.js"></script>
 </head>
 <body>
     <div class="container">
@@ -508,6 +516,19 @@
     </div>
 
     <script>
+        // Firebase initialisieren
+        let firebaseInitialized = false;
+        window.addEventListener('load', function() {
+            if (typeof firebaseApp !== 'undefined') {
+                firebaseInitialized = firebaseApp.init();
+                if (firebaseInitialized) {
+                    console.log('✅ Firebase für Annahme initialisiert');
+                }
+            } else {
+                console.warn('⚠️ Firebase-Config nicht gefunden. LocalStorage wird verwendet.');
+            }
+        });
+
         // Aktuelles Datum anzeigen
         const heute = new Date();
         document.getElementById('currentDate').textContent = heute.toLocaleDateString('de-DE', {
@@ -754,10 +775,27 @@
 
             const annahmeData = getFormData();
 
-            // In LocalStorage speichern
-            let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-            fahrzeuge.push(annahmeData);
-            localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+            // In Firestore ODER LocalStorage speichern
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Firestore verwenden
+                    await firebaseApp.saveFahrzeug(annahmeData);
+                    console.log('✅ Fahrzeug in Firestore gespeichert');
+                } else {
+                    // Fallback: LocalStorage verwenden
+                    let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    fahrzeuge.push(annahmeData);
+                    localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                    console.log('ℹ️ Fahrzeug in LocalStorage gespeichert (Firestore nicht verfügbar)');
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                // Fallback zu LocalStorage bei Fehler
+                let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                fahrzeuge.push(annahmeData);
+                localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                console.log('⚠️ Fahrzeug in LocalStorage gespeichert (Firestore-Fehler)');
+            }
 
             // PDF erstellen
             await createPDF(annahmeData);
