@@ -430,12 +430,42 @@
         const photoInput = document.getElementById('photoInput');
         const nachherGrid = document.getElementById('nachherGrid');
 
+        // Bild komprimieren (gegen LocalStorage QuotaExceededError)
+        async function compressImage(base64Image, maxWidth = 1200, maxHeight = 1200, quality = 0.7) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = function() {
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Skalierung berechnen
+                    if (width > maxWidth || height > maxHeight) {
+                        const ratio = Math.min(maxWidth / width, maxHeight / height);
+                        width = width * ratio;
+                        height = height * ratio;
+                    }
+
+                    // Canvas für Komprimierung
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Als JPEG mit reduzierter Qualität
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = base64Image;
+            });
+        }
+
         photoInput.addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
             files.forEach(file => {
                 const reader = new FileReader();
-                reader.onload = function(event) {
-                    nachherPhotos.push(event.target.result);
+                reader.onload = async function(event) {
+                    const compressed = await compressImage(event.target.result);
+                    nachherPhotos.push(compressed);
                     updateNachherGrid();
                 };
                 reader.readAsDataURL(file);
