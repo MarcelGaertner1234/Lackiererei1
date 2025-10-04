@@ -12,12 +12,13 @@
 // 5. Kopiere die Werte
 
 const firebaseConfig = {
-  apiKey: "DEIN-API-KEY-HIER",                          // z.B. "AIzaSyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q"
-  authDomain: "DEIN-PROJECT.firebaseapp.com",           // z.B. "auto-lackierzentrum.firebaseapp.com"
-  projectId: "DEIN-PROJECT-ID",                         // z.B. "auto-lackierzentrum-mosbach"
-  storageBucket: "DEIN-PROJECT.appspot.com",            // z.B. "auto-lackierzentrum.appspot.com"
-  messagingSenderId: "DEINE-SENDER-ID",                 // z.B. "123456789012"
-  appId: "DEINE-APP-ID"                                 // z.B. "1:123456789012:web:a1b2c3d4e5f6g7h8"
+  apiKey: "AIzaSyDulIZd6GvNb3rVGQu44QtXt-zeeva3Kg",
+  authDomain: "auto-lackierzentrum-mosbach.firebaseapp.com",
+  projectId: "auto-lackierzentrum-mosbach",
+  storageBucket: "auto-lackierzentrum-mosbach.firebasestorage.app",
+  messagingSenderId: "298750297417",
+  appId: "1:298750297417:web:16a0d14d3bb5d9bf83c698",
+  measurementId: "G-9VZE8QXR38"
 };
 
 // ====================================================================
