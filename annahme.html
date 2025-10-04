@@ -775,31 +775,24 @@
 
             const annahmeData = getFormData();
 
-            // In Firestore ODER LocalStorage speichern
+            // Hybrid-Speicherung: Daten in Firestore, Fotos in LocalStorage
             try {
                 if (firebaseInitialized && firebaseApp) {
-                    // Firebase Storage + Firestore verwenden
-                    console.log('📸 Lade Fotos zu Firebase Storage hoch...');
+                    console.log('💾 Hybrid-Speicherung: Daten → Firestore, Fotos → LocalStorage');
 
-                    // 1. Fotos zu Storage hochladen und URLs bekommen
-                    const photoURLs = await firebaseApp.uploadPhotos(annahmeData.photos, annahmeData.id, 'vorher');
+                    // 1. Fotos in LocalStorage speichern (komprimiert)
+                    firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
 
-                    // 2. Photos mit URLs ersetzen (statt Base64)
-                    const dataWithURLs = {
-                        ...annahmeData,
-                        photos: photoURLs,
-                        photosBase64: annahmeData.photos  // Backup für PDF (temporär im Memory)
-                    };
-
-                    // 3. Nur URLs in Firestore speichern
-                    const dataForFirestore = {...dataWithURLs};
-                    delete dataForFirestore.photosBase64;  // Nicht in Firestore speichern
+                    // 2. Fahrzeugdaten OHNE Fotos in Firestore speichern
+                    const dataForFirestore = {...annahmeData};
+                    delete dataForFirestore.photos;  // Fotos nicht in Firestore!
 
                     await firebaseApp.saveFahrzeug(dataForFirestore);
-                    console.log('✅ Fahrzeug in Firestore gespeichert (mit Storage URLs)');
+                    console.log('✅ Fahrzeug in Firestore gespeichert (ohne Fotos)');
+                    console.log('✅ Fotos in LocalStorage gespeichert');
 
-                    // 4. PDF mit Base64 erstellen (aus Memory)
-                    await createPDF(dataWithURLs);
+                    // 3. PDF mit Fotos aus annahmeData erstellen
+                    await createPDF(annahmeData);
                 } else {
                     // Fallback: LocalStorage verwenden (mit Base64)
                     let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');

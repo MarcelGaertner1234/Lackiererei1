@@ -415,10 +415,18 @@
             console.log('🔄 Echtzeit-Listener aktiviert - Änderungen werden automatisch synchronisiert!');
 
             unsubscribeListener = firebaseApp.listenToFahrzeuge(function(fahrzeuge) {
+                // Hybrid-Lösung: Fotos aus LocalStorage nachladen
+                fahrzeuge.forEach(fahrzeug => {
+                    const allPhotos = firebaseApp.loadAllPhotosLocal(fahrzeug.id);
+                    fahrzeug.photos = allPhotos.vorher || [];
+                    fahrzeug.nachherPhotos = allPhotos.nachher || [];
+                });
+
                 allVehicles = fahrzeuge;
                 updateStats();
                 renderTable();
                 console.log('🔄 Daten automatisch aktualisiert:', fahrzeuge.length, 'Fahrzeuge');
+                console.log('🖼️ Fotos aus LocalStorage geladen');
             });
         }
 
@@ -428,7 +436,16 @@
                 if (firebaseInitialized && firebaseApp) {
                     // Firebase Firestore verwenden
                     allVehicles = await firebaseApp.getAllFahrzeuge();
+
+                    // Hybrid-Lösung: Fotos aus LocalStorage nachladen
+                    allVehicles.forEach(fahrzeug => {
+                        const allPhotos = firebaseApp.loadAllPhotosLocal(fahrzeug.id);
+                        fahrzeug.photos = allPhotos.vorher || [];
+                        fahrzeug.nachherPhotos = allPhotos.nachher || [];
+                    });
+
                     console.log('✅ Fahrzeuge aus Firestore geladen:', allVehicles.length);
+                    console.log('🖼️ Fotos aus LocalStorage geladen');
                 } else {
                     // Fallback: LocalStorage verwenden
                     allVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
@@ -628,9 +645,9 @@
 
             try {
                 if (firebaseInitialized && firebaseApp) {
-                    // 1. Fotos aus Firebase Storage löschen
-                    console.log('🗑️ Lösche Fotos aus Storage...');
-                    await firebaseApp.deletePhotos(id);
+                    // 1. Fotos aus LocalStorage löschen (Hybrid-Lösung)
+                    console.log('🗑️ Lösche Fotos aus LocalStorage...');
+                    firebaseApp.deletePhotosLocal(id);
 
                     // 2. Fahrzeug aus Firestore löschen
                     await firebaseApp.deleteFahrzeug(id);
@@ -657,15 +674,10 @@
 
             try {
                 if (firebaseInitialized && firebaseApp) {
-                    // 1. Fotos aller Fahrzeuge aus Storage löschen
-                    console.log('🗑️ Lösche alle Fotos aus Storage...');
-                    const fahrzeuge = await firebaseApp.getAllFahrzeuge();
-
-                    for (const fahrzeug of fahrzeuge) {
-                        await firebaseApp.deletePhotos(fahrzeug.id);
-                    }
-
-                    console.log(`✅ Fotos von ${fahrzeuge.length} Fahrzeugen aus Storage gelöscht`);
+                    // 1. Alle Fotos aus LocalStorage löschen (Hybrid-Lösung)
+                    console.log('🗑️ Lösche alle Fotos aus LocalStorage...');
+                    const deletedCount = firebaseApp.deleteAllPhotosLocal();
+                    console.log(`✅ ${deletedCount} Foto-Collections aus LocalStorage gelöscht`);
 
                     // 2. Alle Fahrzeuge aus Firestore löschen
                     await firebaseApp.deleteAllFahrzeuge();

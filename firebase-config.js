@@ -58,8 +58,15 @@ function initFirebase() {
         }
       });
 
-    // Firebase Storage initialisieren
-    storage = firebase.storage();
+    // Firebase Storage initialisieren (optional - falls Blaze Plan aktiviert)
+    try {
+      storage = firebase.storage();
+      console.log("✅ Firebase Storage verfügbar");
+    } catch (storageError) {
+      console.warn("⚠️ Firebase Storage nicht verfügbar (Blaze Plan erforderlich)");
+      console.warn("→ Fotos werden in LocalStorage gespeichert");
+      storage = null;
+    }
 
     console.log("✅ Firebase erfolgreich initialisiert");
     console.log("📊 Projekt:", firebaseConfig.projectId);
@@ -394,6 +401,86 @@ async function migrateLocalStorageToFirestore() {
 }
 
 // ====================================================================
+// LOCALSTORAGE HELPER FÜR FOTOS (Hybrid-Lösung ohne Storage)
+// ====================================================================
+
+// Fotos in LocalStorage speichern (separate Collection)
+function savePhotosToLocalStorage(fahrzeugId, photos, type = 'vorher') {
+  try {
+    const key = `fahrzeugfotos_${fahrzeugId}`;
+    let fotosData = JSON.parse(localStorage.getItem(key) || '{}');
+
+    fotosData[type] = photos;
+
+    localStorage.setItem(key, JSON.stringify(fotosData));
+    console.log(`✅ ${photos.length} ${type}-Fotos in LocalStorage gespeichert`);
+
+    return true;
+  } catch (error) {
+    console.error("❌ Fehler beim Speichern der Fotos:", error);
+    return false;
+  }
+}
+
+// Fotos aus LocalStorage laden
+function loadPhotosFromLocalStorage(fahrzeugId, type = 'vorher') {
+  try {
+    const key = `fahrzeugfotos_${fahrzeugId}`;
+    const fotosData = JSON.parse(localStorage.getItem(key) || '{}');
+
+    return fotosData[type] || [];
+  } catch (error) {
+    console.error("❌ Fehler beim Laden der Fotos:", error);
+    return [];
+  }
+}
+
+// Alle Fotos eines Fahrzeugs laden
+function loadAllPhotosFromLocalStorage(fahrzeugId) {
+  try {
+    const key = `fahrzeugfotos_${fahrzeugId}`;
+    const fotosData = JSON.parse(localStorage.getItem(key) || '{}');
+
+    return {
+      vorher: fotosData.vorher || [],
+      nachher: fotosData.nachher || []
+    };
+  } catch (error) {
+    console.error("❌ Fehler beim Laden aller Fotos:", error);
+    return { vorher: [], nachher: [] };
+  }
+}
+
+// Fotos eines Fahrzeugs aus LocalStorage löschen
+function deletePhotosFromLocalStorage(fahrzeugId) {
+  try {
+    const key = `fahrzeugfotos_${fahrzeugId}`;
+    localStorage.removeItem(key);
+    console.log(`✅ Fotos von Fahrzeug ${fahrzeugId} aus LocalStorage gelöscht`);
+    return true;
+  } catch (error) {
+    console.error("❌ Fehler beim Löschen der Fotos:", error);
+    return false;
+  }
+}
+
+// Alle Fotos aus LocalStorage löschen
+function deleteAllPhotosFromLocalStorage() {
+  try {
+    const keys = Object.keys(localStorage);
+    const fotoKeys = keys.filter(key => key.startsWith('fahrzeugfotos_'));
+
+    fotoKeys.forEach(key => localStorage.removeItem(key));
+
+    console.log(`✅ ${fotoKeys.length} Foto-Collections aus LocalStorage gelöscht`);
+    return fotoKeys.length;
+  } catch (error) {
+    console.error("❌ Fehler beim Löschen aller Fotos:", error);
+    return 0;
+  }
+}
+
+// ====================================================================
 // EXPORT (für Verwendung in HTML-Dateien)
 // ====================================================================
 
@@ -412,12 +499,19 @@ window.firebaseApp = {
   deleteAllFahrzeuge: deleteAllFahrzeugeFromFirestore,
   listenToFahrzeuge: listenToFahrzeuge,
 
-  // Storage Operationen (NEU!)
+  // Storage Operationen (falls Blaze Plan aktiviert)
   uploadPhoto: uploadPhotoToStorage,
   uploadPhotos: uploadMultiplePhotos,
   deletePhotos: deleteVehiclePhotos,
   urlToBase64: urlToBase64,
   urlsToBase64: urlsToBase64,
+
+  // LocalStorage Foto-Operationen (Hybrid-Lösung)
+  savePhotosLocal: savePhotosToLocalStorage,
+  loadPhotosLocal: loadPhotosFromLocalStorage,
+  loadAllPhotosLocal: loadAllPhotosFromLocalStorage,
+  deletePhotosLocal: deletePhotosFromLocalStorage,
+  deleteAllPhotosLocal: deleteAllPhotosFromLocalStorage,
 
   // Migration
   migrateFromLocalStorage: migrateLocalStorageToFirestore

@@ -433,6 +433,13 @@
                 return;
             }
 
+            // Hybrid-Lösung: Fotos aus LocalStorage nachladen (falls nicht vorhanden)
+            if (firebaseInitialized && firebaseApp && (!vehicle.photos || vehicle.photos.length === 0)) {
+                const photos = firebaseApp.loadPhotosLocal(vehicle.id, 'vorher');
+                vehicle.photos = photos;
+                console.log('🖼️ Vorher-Fotos aus LocalStorage geladen');
+            }
+
             currentVehicle = vehicle;
             displayVehicleInfo(vehicle);
             document.getElementById('abnahmeForm').style.display = 'block';
@@ -677,38 +684,32 @@
                 status: 'abgeschlossen'
             };
 
-            // Status in Firestore ODER LocalStorage aktualisieren
+            // Hybrid-Update: Status in Firestore, Fotos in LocalStorage
             try {
                 if (firebaseInitialized && firebaseApp) {
-                    // Firebase Storage + Firestore verwenden
-                    console.log('📸 Lade Nachher-Fotos zu Firebase Storage hoch...');
+                    console.log('💾 Hybrid-Update: Status → Firestore, Nachher-Fotos → LocalStorage');
 
-                    // 1. Nachher-Fotos zu Storage hochladen
-                    const nachherPhotoURLs = await firebaseApp.uploadPhotos(nachherPhotos, currentVehicle.id, 'nachher');
+                    // 1. Nachher-Fotos in LocalStorage speichern (komprimiert)
+                    firebaseApp.savePhotosLocal(currentVehicle.id, nachherPhotos, 'nachher');
 
-                    // 2. Vorher-Fotos: Falls URLs → zu Base64 konvertieren für PDF
-                    let vorherPhotosBase64 = currentVehicle.photos;
-                    if (currentVehicle.photos && currentVehicle.photos.length > 0 && currentVehicle.photos[0].startsWith('http')) {
-                        // URLs vorhanden → zu Base64 konvertieren
-                        console.log('🔄 Konvertiere Vorher-Fotos von URLs zu Base64 für PDF...');
-                        vorherPhotosBase64 = await firebaseApp.urlsToBase64(currentVehicle.photos);
-                    }
-
-                    // 3. Daten mit URLs (für Firestore)
-                    const dataWithURLs = {
-                        ...abnahmeData,
-                        nachherPhotos: nachherPhotoURLs
+                    // 2. Status OHNE Fotos in Firestore aktualisieren
+                    const dataForFirestore = {
+                        ...abnahmeData
                     };
+                    delete dataForFirestore.nachherPhotos;  // Fotos nicht in Firestore!
 
-                    // 4. In Firestore aktualisieren (nur URLs)
-                    await firebaseApp.updateFahrzeug(currentVehicle.id, dataWithURLs);
-                    console.log('✅ Fahrzeug in Firestore aktualisiert (mit Storage URLs)');
+                    await firebaseApp.updateFahrzeug(currentVehicle.id, dataForFirestore);
+                    console.log('✅ Status in Firestore aktualisiert (ohne Fotos)');
+                    console.log('✅ Nachher-Fotos in LocalStorage gespeichert');
 
-                    // 5. PDF mit Base64 erstellen
+                    // 3. Vorher-Fotos aus LocalStorage laden für PDF
+                    const vorherPhotos = firebaseApp.loadPhotosLocal(currentVehicle.id, 'vorher');
+
+                    // 4. PDF mit beiden Fotos erstellen
                     const dataForPDF = {
-                        ...dataWithURLs,
-                        photos: vorherPhotosBase64,  // Base64 für PDF
-                        nachherPhotosBase64: nachherPhotos  // Base64 Nachher-Fotos
+                        ...abnahmeData,
+                        photos: vorherPhotos,
+                        nachherPhotos: nachherPhotos
                     };
                     await createPDF(dataForPDF);
                 } else {
