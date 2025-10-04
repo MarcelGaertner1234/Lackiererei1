@@ -496,7 +496,7 @@
 
             <div class="signature-section">
                 <label>Unterschrift Kunde <span class="required">*</span></label>
-                <canvas id="signatureCanvas"></canvas>
+                <canvas id="signatureCanvas" width="800" height="400"></canvas>
                 <div class="signature-buttons">
                     <button type="button" class="btn btn-clear" onclick="clearSignature()">Löschen</button>
                 </div>
@@ -559,55 +559,109 @@
             updatePhotoGrid();
         }
 
-        // Unterschrift
+        // Unterschrift Canvas
         const canvas = document.getElementById('signatureCanvas');
         const ctx = canvas.getContext('2d');
         let isDrawing = false;
+        let hasDrawn = false;
 
-        function resizeCanvas() {
+        // Canvas initialisieren
+        function initCanvas() {
             const rect = canvas.getBoundingClientRect();
             canvas.width = rect.width * 2;
             canvas.height = rect.height * 2;
             ctx.scale(2, 2);
+
+            // Zeichenstil
             ctx.strokeStyle = '#000';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
             ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // Platzhalter-Text
+            if (!hasDrawn) {
+                drawPlaceholder();
+            }
         }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
+
+        function drawPlaceholder() {
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transformation
+            ctx.fillStyle = '#ccc';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('✍️ Hier unterschreiben', canvas.width / 2, canvas.height / 2);
+            ctx.restore();
+        }
+
+        initCanvas();
+        window.addEventListener('resize', initCanvas);
+
+        function getCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            if (e.touches && e.touches.length > 0) {
+                return {
+                    x: (e.touches[0].clientX - rect.left) * scaleX / 2,
+                    y: (e.touches[0].clientY - rect.top) * scaleY / 2
+                };
+            } else {
+                return {
+                    x: (e.clientX - rect.left) * scaleX / 2,
+                    y: (e.clientY - rect.top) * scaleY / 2
+                };
+            }
+        }
 
         function startDrawing(e) {
+            e.preventDefault();
             isDrawing = true;
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX || e.touches[0].clientX) - rect.left;
-            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+            // Lösche Platzhalter beim ersten Zeichnen
+            if (!hasDrawn) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                hasDrawn = true;
+            }
+
+            const coords = getCoordinates(e);
             ctx.beginPath();
-            ctx.moveTo(x, y);
+            ctx.moveTo(coords.x, coords.y);
         }
 
         function draw(e) {
             if (!isDrawing) return;
             e.preventDefault();
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX || e.touches[0].clientX) - rect.left;
-            const y = (e.clientY || e.touches[0].clientY) - rect.top;
-            ctx.lineTo(x, y);
+
+            const coords = getCoordinates(e);
+            ctx.lineTo(coords.x, coords.y);
             ctx.stroke();
         }
 
-        function stopDrawing() {
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
             isDrawing = false;
+            ctx.closePath();
         }
 
-        canvas.addEventListener('mousedown', startDrawing);
-        canvas.addEventListener('mousemove', draw);
-        canvas.addEventListener('mouseup', stopDrawing);
-        canvas.addEventListener('touchstart', startDrawing);
-        canvas.addEventListener('touchmove', draw);
-        canvas.addEventListener('touchend', stopDrawing);
+        // Mouse Events
+        canvas.addEventListener('mousedown', startDrawing, false);
+        canvas.addEventListener('mousemove', draw, false);
+        canvas.addEventListener('mouseup', stopDrawing, false);
+        canvas.addEventListener('mouseleave', stopDrawing, false);
+
+        // Touch Events
+        canvas.addEventListener('touchstart', startDrawing, { passive: false });
+        canvas.addEventListener('touchmove', draw, { passive: false });
+        canvas.addEventListener('touchend', stopDrawing, { passive: false });
+        canvas.addEventListener('touchcancel', stopDrawing, { passive: false });
 
         function clearSignature() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hasDrawn = false;
+            drawPlaceholder();
         }
 
         // Formular-Daten sammeln
