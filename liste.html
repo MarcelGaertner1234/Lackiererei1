@@ -604,8 +604,8 @@
                         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                         <td>
                             <div class="action-buttons">
-                                <button class="btn-small btn-view" onclick="viewDetails(${vehicle.id})">👁️ Details</button>
-                                <button class="btn-small btn-delete" onclick="deleteVehicle(${vehicle.id})">🗑️</button>
+                                <button class="btn-small btn-view" onclick="viewDetails('${vehicle.id}')">👁️ Details</button>
+                                <button class="btn-small btn-delete" onclick="deleteVehicle('${vehicle.id}')">🗑️</button>
                             </div>
                         </td>
                     </tr>
@@ -634,8 +634,16 @@
 
         // Details anzeigen
         function viewDetails(id) {
+            console.log('🔍 viewDetails aufgerufen mit ID:', id);
+            console.log('📋 Alle Fahrzeuge:', allVehicles);
             const vehicle = allVehicles.find(v => v.id === id);
-            if (!vehicle) return;
+            console.log('🚗 Gefundenes Fahrzeug:', vehicle);
+
+            if (!vehicle) {
+                console.error('❌ Kein Fahrzeug gefunden mit ID:', id);
+                alert('❌ Fahrzeug nicht gefunden!');
+                return;
+            }
 
             let html = `
                 <div class="detail-row">
@@ -675,21 +683,61 @@
                 `;
             }
 
+            // Vereinbarter Preis
             html += `
-                <div class="detail-row">
-                    <strong>Fotos (Annahme):</strong>
-                    <div class="photo-gallery">
-                        ${vehicle.photos.map(photo => `<img src="${photo}" onclick="window.open(this.src)">`).join('')}
+                <div class="detail-row" style="background: #e8f5e9; padding: 15px; border-radius: 10px; margin-top: 15px;">
+                    <strong style="color: #2e7d32;">💰 Vereinbarter Preis:</strong>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
+                        <input type="number" id="preis_${vehicle.id}" value="${vehicle.vereinbarterPreis || ''}"
+                               placeholder="0.00" step="0.01" min="0"
+                               style="width: 150px; padding: 8px; border: 2px solid #2e7d32; border-radius: 8px; font-size: 16px; font-weight: bold;">
+                        <span style="font-size: 18px; font-weight: bold;">€</span>
+                        <button onclick="savePreis('${vehicle.id}')" class="btn-small btn-view" style="padding: 8px 16px;">💾 Speichern</button>
                     </div>
                 </div>
             `;
 
-            if (vehicle.nachherPhotos) {
+            // PDF Upload
+            html += `
+                <div class="detail-row" style="background: #fff3e0; padding: 15px; border-radius: 10px; margin-top: 15px;">
+                    <strong style="color: #e65100;">📄 PDFs hochladen:</strong>
+                    <div style="margin-top: 10px;">
+                        <input type="file" id="pdf_${vehicle.id}" accept=".pdf" style="display: none;">
+                        <button onclick="document.getElementById('pdf_${vehicle.id}').click()" class="btn-small btn-view" style="padding: 8px 16px;">📤 PDF auswählen</button>
+                        <button onclick="uploadPDF('${vehicle.id}')" class="btn-small btn-success" style="padding: 8px 16px; margin-left: 10px;">💾 Hochladen</button>
+                    </div>
+                    ${(vehicle.pdfs && vehicle.pdfs.length > 0) ? `
+                        <div style="margin-top: 10px;">
+                            <strong>Gespeicherte PDFs:</strong>
+                            <ul style="margin-top: 5px; padding-left: 20px;">
+                                ${vehicle.pdfs.map((pdf, idx) => `
+                                    <li>
+                                        <a href="#" onclick="downloadPDF('${vehicle.id}', ${idx}); return false;" style="color: #003366; text-decoration: none;">
+                                            📥 ${pdf.name} <small>(${new Date(pdf.uploadedAt).toLocaleDateString('de-DE')})</small>
+                                        </a>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    ` : '<p style="margin-top: 10px; color: #999; font-size: 14px;">Noch keine PDFs hochgeladen</p>'}
+                </div>
+            `;
+
+            html += `
+                <div class="detail-row">
+                    <strong>Fotos (Annahme):</strong>
+                    <div class="photo-gallery">
+                        ${(vehicle.photos || []).map(photo => `<img src="${photo}" onclick="window.open(this.src)">`).join('')}
+                    </div>
+                </div>
+            `;
+
+            if (vehicle.nachherPhotos && vehicle.nachherPhotos.length > 0) {
                 html += `
                     <div class="detail-row">
                         <strong>Fotos (Abnahme):</strong>
                         <div class="photo-gallery">
-                            ${vehicle.nachherPhotos.map(photo => `<img src="${photo}" onclick="window.open(this.src)">`).join('')}
+                            ${(vehicle.nachherPhotos || []).map(photo => `<img src="${photo}" onclick="window.open(this.src)">`).join('')}
                         </div>
                     </div>
                 `;
@@ -763,6 +811,127 @@
                 allVehicles = [];
                 loadData();
                 alert('✅ Alle Daten wurden gelöscht (LocalStorage).');
+            }
+        }
+
+        // Preis speichern
+        async function savePreis(id) {
+            try {
+                const preisInput = document.getElementById(`preis_${id}`);
+                const preis = parseFloat(preisInput.value);
+
+                if (isNaN(preis) || preis < 0) {
+                    alert('❌ Bitte geben Sie einen gültigen Preis ein!');
+                    return;
+                }
+
+                if (firebaseInitialized && firebaseApp) {
+                    await firebaseApp.updateFahrzeug(id, { vereinbarterPreis: preis });
+                    console.log(`✅ Preis gespeichert: ${preis}€`);
+                    alert(`✅ Preis ${preis.toFixed(2)}€ wurde gespeichert!`);
+                } else {
+                    // Fallback: LocalStorage
+                    const vehicle = allVehicles.find(v => v.id === id);
+                    if (vehicle) {
+                        vehicle.vereinbarterPreis = preis;
+                        localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
+                        alert(`✅ Preis ${preis.toFixed(2)}€ wurde gespeichert!`);
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern des Preises:', error);
+                alert('❌ Fehler beim Speichern des Preises!');
+            }
+        }
+
+        // PDF hochladen
+        async function uploadPDF(id) {
+            try {
+                const fileInput = document.getElementById(`pdf_${id}`);
+                const file = fileInput.files[0];
+
+                if (!file) {
+                    alert('⚠️ Bitte wählen Sie zuerst eine PDF-Datei aus!');
+                    return;
+                }
+
+                // Größenprüfung (1 MB = 1,000,000 Bytes)
+                if (file.size > 1000000) {
+                    alert('❌ PDF ist zu groß! Maximale Größe: 1 MB\nAktuelle Größe: ' + (file.size / 1000000).toFixed(2) + ' MB');
+                    return;
+                }
+
+                // PDF zu Base64 konvertieren
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    try {
+                        const base64Data = e.target.result;
+
+                        const vehicle = allVehicles.find(v => v.id === id);
+                        const pdfs = vehicle.pdfs || [];
+
+                        // PDF-Objekt erstellen
+                        const pdfObj = {
+                            name: file.name,
+                            data: base64Data,
+                            uploadedAt: new Date().toISOString()
+                        };
+
+                        pdfs.push(pdfObj);
+
+                        if (firebaseInitialized && firebaseApp) {
+                            await firebaseApp.updateFahrzeug(id, { pdfs: pdfs });
+                            console.log(`✅ PDF hochgeladen: ${file.name}`);
+                            alert(`✅ PDF "${file.name}" wurde erfolgreich hochgeladen!`);
+
+                            // Modal neu laden
+                            closeModal();
+                            setTimeout(() => viewDetails(id), 300);
+                        } else {
+                            // Fallback: LocalStorage
+                            vehicle.pdfs = pdfs;
+                            localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
+                            alert(`✅ PDF "${file.name}" wurde erfolgreich hochgeladen!`);
+                            closeModal();
+                            setTimeout(() => viewDetails(id), 300);
+                        }
+
+                        // Input zurücksetzen
+                        fileInput.value = '';
+                    } catch (error) {
+                        console.error('❌ Fehler beim Hochladen:', error);
+                        alert('❌ Fehler beim Hochladen des PDFs!');
+                    }
+                };
+
+                reader.readAsDataURL(file);
+            } catch (error) {
+                console.error('❌ Fehler beim PDF-Upload:', error);
+                alert('❌ Fehler beim PDF-Upload!');
+            }
+        }
+
+        // PDF herunterladen
+        function downloadPDF(id, pdfIndex) {
+            try {
+                const vehicle = allVehicles.find(v => v.id === id);
+                if (!vehicle || !vehicle.pdfs || !vehicle.pdfs[pdfIndex]) {
+                    alert('❌ PDF nicht gefunden!');
+                    return;
+                }
+
+                const pdf = vehicle.pdfs[pdfIndex];
+
+                // Base64 zu Blob konvertieren und Download starten
+                const link = document.createElement('a');
+                link.href = pdf.data;
+                link.download = pdf.name;
+                link.click();
+
+                console.log(`📥 PDF heruntergeladen: ${pdf.name}`);
+            } catch (error) {
+                console.error('❌ Fehler beim Download:', error);
+                alert('❌ Fehler beim Herunterladen des PDFs!');
             }
         }
 
