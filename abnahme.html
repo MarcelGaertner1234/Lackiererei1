@@ -680,11 +680,39 @@
             // Status in Firestore ODER LocalStorage aktualisieren
             try {
                 if (firebaseInitialized && firebaseApp) {
-                    // Firebase Firestore verwenden
-                    await firebaseApp.updateFahrzeug(currentVehicle.id, abnahmeData);
-                    console.log('✅ Fahrzeug in Firestore aktualisiert');
+                    // Firebase Storage + Firestore verwenden
+                    console.log('📸 Lade Nachher-Fotos zu Firebase Storage hoch...');
+
+                    // 1. Nachher-Fotos zu Storage hochladen
+                    const nachherPhotoURLs = await firebaseApp.uploadPhotos(nachherPhotos, currentVehicle.id, 'nachher');
+
+                    // 2. Vorher-Fotos: Falls URLs → zu Base64 konvertieren für PDF
+                    let vorherPhotosBase64 = currentVehicle.photos;
+                    if (currentVehicle.photos && currentVehicle.photos.length > 0 && currentVehicle.photos[0].startsWith('http')) {
+                        // URLs vorhanden → zu Base64 konvertieren
+                        console.log('🔄 Konvertiere Vorher-Fotos von URLs zu Base64 für PDF...');
+                        vorherPhotosBase64 = await firebaseApp.urlsToBase64(currentVehicle.photos);
+                    }
+
+                    // 3. Daten mit URLs (für Firestore)
+                    const dataWithURLs = {
+                        ...abnahmeData,
+                        nachherPhotos: nachherPhotoURLs
+                    };
+
+                    // 4. In Firestore aktualisieren (nur URLs)
+                    await firebaseApp.updateFahrzeug(currentVehicle.id, dataWithURLs);
+                    console.log('✅ Fahrzeug in Firestore aktualisiert (mit Storage URLs)');
+
+                    // 5. PDF mit Base64 erstellen
+                    const dataForPDF = {
+                        ...dataWithURLs,
+                        photos: vorherPhotosBase64,  // Base64 für PDF
+                        nachherPhotosBase64: nachherPhotos  // Base64 Nachher-Fotos
+                    };
+                    await createPDF(dataForPDF);
                 } else {
-                    // Fallback: LocalStorage verwenden
+                    // Fallback: LocalStorage verwenden (mit Base64)
                     let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
                     const index = fahrzeuge.findIndex(v => v.id === currentVehicle.id);
                     if (index !== -1) {
@@ -692,6 +720,9 @@
                         localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
                     }
                     console.log('ℹ️ Fahrzeug in LocalStorage aktualisiert');
+
+                    // PDF erstellen
+                    await createPDF(abnahmeData);
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Aktualisieren:', error);
@@ -703,10 +734,10 @@
                     localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
                 }
                 console.log('⚠️ Fahrzeug in LocalStorage aktualisiert (Firestore-Fehler)');
-            }
 
-            // PDF erstellen
-            await createPDF(abnahmeData);
+                // PDF erstellen
+                await createPDF(abnahmeData);
+            }
 
             // Success
             document.getElementById('successMessage').style.display = 'block';
@@ -877,7 +908,10 @@
             doc.text('NACHHER-Fotos (Abnahme):', 20, y);
             y += 10;
 
-            for (let i = 0; i < data.nachherPhotos.length; i += 2) {
+            // Nachher-Fotos (Base64 oder URLs)
+            const nachherPhotosForPDF = data.nachherPhotosBase64 || data.nachherPhotos || [];
+
+            for (let i = 0; i < nachherPhotosForPDF.length; i += 2) {
                 if (y > 240) {
                     doc.addPage();
                     y = 20;
@@ -886,9 +920,9 @@
                 const imgWidth = 80;
                 const imgHeight = 60;
 
-                doc.addImage(data.nachherPhotos[i], 'JPEG', 20, y, imgWidth, imgHeight);
-                if (i + 1 < data.nachherPhotos.length) {
-                    doc.addImage(data.nachherPhotos[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
+                doc.addImage(nachherPhotosForPDF[i], 'JPEG', 20, y, imgWidth, imgHeight);
+                if (i + 1 < nachherPhotosForPDF.length) {
+                    doc.addImage(nachherPhotosForPDF[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
                 }
 
                 y += imgHeight + 10;

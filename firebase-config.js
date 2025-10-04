@@ -225,6 +225,140 @@ function listenToFahrzeuge(callback) {
 }
 
 // ====================================================================
+// FIREBASE STORAGE - FOTO-UPLOAD
+// ====================================================================
+
+// Base64 zu Blob konvertieren
+function base64ToBlob(base64String) {
+  const parts = base64String.split(';base64,');
+  const contentType = parts[0].split(':')[1];
+  const raw = window.atob(parts[1]);
+  const rawLength = raw.length;
+  const uint8Array = new Uint8Array(rawLength);
+
+  for (let i = 0; i < rawLength; i++) {
+    uint8Array[i] = raw.charCodeAt(i);
+  }
+
+  return new Blob([uint8Array], { type: contentType });
+}
+
+// Einzelnes Foto zu Firebase Storage hochladen
+async function uploadPhotoToStorage(base64Image, fahrzeugId, photoIndex, photoType = 'vorher') {
+  try {
+    if (!storage) {
+      throw new Error("Firebase Storage nicht initialisiert");
+    }
+
+    // Blob erstellen
+    const blob = base64ToBlob(base64Image);
+
+    // Pfad in Storage: fahrzeuge/{id}/{type}_photo_{index}.jpg
+    const fileName = `${photoType}_photo_${photoIndex}.jpg`;
+    const storagePath = `fahrzeuge/${fahrzeugId}/${fileName}`;
+
+    // Upload zu Storage
+    const storageRef = storage.ref(storagePath);
+    const uploadTask = await storageRef.put(blob);
+
+    // Download-URL holen
+    const downloadURL = await uploadTask.ref.getDownloadURL();
+
+    console.log(`✅ Foto hochgeladen: ${fileName} → ${downloadURL.substring(0, 50)}...`);
+    return downloadURL;
+  } catch (error) {
+    console.error("❌ Fehler beim Foto-Upload:", error);
+    throw error;
+  }
+}
+
+// Mehrere Fotos parallel hochladen
+async function uploadMultiplePhotos(base64Photos, fahrzeugId, photoType = 'vorher') {
+  try {
+    if (!base64Photos || base64Photos.length === 0) {
+      return [];
+    }
+
+    console.log(`📸 Lade ${base64Photos.length} Fotos zu Storage hoch...`);
+
+    // Alle Fotos parallel hochladen
+    const uploadPromises = base64Photos.map((photo, index) =>
+      uploadPhotoToStorage(photo, fahrzeugId, index, photoType)
+    );
+
+    const photoURLs = await Promise.all(uploadPromises);
+
+    console.log(`✅ ${photoURLs.length} Fotos erfolgreich hochgeladen`);
+    return photoURLs;
+  } catch (error) {
+    console.error("❌ Fehler beim Hochladen mehrerer Fotos:", error);
+    throw error;
+  }
+}
+
+// Alle Fotos eines Fahrzeugs aus Storage löschen
+async function deleteVehiclePhotos(fahrzeugId) {
+  try {
+    if (!storage) {
+      throw new Error("Firebase Storage nicht initialisiert");
+    }
+
+    // Ordner-Referenz
+    const folderRef = storage.ref(`fahrzeuge/${fahrzeugId}`);
+
+    // Alle Dateien im Ordner listen
+    const listResult = await folderRef.listAll();
+
+    if (listResult.items.length === 0) {
+      console.log("ℹ️ Keine Fotos zum Löschen vorhanden");
+      return 0;
+    }
+
+    // Alle Dateien löschen
+    const deletePromises = listResult.items.map(item => item.delete());
+    await Promise.all(deletePromises);
+
+    console.log(`✅ ${listResult.items.length} Fotos aus Storage gelöscht`);
+    return listResult.items.length;
+  } catch (error) {
+    console.error("❌ Fehler beim Löschen der Fotos:", error);
+    // Nicht werfen - Fahrzeug soll trotzdem gelöscht werden
+    return 0;
+  }
+}
+
+// URL zu Base64 konvertieren (für PDF-Generierung)
+async function urlToBase64(url) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error("❌ Fehler beim Konvertieren URL → Base64:", error);
+    throw error;
+  }
+}
+
+// Mehrere URLs zu Base64 konvertieren (für PDFs)
+async function urlsToBase64(urls) {
+  if (!urls || urls.length === 0) return [];
+
+  try {
+    const promises = urls.map(url => urlToBase64(url));
+    return await Promise.all(promises);
+  } catch (error) {
+    console.error("❌ Fehler beim Konvertieren mehrerer URLs:", error);
+    return [];
+  }
+}
+
+// ====================================================================
 // MIGRATION: LocalStorage → Firestore
 // ====================================================================
 
@@ -264,9 +398,12 @@ async function migrateLocalStorageToFirestore() {
 // ====================================================================
 
 window.firebaseApp = {
+  // Initialisierung
   init: initFirebase,
   db: () => db,
   storage: () => storage,
+
+  // Firestore Operationen
   saveFahrzeug: saveFahrzeugToFirestore,
   getAllFahrzeuge: getAllFahrzeugeFromFirestore,
   getFahrzeugByKennzeichen: getFahrzeugByKennzeichen,
@@ -274,6 +411,15 @@ window.firebaseApp = {
   deleteFahrzeug: deleteFahrzeugFromFirestore,
   deleteAllFahrzeuge: deleteAllFahrzeugeFromFirestore,
   listenToFahrzeuge: listenToFahrzeuge,
+
+  // Storage Operationen (NEU!)
+  uploadPhoto: uploadPhotoToStorage,
+  uploadPhotos: uploadMultiplePhotos,
+  deletePhotos: deleteVehiclePhotos,
+  urlToBase64: urlToBase64,
+  urlsToBase64: urlsToBase64,
+
+  // Migration
   migrateFromLocalStorage: migrateLocalStorageToFirestore
 };
 

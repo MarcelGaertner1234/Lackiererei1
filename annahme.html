@@ -778,15 +778,37 @@
             // In Firestore ODER LocalStorage speichern
             try {
                 if (firebaseInitialized && firebaseApp) {
-                    // Firebase Firestore verwenden
-                    await firebaseApp.saveFahrzeug(annahmeData);
-                    console.log('✅ Fahrzeug in Firestore gespeichert');
+                    // Firebase Storage + Firestore verwenden
+                    console.log('📸 Lade Fotos zu Firebase Storage hoch...');
+
+                    // 1. Fotos zu Storage hochladen und URLs bekommen
+                    const photoURLs = await firebaseApp.uploadPhotos(annahmeData.photos, annahmeData.id, 'vorher');
+
+                    // 2. Photos mit URLs ersetzen (statt Base64)
+                    const dataWithURLs = {
+                        ...annahmeData,
+                        photos: photoURLs,
+                        photosBase64: annahmeData.photos  // Backup für PDF (temporär im Memory)
+                    };
+
+                    // 3. Nur URLs in Firestore speichern
+                    const dataForFirestore = {...dataWithURLs};
+                    delete dataForFirestore.photosBase64;  // Nicht in Firestore speichern
+
+                    await firebaseApp.saveFahrzeug(dataForFirestore);
+                    console.log('✅ Fahrzeug in Firestore gespeichert (mit Storage URLs)');
+
+                    // 4. PDF mit Base64 erstellen (aus Memory)
+                    await createPDF(dataWithURLs);
                 } else {
-                    // Fallback: LocalStorage verwenden
+                    // Fallback: LocalStorage verwenden (mit Base64)
                     let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
                     fahrzeuge.push(annahmeData);
                     localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
                     console.log('ℹ️ Fahrzeug in LocalStorage gespeichert (Firestore nicht verfügbar)');
+
+                    // PDF erstellen
+                    await createPDF(annahmeData);
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Speichern:', error);
@@ -795,10 +817,10 @@
                 fahrzeuge.push(annahmeData);
                 localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
                 console.log('⚠️ Fahrzeug in LocalStorage gespeichert (Firestore-Fehler)');
-            }
 
-            // PDF erstellen
-            await createPDF(annahmeData);
+                // PDF erstellen
+                await createPDF(annahmeData);
+            }
 
             // Success-Message
             document.getElementById('successMessage').style.display = 'block';
@@ -943,8 +965,10 @@
                 y += 12;
             }
 
-            // Fotos
-            if (data.photos.length > 0) {
+            // Fotos (Base64 oder URLs)
+            const photosForPDF = data.photosBase64 || data.photos || [];
+
+            if (photosForPDF.length > 0) {
                 if (y > 220) {
                     doc.addPage();
                     y = 20;
@@ -954,7 +978,7 @@
                 doc.text('Schadensfotos:', 20, y);
                 y += 10;
 
-                for (let i = 0; i < data.photos.length; i += 2) {
+                for (let i = 0; i < photosForPDF.length; i += 2) {
                     if (y > 230) {
                         doc.addPage();
                         y = 20;
@@ -963,9 +987,9 @@
                     const imgWidth = 80;
                     const imgHeight = 60;
 
-                    doc.addImage(data.photos[i], 'JPEG', 20, y, imgWidth, imgHeight);
-                    if (i + 1 < data.photos.length) {
-                        doc.addImage(data.photos[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
+                    doc.addImage(photosForPDF[i], 'JPEG', 20, y, imgWidth, imgHeight);
+                    if (i + 1 < photosForPDF.length) {
+                        doc.addImage(photosForPDF[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
                     }
 
                     y += imgHeight + 10;
