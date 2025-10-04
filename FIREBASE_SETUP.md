@@ -50,7 +50,8 @@ Du brauchst ein **kostenloses Google-Konto**.
 
 ### 4.3 Sicherheitsregeln
 - Wähle: **"Im Testmodus starten"**
-- ⚠️ Nur für Entwicklung! (ändern wir später)
+- ⚠️ **WICHTIG: Testmodus läuft nach 30 Tagen ab!**
+- ⚠️ Danach FEHLER: "access control checks" - Dann siehe **SECURITY_RULES_FIX.md**
 - Klicke **"Aktivieren"**
 
 → Firestore wird jetzt erstellt (dauert 1-2 Minuten)
@@ -99,6 +100,7 @@ const firebaseConfig = {
 
 ### 6.2 Sicherheitsregeln
 - Wähle: **"Im Testmodus starten"**
+- ⚠️ **WICHTIG: Testmodus läuft nach 30 Tagen ab!**
 - Klicke **"Weiter"**
 
 ### 6.3 Standort
@@ -136,7 +138,26 @@ const firebaseConfig = {
 
 ---
 
-## Schritt 8: Testen
+## Schritt 8: GitHub Pages Domain autorisieren
+
+**⚠️ WICHTIG - sonst funktioniert die App nicht auf GitHub Pages!**
+
+### 8.1 Authentication aktivieren
+1. Firebase Console → **Build** → **Authentication**
+2. Falls noch nicht aktiviert: Klicke **"Erste Schritte"**
+3. Klicke auf Tab: **Settings**
+
+### 8.2 Domain hinzufügen
+1. Scrolle zu **"Authorized domains"**
+2. Klicke **"Add domain"**
+3. Trage ein: **`marcelgaertner1234.github.io`**
+4. Klicke **"Add"**
+
+✅ **Domain autorisiert!**
+
+---
+
+## Schritt 9: Testen
 
 1. Öffne die App: `https://marcelgaertner1234.github.io/Lackiererei1/`
 2. Erstelle ein Testfahrzeug in "Annahme"
@@ -223,9 +244,18 @@ Falls du mal mehr brauchst: Blaze Plan (Pay-as-you-go) kostet nur bei Überschre
 - [ ] Firebase-Konfiguration kopiert
 - [ ] Storage aktiviert
 - [ ] Konfiguration in `firebase-config.js` eingetragen
+- [ ] **GitHub Pages Domain autorisiert** (`marcelgaertner1234.github.io`)
 - [ ] App getestet
 
 **Wenn alle Punkte ✅ sind: FERTIG!** 🎉
+
+---
+
+## ⚠️ Häufiger Fehler nach 30 Tagen
+
+**Fehlermeldung:** `Fetch API cannot load... due to access control checks`
+
+**Lösung:** Siehe **SECURITY_RULES_FIX.md** - Security Rules sind abgelaufen!
 
 ---
 
