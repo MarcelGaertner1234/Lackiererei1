@@ -89,8 +89,8 @@ async function saveFahrzeugToFirestore(fahrzeugData) {
       throw new Error("Firestore nicht initialisiert");
     }
 
-    // Verwende Timestamp als ID (falls nicht vorhanden)
-    const fahrzeugId = fahrzeugData.id || Date.now().toString();
+    // Verwende Timestamp als ID (falls nicht vorhanden) - IMMER zu String konvertieren!
+    const fahrzeugId = (fahrzeugData.id || Date.now()).toString();
     fahrzeugData.id = fahrzeugId;
 
     // Speichere in Firestore
@@ -158,7 +158,7 @@ async function updateFahrzeugInFirestore(fahrzeugId, updates) {
       throw new Error("Firestore nicht initialisiert");
     }
 
-    await db.collection('fahrzeuge').doc(fahrzeugId.toString()).update(updates);
+    await db.collection('fahrzeuge').doc(String(fahrzeugId)).update(updates);
 
     console.log("✅ Fahrzeug aktualisiert:", fahrzeugId);
     return true;
@@ -175,7 +175,7 @@ async function deleteFahrzeugFromFirestore(fahrzeugId) {
       throw new Error("Firestore nicht initialisiert");
     }
 
-    await db.collection('fahrzeuge').doc(fahrzeugId.toString()).delete();
+    await db.collection('fahrzeuge').doc(String(fahrzeugId)).delete();
 
     console.log("✅ Fahrzeug gelöscht:", fahrzeugId);
     return true;
