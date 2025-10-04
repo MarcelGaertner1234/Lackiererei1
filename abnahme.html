@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fahrzeug-Abnahme | Auto-Lackierzentrum Mosbach</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #11998e;
+        }
+
+        .header h1 {
+            color: #11998e;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #11998e;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .form-group input[type="text"],
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .form-group input[type="text"]:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #11998e;
+            box-shadow: 0 0 10px rgba(17,153,142,0.1);
+        }
+
+        .vehicle-info {
+            background: #f0f9ff;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            display: none;
+        }
+
+        .vehicle-info.show {
+            display: block;
+        }
+
+        .vehicle-info h3 {
+            color: #11998e;
+            margin-bottom: 10px;
+        }
+
+        .vehicle-info p {
+            margin: 5px 0;
+            color: #333;
+        }
+
+        .photo-comparison {
+            margin-bottom: 25px;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .photo-column {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .photo-column h4 {
+            color: #11998e;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .photo-item {
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .photo-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-item.empty {
+            border: 2px dashed #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .photo-item.empty:hover {
+            border-color: #11998e;
+            transform: scale(1.05);
+        }
+
+        .photo-item.empty::before {
+            content: '📷';
+            font-size: 30px;
+        }
+
+        .remove-photo {
+            position: relative;
+            width: 100%;
+            padding: 5px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        #photoInput {
+            display: none;
+        }
+
+        .signature-section {
+            margin-bottom: 25px;
+        }
+
+        #signatureCanvas {
+            width: 100%;
+            height: 200px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .signature-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-search {
+            background: #11998e;
+            color: white;
+        }
+
+        .btn-search:hover {
+            background: #0e8074;
+        }
+
+        .btn-clear {
+            background: #f5f5f5;
+            color: #333;
+            flex: 1;
+        }
+
+        .btn-clear:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-finish {
+            background: #11998e;
+            color: white;
+            font-size: 18px;
+            padding: 15px 30px;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .btn-finish:hover {
+            background: #0e8074;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(17,153,142,0.3);
+        }
+
+        .btn-finish:active {
+            transform: translateY(0);
+        }
+
+        .info-box {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            color: #11998e;
+            font-size: 14px;
+        }
+
+        .error-message {
+            display: none;
+            background: #ff5252;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .success-message {
+            display: none;
+            background: #4caf50;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .date-display {
+            color: #666;
+            font-size: 14px;
+            text-align: right;
+            margin-bottom: 20px;
+        }
+
+        .search-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .search-section input {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✅ Fahrzeug-Abnahme</h1>
+            <p>Auto-Lackierzentrum Mosbach</p>
+        </div>
+
+        <div class="date-display">
+            Datum: <strong id="currentDate"></strong>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage">
+            ✅ Fahrzeug erfolgreich abgenommen!
+        </div>
+
+        <div class="info-box">
+            💡 <strong>Tipp:</strong> Geben Sie das Kennzeichen ein, um die Annahme-Daten zu laden. Machen Sie Nachher-Fotos aus den gleichen Winkeln wie die Vorher-Fotos.
+        </div>
+
+        <div class="search-section">
+            <input type="text" id="kennzeichenSearch" placeholder="Kennzeichen eingeben (z.B. MOS-CG 123)">
+            <button class="btn btn-search" onclick="searchVehicle()">🔍 Suchen</button>
+        </div>
+
+        <div class="vehicle-info" id="vehicleInfo"></div>
+
+        <form id="abnahmeForm" style="display: none;">
+            <div class="photo-comparison">
+                <h3 style="color: #11998e; margin-bottom: 15px;">Foto-Vergleich</h3>
+                <div class="comparison-grid">
+                    <div class="photo-column">
+                        <h4>⬅️ VORHER (Annahme)</h4>
+                        <div class="photo-grid" id="vorherGrid"></div>
+                    </div>
+                    <div class="photo-column">
+                        <h4>➡️ NACHHER (Abnahme)</h4>
+                        <div class="photo-grid" id="nachherGrid">
+                            <div class="photo-item empty" onclick="document.getElementById('photoInput').click()"></div>
+                        </div>
+                        <input type="file" id="photoInput" accept="image/*" capture="environment" multiple>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signature-section">
+                <label>Unterschrift Kunde (Abnahme) *</label>
+                <canvas id="signatureCanvas"></canvas>
+                <div class="signature-buttons">
+                    <button type="button" class="btn btn-clear" onclick="clearSignature()">Löschen</button>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-finish">🎉 Abnahme abschließen & PDF erstellen</button>
+        </form>
+    </div>
+
+    <script>
+        // Aktuelles Datum anzeigen
+        const heute = new Date();
+        document.getElementById('currentDate').textContent = heute.toLocaleDateString('de-DE', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+
+        let currentVehicle = null;
+        let nachherPhotos = [];
+
+        // Fahrzeug suchen
+        function searchVehicle() {
+            const kennzeichen = document.getElementById('kennzeichenSearch').value.trim().toUpperCase();
+
+            if (!kennzeichen) {
+                showError('Bitte Kennzeichen eingeben!');
+                return;
+            }
+
+            const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+            const vehicle = fahrzeuge.find(v => v.kennzeichen.toUpperCase() === kennzeichen && v.status === 'angenommen');
+
+            if (!vehicle) {
+                showError(`Kein angenommenes Fahrzeug mit Kennzeichen "${kennzeichen}" gefunden!`);
+                document.getElementById('vehicleInfo').classList.remove('show');
+                document.getElementById('abnahmeForm').style.display = 'none';
+                return;
+            }
+
+            currentVehicle = vehicle;
+            displayVehicleInfo(vehicle);
+            document.getElementById('abnahmeForm').style.display = 'block';
+        }
+
+        // Fahrzeug-Infos anzeigen
+        function displayVehicleInfo(vehicle) {
+            const infoDiv = document.getElementById('vehicleInfo');
+            infoDiv.innerHTML = `
+                <h3>📋 Fahrzeug-Informationen</h3>
+                <p><strong>Kennzeichen:</strong> ${vehicle.kennzeichen}</p>
+                <p><strong>Kundenname:</strong> ${vehicle.kundenname}</p>
+                <p><strong>Fahrzeug:</strong> ${vehicle.marke} ${vehicle.modell}${vehicle.baujahr ? ` (${vehicle.baujahr})` : ''}</p>
+                ${vehicle.kmstand ? `<p><strong>KM-Stand:</strong> ${vehicle.kmstand} km</p>` : ''}
+                <p style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px;"><strong style="color: #c7254e;">🎨 FARBNUMMER:</strong> <span style="font-size: 18px; font-weight: bold; color: #c7254e;">${vehicle.farbnummer}</span> (${vehicle.lackart})</p>
+                ${vehicle.farbname ? `<p><strong>Farbname:</strong> ${vehicle.farbname}</p>` : ''}
+                <p><strong>Angenommen am:</strong> ${vehicle.datum} ${vehicle.zeit}</p>
+                ${vehicle.notizen ? `<p><strong>Schadensbeschreibung:</strong> ${vehicle.notizen}</p>` : ''}
+            `;
+            infoDiv.classList.add('show');
+
+            // Vorher-Fotos anzeigen
+            const vorherGrid = document.getElementById('vorherGrid');
+            vorherGrid.innerHTML = '';
+            vehicle.photos.forEach(photo => {
+                const div = document.createElement('div');
+                div.className = 'photo-item';
+                div.innerHTML = `<img src="${photo}" alt="Vorher-Foto">`;
+                vorherGrid.appendChild(div);
+            });
+        }
+
+        // Nachher-Fotos
+        const photoInput = document.getElementById('photoInput');
+        const nachherGrid = document.getElementById('nachherGrid');
+
+        photoInput.addEventListener('change', function(e) {
+            const files = Array.from(e.target.files);
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    nachherPhotos.push(event.target.result);
+                    updateNachherGrid();
+                };
+                reader.readAsDataURL(file);
+            });
+            e.target.value = '';
+        });
+
+        function updateNachherGrid() {
+            nachherGrid.innerHTML = '';
+            nachherPhotos.forEach((photo, index) => {
+                const container = document.createElement('div');
+                container.innerHTML = `
+                    <div class="photo-item">
+                        <img src="${photo}" alt="Nachher-Foto ${index + 1}">
+                    </div>
+                    <button class="remove-photo" onclick="removeNachherPhoto(${index})">❌ Löschen</button>
+                `;
+                nachherGrid.appendChild(container);
+            });
+
+            if (nachherPhotos.length < 10) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'photo-item empty';
+                emptyDiv.onclick = () => photoInput.click();
+                nachherGrid.appendChild(emptyDiv);
+            }
+        }
+
+        function removeNachherPhoto(index) {
+            nachherPhotos.splice(index, 1);
+            updateNachherGrid();
+        }
+
+        // Unterschrift
+        const canvas = document.getElementById('signatureCanvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * 2;
+            canvas.height = rect.height * 2;
+            ctx.scale(2, 2);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing);
+        canvas.addEventListener('touchmove', draw);
+        canvas.addEventListener('touchend', stopDrawing);
+
+        function clearSignature() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Form absenden
+        document.getElementById('abnahmeForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            if (!currentVehicle) {
+                showError('Kein Fahrzeug geladen!');
+                return;
+            }
+
+            if (nachherPhotos.length === 0) {
+                showError('Bitte mindestens 1 Nachher-Foto machen!');
+                return;
+            }
+
+            // Prüfe Unterschrift
+            const signatureData = canvas.toDataURL();
+            const emptyCanvas = document.createElement('canvas');
+            emptyCanvas.width = canvas.width;
+            emptyCanvas.height = canvas.height;
+            if (signatureData === emptyCanvas.toDataURL()) {
+                showError('Bitte Unterschrift des Kunden einholen!');
+                return;
+            }
+
+            // Abnahme-Daten erstellen
+            const abnahmeData = {
+                ...currentVehicle,
+                abnahmeDatum: heute.toLocaleDateString('de-DE'),
+                abnahmeZeit: heute.toLocaleTimeString('de-DE'),
+                nachherPhotos,
+                abnahmeSignature: signatureData,
+                status: 'abgeschlossen'
+            };
+
+            // Status in LocalStorage aktualisieren
+            let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+            const index = fahrzeuge.findIndex(v => v.id === currentVehicle.id);
+            if (index !== -1) {
+                fahrzeuge[index] = abnahmeData;
+                localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+            }
+
+            // PDF erstellen
+            await createPDF(abnahmeData);
+
+            // Success
+            document.getElementById('successMessage').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('successMessage').style.display = 'none';
+                // Reset
+                document.getElementById('kennzeichenSearch').value = '';
+                document.getElementById('vehicleInfo').classList.remove('show');
+                document.getElementById('abnahmeForm').style.display = 'none';
+                nachherPhotos = [];
+                currentVehicle = null;
+                clearSignature();
+            }, 3000);
+        });
+
+        // PDF erstellen
+        async function createPDF(data) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            // Header
+            doc.setFillColor(17, 153, 142);
+            doc.rect(0, 0, 210, 40, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(24);
+            doc.text('Fahrzeug-Abnahmeprotokoll', 105, 20, { align: 'center' });
+            doc.setFontSize(12);
+            doc.text('Auto-Lackierzentrum Mosbach', 105, 30, { align: 'center' });
+
+            // Daten
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(12);
+            let y = 55;
+
+            doc.setFont(undefined, 'bold');
+            doc.text('Annahme:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.datum + ' ' + data.zeit, 60, y);
+
+            y += 10;
+            doc.setFont(undefined, 'bold');
+            doc.text('Abnahme:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.abnahmeDatum + ' ' + data.abnahmeZeit, 60, y);
+
+            y += 10;
+            doc.setFont(undefined, 'bold');
+            doc.text('Kennzeichen:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.kennzeichen, 60, y);
+
+            y += 10;
+            doc.setFont(undefined, 'bold');
+            doc.text('Kundenname:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.kundenname, 60, y);
+
+            // Fahrzeugdaten
+            y += 12;
+            doc.setFillColor(17, 153, 142);
+            doc.rect(15, y - 5, 180, 8, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text('FAHRZEUGDATEN', 20, y);
+
+            y += 10;
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, 'bold');
+            doc.text('Marke:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.marke, 50, y);
+            doc.setFont(undefined, 'bold');
+            doc.text('Modell:', 110, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.modell, 140, y);
+
+            y += 7;
+            if (data.baujahr) {
+                doc.setFont(undefined, 'bold');
+                doc.text('Baujahr:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(data.baujahr, 50, y);
+            }
+            if (data.kmstand) {
+                doc.setFont(undefined, 'bold');
+                doc.text('KM-Stand:', 110, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(data.kmstand + ' km', 140, y);
+            }
+
+            // LACKIER-INFO
+            y += 12;
+            doc.setFillColor(245, 87, 108);
+            doc.rect(15, y - 5, 180, 8, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(13);
+            doc.text('🎨 LACKIER-INFORMATIONEN', 20, y);
+
+            y += 10;
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+            if (data.farbname) {
+                doc.setFont(undefined, 'bold');
+                doc.text('Farbname:', 20, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(data.farbname, 55, y);
+                y += 7;
+            }
+
+            // FARBNUMMER GROSS
+            doc.setFillColor(255, 243, 205);
+            doc.rect(15, y - 3, 180, 12, 'F');
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor(199, 37, 78);
+            doc.text('FARBNUMMER:', 20, y + 4);
+            doc.setFontSize(18);
+            doc.text(data.farbnummer, 70, y + 4);
+
+            y += 15;
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.text('Lackart:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.lackart, 55, y);
+
+            if (data.notizen) {
+                y += 12;
+                doc.setFont(undefined, 'bold');
+                doc.text('Notizen:', 20, y);
+                y += 7;
+                doc.setFont(undefined, 'normal');
+                const notizen = doc.splitTextToSize(data.notizen, 170);
+                doc.text(notizen, 20, y);
+                y += notizen.length * 5 + 10;
+            } else {
+                y += 15;
+            }
+
+            // Vorher/Nachher Fotos
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(14);
+            doc.text('VORHER-Fotos (Annahme):', 20, y);
+            y += 10;
+
+            for (let i = 0; i < data.photos.length; i += 2) {
+                if (y > 240) {
+                    doc.addPage();
+                    y = 20;
+                }
+
+                const imgWidth = 80;
+                const imgHeight = 60;
+
+                doc.addImage(data.photos[i], 'JPEG', 20, y, imgWidth, imgHeight);
+                if (i + 1 < data.photos.length) {
+                    doc.addImage(data.photos[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
+                }
+
+                y += imgHeight + 10;
+            }
+
+            y += 10;
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(14);
+            doc.text('NACHHER-Fotos (Abnahme):', 20, y);
+            y += 10;
+
+            for (let i = 0; i < data.nachherPhotos.length; i += 2) {
+                if (y > 240) {
+                    doc.addPage();
+                    y = 20;
+                }
+
+                const imgWidth = 80;
+                const imgHeight = 60;
+
+                doc.addImage(data.nachherPhotos[i], 'JPEG', 20, y, imgWidth, imgHeight);
+                if (i + 1 < data.nachherPhotos.length) {
+                    doc.addImage(data.nachherPhotos[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
+                }
+
+                y += imgHeight + 10;
+            }
+
+            // Unterschriften
+            if (y > 180) {
+                doc.addPage();
+                y = 20;
+            }
+
+            y += 10;
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(12);
+            doc.text('Unterschrift Annahme:', 20, y);
+            doc.text('Unterschrift Abnahme:', 110, y);
+            y += 5;
+
+            doc.addImage(data.signature, 'PNG', 20, y, 70, 25);
+            doc.addImage(data.abnahmeSignature, 'PNG', 110, y, 70, 25);
+
+            // PDF speichern
+            const filename = `Abnahme_${data.kennzeichen.replace(/\s/g, '_')}_${data.abnahmeDatum.replace(/\./g, '')}.pdf`;
+            doc.save(filename);
+        }
+
+        // Error anzeigen
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = '❌ ' + message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 4000);
+        }
+    </script>
+</body>
+</html>
