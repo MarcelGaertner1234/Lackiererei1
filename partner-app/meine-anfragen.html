@@ -356,13 +356,70 @@
 
             let kvaHTML = '';
             if (anfrage.kva) {
-                kvaHTML = `
-                    <div class="kva-box">
-                        <div class="title">💶 Kostenvoranschlag</div>
-                        <div class="price">${anfrage.kva.gesamt}€</div>
-                        <small>Lieferzeit: ${anfrage.kva.lieferzeit || 'k.A.'}</small>
-                    </div>
-                `;
+                // Neue Varianten-Struktur
+                if (anfrage.kva.varianten) {
+                    const varianten = anfrage.kva.varianten;
+                    const gewaehlte = anfrage.kva.gewaehlteVariante;
+
+                    kvaHTML = `
+                        <div style="margin-top: 20px;">
+                            <div style="font-weight: 700; color: #003366; margin-bottom: 15px; font-size: 16px;">💶 Preis-Varianten vergleichen</div>
+                            <div style="display: grid; gap: 15px;">
+                                <!-- Variante Original -->
+                                <div style="background: ${gewaehlte === 'original' ? '#e3f2fd' : '#f5f5f5'}; padding: 15px; border-radius: 10px; border-left: 4px solid ${gewaehlte === 'original' ? '#003366' : '#ccc'};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <div style="font-weight: 600; color: #003366;">⭐ Originalteile (OEM)</div>
+                                            <div style="font-size: 24px; font-weight: 700; color: #003366; margin-top: 5px;">${varianten.original.gesamt.toFixed(2)}€</div>
+                                        </div>
+                                        ${!gewaehlte ? `<button onclick="waehleVariante('${anfrage.id}', 'original')" style="padding: 10px 20px; background: #003366; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Wählen</button>` : ''}
+                                        ${gewaehlte === 'original' ? '<span style="color: #4caf50; font-weight: 700;">✓ Gewählt</span>' : ''}
+                                    </div>
+                                </div>
+
+                                <!-- Variante Zubehör -->
+                                <div style="background: ${gewaehlte === 'zubehoer' ? '#fff3e0' : '#f5f5f5'}; padding: 15px; border-radius: 10px; border-left: 4px solid ${gewaehlte === 'zubehoer' ? '#ff9800' : '#ccc'};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <div style="font-weight: 600; color: #e65100;">🔧 Zubehörteile</div>
+                                            <div style="font-size: 24px; font-weight: 700; color: #e65100; margin-top: 5px;">${varianten.zubehoer.gesamt.toFixed(2)}€</div>
+                                            <small style="color: #d32f2f;">⚠️ Passgenauigkeit nicht gewährleistet</small>
+                                        </div>
+                                        ${!gewaehlte ? `<button onclick="waehleVariante('${anfrage.id}', 'zubehoer')" style="padding: 10px 20px; background: #ff9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Wählen</button>` : ''}
+                                        ${gewaehlte === 'zubehoer' ? '<span style="color: #4caf50; font-weight: 700;">✓ Gewählt</span>' : ''}
+                                    </div>
+                                </div>
+
+                                ${varianten.partner ? `
+                                    <!-- Variante Partner -->
+                                    <div style="background: ${gewaehlte === 'partner' ? '#e8f5e9' : '#f5f5f5'}; padding: 15px; border-radius: 10px; border-left: 4px solid ${gewaehlte === 'partner' ? '#4caf50' : '#ccc'};">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <div style="font-weight: 600; color: #2e7d32;">📦 Mit Ihrem Ersatzteil</div>
+                                                <div style="font-size: 24px; font-weight: 700; color: #2e7d32; margin-top: 5px;">${varianten.partner.gesamt.toFixed(2)}€</div>
+                                                <small style="color: #2e7d32;">✅ Sie stellen Ersatzteil zur Verfügung</small>
+                                            </div>
+                                            ${!gewaehlte ? `<button onclick="waehleVariante('${anfrage.id}', 'partner')" style="padding: 10px 20px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Wählen</button>` : ''}
+                                            ${gewaehlte === 'partner' ? '<span style="color: #4caf50; font-weight: 700;">✓ Gewählt</span>' : ''}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div style="margin-top: 10px; color: #666; font-size: 13px;">
+                                <strong>Lieferzeit:</strong> ${anfrage.kva.lieferzeit || 'k.A.'}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Alte KVA-Struktur (Fallback)
+                    kvaHTML = `
+                        <div class="kva-box">
+                            <div class="title">💶 Kostenvoranschlag</div>
+                            <div class="price">${anfrage.kva.gesamt}€</div>
+                            <small>Lieferzeit: ${anfrage.kva.lieferzeit || 'k.A.'}</small>
+                        </div>
+                    `;
+                }
             }
 
             card.innerHTML = `
@@ -402,6 +459,32 @@
             };
 
             return card;
+        }
+
+        // Variante wählen
+        async function waehleVariante(anfrageId, variante) {
+            if (!confirm(`Möchten Sie die Variante "${variante === 'original' ? 'Originalteile' : variante === 'zubehoer' ? 'Zubehörteile' : 'Mit Ihrem Ersatzteil'}" wählen?`)) {
+                return;
+            }
+
+            try {
+                if (!db) throw new Error('Firebase nicht verfügbar');
+
+                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    'kva.gewaehlteVariante': variante,
+                    status: 'beauftragt',
+                    statusText: 'Beauftragt'
+                });
+
+                alert('✅ Variante gewählt! Die Lackierung wird jetzt beauftragt.');
+
+                // Seite neu laden um die Änderungen anzuzeigen
+                await loadAnfragen();
+
+            } catch (error) {
+                console.error('❌ Fehler:', error);
+                alert('Fehler beim Wählen der Variante: ' + error.message);
+            }
         }
     </script>
 </body>
