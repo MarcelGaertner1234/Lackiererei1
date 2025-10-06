@@ -746,16 +746,38 @@
             updateStats();
         });
 
-        // Kunden laden
+        // Kunden laden (Firebase + LocalStorage zusammenführen)
         async function loadKunden() {
             try {
+                let firebaseKunden = [];
+                let localKunden = [];
+
+                // Firebase laden
                 if (firebaseInitialized && firebaseApp) {
-                    allKunden = await firebaseApp.getAllKunden();
-                } else {
-                    allKunden = JSON.parse(localStorage.getItem('kunden') || '[]');
+                    try {
+                        firebaseKunden = await firebaseApp.getAllKunden();
+                        console.log(`📦 ${firebaseKunden.length} Kunden aus Firebase geladen`);
+                    } catch (error) {
+                        console.warn('⚠️ Firebase Kunden konnten nicht geladen werden:', error);
+                    }
                 }
 
-                console.log(`✅ ${allKunden.length} Kunden geladen`);
+                // LocalStorage laden
+                try {
+                    localKunden = JSON.parse(localStorage.getItem('kunden') || '[]');
+                    console.log(`💾 ${localKunden.length} Kunden aus LocalStorage geladen`);
+                } catch (error) {
+                    console.warn('⚠️ LocalStorage Kunden konnten nicht geladen werden:', error);
+                    localKunden = [];
+                }
+
+                // Zusammenführen: Firebase hat Vorrang, keine Duplikate
+                const firebaseIds = new Set(firebaseKunden.map(k => k.id));
+                const uniqueLocalKunden = localKunden.filter(k => !firebaseIds.has(k.id));
+
+                allKunden = [...firebaseKunden, ...uniqueLocalKunden];
+
+                console.log(`✅ ${allKunden.length} Kunden gesamt (${firebaseKunden.length} Firebase + ${uniqueLocalKunden.length} nur LocalStorage)`);
                 renderKundenTable();
             } catch (error) {
                 console.error('❌ Fehler beim Laden der Kunden:', error);
