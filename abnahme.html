@@ -289,14 +289,61 @@
             margin-bottom: 20px;
         }
 
-        .search-section {
-            display: flex;
-            gap: 10px;
+        .dropdown-section {
             margin-bottom: 20px;
         }
 
-        .search-section input {
-            flex: 1;
+        .dropdown-section select {
+            width: 100%;
+            padding: 14px 15px;
+            border: 2px solid #11998e;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 500;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .dropdown-section select:hover {
+            border-color: #0d7a6f;
+            box-shadow: 0 0 15px rgba(17,153,142,0.2);
+        }
+
+        .dropdown-section select:focus {
+            outline: none;
+            border-color: #0d7a6f;
+            box-shadow: 0 0 20px rgba(17,153,142,0.3);
+        }
+
+        .divider-text {
+            text-align: center;
+            margin: 25px 0;
+            position: relative;
+        }
+
+        .divider-text::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #ddd;
+        }
+
+        .divider-text span {
+            background: white;
+            padding: 0 15px;
+            position: relative;
+            color: #999;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .search-section {
+            margin-bottom: 20px;
         }
 
         @media (max-width: 768px) {
@@ -331,12 +378,30 @@
         </div>
 
         <div class="info-box">
-            💡 <strong>Tipp:</strong> Geben Sie das Kennzeichen ein, um die Annahme-Daten zu laden. Machen Sie Nachher-Fotos aus den gleichen Winkeln wie die Vorher-Fotos.
+            💡 <strong>Tipp:</strong> Wählen Sie ein Fahrzeug aus dem Dropdown oder geben Sie das Kennzeichen manuell ein. Machen Sie Nachher-Fotos aus den gleichen Winkeln wie die Vorher-Fotos.
+        </div>
+
+        <div class="dropdown-section">
+            <label for="vehicleDropdown" style="font-weight: 600; color: #11998e; margin-bottom: 10px; display: block;">
+                🚗 Fahrzeug auswählen (angenommene Fahrzeuge):
+            </label>
+            <select id="vehicleDropdown" onchange="selectFromDropdown()">
+                <option value="">-- Fahrzeug auswählen --</option>
+            </select>
+        </div>
+
+        <div class="divider-text">
+            <span>ODER</span>
         </div>
 
         <div class="search-section">
-            <input type="text" id="kennzeichenSearch" placeholder="Kennzeichen eingeben (z.B. MOS-CG 123)">
-            <button class="btn btn-search" onclick="searchVehicle()">🔍 Suchen</button>
+            <label for="kennzeichenSearch" style="font-weight: 600; color: #11998e; margin-bottom: 10px; display: block;">
+                ⌨️ Kennzeichen manuell eingeben:
+            </label>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="kennzeichenSearch" placeholder="Kennzeichen eingeben (z.B. MOS-CG 123)" style="flex: 1;">
+                <button class="btn btn-search" onclick="searchVehicle()">🔍 Suchen</button>
+            </div>
         </div>
 
         <div class="vehicle-info" id="vehicleInfo"></div>
@@ -374,7 +439,7 @@
     <script>
         // Firebase initialisieren
         let firebaseInitialized = false;
-        window.addEventListener('load', function() {
+        window.addEventListener('load', async function() {
             if (typeof firebaseApp !== 'undefined') {
                 firebaseInitialized = firebaseApp.init();
                 if (firebaseInitialized) {
@@ -383,6 +448,9 @@
             } else {
                 console.warn('⚠️ Firebase-Config nicht gefunden. LocalStorage wird verwendet.');
             }
+
+            // Dropdown mit angenommenen Fahrzeugen laden
+            await loadDropdownVehicles();
         });
 
         // Aktuelles Datum anzeigen
@@ -395,6 +463,72 @@
 
         let currentVehicle = null;
         let nachherPhotos = [];
+
+        // Dropdown mit angenommenen Fahrzeugen laden
+        async function loadDropdownVehicles() {
+            const dropdown = document.getElementById('vehicleDropdown');
+
+            try {
+                let vehicles = [];
+
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Firestore verwenden
+                    const allVehicles = await firebaseApp.getAllFahrzeuge();
+                    vehicles = allVehicles.filter(v => v.status === 'angenommen');
+                    console.log('✅ Dropdown geladen: ' + vehicles.length + ' angenommene Fahrzeuge');
+                } else {
+                    // Fallback: LocalStorage verwenden
+                    const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    vehicles = fahrzeuge.filter(v => v.status === 'angenommen');
+                    console.log('✅ Dropdown geladen (LocalStorage): ' + vehicles.length + ' Fahrzeuge');
+                }
+
+                // Dropdown leeren (außer Platzhalter)
+                dropdown.innerHTML = '<option value="">-- Fahrzeug auswählen --</option>';
+
+                // Fahrzeuge nach Datum sortieren (neueste zuerst)
+                vehicles.sort((a, b) => b.id - a.id);
+
+                // Dropdown befüllen
+                vehicles.forEach(vehicle => {
+                    const option = document.createElement('option');
+                    option.value = vehicle.kennzeichen;
+                    option.textContent = `${vehicle.kennzeichen} - ${vehicle.marke} ${vehicle.modell} - ${vehicle.kundenname}`;
+                    dropdown.appendChild(option);
+                });
+
+                if (vehicles.length === 0) {
+                    dropdown.innerHTML = '<option value="">Keine angenommenen Fahrzeuge vorhanden</option>';
+                    dropdown.disabled = true;
+                } else {
+                    dropdown.disabled = false;
+                }
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Dropdowns:', error);
+                dropdown.innerHTML = '<option value="">Fehler beim Laden der Fahrzeuge</option>';
+                dropdown.disabled = true;
+            }
+        }
+
+        // Fahrzeug aus Dropdown auswählen
+        async function selectFromDropdown() {
+            const dropdown = document.getElementById('vehicleDropdown');
+            const kennzeichen = dropdown.value;
+
+            if (!kennzeichen) {
+                // Zurücksetzen wenn "-- auswählen --" gewählt
+                document.getElementById('vehicleInfo').classList.remove('show');
+                document.getElementById('abnahmeForm').style.display = 'none';
+                return;
+            }
+
+            // Kennzeichen in Suchfeld eintragen (für Konsistenz)
+            document.getElementById('kennzeichenSearch').value = kennzeichen;
+
+            // Fahrzeug laden mit bestehender searchVehicle Funktion
+            await searchVehicle();
+        }
 
         // Fahrzeug suchen
         async function searchVehicle() {
@@ -742,10 +876,15 @@
 
             // Success
             document.getElementById('successMessage').style.display = 'block';
+
+            // Dropdown aktualisieren (abgeschlossenes Fahrzeug entfernen)
+            await loadDropdownVehicles();
+
             setTimeout(() => {
                 document.getElementById('successMessage').style.display = 'none';
                 // Reset
                 document.getElementById('kennzeichenSearch').value = '';
+                document.getElementById('vehicleDropdown').value = '';
                 document.getElementById('vehicleInfo').classList.remove('show');
                 document.getElementById('abnahmeForm').style.display = 'none';
                 nachherPhotos = [];
