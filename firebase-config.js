@@ -111,19 +111,22 @@ async function getAllFahrzeugeFromFirestore() {
       throw new Error("Firestore nicht initialisiert");
     }
 
-    const snapshot = await db.collection('fahrzeuge')
-      .orderBy('id', 'desc')
-      .get();
+    // Ohne orderBy (kein Index erforderlich)
+    const snapshot = await db.collection('fahrzeuge').get();
 
     const fahrzeuge = [];
     snapshot.forEach(doc => {
       fahrzeuge.push(doc.data());
     });
 
+    // Sortierung im JavaScript (statt Firestore orderBy)
+    fahrzeuge.sort((a, b) => b.id - a.id);
+
     console.log("✅ Fahrzeuge geladen:", fahrzeuge.length);
     return fahrzeuge;
   } catch (error) {
-    console.error("❌ Fehler beim Laden:", error);
+    console.error("❌ Fehler beim Laden der Fahrzeuge:", error);
+    console.error("   Details:", error.message);
     return [];
   }
 }
@@ -216,13 +219,16 @@ function listenToFahrzeuge(callback) {
     return null;
   }
 
+  // Ohne orderBy (kein Index erforderlich)
   return db.collection('fahrzeuge')
-    .orderBy('id', 'desc')
     .onSnapshot(snapshot => {
       const fahrzeuge = [];
       snapshot.forEach(doc => {
         fahrzeuge.push(doc.data());
       });
+
+      // Sortierung im JavaScript
+      fahrzeuge.sort((a, b) => b.id - a.id);
 
       console.log("🔄 Fahrzeuge aktualisiert (Echtzeit):", fahrzeuge.length);
       callback(fahrzeuge);
@@ -513,19 +519,22 @@ async function getAllKundenFromFirestore() {
       throw new Error("Firestore nicht initialisiert");
     }
 
-    const snapshot = await db.collection('kunden')
-      .orderBy('name', 'asc')
-      .get();
+    // Ohne orderBy (kein Index erforderlich)
+    const snapshot = await db.collection('kunden').get();
 
     const kunden = [];
     snapshot.forEach(doc => {
       kunden.push(doc.data());
     });
 
+    // Sortierung im JavaScript (alphabetisch nach Name)
+    kunden.sort((a, b) => a.name.localeCompare(b.name));
+
     console.log("✅ Kunden geladen:", kunden.length);
     return kunden;
   } catch (error) {
     console.error("❌ Fehler beim Laden der Kunden:", error);
+    console.error("   Details:", error.message);
     return [];
   }
 }
