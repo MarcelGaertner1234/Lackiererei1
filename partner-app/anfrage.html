@@ -269,6 +269,80 @@
             margin-bottom: 20px;
         }
 
+        /* Fahrzeugidentifikation Toggle */
+        .identification-toggle {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .toggle-option {
+            flex: 1;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+            background: white;
+        }
+
+        .toggle-option input {
+            display: none;
+        }
+
+        .toggle-option:hover {
+            border-color: #003366;
+            background: #f0f9ff;
+        }
+
+        .toggle-option.selected {
+            border-color: #003366;
+            background: #e3f2fd;
+            box-shadow: 0 4px 12px rgba(0,51,102,0.1);
+        }
+
+        .toggle-option .icon {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+
+        .toggle-option .label {
+            font-weight: 600;
+            color: #003366;
+            font-size: 15px;
+        }
+
+        .identification-section {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .identification-section label {
+            display: block;
+            font-weight: 600;
+            color: #003366;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .identification-section input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: monospace;
+            font-weight: 600;
+        }
+
+        .identification-section input[type="text"]:focus {
+            outline: none;
+            border-color: #003366;
+        }
+
         @media (max-width: 600px) {
             .form-row {
                 grid-template-columns: 1fr;
@@ -346,6 +420,49 @@
                 </div>
             </div>
 
+            <!-- Fahrzeugidentifikation -->
+            <div class="section-title">🔢 Fahrzeugidentifikation *</div>
+            <div class="form-group">
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Bitte geben Sie entweder die VIN-Nummer ein <strong>oder</strong> fotografieren Sie den Fahrzeugschein.
+                </p>
+
+                <div class="identification-toggle">
+                    <label class="toggle-option selected" onclick="selectIdentification('vin')">
+                        <input type="radio" name="identificationType" value="vin" checked>
+                        <div class="icon">📝</div>
+                        <div class="label">VIN eingeben</div>
+                    </label>
+                    <label class="toggle-option" onclick="selectIdentification('fahrzeugschein')">
+                        <input type="radio" name="identificationType" value="fahrzeugschein">
+                        <div class="icon">📄</div>
+                        <div class="label">Fahrzeugschein fotografieren</div>
+                    </label>
+                </div>
+
+                <!-- VIN Eingabe -->
+                <div id="vinSection" class="identification-section">
+                    <label for="vin">VIN-Nummer (17 Zeichen)</label>
+                    <input type="text" id="vin" placeholder="z.B. WVWZZZ1JZXW123456" maxlength="17" pattern="[A-HJ-NPR-Z0-9]{17}" style="text-transform: uppercase;">
+                    <small style="color: #999; font-size: 12px; margin-top: 5px; display: block;">
+                        Fahrzeug-Identifizierungsnummer (17 Zeichen, keine Buchstaben I, O, Q)
+                    </small>
+                </div>
+
+                <!-- Fahrzeugschein Foto -->
+                <div id="fahrzeugscheinSection" class="identification-section" style="display: none;">
+                    <label class="photo-upload" for="fahrzeugscheinInput" style="margin-bottom: 15px;">
+                        <div class="icon">📄</div>
+                        <div class="text">
+                            Fahrzeugschein Teil 1 fotografieren<br>
+                            <small>(Vorder- und Rückseite)</small>
+                        </div>
+                        <input type="file" id="fahrzeugscheinInput" accept="image/*" multiple capture="environment">
+                    </label>
+                    <div class="photo-preview" id="fahrzeugscheinPreview"></div>
+                </div>
+            </div>
+
             <!-- Schadensbeschreibung -->
             <div class="form-group">
                 <label for="schadenBeschreibung">Schadensbeschreibung *</label>
@@ -387,12 +504,14 @@
     <script src="../firebase-config.js"></script>
     <script>
         let photos = [];
+        let fahrzeugscheinPhotos = [];
         let partner = null;
 
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
             checkLogin();
             setupPhotoUpload();
+            setupFahrzeugscheinUpload();
         });
 
         function checkLogin() {
@@ -449,6 +568,71 @@
             element.classList.add('selected');
         }
 
+        // Fahrzeugidentifikation Toggle
+        function selectIdentification(type) {
+            // Toggle options
+            document.querySelectorAll('.toggle-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+
+            // Show/hide sections
+            const vinSection = document.getElementById('vinSection');
+            const fahrzeugscheinSection = document.getElementById('fahrzeugscheinSection');
+
+            if (type === 'vin') {
+                vinSection.style.display = 'block';
+                fahrzeugscheinSection.style.display = 'none';
+                // Clear Fahrzeugschein photos if switching to VIN
+                fahrzeugscheinPhotos = [];
+                document.getElementById('fahrzeugscheinPreview').innerHTML = '';
+            } else {
+                vinSection.style.display = 'none';
+                fahrzeugscheinSection.style.display = 'block';
+                // Clear VIN if switching to Fahrzeugschein
+                document.getElementById('vin').value = '';
+            }
+        }
+
+        // Fahrzeugschein Upload
+        function setupFahrzeugscheinUpload() {
+            const input = document.getElementById('fahrzeugscheinInput');
+            input.addEventListener('change', handleFahrzeugscheinUpload);
+        }
+
+        async function handleFahrzeugscheinUpload(event) {
+            const files = Array.from(event.target.files);
+
+            for (const file of files) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    fahrzeugscheinPhotos.push(e.target.result);
+                    displayFahrzeugscheinPhotos();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function displayFahrzeugscheinPhotos() {
+            const preview = document.getElementById('fahrzeugscheinPreview');
+            preview.innerHTML = '';
+
+            fahrzeugscheinPhotos.forEach((photo, index) => {
+                const div = document.createElement('div');
+                div.className = 'photo-preview-item';
+                div.innerHTML = `
+                    <img src="${photo}" alt="Fahrzeugschein ${index + 1}">
+                    <button type="button" class="remove-btn" onclick="removeFahrzeugscheinPhoto(${index})">×</button>
+                `;
+                preview.appendChild(div);
+            });
+        }
+
+        function removeFahrzeugscheinPhoto(index) {
+            fahrzeugscheinPhotos.splice(index, 1);
+            displayFahrzeugscheinPhotos();
+        }
+
         // Formular absenden
         document.getElementById('anfrageForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -462,6 +646,22 @@
 
                 if (photos.length === 0) {
                     throw new Error('Bitte fügen Sie mindestens ein Foto hinzu');
+                }
+
+                // Validierung: VIN ODER Fahrzeugschein muss vorhanden sein
+                const vin = document.getElementById('vin').value.trim();
+                const identificationType = document.querySelector('input[name="identificationType"]:checked').value;
+
+                if (identificationType === 'vin' && !vin) {
+                    throw new Error('Bitte geben Sie die VIN-Nummer ein (17 Zeichen)');
+                }
+
+                if (identificationType === 'vin' && vin.length !== 17) {
+                    throw new Error('Die VIN-Nummer muss exakt 17 Zeichen haben');
+                }
+
+                if (identificationType === 'fahrzeugschein' && fahrzeugscheinPhotos.length === 0) {
+                    throw new Error('Bitte fotografieren Sie den Fahrzeugschein (Vorder- und Rückseite)');
                 }
 
                 const anfrageId = 'req_' + Date.now();
@@ -479,6 +679,11 @@
                     marke: document.getElementById('marke').value,
                     modell: document.getElementById('modell').value,
                     baujahr: document.getElementById('baujahr').value || null,
+
+                    // Fahrzeugidentifikation
+                    identificationType: identificationType,
+                    vin: identificationType === 'vin' ? vin.toUpperCase() : null,
+                    fahrzeugscheinFotos: identificationType === 'fahrzeugschein' ? fahrzeugscheinPhotos : [],
 
                     // Anfrage
                     schadenBeschreibung: document.getElementById('schadenBeschreibung').value,
