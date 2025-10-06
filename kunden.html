@@ -617,6 +617,9 @@
                                 <button class="btn btn-warning btn-small" onclick="editKunde('${kunde.id}')">
                                     ✏️ Bearbeiten
                                 </button>
+                                <button class="btn btn-small" onclick="deleteKunde('${kunde.id}')" style="background: #dc3545; color: white;">
+                                    🗑️ Löschen
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -703,6 +706,57 @@
             document.getElementById('kundenNotizen').value = kunde.notizen || '';
 
             document.getElementById('neuerKundeModal').classList.add('active');
+        }
+
+        // Kunde löschen
+        async function deleteKunde(kundeId) {
+            const kunde = allKunden.find(k => k.id === kundeId);
+            if (!kunde) return;
+
+            // Prüfe ob Fahrzeuge für diesen Kunden existieren
+            let kundenFahrzeuge = [];
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    const allFahrzeuge = await firebaseApp.getAllFahrzeuge();
+                    kundenFahrzeuge = allFahrzeuge.filter(f => f.kundenId === kundeId || f.kundenname === kunde.name);
+                } else {
+                    const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    kundenFahrzeuge = fahrzeuge.filter(f => f.kundenId === kundeId || f.kundenname === kunde.name);
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Prüfen der Fahrzeuge:', error);
+            }
+
+            // Warnung wenn Fahrzeuge existieren
+            let confirmMsg = `Kunde "${kunde.name}" wirklich löschen?`;
+            if (kundenFahrzeuge.length > 0) {
+                confirmMsg = `⚠️ ACHTUNG: Kunde "${kunde.name}" hat ${kundenFahrzeuge.length} Fahrzeug(e)!\n\n` +
+                             `Fahrzeuge werden NICHT gelöscht, verlieren aber die Kundenverknüpfung.\n\n` +
+                             `Trotzdem löschen?`;
+            }
+
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    await firebaseApp.deleteKunde(kundeId);
+                    console.log('✅ Kunde aus Firestore gelöscht:', kundeId);
+                } else {
+                    const index = allKunden.findIndex(k => k.id === kundeId);
+                    if (index !== -1) {
+                        allKunden.splice(index, 1);
+                        localStorage.setItem('kunden', JSON.stringify(allKunden));
+                    }
+                    console.log('✅ Kunde aus LocalStorage gelöscht:', kundeId);
+                }
+
+                await loadKunden();
+                updateStats();
+                alert('✅ Kunde erfolgreich gelöscht!');
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen:', error);
+                alert('❌ Fehler beim Löschen des Kunden!');
+            }
         }
 
         // Kunden-Detail Modal öffnen

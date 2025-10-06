@@ -938,6 +938,40 @@
 
             const annahmeData = getFormData();
 
+            // Duplikat-Prüfung: Kennzeichen bereits vorhanden?
+            const kennzeichen = annahmeData.kennzeichen.toUpperCase().replace(/\s+/g, '');
+            let existingVehicles = [];
+
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    existingVehicles = await firebaseApp.getAllFahrzeuge();
+                } else {
+                    existingVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                }
+
+                const duplicate = existingVehicles.find(v => {
+                    const existingKz = v.kennzeichen.toUpperCase().replace(/\s+/g, '');
+                    return existingKz === kennzeichen && v.status !== 'abgeschlossen';
+                });
+
+                if (duplicate) {
+                    const proceed = confirm(
+                        `⚠️ ACHTUNG: Kennzeichen "${annahmeData.kennzeichen}" ist bereits als "${duplicate.status}" vorhanden!\n\n` +
+                        `Fahrzeug: ${duplicate.marke} ${duplicate.modell}\n` +
+                        `Kunde: ${duplicate.kundenname}\n` +
+                        `Annahme: ${duplicate.datum}\n\n` +
+                        `Trotzdem als neuen Auftrag anlegen?`
+                    );
+
+                    if (!proceed) {
+                        console.log('❌ Annahme abgebrochen - Duplikat verhindert');
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error('⚠️ Duplikat-Prüfung fehlgeschlagen:', error);
+            }
+
             // Hybrid-Speicherung: Daten in Firestore, Fotos in LocalStorage
             try {
                 if (firebaseInitialized && firebaseApp) {
