@@ -118,6 +118,45 @@
             background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
         }
 
+        .stat-card.orange {
+            background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+        }
+
+        .umsatz-filter {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #fff;
+            border-radius: 10px;
+            border: 2px solid #f093fb;
+        }
+
+        .umsatz-filter .filter-btn {
+            padding: 8px 15px;
+            border: 2px solid #f093fb;
+            background: white;
+            color: #f093fb;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .umsatz-filter .filter-btn:hover {
+            background: #f093fb;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .umsatz-filter .filter-btn.active {
+            background: #f093fb;
+            color: white;
+        }
+
         .stat-number {
             font-size: 36px;
             font-weight: 700;
@@ -465,6 +504,17 @@
                 <div class="stat-number" id="neukunden">0</div>
                 <div class="stat-label">Neukunden (1 Besuch)</div>
             </div>
+            <div class="stat-card orange">
+                <div class="stat-number" id="totalUmsatz">0,00 €</div>
+                <div class="stat-label" id="umsatzLabel">Gesamtumsatz</div>
+            </div>
+        </div>
+
+        <div class="umsatz-filter">
+            <span style="font-weight: 600; color: #f093fb; margin-right: 10px;">Umsatz-Zeitraum:</span>
+            <button class="filter-btn active" onclick="setUmsatzFilter('gesamt')">📊 Gesamt</button>
+            <button class="filter-btn" onclick="setUmsatzFilter('jahr')">📅 Jahr</button>
+            <button class="filter-btn" onclick="setUmsatzFilter('monat')">📆 Monat</button>
         </div>
 
         <div class="search-box">
@@ -477,6 +527,7 @@
                     <th>Kundenname</th>
                     <th>Kontakt</th>
                     <th>Besuche</th>
+                    <th>Umsatz</th>
                     <th>Letzter Besuch</th>
                     <th>Status</th>
                     <th>Aktionen</th>
@@ -550,6 +601,7 @@
         let firebaseInitialized = false;
         let firebaseApp = null;
         let currentKundeId = null;
+        let currentUmsatzFilter = 'gesamt'; // gesamt, jahr, monat
 
         // Firebase Initialisierung
         document.addEventListener('DOMContentLoaded', async function() {
@@ -613,6 +665,86 @@
             document.getElementById('totalKunden').textContent = total;
             document.getElementById('stammkunden').textContent = stammkunden;
             document.getElementById('neukunden').textContent = neukunden;
+
+            // Umsatz aktualisieren
+            updateUmsatzStats();
+        }
+
+        // Umsatz-Filter setzen
+        function setUmsatzFilter(filter) {
+            currentUmsatzFilter = filter;
+
+            // Filter-Buttons aktualisieren
+            document.querySelectorAll('.umsatz-filter .filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Label aktualisieren
+            const labels = {
+                'gesamt': 'Gesamtumsatz',
+                'jahr': 'Umsatz ' + new Date().getFullYear(),
+                'monat': 'Umsatz ' + new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+            };
+            document.getElementById('umsatzLabel').textContent = labels[filter];
+
+            // Stats und Tabelle aktualisieren
+            updateUmsatzStats();
+            renderKundenTable();
+        }
+
+        // Umsatz-Statistik aktualisieren
+        function updateUmsatzStats() {
+            const gesamtumsatz = calculateGesamtumsatz(currentUmsatzFilter);
+            document.getElementById('totalUmsatz').textContent = gesamtumsatz.toFixed(2) + ' €';
+        }
+
+        // Gesamtumsatz berechnen
+        function calculateGesamtumsatz(filter) {
+            let sum = 0;
+            for (const kunde of allKunden) {
+                sum += calculateKundenUmsatz(kunde.id, filter);
+            }
+            return sum;
+        }
+
+        // Umsatz pro Kunde berechnen
+        function calculateKundenUmsatz(kundeId, filter) {
+            // Fahrzeuge des Kunden finden
+            const kundenFahrzeuge = allFahrzeuge.filter(f =>
+                f.kundenId === kundeId ||
+                (f.kundenname && allKunden.find(k => k.id === kundeId && k.name === f.kundenname))
+            );
+
+            // Nach Zeitraum filtern
+            const heute = new Date();
+            const filteredFahrzeuge = kundenFahrzeuge.filter(f => {
+                if (!f.datum) return true; // Kein Datum = inkludieren
+
+                // Datum parsen (Format: "DD.MM.YYYY")
+                const [tag, monat, jahr] = f.datum.split('.');
+                const fahrzeugDatum = new Date(parseInt(jahr), parseInt(monat) - 1, parseInt(tag));
+
+                if (filter === 'gesamt') {
+                    return true;
+                } else if (filter === 'jahr') {
+                    return fahrzeugDatum.getFullYear() === heute.getFullYear();
+                } else if (filter === 'monat') {
+                    return fahrzeugDatum.getFullYear() === heute.getFullYear() &&
+                           fahrzeugDatum.getMonth() === heute.getMonth();
+                }
+                return true;
+            });
+
+            // Preise summieren
+            let sum = 0;
+            for (const fahrzeug of filteredFahrzeuge) {
+                if (fahrzeug.vereinbarterPreis && !isNaN(fahrzeug.vereinbarterPreis)) {
+                    sum += parseFloat(fahrzeug.vereinbarterPreis);
+                }
+            }
+
+            return sum;
         }
 
         // Kunden-Tabelle rendern
@@ -653,6 +785,7 @@
                 const kontaktText = kontakt.length > 0 ? kontakt.join('<br>') : '<span style="color: #999;">-</span>';
 
                 const besuche = kunde.anzahlBesuche || 0;
+                const umsatz = calculateKundenUmsatz(kunde.id, currentUmsatzFilter);
                 const letzterBesuch = kunde.letzterBesuch
                     ? new Date(kunde.letzterBesuch).toLocaleDateString('de-DE')
                     : '<span style="color: #999;">-</span>';
@@ -666,6 +799,7 @@
                         <td><strong>${kunde.name}</strong></td>
                         <td>${kontaktText}</td>
                         <td><strong>${besuche}</strong></td>
+                        <td><strong style="color: #ff9800;">${umsatz.toFixed(2)} €</strong></td>
                         <td>${letzterBesuch}</td>
                         <td>${statusBadge}</td>
                         <td>
