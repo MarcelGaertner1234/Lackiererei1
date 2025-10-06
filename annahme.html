@@ -620,6 +620,213 @@
 
             // Auto-Save Entwurf wiederherstellen
             loadDraft();
+
+            // Form Submit Event Listener registrieren (muss im DOMContentLoaded sein!)
+            console.log('📝 Registriere Form Submit Listener...');
+            document.getElementById('annahmeForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                console.log('🚀 === ANNAHME SUBMIT GESTARTET ===');
+
+                // Validierung
+                console.log('1️⃣ Validierung...');
+                if (!document.getElementById('kennzeichen').value || !document.getElementById('kundenname').value) {
+                    console.log('❌ Validierung fehlgeschlagen: Kennzeichen oder Kundenname fehlt');
+                    alert('Bitte Kennzeichen und Kundenname eingeben!');
+                    return;
+                }
+
+                if (!document.getElementById('marke').value || !document.getElementById('modell').value) {
+                    console.log('❌ Validierung fehlgeschlagen: Marke oder Modell fehlt');
+                    alert('Bitte Marke und Modell eingeben!');
+                    return;
+                }
+
+                if (!document.getElementById('farbnummer').value) {
+                    console.log('❌ Validierung fehlgeschlagen: Farbnummer fehlt');
+                    alert('Bitte Farbnummer eingeben!');
+                    return;
+                }
+
+                if (photos.length === 0) {
+                    console.log('❌ Validierung fehlgeschlagen: Keine Fotos');
+                    alert('Bitte mindestens 1 Foto machen!');
+                    return;
+                }
+
+                // Prüfe ob Unterschrift vorhanden
+                const signatureData = canvas.toDataURL();
+                const emptyCanvas = document.createElement('canvas');
+                emptyCanvas.width = canvas.width;
+                emptyCanvas.height = canvas.height;
+                if (signatureData === emptyCanvas.toDataURL()) {
+                    console.log('❌ Validierung fehlgeschlagen: Keine Unterschrift');
+                    alert('Bitte Unterschrift des Kunden einholen!');
+                    return;
+                }
+
+                console.log('✅ Validierung erfolgreich');
+                console.log('2️⃣ Sammle Formulardaten...');
+                const annahmeData = getFormData();
+                console.log('   Fahrzeug ID:', annahmeData.id);
+                console.log('   Kennzeichen:', annahmeData.kennzeichen);
+                console.log('   Kunde:', annahmeData.kundenname);
+                console.log('   Fotos:', annahmeData.photos.length);
+
+                // Duplikat-Prüfung
+                console.log('3️⃣ Duplikat-Prüfung...');
+                const kennzeichen = annahmeData.kennzeichen.toUpperCase().replace(/\s+/g, '');
+                let existingVehicles = [];
+
+                try {
+                    if (firebaseInitialized && firebaseApp) {
+                        console.log('   → Prüfe Duplikate in Firestore...');
+                        existingVehicles = await firebaseApp.getAllFahrzeuge();
+                        console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
+                    } else {
+                        console.log('   → Prüfe Duplikate in LocalStorage...');
+                        existingVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                        console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
+                    }
+
+                    const duplicate = existingVehicles.find(v => {
+                        const existingKz = v.kennzeichen.toUpperCase().replace(/\s+/g, '');
+                        return existingKz === kennzeichen && v.status !== 'abgeschlossen';
+                    });
+
+                    if (duplicate) {
+                        console.log('⚠️ Duplikat gefunden:', duplicate.kennzeichen);
+                        const proceed = confirm(
+                            `⚠️ ACHTUNG: Kennzeichen "${annahmeData.kennzeichen}" ist bereits als "${duplicate.status}" vorhanden!\n\n` +
+                            `Fahrzeug: ${duplicate.marke} ${duplicate.modell}\n` +
+                            `Kunde: ${duplicate.kundenname}\n` +
+                            `Annahme: ${duplicate.datum}\n\n` +
+                            `Trotzdem als neuen Auftrag anlegen?`
+                        );
+
+                        if (!proceed) {
+                            console.log('❌ Annahme abgebrochen - Duplikat verhindert');
+                            return;
+                        }
+                        console.log('✅ User hat Duplikat bestätigt - fahre fort');
+                    } else {
+                        console.log('✅ Kein Duplikat gefunden');
+                    }
+                } catch (error) {
+                    console.error('⚠️ Duplikat-Prüfung fehlgeschlagen:', error);
+                    console.error('   Details:', error.message);
+                }
+
+                // Speicherung
+                console.log('4️⃣ Speicherung starten...');
+                try {
+                    if (firebaseInitialized && firebaseApp) {
+                        console.log('💾 Hybrid-Speicherung: Daten → Firestore, Fotos → LocalStorage');
+
+                        // Kundenbesuch registrieren
+                        console.log('   a) Registriere Kundenbesuch...');
+                        const kundeId = await firebaseApp.registriereKundenbesuch(annahmeData.kundenname);
+                        if (kundeId) {
+                            annahmeData.kundenId = kundeId;
+                            console.log('   ✅ Kunde registriert, ID:', kundeId);
+                        } else {
+                            console.log('   ⚠️ Keine KundenID erhalten');
+                        }
+
+                        // Fotos speichern
+                        console.log('   b) Speichere Fotos in LocalStorage...');
+                        try {
+                            firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
+                            console.log('   ✅ Fotos in LocalStorage gespeichert');
+                        } catch (e) {
+                            console.error('   ❌ Fehler beim Speichern der Fotos:', e);
+                            if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
+                                alert('⚠️ SPEICHER VOLL!\n\nBitte alte Fahrzeuge löschen oder PDFs downloaden.\n\nFotos konnten nicht gespeichert werden!');
+                                throw new Error('LocalStorage voll');
+                            }
+                            throw e;
+                        }
+
+                        // Fahrzeugdaten speichern
+                        console.log('   c) Speichere Fahrzeugdaten in Firestore...');
+                        const dataForFirestore = {...annahmeData};
+                        delete dataForFirestore.photos;
+
+                        await firebaseApp.saveFahrzeug(dataForFirestore);
+                        console.log('   ✅ Fahrzeug in Firestore gespeichert (ohne Fotos)');
+
+                        // PDF erstellen
+                        console.log('   d) Erstelle PDF...');
+                        await createPDF(annahmeData);
+                        console.log('   ✅ PDF erstellt');
+                    } else {
+                        // LocalStorage Fallback
+                        console.log('💾 LocalStorage-Modus (Firebase nicht verfügbar)');
+                        let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                        fahrzeuge.push(annahmeData);
+
+                        try {
+                            localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                            console.log('✅ Fahrzeug in LocalStorage gespeichert');
+                        } catch (e) {
+                            console.error('❌ Fehler beim Speichern:', e);
+                            if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
+                                alert('⚠️ SPEICHER VOLL!\n\nBitte alte Fahrzeuge löschen.\n\nFahrzeug konnte nicht gespeichert werden!');
+                                return;
+                            }
+                            throw e;
+                        }
+
+                        console.log('   → Erstelle PDF...');
+                        await createPDF(annahmeData);
+                        console.log('   ✅ PDF erstellt');
+                    }
+
+                    console.log('✅ === SPEICHERUNG ERFOLGREICH ===');
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern:', error);
+                    console.error('   Error Name:', error.name);
+                    console.error('   Error Message:', error.message);
+                    console.error('   Stack:', error.stack);
+
+                    // Fallback
+                    console.log('   → Versuche LocalStorage Fallback...');
+                    try {
+                        let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                        fahrzeuge.push(annahmeData);
+                        localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                        console.log('⚠️ Fahrzeug in LocalStorage gespeichert (Firestore-Fehler)');
+
+                        await createPDF(annahmeData);
+                        console.log('✅ PDF erstellt (Fallback)');
+                    } catch (fallbackError) {
+                        console.error('❌ Auch Fallback fehlgeschlagen:', fallbackError);
+                        alert('❌ Speichern fehlgeschlagen! Siehe Console für Details.');
+                        return;
+                    }
+                }
+
+                // Aufräumen
+                console.log('5️⃣ Aufräumen...');
+                clearDraft();
+                console.log('   ✅ Entwurf gelöscht');
+
+                // Success Message
+                document.getElementById('successMessage').style.display = 'block';
+                setTimeout(() => {
+                    document.getElementById('successMessage').style.display = 'none';
+                }, 3000);
+                console.log('   ✅ Success-Message angezeigt');
+
+                // Form zurücksetzen
+                document.getElementById('annahmeForm').reset();
+                photos = [];
+                updatePhotoGrid();
+                clearSignature();
+                console.log('   ✅ Formular zurückgesetzt');
+
+                console.log('🎉 === ANNAHME ABGESCHLOSSEN ===');
+            });
+            console.log('✅ Form Submit Listener registriert');
         });
 
         // Kunden laden (für Dropdown)
@@ -902,213 +1109,6 @@
                 status: 'angenommen'
             };
         }
-
-        // Form speichern
-        document.getElementById('annahmeForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            console.log('🚀 === ANNAHME SUBMIT GESTARTET ===');
-
-            // Validierung
-            console.log('1️⃣ Validierung...');
-            if (!document.getElementById('kennzeichen').value || !document.getElementById('kundenname').value) {
-                console.log('❌ Validierung fehlgeschlagen: Kennzeichen oder Kundenname fehlt');
-                alert('Bitte Kennzeichen und Kundenname eingeben!');
-                return;
-            }
-
-            if (!document.getElementById('marke').value || !document.getElementById('modell').value) {
-                console.log('❌ Validierung fehlgeschlagen: Marke oder Modell fehlt');
-                alert('Bitte Marke und Modell eingeben!');
-                return;
-            }
-
-            if (!document.getElementById('farbnummer').value) {
-                console.log('❌ Validierung fehlgeschlagen: Farbnummer fehlt');
-                alert('Bitte Farbnummer eingeben!');
-                return;
-            }
-
-            if (photos.length === 0) {
-                console.log('❌ Validierung fehlgeschlagen: Keine Fotos');
-                alert('Bitte mindestens 1 Foto machen!');
-                return;
-            }
-
-            // Prüfe ob Unterschrift vorhanden
-            const signatureData = canvas.toDataURL();
-            const emptyCanvas = document.createElement('canvas');
-            emptyCanvas.width = canvas.width;
-            emptyCanvas.height = canvas.height;
-            if (signatureData === emptyCanvas.toDataURL()) {
-                console.log('❌ Validierung fehlgeschlagen: Keine Unterschrift');
-                alert('Bitte Unterschrift des Kunden einholen!');
-                return;
-            }
-
-            console.log('✅ Validierung erfolgreich');
-            console.log('2️⃣ Sammle Formulardaten...');
-            const annahmeData = getFormData();
-            console.log('   Fahrzeug ID:', annahmeData.id);
-            console.log('   Kennzeichen:', annahmeData.kennzeichen);
-            console.log('   Kunde:', annahmeData.kundenname);
-            console.log('   Fotos:', annahmeData.photos.length);
-
-            // Duplikat-Prüfung: Kennzeichen bereits vorhanden?
-            console.log('3️⃣ Duplikat-Prüfung...');
-            const kennzeichen = annahmeData.kennzeichen.toUpperCase().replace(/\s+/g, '');
-            let existingVehicles = [];
-
-            try {
-                if (firebaseInitialized && firebaseApp) {
-                    console.log('   → Prüfe Duplikate in Firestore...');
-                    existingVehicles = await firebaseApp.getAllFahrzeuge();
-                    console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
-                } else {
-                    console.log('   → Prüfe Duplikate in LocalStorage...');
-                    existingVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                    console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
-                }
-
-                const duplicate = existingVehicles.find(v => {
-                    const existingKz = v.kennzeichen.toUpperCase().replace(/\s+/g, '');
-                    return existingKz === kennzeichen && v.status !== 'abgeschlossen';
-                });
-
-                if (duplicate) {
-                    console.log('⚠️ Duplikat gefunden:', duplicate.kennzeichen);
-                    const proceed = confirm(
-                        `⚠️ ACHTUNG: Kennzeichen "${annahmeData.kennzeichen}" ist bereits als "${duplicate.status}" vorhanden!\n\n` +
-                        `Fahrzeug: ${duplicate.marke} ${duplicate.modell}\n` +
-                        `Kunde: ${duplicate.kundenname}\n` +
-                        `Annahme: ${duplicate.datum}\n\n` +
-                        `Trotzdem als neuen Auftrag anlegen?`
-                    );
-
-                    if (!proceed) {
-                        console.log('❌ Annahme abgebrochen - Duplikat verhindert');
-                        return;
-                    }
-                    console.log('✅ User hat Duplikat bestätigt - fahre fort');
-                } else {
-                    console.log('✅ Kein Duplikat gefunden');
-                }
-            } catch (error) {
-                console.error('⚠️ Duplikat-Prüfung fehlgeschlagen:', error);
-                console.error('   Details:', error.message);
-            }
-
-            // Hybrid-Speicherung: Daten in Firestore, Fotos in LocalStorage
-            console.log('4️⃣ Speicherung starten...');
-            try {
-                if (firebaseInitialized && firebaseApp) {
-                    console.log('💾 Hybrid-Speicherung: Daten → Firestore, Fotos → LocalStorage');
-
-                    // 1. Kundenbesuch registrieren (erstellt neuen Kunde oder aktualisiert Besuchszähler)
-                    console.log('   a) Registriere Kundenbesuch...');
-                    const kundeId = await firebaseApp.registriereKundenbesuch(annahmeData.kundenname);
-                    if (kundeId) {
-                        annahmeData.kundenId = kundeId;
-                        console.log('   ✅ Kunde registriert, ID:', kundeId);
-                    } else {
-                        console.log('   ⚠️ Keine KundenID erhalten');
-                    }
-
-                    // 2. Fotos in LocalStorage speichern (komprimiert) - mit Quota-Check
-                    console.log('   b) Speichere Fotos in LocalStorage...');
-                    try {
-                        firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
-                        console.log('   ✅ Fotos in LocalStorage gespeichert');
-                    } catch (e) {
-                        console.error('   ❌ Fehler beim Speichern der Fotos:', e);
-                        if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
-                            alert('⚠️ SPEICHER VOLL!\n\nBitte alte Fahrzeuge löschen oder PDFs downloaden.\n\nFotos konnten nicht gespeichert werden!');
-                            throw new Error('LocalStorage voll');
-                        }
-                        throw e;
-                    }
-
-                    // 3. Fahrzeugdaten OHNE Fotos in Firestore speichern
-                    console.log('   c) Speichere Fahrzeugdaten in Firestore...');
-                    const dataForFirestore = {...annahmeData};
-                    delete dataForFirestore.photos;  // Fotos nicht in Firestore!
-
-                    await firebaseApp.saveFahrzeug(dataForFirestore);
-                    console.log('   ✅ Fahrzeug in Firestore gespeichert (ohne Fotos)');
-
-                    // 4. PDF mit Fotos aus annahmeData erstellen
-                    console.log('   d) Erstelle PDF...');
-                    await createPDF(annahmeData);
-                    console.log('   ✅ PDF erstellt');
-                } else {
-                    // Fallback: LocalStorage verwenden (mit Base64)
-                    console.log('💾 LocalStorage-Modus (Firebase nicht verfügbar)');
-                    let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                    fahrzeuge.push(annahmeData);
-
-                    try {
-                        localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
-                        console.log('✅ Fahrzeug in LocalStorage gespeichert');
-                    } catch (e) {
-                        console.error('❌ Fehler beim Speichern:', e);
-                        if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
-                            alert('⚠️ SPEICHER VOLL!\n\nBitte alte Fahrzeuge löschen.\n\nFahrzeug konnte nicht gespeichert werden!');
-                            return;
-                        }
-                        throw e;
-                    }
-
-                    // PDF erstellen
-                    console.log('   → Erstelle PDF...');
-                    await createPDF(annahmeData);
-                    console.log('   ✅ PDF erstellt');
-                }
-
-                console.log('✅ === SPEICHERUNG ERFOLGREICH ===');
-            } catch (error) {
-                console.error('❌ Fehler beim Speichern:', error);
-                console.error('   Error Name:', error.name);
-                console.error('   Error Message:', error.message);
-                console.error('   Stack:', error.stack);
-
-                // Fallback zu LocalStorage bei Fehler
-                console.log('   → Versuche LocalStorage Fallback...');
-                try {
-                    let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                    fahrzeuge.push(annahmeData);
-                    localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
-                    console.log('⚠️ Fahrzeug in LocalStorage gespeichert (Firestore-Fehler)');
-
-                    // PDF erstellen
-                    await createPDF(annahmeData);
-                    console.log('✅ PDF erstellt (Fallback)');
-                } catch (fallbackError) {
-                    console.error('❌ Auch Fallback fehlgeschlagen:', fallbackError);
-                    alert('❌ Speichern fehlgeschlagen! Siehe Console für Details.');
-                    return;
-                }
-            }
-
-            // Entwurf löschen nach erfolgreichem Speichern
-            console.log('5️⃣ Aufräumen...');
-            clearDraft();
-            console.log('   ✅ Entwurf gelöscht');
-
-            // Success-Message
-            document.getElementById('successMessage').style.display = 'block';
-            setTimeout(() => {
-                document.getElementById('successMessage').style.display = 'none';
-            }, 3000);
-            console.log('   ✅ Success-Message angezeigt');
-
-            // Form zurücksetzen
-            document.getElementById('annahmeForm').reset();
-            photos = [];
-            updatePhotoGrid();
-            clearSignature();
-            console.log('   ✅ Formular zurückgesetzt');
-
-            console.log('🎉 === ANNAHME ABGESCHLOSSEN ===');
-        });
 
         // PDF erstellen
         async function createPDF(data) {
