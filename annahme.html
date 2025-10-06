@@ -362,9 +362,17 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="kundenname">Kundenname <span class="required">*</span></label>
-                    <input type="text" id="kundenname" placeholder="z.B. Max Mustermann" required>
+                    <label>Kundenauswahl</label>
+                    <select id="kundenDropdown" onchange="selectKunde()">
+                        <option value="">🆕 Neuer Kunde</option>
+                        <!-- Dynamisch gefüllt -->
+                    </select>
                 </div>
+            </div>
+
+            <div class="form-group">
+                <label for="kundenname">Kundenname <span class="required">*</span></label>
+                <input type="text" id="kundenname" placeholder="z.B. Max Mustermann" required>
             </div>
 
             <!-- FAHRZEUGDATEN -->
@@ -595,12 +603,93 @@
         }
 
         // Auto-Save bei Eingabe aktivieren
-        document.addEventListener('DOMContentLoaded', function() {
+        let allKunden = [];
+        let firebaseInitialized = false;
+        let firebaseApp = null;
+
+        // Firebase initialisieren und Kunden laden
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Auto-save für Form-Inputs
             const inputs = document.querySelectorAll('#annahmeForm input, #annahmeForm textarea');
             inputs.forEach(input => {
                 input.addEventListener('input', saveDraft);
             });
+
+            // Firebase initialisieren
+            try {
+                if (typeof initFirebase !== 'undefined') {
+                    firebaseApp = await initFirebase();
+                    firebaseInitialized = true;
+                    console.log('✅ Firebase initialisiert');
+                }
+            } catch (error) {
+                console.warn('⚠️ Firebase nicht verfügbar, verwende LocalStorage:', error);
+            }
+
+            // Kunden laden
+            await loadKunden();
         });
+
+        // Kunden laden (für Dropdown)
+        async function loadKunden() {
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    allKunden = await firebaseApp.getAllKunden();
+                } else {
+                    allKunden = JSON.parse(localStorage.getItem('kunden') || '[]');
+                }
+
+                console.log(`✅ ${allKunden.length} Kunden geladen`);
+                updateKundenDropdown();
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Kunden:', error);
+                allKunden = [];
+            }
+        }
+
+        // Kunden-Dropdown aktualisieren
+        function updateKundenDropdown() {
+            const dropdown = document.getElementById('kundenDropdown');
+            dropdown.innerHTML = '<option value="">🆕 Neuer Kunde</option>';
+
+            if (allKunden.length > 0) {
+                // Sortiere nach letztem Besuch (neueste zuerst)
+                const sortedKunden = [...allKunden].sort((a, b) => {
+                    const dateA = a.letzterBesuch ? new Date(a.letzterBesuch) : new Date(0);
+                    const dateB = b.letzterBesuch ? new Date(b.letzterBesuch) : new Date(0);
+                    return dateB - dateA;
+                });
+
+                sortedKunden.forEach(kunde => {
+                    const option = document.createElement('option');
+                    option.value = kunde.id;
+                    const besuche = kunde.anzahlBesuche || 0;
+                    const icon = besuche >= 2 ? '⭐' : '👤';
+                    option.textContent = `${icon} ${kunde.name} (${besuche} Besuch${besuche !== 1 ? 'e' : ''})`;
+                    dropdown.appendChild(option);
+                });
+            }
+        }
+
+        // Kunde aus Dropdown auswählen
+        function selectKunde() {
+            const dropdown = document.getElementById('kundenDropdown');
+            const kundeId = dropdown.value;
+
+            if (!kundeId) {
+                // Neuer Kunde - leeres Feld
+                document.getElementById('kundenname').value = '';
+                document.getElementById('kundenname').readOnly = false;
+                return;
+            }
+
+            const kunde = allKunden.find(k => k.id === kundeId);
+            if (kunde) {
+                document.getElementById('kundenname').value = kunde.name;
+                document.getElementById('kundenname').readOnly = true;
+                console.log(`✅ Stammkunde ausgewählt: ${kunde.name} (${kunde.anzahlBesuche || 0} Besuche)`);
+            }
+        }
 
         // Aktuelles Datum anzeigen
         const heute = new Date();
@@ -854,10 +943,16 @@
                 if (firebaseInitialized && firebaseApp) {
                     console.log('💾 Hybrid-Speicherung: Daten → Firestore, Fotos → LocalStorage');
 
-                    // 1. Fotos in LocalStorage speichern (komprimiert)
+                    // 1. Kundenbesuch registrieren (erstellt neuen Kunde oder aktualisiert Besuchszähler)
+                    const kundeId = await firebaseApp.registriereKundenbesuch(annahmeData.kundenname);
+                    if (kundeId) {
+                        annahmeData.kundenId = kundeId;
+                    }
+
+                    // 2. Fotos in LocalStorage speichern (komprimiert)
                     firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
 
-                    // 2. Fahrzeugdaten OHNE Fotos in Firestore speichern
+                    // 3. Fahrzeugdaten OHNE Fotos in Firestore speichern
                     const dataForFirestore = {...annahmeData};
                     delete dataForFirestore.photos;  // Fotos nicht in Firestore!
 
