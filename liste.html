@@ -591,11 +591,19 @@
                 vehicles = allVehicles.filter(v => v.status === currentFilter);
             }
 
-            // Kunden-Filter (Stammkunden vs Neukunden)
+            // Kunden-Filter (Stammkunden vs Neukunden) - PRIMÄR über kundenId
             if (currentKundenFilter) {
                 vehicles = vehicles.filter(v => {
-                    const kunde = allKunden.find(k => k.name === v.kundenname || k.id === v.kundenId);
-                    if (!kunde) return currentKundenFilter === 'neukunden'; // Unbekannte Kunden als Neukunden
+                    // Primär: Suche über kundenId (robuster)
+                    let kunde = v.kundenId ? allKunden.find(k => k.id === v.kundenId) : null;
+
+                    // Fallback: Suche über Namen (nur wenn keine kundenId)
+                    if (!kunde && v.kundenname) {
+                        kunde = allKunden.find(k => k.name === v.kundenname);
+                    }
+
+                    // Kein Kunde gefunden → als Neukunde behandeln
+                    if (!kunde) return currentKundenFilter === 'neukunden';
 
                     const besuche = kunde.anzahlBesuche || 0;
                     if (currentKundenFilter === 'stammkunden') {
@@ -607,13 +615,16 @@
                 });
             }
 
-            // Such-Filter
+            // Such-Filter (mit normalisiertem Kennzeichen)
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             if (searchTerm) {
-                vehicles = vehicles.filter(v =>
-                    v.kennzeichen.toLowerCase().includes(searchTerm) ||
-                    v.kundenname.toLowerCase().includes(searchTerm)
-                );
+                const normalizedSearch = searchTerm.replace(/\s+/g, '').replace(/-/g, '');
+                vehicles = vehicles.filter(v => {
+                    const normalizedKz = v.kennzeichen.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
+                    return normalizedKz.includes(normalizedSearch) ||
+                           v.kennzeichen.toLowerCase().includes(searchTerm) ||
+                           v.kundenname.toLowerCase().includes(searchTerm);
+                });
             }
 
             if (vehicles.length === 0) {
@@ -1100,7 +1111,7 @@
 
                 // CSV Header
                 const headers = [
-                    'Kennzeichen', 'Kundenname', 'Marke', 'Modell', 'Baujahr',
+                    'Kennzeichen', 'Kundenname', 'Kunden-ID', 'Marke', 'Modell', 'Baujahr',
                     'KM-Stand', 'VIN/FIN', 'Farbnummer', 'Farbname', 'Lackart',
                     'Vereinbarter Preis', 'Annahme Datum', 'Annahme Zeit',
                     'Abnahme Datum', 'Abnahme Zeit', 'Status', 'Notizen'
@@ -1110,6 +1121,7 @@
                 const rows = allVehicles.map(v => [
                     v.kennzeichen || '',
                     v.kundenname || '',
+                    v.kundenId || '',
                     v.marke || '',
                     v.modell || '',
                     v.baujahr || '',

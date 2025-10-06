@@ -508,9 +508,9 @@
             </div>
 
             <div class="form-group">
-                <label for="vereinbarterPreis">💰 Vereinbarter Preis</label>
-                <input type="number" id="vereinbarterPreis" placeholder="0.00" step="0.01" min="0" style="font-size: 18px; font-weight: bold; padding: 12px;">
-                <small style="color: #666; display: block; margin-top: 5px;">Optional - kann auch später hinzugefügt werden</small>
+                <label for="vereinbarterPreis">💰 Vereinbarter Preis <span class="required">*</span></label>
+                <input type="number" id="vereinbarterPreis" placeholder="0.00" step="0.01" min="0.01" required style="font-size: 18px; font-weight: bold; padding: 12px;">
+                <small style="color: #666; display: block; margin-top: 5px;">Erforderlich für vollständige Dokumentation</small>
             </div>
 
             <!-- UNTERSCHRIFT -->
@@ -735,6 +735,16 @@
 
         photoInput.addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
+
+            // Warnung bei zu großen Dateien (> 5MB)
+            for (const file of files) {
+                if (file.size > 5 * 1024 * 1024) {
+                    alert(`⚠️ Foto "${file.name}" ist zu groß (${(file.size / 1024 / 1024).toFixed(1)} MB)!\n\nBitte kleineres Foto verwenden (max. 5 MB).`);
+                    e.target.value = '';
+                    return;
+                }
+            }
+
             files.forEach(file => {
                 const reader = new FileReader();
                 reader.onload = async function(event) {
@@ -983,8 +993,17 @@
                         annahmeData.kundenId = kundeId;
                     }
 
-                    // 2. Fotos in LocalStorage speichern (komprimiert)
-                    firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
+                    // 2. Fotos in LocalStorage speichern (komprimiert) - mit Quota-Check
+                    try {
+                        firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
+                        console.log('✅ Fotos in LocalStorage gespeichert');
+                    } catch (e) {
+                        if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
+                            alert('⚠️ SPEICHER VOLL!\n\nBitte alte Fahrzeuge löschen oder PDFs downloaden.\n\nFotos konnten nicht gespeichert werden!');
+                            throw new Error('LocalStorage voll');
+                        }
+                        throw e;
+                    }
 
                     // 3. Fahrzeugdaten OHNE Fotos in Firestore speichern
                     const dataForFirestore = {...annahmeData};
@@ -992,16 +1011,24 @@
 
                     await firebaseApp.saveFahrzeug(dataForFirestore);
                     console.log('✅ Fahrzeug in Firestore gespeichert (ohne Fotos)');
-                    console.log('✅ Fotos in LocalStorage gespeichert');
 
-                    // 3. PDF mit Fotos aus annahmeData erstellen
+                    // 4. PDF mit Fotos aus annahmeData erstellen
                     await createPDF(annahmeData);
                 } else {
                     // Fallback: LocalStorage verwenden (mit Base64)
                     let fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
                     fahrzeuge.push(annahmeData);
-                    localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
-                    console.log('ℹ️ Fahrzeug in LocalStorage gespeichert (Firestore nicht verfügbar)');
+
+                    try {
+                        localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                        console.log('ℹ️ Fahrzeug in LocalStorage gespeichert (Firestore nicht verfügbar)');
+                    } catch (e) {
+                        if (e.name === 'QuotaExceededError' || e.message.includes('quota')) {
+                            alert('⚠️ SPEICHER VOLL!\n\nBitte alte Fahrzeuge löschen.\n\nFahrzeug konnte nicht gespeichert werden!');
+                            return;
+                        }
+                        throw e;
+                    }
 
                     // PDF erstellen
                     await createPDF(annahmeData);
