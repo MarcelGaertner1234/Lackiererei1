@@ -1,4 +1,4 @@
-# 🚗 Fahrzeugannahme-App Version 1.0
+# 🚗 Fahrzeugannahme-App Version 2.0
 
 **Digitale Fahrzeug-Annahme und -Abnahme für Auto-Lackierzentrum Mosbach**
 
@@ -10,6 +10,8 @@ Eine **einfache Web-App** zur digitalen Dokumentation von Fahrzeugannahme und -a
 - ✅ Foto-Dokumentation
 - ✅ Digitale Unterschrift
 - ✅ Automatische PDF-Erstellung
+- ✅ **NEU:** Kalender für Abnahme-Termine
+- ✅ **NEU:** Material-Bestellsystem (Foto + Beschreibung)
 - ✅ Funktioniert auf jedem Gerät (iPad, Tablet, Smartphone)
 - ✅ **KEINE Installation nötig** - läuft direkt im Browser
 
@@ -19,9 +21,12 @@ Eine **einfache Web-App** zur digitalen Dokumentation von Fahrzeugannahme und -a
 
 ```
 /Fahrzeugannahme_App/
+  ├── index.html       → Startseite mit Navigation
   ├── annahme.html     → Fahrzeug-Annahme (Kunde bringt Auto)
   ├── abnahme.html     → Fahrzeug-Abnahme (Kunde holt Auto ab)
   ├── liste.html       → Übersicht aller Fahrzeuge
+  ├── kalender.html    → Kalender (Abnahme-Termine & Material-Bestellungen) [NEU]
+  ├── material.html    → Material nachbestellen [NEU]
   └── README.md        → Diese Anleitung
 ```
 
@@ -49,6 +54,9 @@ Eine **einfache Web-App** zur digitalen Dokumentation von Fahrzeugannahme und -a
 ### **Schritt 2: Daten eingeben**
 - **Kennzeichen:** z.B. "MOS-CG 123"
 - **Kundenname:** z.B. "Max Mustermann"
+- **📅 Geplantes Abnahme-Datum:** [NEU] Wann soll das Fahrzeug fertig sein?
+  - Wird automatisch im **Kalender** eingetragen
+  - Hilft bei der Arbeitsplanung
 
 ### **Schritt 3: Fotos machen**
 - Klicken Sie auf **📷 Kamera-Symbol**
@@ -118,6 +126,55 @@ Hier sehen Sie:
 - **🗑️ Löschen:** Fahrzeug aus der Liste entfernen
 - **➕ Neue Annahme:** Direkt zu `annahme.html` springen
 - **✅ Abnahme:** Direkt zu `abnahme.html` springen
+
+---
+
+## 📅 ANLEITUNG: Kalender [NEU]
+
+### **kalender.html öffnen**
+
+Der Kalender zeigt **alle wichtigen Termine** auf einen Blick:
+
+**Was wird angezeigt:**
+- 🚗 **Fahrzeug-Annahmen** mit geplantem Abnahme-Datum
+- ✅ **Geplante Abnahmen** (aus der Fahrzeug-Annahme)
+- 📦 **Material-Bestellungen** von Mitarbeitern
+
+**Navigation:**
+- ◀ **Letzte Woche** / **Nächste Woche** ▶
+- Zeigt immer 7 Tage (Mo-So)
+- Material-Fotos: Klick zum Vergrößern
+
+**Integration:**
+- Bei Fahrzeug-Annahme wird automatisch Termin im Kalender eingetragen
+- Material-Bestellungen erscheinen sofort im Kalender
+
+---
+
+## 📦 ANLEITUNG: Material nachbestellen [NEU]
+
+### **material.html öffnen**
+
+**Super einfach** - nur 2 Schritte:
+
+### **Schritt 1: Foto vom Produkt machen**
+- 📷 **Kamera** → Foto direkt aufnehmen
+- 🖼️ **Galerie** → Foto aus Galerie wählen
+- Fotografiere das **Etikett oder die Verpackung**
+
+### **Schritt 2: Kurze Beschreibung**
+- Beschreibe was benötigt wird
+- Beispiele:
+  - "Grundierung grau fast leer"
+  - "Klarlack 2K ist leer"
+  - "Schleifpapier P320 wird knapp"
+
+### **Schritt 3: Absenden**
+- Klick auf **"💾 Absenden"**
+- Meister sieht Anfrage sofort
+- Erscheint automatisch im **Kalender**
+
+**WICHTIG:** Ganz einfach halten! Keine komplizierten Felder, nur Foto + Text!
 
 ---
 
