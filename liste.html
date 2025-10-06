@@ -979,6 +979,60 @@
                 `;
             }
 
+            // Process Timestamps anzeigen (Problem 7)
+            if (vehicle.prozessTimestamps && Object.keys(vehicle.prozessTimestamps).length > 0) {
+                const formatDuration = (ms) => {
+                    const hours = Math.floor(ms / (1000 * 60 * 60));
+                    const days = Math.floor(hours / 24);
+                    if (days > 0) return `${days} Tag${days > 1 ? 'e' : ''}`;
+                    return `${hours} Std.`;
+                };
+
+                const timestamps = vehicle.prozessTimestamps;
+                let timelineHtml = '<div class="detail-row" style="background: #f0f4ff; padding: 15px; border-radius: 10px;">';
+                timelineHtml += '<strong style="color: #1976d2;">⏱️ PROZESS-TIMELINE:</strong><br><br>';
+
+                const statusLabels = {
+                    angenommen: '📥 Angenommen',
+                    lackierung: '🎨 In Lackierung',
+                    bereit: '✅ Bereit zur Abnahme',
+                    abgeschlossen: '🏁 Abgeschlossen'
+                };
+
+                const statusOrder = ['angenommen', 'lackierung', 'bereit', 'abgeschlossen'];
+                let lastTimestamp = null;
+
+                statusOrder.forEach(status => {
+                    if (timestamps[status]) {
+                        const date = new Date(timestamps[status]);
+                        const dateStr = date.toLocaleDateString('de-DE');
+                        const timeStr = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+                        let durationStr = '';
+                        if (lastTimestamp) {
+                            const duration = timestamps[status] - lastTimestamp;
+                            durationStr = ` <span style="color: #666; font-size: 12px;">(+${formatDuration(duration)})</span>`;
+                        }
+
+                        timelineHtml += `<div style="margin: 5px 0; padding-left: 15px; border-left: 3px solid #1976d2;">`;
+                        timelineHtml += `${statusLabels[status]}: <strong>${dateStr} ${timeStr}</strong>${durationStr}`;
+                        timelineHtml += `</div>`;
+
+                        lastTimestamp = timestamps[status];
+                    }
+                });
+
+                // Gesamtdauer berechnen
+                if (timestamps.angenommen && timestamps.abgeschlossen) {
+                    const totalDuration = timestamps.abgeschlossen - timestamps.angenommen;
+                    const totalDays = Math.floor(totalDuration / (1000 * 60 * 60 * 24));
+                    timelineHtml += `<br><strong style="color: #1976d2;">📊 Gesamtdauer:</strong> ${totalDays} Tag${totalDays !== 1 ? 'e' : ''}`;
+                }
+
+                timelineHtml += '</div>';
+                html += timelineHtml;
+            }
+
             if (vehicle.notizen) {
                 html += `
                     <div class="detail-row">
@@ -1076,12 +1130,18 @@
         }
 
         // Alle Fahrzeugdaten bearbeiten
+        // Global: lastModified beim Öffnen des Modals speichern (Problem 10)
+        let editModalOriginalLastModified = null;
+
         function editAllData(id) {
             const vehicle = allVehicles.find(v => v.id === id);
             if (!vehicle) {
                 alert('❌ Fahrzeug nicht gefunden!');
                 return;
             }
+
+            // Original lastModified speichern für Conflict Detection (Problem 10)
+            editModalOriginalLastModified = vehicle.lastModified || null;
 
             const html = `
                 <div style="max-height: 70vh; overflow-y: auto; padding: 10px;">
@@ -1125,7 +1185,19 @@
                         <input type="text" id="edit_farbnummer" value="${vehicle.farbnummer}" style="width: 100%; padding: 8px; border: 2px solid #c7254e; border-radius: 8px; font-weight: bold; margin-bottom: 10px;">
 
                         <label><strong style="color: #e65100;">🔬 Farbvariante:</strong></label>
-                        <input type="text" id="edit_farbvariante" value="${vehicle.farbvariante || ''}" style="width: 100%; padding: 8px; border: 2px solid #e65100; border-radius: 8px; margin-bottom: 10px;">
+                        <input type="text" id="edit_farbvariante" list="edit-farbvarianten-liste" value="${vehicle.farbvariante || ''}" style="width: 100%; padding: 8px; border: 2px solid #e65100; border-radius: 8px; margin-bottom: 10px;">
+                        <datalist id="edit-farbvarianten-liste">
+                            <option value="Standard">
+                            <option value="Variante A">
+                            <option value="Variante B">
+                            <option value="Variante C">
+                            <option value="Mischung 1">
+                            <option value="Mischung 2">
+                            <option value="Hell abgetönt">
+                            <option value="Dunkel abgetönt">
+                            <option value="Metallic-Effekt">
+                            <option value="Matt-Finish">
+                        </datalist>
 
                         <label><strong>Lackart:</strong></label>
                         <select id="edit_lackart" style="width: 100%; padding: 8px; border: 2px solid #003366; border-radius: 8px;">
@@ -1158,6 +1230,49 @@
         // Alle Daten speichern
         async function saveAllData(id) {
             try {
+                // ==========================================
+                // CONFLICT DETECTION (Problem 10)
+                // ==========================================
+                let currentVehicle;
+                if (firebaseInitialized && firebaseApp) {
+                    // Aktuellen Stand aus Firestore laden
+                    const doc = await firebaseApp.db().collection('fahrzeuge').doc(String(id)).get();
+                    if (doc.exists) {
+                        currentVehicle = doc.data();
+                    }
+                } else {
+                    // Aktuellen Stand aus LocalStorage laden
+                    const stored = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    currentVehicle = stored.find(v => v.id == id);
+                }
+
+                // Conflict Detection: Hat sich lastModified geändert?
+                if (currentVehicle && currentVehicle.lastModified && editModalOriginalLastModified) {
+                    if (currentVehicle.lastModified !== editModalOriginalLastModified) {
+                        const lastModifiedDate = new Date(currentVehicle.lastModified).toLocaleString('de-DE');
+                        const proceed = confirm(
+                            `⚠️ KONFLIKT ERKANNT!\n\n` +
+                            `Dieses Fahrzeug wurde seit dem Öffnen des Bearbeitungs-Fensters von einem anderen Benutzer oder Tab geändert.\n\n` +
+                            `Letzte Änderung: ${lastModifiedDate}\n\n` +
+                            `OPTIONEN:\n` +
+                            `• OK = Meine Änderungen TROTZDEM speichern (überschreibt andere Änderungen)\n` +
+                            `• Abbrechen = Änderungen VERWERFEN und aktuellen Stand neu laden\n\n` +
+                            `Was möchten Sie tun?`
+                        );
+
+                        if (!proceed) {
+                            // User hat abgebrochen → Modal schließen und neu laden
+                            alert('ℹ️ Ihre Änderungen wurden NICHT gespeichert.\n\nDas Fahrzeug wird neu geladen.');
+                            closeEditModal();
+                            await loadData();
+                            viewDetails(id);
+                            return;
+                        }
+                        // Falls proceed=true: Weiter machen mit Speichern (überschreibt)
+                        console.warn('⚠️ User hat Conflict Override gewählt');
+                    }
+                }
+
                 const updatedData = {
                     kennzeichen: document.getElementById('edit_kennzeichen').value,
                     kundenname: document.getElementById('edit_kundenname').value,
@@ -1190,6 +1305,9 @@
                         return;
                     }
                 }
+
+                // lastModified aktualisieren (Problem 10)
+                updatedData.lastModified = Date.now();
 
                 if (firebaseInitialized && firebaseApp) {
                     await firebaseApp.updateFahrzeug(id, updatedData);
@@ -1360,15 +1478,20 @@
                     return;
                 }
 
+                const updateData = {
+                    vereinbarterPreis: preis,
+                    lastModified: Date.now()  // Problem 10
+                };
+
                 if (firebaseInitialized && firebaseApp) {
-                    await firebaseApp.updateFahrzeug(id, { vereinbarterPreis: preis });
+                    await firebaseApp.updateFahrzeug(id, updateData);
                     console.log(`✅ Preis gespeichert: ${preis}€`);
                     alert(`✅ Preis ${preis.toFixed(2)}€ wurde gespeichert!`);
                 } else {
                     // Fallback: LocalStorage
                     const vehicle = allVehicles.find(v => v.id === id);
                     if (vehicle) {
-                        vehicle.vereinbarterPreis = preis;
+                        Object.assign(vehicle, updateData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
                         alert(`✅ Preis ${preis.toFixed(2)}€ wurde gespeichert!`);
                     }
@@ -1385,15 +1508,20 @@
                 const farbvarianteInput = document.getElementById(`farbvariante_${id}`);
                 const farbvariante = farbvarianteInput.value.trim();
 
+                const updateData = {
+                    farbvariante: farbvariante,
+                    lastModified: Date.now()  // Problem 10
+                };
+
                 if (firebaseInitialized && firebaseApp) {
-                    await firebaseApp.updateFahrzeug(id, { farbvariante: farbvariante });
+                    await firebaseApp.updateFahrzeug(id, updateData);
                     console.log(`✅ Farbvariante gespeichert: ${farbvariante}`);
                     alert(`✅ Farbvariante "${farbvariante}" wurde gespeichert!`);
                 } else {
                     // Fallback: LocalStorage
                     const vehicle = allVehicles.find(v => v.id === id);
                     if (vehicle) {
-                        vehicle.farbvariante = farbvariante;
+                        Object.assign(vehicle, updateData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
                         alert(`✅ Farbvariante "${farbvariante}" wurde gespeichert!`);
                     }

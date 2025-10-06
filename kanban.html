@@ -764,19 +764,35 @@
                 // Status aktualisieren
                 fahrzeug.prozessStatus = newStatus;
 
+                // Timestamp für Prozessübergang speichern (Problem 7)
+                const timestamp = Date.now();
+                if (!fahrzeug.prozessTimestamps) {
+                    fahrzeug.prozessTimestamps = {};
+                }
+                fahrzeug.prozessTimestamps[newStatus] = timestamp;
+
+                // Last Modified aktualisieren (Problem 10)
+                fahrzeug.lastModified = timestamp;
+
+                const updateData = {
+                    prozessStatus: newStatus,
+                    prozessTimestamps: fahrzeug.prozessTimestamps,
+                    lastModified: timestamp
+                };
+
                 // In Firebase/LocalStorage speichern
                 if (firebaseInitialized && firebaseApp) {
-                    await firebaseApp.updateFahrzeug(fahrzeugId, { prozessStatus: newStatus });
-                    console.log('✅ Status in Firebase aktualisiert');
+                    await firebaseApp.updateFahrzeug(fahrzeugId, updateData);
+                    console.log('✅ Status + Timestamps in Firebase aktualisiert');
                 } else {
                     // LocalStorage: Alle Fahrzeuge aktualisieren
                     let allStoredFahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
                     const index = allStoredFahrzeuge.findIndex(f => f.id == fahrzeugId);
                     if (index !== -1) {
-                        allStoredFahrzeuge[index].prozessStatus = newStatus;
+                        Object.assign(allStoredFahrzeuge[index], updateData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allStoredFahrzeuge));
                     }
-                    console.log('✅ Status in LocalStorage aktualisiert');
+                    console.log('✅ Status + Timestamps in LocalStorage aktualisiert');
                 }
 
                 // Board neu rendern

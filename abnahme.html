@@ -1006,13 +1006,23 @@
 
             // Abnahme-Daten erstellen
             const jetzt = new Date(); // Aktuelle Zeit für Abnahme
+            const timestamp = Date.now();
+
+            // Prozess-Timestamps aktualisieren (Problem 7)
+            if (!currentVehicle.prozessTimestamps) {
+                currentVehicle.prozessTimestamps = {};
+            }
+            currentVehicle.prozessTimestamps.abgeschlossen = timestamp;
+
             const abnahmeData = {
                 ...currentVehicle,
                 abnahmeDatum: jetzt.toLocaleDateString('de-DE'),
                 abnahmeZeit: jetzt.toLocaleTimeString('de-DE'),
                 nachherPhotos,
                 abnahmeSignature: signatureData,
-                status: 'abgeschlossen'
+                status: 'abgeschlossen',
+                prozessTimestamps: currentVehicle.prozessTimestamps,
+                lastModified: timestamp  // Problem 10
             };
 
             // Hybrid-Update: Status in Firestore, Fotos in LocalStorage
@@ -1088,6 +1098,37 @@
         async function createPDF(data) {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
+
+            // Error-Counter für kaputte Fotos (Problem 9)
+            let failedImages = 0;
+
+            // Safe Image Add Function (Problem 9)
+            const safeAddImage = (imageData, format, x, y, width, height, label = 'Foto') => {
+                try {
+                    if (!imageData || imageData === '') {
+                        throw new Error('Leeres Foto');
+                    }
+                    doc.addImage(imageData, format, x, y, width, height);
+                    return true;
+                } catch (error) {
+                    console.error(`❌ Fehler beim Hinzufügen des Bildes (${label}):`, error);
+                    failedImages++;
+
+                    // Fehlerfoto-Platzhalter einfügen
+                    doc.setFillColor(240, 240, 240);
+                    doc.rect(x, y, width, height, 'F');
+                    doc.setDrawColor(200, 200, 200);
+                    doc.rect(x, y, width, height, 'S');
+
+                    doc.setFontSize(10);
+                    doc.setTextColor(150, 150, 150);
+                    doc.text('⚠️ Foto konnte nicht', x + width/2, y + height/2 - 5, { align: 'center' });
+                    doc.text('geladen werden', x + width/2, y + height/2 + 5, { align: 'center' });
+                    doc.setTextColor(0, 0, 0);
+
+                    return false;
+                }
+            };
 
             // Header
             doc.setFillColor(17, 153, 142);
@@ -1225,9 +1266,9 @@
                 const imgWidth = 80;
                 const imgHeight = 60;
 
-                doc.addImage(data.photos[i], 'JPEG', 20, y, imgWidth, imgHeight);
+                safeAddImage(data.photos[i], 'JPEG', 20, y, imgWidth, imgHeight, `Vorher-Foto ${i+1}`);
                 if (i + 1 < data.photos.length) {
-                    doc.addImage(data.photos[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
+                    safeAddImage(data.photos[i + 1], 'JPEG', 110, y, imgWidth, imgHeight, `Vorher-Foto ${i+2}`);
                 }
 
                 y += imgHeight + 10;
@@ -1251,9 +1292,9 @@
                 const imgWidth = 80;
                 const imgHeight = 60;
 
-                doc.addImage(nachherPhotosForPDF[i], 'JPEG', 20, y, imgWidth, imgHeight);
+                safeAddImage(nachherPhotosForPDF[i], 'JPEG', 20, y, imgWidth, imgHeight, `Nachher-Foto ${i+1}`);
                 if (i + 1 < nachherPhotosForPDF.length) {
-                    doc.addImage(nachherPhotosForPDF[i + 1], 'JPEG', 110, y, imgWidth, imgHeight);
+                    safeAddImage(nachherPhotosForPDF[i + 1], 'JPEG', 110, y, imgWidth, imgHeight, `Nachher-Foto ${i+2}`);
                 }
 
                 y += imgHeight + 10;
@@ -1272,12 +1313,20 @@
             doc.text('Unterschrift Abnahme:', 110, y);
             y += 5;
 
-            doc.addImage(data.signature, 'PNG', 20, y, 70, 25);
-            doc.addImage(data.abnahmeSignature, 'PNG', 110, y, 70, 25);
+            safeAddImage(data.signature, 'PNG', 20, y, 70, 25, 'Annahme-Unterschrift');
+            safeAddImage(data.abnahmeSignature, 'PNG', 110, y, 70, 25, 'Abnahme-Unterschrift');
 
             // PDF speichern
             const filename = `Abnahme_${data.kennzeichen.replace(/\s/g, '_')}_${data.abnahmeDatum.replace(/\./g, '')}.pdf`;
             doc.save(filename);
+
+            // Warnung bei fehlgeschlagenen Fotos (Problem 9)
+            if (failedImages > 0) {
+                console.warn(`⚠️ ${failedImages} Foto(s) konnten nicht geladen werden`);
+                setTimeout(() => {
+                    alert(`⚠️ HINWEIS\n\n${failedImages} Foto(s) konnten nicht geladen werden.\n\nDie PDF wurde trotzdem erstellt, aber enthält Platzhalter-Fotos.`);
+                }, 500);
+            }
         }
 
         // Error anzeigen
