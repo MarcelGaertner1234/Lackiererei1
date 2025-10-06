@@ -844,6 +844,62 @@
 
         // Firebase initialisieren und Kunden laden
         document.addEventListener('DOMContentLoaded', async function() {
+            // Prüfe ob Nachannahme-Modus (von Partner-Fahrzeugen)
+            const urlParams = new URLSearchParams(window.location.search);
+            const nachannahmeModus = urlParams.get('mode') === 'nachannahme';
+            const fahrzeugId = urlParams.get('id');
+
+            if (nachannahmeModus && fahrzeugId) {
+                console.log('🔄 Nachannahme-Modus aktiv für Fahrzeug:', fahrzeugId);
+
+                // Daten aus sessionStorage laden
+                const nachannahmeDataStr = sessionStorage.getItem('partnerFahrzeugNachannahme');
+                if (nachannahmeDataStr) {
+                    const nachannahmeData = JSON.parse(nachannahmeDataStr);
+                    console.log('📋 Nachannahme-Daten geladen:', nachannahmeData);
+
+                    // Hinweis-Banner anzeigen
+                    const form = document.getElementById('annahmeForm');
+                    const banner = document.createElement('div');
+                    banner.style.cssText = 'background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%); color: white; padding: 20px; margin-bottom: 20px; border-radius: 15px; text-align: center; box-shadow: 0 4px 15px rgba(33,150,243,0.4);';
+                    banner.innerHTML = `
+                        <div style="font-size: 24px; margin-bottom: 10px;">🔄 PHYSISCHE NACHANNAHME</div>
+                        <div style="font-size: 14px; line-height: 1.6;">
+                            Fahrzeug: <strong>${nachannahmeData.marke} ${nachannahmeData.modell}</strong> • Kennzeichen: <strong>${nachannahmeData.kennzeichen}</strong><br>
+                            Die Fahrzeugdaten sind vorausgefüllt. Ergänzen Sie jetzt:<br>
+                            📸 Schadenfotos • ✍️ Kundenunterschrift • 📋 Zusätzliche Notizen
+                        </div>
+                    `;
+                    form.insertBefore(banner, form.firstChild);
+
+                    // Formular vorausfüllen (read-only)
+                    document.getElementById('kennzeichen').value = nachannahmeData.kennzeichen;
+                    document.getElementById('kennzeichen').readOnly = true;
+                    document.getElementById('marke').value = nachannahmeData.marke || '';
+                    document.getElementById('marke').readOnly = true;
+                    document.getElementById('modell').value = nachannahmeData.modell || '';
+                    document.getElementById('modell').readOnly = true;
+                    document.getElementById('baujahrVon').value = nachannahmeData.baujahrVon || '';
+                    document.getElementById('baujahrVon').readOnly = true;
+                    document.getElementById('baujahrBis').value = nachannahmeData.baujahrBis || '';
+                    document.getElementById('baujahrBis').readOnly = true;
+                    document.getElementById('kmstand').value = nachannahmeData.kmstand || '';
+                    document.getElementById('vin').value = nachannahmeData.vin || '';
+                    document.getElementById('farbnummer').value = nachannahmeData.farbnummer || '';
+                    document.getElementById('farbnummer').readOnly = true;
+                    document.getElementById('farbname').value = nachannahmeData.farbname || '';
+                    document.getElementById('lackart').value = nachannahmeData.lackart || '';
+                    document.getElementById('kundenname').value = nachannahmeData.kundenname || '';
+                    document.getElementById('kundenname').readOnly = true;
+                    document.getElementById('notizen').value = nachannahmeData.schadenBeschreibung || '';
+
+                    // Nachannahme-Flag speichern für späteren Submit
+                    window.istNachannahme = true;
+                    window.nachannahmeFahrzeugId = fahrzeugId;
+                    window.nachannahmeData = nachannahmeData;
+                }
+            }
+
             // Auto-save für Form-Inputs
             const inputs = document.querySelectorAll('#annahmeForm input, #annahmeForm textarea');
             inputs.forEach(input => {
@@ -867,8 +923,10 @@
             // Kunden laden
             await loadKunden();
 
-            // Auto-Save Entwurf wiederherstellen
-            loadDraft();
+            // Auto-Save Entwurf wiederherstellen (nur wenn NICHT Nachannahme-Modus)
+            if (!window.istNachannahme) {
+                loadDraft();
+            }
 
             // Form Submit Event Listener registrieren (muss im DOMContentLoaded sein!)
             console.log('📝 Registriere Form Submit Listener...');
@@ -921,66 +979,71 @@
                 console.log('   Kunde:', annahmeData.kundenname);
                 console.log('   Fotos:', annahmeData.photos.length);
 
-                // Duplikat-Prüfung
-                console.log('3️⃣ Duplikat-Prüfung...');
-                const kennzeichen = annahmeData.kennzeichen.toUpperCase().replace(/\s+/g, '');
-                let existingVehicles = [];
+                // Nachannahme-Modus? Dann Duplikat-Prüfung überspringen
+                if (window.istNachannahme) {
+                    console.log('🔄 Nachannahme-Modus: Überspringe Duplikat-Prüfung');
+                } else {
+                    // Normale Duplikat-Prüfung
+                    console.log('3️⃣ Duplikat-Prüfung...');
+                    const kennzeichen = annahmeData.kennzeichen.toUpperCase().replace(/\s+/g, '');
+                    let existingVehicles = [];
 
-                try {
-                    if (firebaseInitialized && firebaseApp) {
-                        console.log('   → Prüfe Duplikate in Firestore...');
-                        existingVehicles = await firebaseApp.getAllFahrzeuge();
-                        console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
-                    } else {
-                        console.log('   → Prüfe Duplikate in LocalStorage...');
-                        existingVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                        console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
-                    }
-
-                    const duplicate = existingVehicles.find(v => {
-                        const existingKz = v.kennzeichen.toUpperCase().replace(/\s+/g, '');
-                        return existingKz === kennzeichen && v.status !== 'abgeschlossen';
-                    });
-
-                    if (duplicate) {
-                        console.log('⚠️ Duplikat gefunden:', duplicate.kennzeichen);
-
-                        // Prüfe ob auch Kunde identisch ist
-                        const kundenameNeu = annahmeData.kundenname.toUpperCase().trim();
-                        const kundenameAlt = duplicate.kundenname.toUpperCase().trim();
-                        const gleicherKunde = (kundenameNeu === kundenameAlt);
-
-                        // Unterschiedliche Meldungen je nach Situation
-                        let message;
-                        if (gleicherKunde) {
-                            message = `⚠️ ACHTUNG: Kennzeichen "${annahmeData.kennzeichen}" ist bereits als "${duplicate.status}" vorhanden!\n\n` +
-                                      `GLEICHER KUNDE: ${duplicate.kundenname}\n` +
-                                      `Fahrzeug: ${duplicate.marke} ${duplicate.modell}\n` +
-                                      `Annahme: ${duplicate.datum}\n\n` +
-                                      `💡 Möglicherweise ist dieses Fahrzeug bereits in Bearbeitung!\n\n` +
-                                      `Trotzdem als NEUEN Auftrag anlegen?`;
+                    try {
+                        if (firebaseInitialized && firebaseApp) {
+                            console.log('   → Prüfe Duplikate in Firestore...');
+                            existingVehicles = await firebaseApp.getAllFahrzeuge();
+                            console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
                         } else {
-                            message = `⚠️ HINWEIS: Kennzeichen "${annahmeData.kennzeichen}" ist bereits vorhanden!\n\n` +
-                                      `ABER ANDERER KUNDE:\n` +
-                                      `Alter Auftrag: ${duplicate.kundenname} (${duplicate.marke} ${duplicate.modell})\n` +
-                                      `Neuer Auftrag: ${annahmeData.kundenname}\n\n` +
-                                      `💡 Möglicherweise Fahrzeugwechsel oder verschiedene Besitzer.\n\n` +
-                                      `Als neuen Auftrag anlegen?`;
+                            console.log('   → Prüfe Duplikate in LocalStorage...');
+                            existingVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                            console.log('   → Gefunden:', existingVehicles.length, 'Fahrzeuge');
                         }
 
-                        const proceed = confirm(message);
+                        const duplicate = existingVehicles.find(v => {
+                            const existingKz = v.kennzeichen.toUpperCase().replace(/\s+/g, '');
+                            return existingKz === kennzeichen && v.status !== 'abgeschlossen';
+                        });
 
-                        if (!proceed) {
-                            console.log('❌ Annahme abgebrochen - Duplikat verhindert');
-                            return;
+                        if (duplicate) {
+                            console.log('⚠️ Duplikat gefunden:', duplicate.kennzeichen);
+
+                            // Prüfe ob auch Kunde identisch ist
+                            const kundenameNeu = annahmeData.kundenname.toUpperCase().trim();
+                            const kundenameAlt = duplicate.kundenname.toUpperCase().trim();
+                            const gleicherKunde = (kundenameNeu === kundenameAlt);
+
+                            // Unterschiedliche Meldungen je nach Situation
+                            let message;
+                            if (gleicherKunde) {
+                                message = `⚠️ ACHTUNG: Kennzeichen "${annahmeData.kennzeichen}" ist bereits als "${duplicate.status}" vorhanden!\n\n` +
+                                          `GLEICHER KUNDE: ${duplicate.kundenname}\n` +
+                                          `Fahrzeug: ${duplicate.marke} ${duplicate.modell}\n` +
+                                          `Annahme: ${duplicate.datum}\n\n` +
+                                          `💡 Möglicherweise ist dieses Fahrzeug bereits in Bearbeitung!\n\n` +
+                                          `Trotzdem als NEUEN Auftrag anlegen?`;
+                            } else {
+                                message = `⚠️ HINWEIS: Kennzeichen "${annahmeData.kennzeichen}" ist bereits vorhanden!\n\n` +
+                                          `ABER ANDERER KUNDE:\n` +
+                                          `Alter Auftrag: ${duplicate.kundenname} (${duplicate.marke} ${duplicate.modell})\n` +
+                                          `Neuer Auftrag: ${annahmeData.kundenname}\n\n` +
+                                          `💡 Möglicherweise Fahrzeugwechsel oder verschiedene Besitzer.\n\n` +
+                                          `Als neuen Auftrag anlegen?`;
+                            }
+
+                            const proceed = confirm(message);
+
+                            if (!proceed) {
+                                console.log('❌ Annahme abgebrochen - Duplikat verhindert');
+                                return;
+                            }
+                            console.log('✅ User hat Duplikat bestätigt - fahre fort');
+                        } else {
+                            console.log('✅ Kein Duplikat gefunden');
                         }
-                        console.log('✅ User hat Duplikat bestätigt - fahre fort');
-                    } else {
-                        console.log('✅ Kein Duplikat gefunden');
+                    } catch (error) {
+                        console.error('⚠️ Duplikat-Prüfung fehlgeschlagen:', error);
+                        console.error('   Details:', error.message);
                     }
-                } catch (error) {
-                    console.error('⚠️ Duplikat-Prüfung fehlgeschlagen:', error);
-                    console.error('   Details:', error.message);
                 }
 
                 // Speicherung
@@ -989,6 +1052,49 @@
                     if (firebaseInitialized && firebaseApp) {
                         console.log('💾 Hybrid-Speicherung: Daten → Firestore, Fotos → LocalStorage');
 
+                        // Nachannahme-Modus: UPDATE statt CREATE
+                        if (window.istNachannahme) {
+                            console.log('🔄 NACHANNAHME-MODUS: Aktualisiere bestehendes Fahrzeug');
+
+                            // Fotos speichern
+                            console.log('   a) Speichere Nachannahme-Fotos in LocalStorage...');
+                            try {
+                                firebaseApp.savePhotosLocal(window.nachannahmeFahrzeugId, annahmeData.photos, 'vorher');
+                                console.log('   ✅ Fotos in LocalStorage gespeichert');
+                            } catch (e) {
+                                console.error('   ❌ Foto-Speicherung fehlgeschlagen:', e);
+                            }
+
+                            // Fahrzeug UPDATE (nur neue Felder)
+                            console.log('   b) UPDATE Fahrzeugdaten in Firestore...');
+                            const updateData = {
+                                photos: annahmeData.photos,
+                                signature: annahmeData.signature,
+                                notizen: annahmeData.notizen || window.nachannahmeData.schadenBeschreibung,
+                                kmstand: annahmeData.kmstand,
+                                vin: annahmeData.vin,
+                                farbname: annahmeData.farbname,
+                                lackart: annahmeData.lackart,
+                                datum: annahmeData.datum,
+                                zeit: annahmeData.zeit,
+                                physischeAnnahmeErfolgt: true,
+                                physischeAnnahmeDatum: new Date().toISOString(),
+                                lastModified: Date.now()
+                            };
+
+                            await firebaseApp.updateFahrzeug(window.nachannahmeFahrzeugId, updateData);
+                            console.log('   ✅ Fahrzeug aktualisiert');
+
+                            // Cleanup
+                            sessionStorage.removeItem('partnerFahrzeugNachannahme');
+                            deleteDraft();
+
+                            alert('✅ Physische Annahme erfolgreich!\n\nDas Fahrzeug wurde mit Fotos und Unterschrift ergänzt.');
+                            window.location.href = 'liste.html';
+                            return;
+                        }
+
+                        // NORMALE ANNAHME (nicht Nachannahme)
                         // Kundenbesuch registrieren
                         console.log('   a) Registriere Kundenbesuch...');
                         const kundeId = await firebaseApp.registriereKundenbesuch(annahmeData.kundenname);
