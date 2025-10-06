@@ -415,9 +415,31 @@
                                     </div>
                                 ` : ''}
                             </div>
-                            <div style="margin-top: 10px; color: #666; font-size: 13px;">
-                                <strong>Lieferzeit:</strong> ${anfrage.kva.lieferzeit || 'k.A.'}
-                            </div>
+                            ${anfrage.kva.termine ? `
+                                <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                                    <div style="font-weight: 600; color: #003366; margin-bottom: 10px;">📅 Lackierungs-Termin</div>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 14px;">
+                                        <div>
+                                            <span style="color: #666;">Lackierung Start:</span>
+                                            <strong style="color: #003366;"> ${new Date(anfrage.kva.termine.start).toLocaleDateString('de-DE')}</strong>
+                                        </div>
+                                        <div>
+                                            <span style="color: #666;">Abholung bereit:</span>
+                                            <strong style="color: #2e7d32;"> ${new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE')}</strong>
+                                        </div>
+                                        ${anfrage.kva.termine.abholzeit ? `
+                                            <div>
+                                                <span style="color: #666;">Abholzeit:</span>
+                                                <strong style="color: #e65100;"> ${anfrage.kva.termine.abholzeit} Uhr</strong>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            ` : `
+                                <div style="margin-top: 10px; color: #666; font-size: 13px;">
+                                    <strong>Lieferzeit:</strong> ${anfrage.kva.lieferzeit || 'k.A.'}
+                                </div>
+                            `}
                         </div>
                     `;
                 } else {
@@ -480,13 +502,59 @@
             try {
                 if (!db) throw new Error('Firebase nicht verfügbar');
 
+                // Anfrage-Daten laden um Termine zu bekommen
+                const anfrageDoc = await db.collection('partnerAnfragen').doc(anfrageId).get();
+                if (!anfrageDoc.exists) throw new Error('Anfrage nicht gefunden');
+
+                const anfrage = anfrageDoc.data();
+
+                // Status aktualisieren
                 await db.collection('partnerAnfragen').doc(anfrageId).update({
                     'kva.gewaehlteVariante': variante,
                     status: 'beauftragt',
                     statusText: 'Beauftragt'
                 });
 
-                alert('✅ Variante gewählt! Die Lackierung wird jetzt beauftragt.');
+                // Automatischer Kalendereintrag wenn Termine vorhanden
+                if (anfrage.kva && anfrage.kva.termine && anfrage.kva.termine.ende) {
+                    const abholDatum = anfrage.kva.termine.ende; // YYYY-MM-DD Format
+                    const abholzeit = anfrage.kva.termine.abholzeit || '14:00';
+
+                    // Kalendereintrag erstellen
+                    const calendarEntry = {
+                        type: 'partner_abholung',
+                        partner: anfrage.partnerName,
+                        kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
+                        auftragsnummer: anfrage.auftragsnummer || '',
+                        vin: anfrage.vin || '',
+                        marke: anfrage.marke || '',
+                        modell: anfrage.modell || '',
+                        zeit: abholzeit,
+                        variante: variante === 'original' ? 'Originalteile' : variante === 'zubehoer' ? 'Zubehörteile' : 'Partner-Ersatzteil',
+                        anfrageId: anfrageId,
+                        timestamp: Date.now()
+                    };
+
+                    // Kalenderdokument für diesen Tag laden/erstellen
+                    const calendarDocRef = db.collection('calendar').doc(abholDatum);
+                    const calendarDoc = await calendarDocRef.get();
+
+                    if (calendarDoc.exists) {
+                        // Dokument existiert bereits - Entry hinzufügen
+                        await calendarDocRef.update({
+                            entries: firebase.firestore.FieldValue.arrayUnion(calendarEntry)
+                        });
+                    } else {
+                        // Neues Dokument erstellen
+                        await calendarDocRef.set({
+                            entries: [calendarEntry]
+                        });
+                    }
+
+                    alert(`✅ Variante gewählt! Die Lackierung wird beauftragt.\n\n📅 Abholtermin wurde automatisch im Kalender eingetragen:\n${new Date(abholDatum).toLocaleDateString('de-DE')} um ${abholzeit} Uhr`);
+                } else {
+                    alert('✅ Variante gewählt! Die Lackierung wird jetzt beauftragt.');
+                }
 
                 // Seite neu laden um die Änderungen anzuzeigen
                 await loadAnfragen();
