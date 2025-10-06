@@ -508,53 +508,104 @@
 
                 const anfrage = anfrageDoc.data();
 
-                // Status aktualisieren
+                // 1. Kunde anlegen (falls noch nicht vorhanden)
+                let kundeId = null;
+                const kundenSnapshot = await db.collection('kunden')
+                    .where('name', '==', anfrage.partnerName)
+                    .limit(1)
+                    .get();
+
+                if (!kundenSnapshot.empty) {
+                    // Kunde existiert bereits
+                    kundeId = kundenSnapshot.docs[0].id;
+                    console.log('✅ Kunde existiert bereits:', kundeId);
+                } else {
+                    // Neuen Kunden anlegen
+                    const kundeData = {
+                        name: anfrage.partnerName,
+                        telefon: anfrage.kontaktTelefon || '',
+                        email: anfrage.kontaktEmail || '',
+                        typ: 'Partner (Autohaus)',
+                        anzahlBesuche: 1,
+                        letzterBesuch: new Date().toISOString(),
+                        timestamp: Date.now()
+                    };
+                    const kundeDoc = await db.collection('kunden').add(kundeData);
+                    kundeId = kundeDoc.id;
+                    console.log('✅ Neuer Kunde angelegt:', kundeId, kundeData.name);
+                }
+
+                // 2. Fahrzeug in fahrzeuge Collection erstellen
+                const gewaehlteVarianteData = anfrage.kva.varianten[variante];
+                const fahrzeugData = {
+                    // Basis-Daten
+                    kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || 'Partner-' + anfrageId.substring(0, 8),
+                    vin: anfrage.vin || '',
+                    marke: anfrage.marke || '',
+                    modell: anfrage.modell || '',
+                    baujahrVon: anfrage.baujahr || '',
+                    baujahrBis: anfrage.baujahr || '',
+
+                    // Kunden-Info
+                    kunde: anfrage.partnerName,
+                    kundenname: anfrage.partnerName,
+                    kundeId: kundeId,
+                    kundentyp: 'Partner (Autohaus)',
+
+                    // Lackier-Daten
+                    farbnummer: anfrage.farbnummer || '',
+                    lackart: anfrage.lackart || '',
+                    farbname: anfrage.farbname || '',
+
+                    // Schaden & KVA
+                    schadenBeschreibung: anfrage.schadenBeschreibung || 'Lackierauftrag von Partner',
+                    kvaGesamt: gewaehlteVarianteData.gesamt,
+                    kvaLack: gewaehlteVarianteData.lackkosten || 0,
+                    kvaTeile: gewaehlteVarianteData.teilekosten || 0,
+                    kvaArbeitszeit: gewaehlteVarianteData.arbeitszeit || 0,
+                    kvaSonstiges: gewaehlteVarianteData.sonstiges || 0,
+                    kvaVariante: variante === 'original' ? 'Originalteile' : variante === 'zubehoer' ? 'Zubehörteile' : 'Partner-Ersatzteil',
+
+                    // Status & Prozess
+                    status: 'angenommen',
+                    prozessStatus: 'angenommen',
+
+                    // Termine
+                    geplantesAbnahmeDatum: anfrage.kva.termine?.ende || null,
+                    abholzeit: anfrage.kva.termine?.abholzeit || null,
+
+                    // Referenz zur Partner-Anfrage
+                    partnerAnfrageId: anfrageId,
+                    quelle: 'Partner-Portal',
+
+                    // Timestamps
+                    annahmeZeit: new Date().toISOString(),
+                    timestamp: Date.now()
+                };
+
+                const fahrzeugDoc = await db.collection('fahrzeuge').add(fahrzeugData);
+                console.log('✅ Fahrzeug erstellt:', fahrzeugDoc.id);
+
+                // 3. Status der Partner-Anfrage aktualisieren
                 await db.collection('partnerAnfragen').doc(anfrageId).update({
                     'kva.gewaehlteVariante': variante,
                     status: 'beauftragt',
-                    statusText: 'Beauftragt'
+                    statusText: 'Beauftragt',
+                    fahrzeugId: fahrzeugDoc.id,
+                    kundeId: kundeId
                 });
 
-                // Automatischer Kalendereintrag wenn Termine vorhanden
+                // 4. Kalender-Eintrag als "abnahme" (nicht partner_abholung)
                 if (anfrage.kva && anfrage.kva.termine && anfrage.kva.termine.ende) {
-                    const abholDatum = anfrage.kva.termine.ende; // YYYY-MM-DD Format
-                    const abholzeit = anfrage.kva.termine.abholzeit || '14:00';
+                    const abholDatum = anfrage.kva.termine.ende;
 
-                    // Kalendereintrag erstellen
-                    const calendarEntry = {
-                        type: 'partner_abholung',
-                        partner: anfrage.partnerName,
-                        kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
-                        auftragsnummer: anfrage.auftragsnummer || '',
-                        vin: anfrage.vin || '',
-                        marke: anfrage.marke || '',
-                        modell: anfrage.modell || '',
-                        zeit: abholzeit,
-                        variante: variante === 'original' ? 'Originalteile' : variante === 'zubehoer' ? 'Zubehörteile' : 'Partner-Ersatzteil',
-                        anfrageId: anfrageId,
-                        timestamp: Date.now()
-                    };
+                    // Eintrag wird NICHT mehr in calendar collection gespeichert
+                    // stattdessen nutzt kalender.html automatisch geplantesAbnahmeDatum aus fahrzeuge collection
 
-                    // Kalenderdokument für diesen Tag laden/erstellen
-                    const calendarDocRef = db.collection('calendar').doc(abholDatum);
-                    const calendarDoc = await calendarDocRef.get();
-
-                    if (calendarDoc.exists) {
-                        // Dokument existiert bereits - Entry hinzufügen
-                        await calendarDocRef.update({
-                            entries: firebase.firestore.FieldValue.arrayUnion(calendarEntry)
-                        });
-                    } else {
-                        // Neues Dokument erstellen
-                        await calendarDocRef.set({
-                            entries: [calendarEntry]
-                        });
-                    }
-
-                    alert(`✅ Variante gewählt! Die Lackierung wird beauftragt.\n\n📅 Abholtermin wurde automatisch im Kalender eingetragen:\n${new Date(abholDatum).toLocaleDateString('de-DE')} um ${abholzeit} Uhr`);
-                } else {
-                    alert('✅ Variante gewählt! Die Lackierung wird jetzt beauftragt.');
+                    console.log('✅ Abnahme-Termin gesetzt:', abholDatum);
                 }
+
+                alert(`✅ Auftrag beauftragt!\n\n📋 Fahrzeug wurde ins System aufgenommen\n👥 Kunde registriert: ${anfrage.partnerName}\n📅 Abnahme-Termin: ${anfrage.kva.termine?.ende ? new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE') : 'nicht gesetzt'}\n\n→ Das Fahrzeug erscheint jetzt in:\n   • Fahrzeug-Übersicht\n   • Kanban Board\n   • Kalender (Abnahme-Termin)`);
 
                 // Seite neu laden um die Änderungen anzuzeigen
                 await loadAnfragen();
