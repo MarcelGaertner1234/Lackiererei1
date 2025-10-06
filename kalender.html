@@ -313,6 +313,199 @@
             justify-content: center;
         }
 
+        /* Erledigte Einträge */
+        .entry-card.completed {
+            opacity: 0.6;
+            background: #f5f5f5;
+        }
+
+        .entry-card.completed .entry-title,
+        .entry-card.completed .entry-details {
+            text-decoration: line-through;
+            color: #999;
+        }
+
+        .entry-card.completed .completed-badge {
+            color: #4caf50;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        /* Action Buttons */
+        .entry-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .action-btn.complete {
+            background: #4caf50;
+            color: white;
+        }
+
+        .action-btn.complete.completed {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .action-btn.edit {
+            background: #2196f3;
+            color: white;
+        }
+
+        .action-btn.delete {
+            background: #f44336;
+            color: white;
+        }
+
+        /* Filter Toggle */
+        .filter-toggle {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .filter-toggle button {
+            padding: 10px 20px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .filter-toggle button:hover {
+            background: #d0d0d0;
+        }
+
+        .filter-toggle button.active {
+            background: #003366;
+            color: white;
+        }
+
+        /* Edit Modal */
+        .edit-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1001;
+            padding: 20px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .edit-modal.show {
+            display: flex;
+        }
+
+        .edit-modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .edit-modal-header {
+            font-size: 24px;
+            font-weight: 600;
+            color: #003366;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .edit-modal-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .edit-modal-form label {
+            font-weight: 600;
+            color: #003366;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .edit-modal-form input,
+        .edit-modal-form textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .edit-modal-form textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .edit-modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .edit-modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .edit-modal-buttons .save {
+            background: #4caf50;
+            color: white;
+        }
+
+        .edit-modal-buttons .save:hover {
+            background: #45a049;
+        }
+
+        .edit-modal-buttons .cancel {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .edit-modal-buttons .cancel:hover {
+            background: #d0d0d0;
+        }
+
         @media (max-width: 768px) {
             .calendar-controls {
                 flex-direction: column;
@@ -362,6 +555,12 @@
             </div>
         </div>
 
+        <div class="filter-toggle">
+            <button id="filterToggle" onclick="toggleCompletedFilter()">
+                ✓ Erledigte ausblenden
+            </button>
+        </div>
+
         <div id="loading" class="loading">
             <p>⏳ Kalender wird geladen...</p>
         </div>
@@ -382,9 +581,28 @@
         <img id="modalImage" src="" alt="Foto Großansicht">
     </div>
 
+    <!-- Modal für Eintrag bearbeiten -->
+    <div class="edit-modal" id="editModal">
+        <div class="edit-modal-content" onclick="event.stopPropagation()">
+            <div class="edit-modal-header">
+                <span id="editModalIcon"></span>
+                <span id="editModalTitle"></span>
+            </div>
+            <div class="edit-modal-form" id="editForm">
+                <!-- Wird dynamisch gefüllt -->
+            </div>
+            <div class="edit-modal-buttons">
+                <button class="save" onclick="saveEditedEntry()">💾 Speichern</button>
+                <button class="cancel" onclick="closeEditModal()">✖ Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
     <script src="firebase-config.js"></script>
     <script>
         let currentStartDate = new Date();
+        let hideCompleted = false;
+        let currentEditData = null;
 
         // Zum Wochenanfang (Montag) springen
         currentStartDate.setDate(currentStartDate.getDate() - currentStartDate.getDay() + 1);
@@ -525,8 +743,13 @@
                 daySection.appendChild(dayHeader);
 
                 // Einträge rendern
-                dayData.entries.forEach(entry => {
-                    const card = createEntryCard(entry);
+                dayData.entries.forEach((entry, index) => {
+                    // Filter: Erledigte ausblenden
+                    if (hideCompleted && entry.completed) {
+                        return;
+                    }
+
+                    const card = createEntryCard(entry, dateStr, index);
                     daySection.appendChild(card);
                 });
 
@@ -534,9 +757,14 @@
             }
         }
 
-        function createEntryCard(entry) {
+        function createEntryCard(entry, dateStr, entryIndex) {
             const card = document.createElement('div');
             card.className = `entry-card ${entry.type}`;
+
+            // Completed-Status hinzufügen
+            if (entry.completed) {
+                card.classList.add('completed');
+            }
 
             const header = document.createElement('div');
             header.className = 'entry-header';
@@ -578,7 +806,7 @@
 
             header.innerHTML = `
                 <div class="entry-icon">${icon}</div>
-                <div class="entry-title">${title}</div>
+                <div class="entry-title">${title}${entry.completed ? '<span class="completed-badge">✓ Erledigt</span>' : ''}</div>
                 ${entry.zeit ? `<div class="entry-time">${entry.zeit}</div>` : ''}
             `;
 
@@ -588,6 +816,43 @@
 
             card.appendChild(header);
             card.appendChild(detailsDiv);
+
+            // Action-Buttons hinzufügen
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'entry-actions';
+
+            // Abhaken-Button
+            const completeBtn = document.createElement('button');
+            completeBtn.className = `action-btn complete ${entry.completed ? 'completed' : ''}`;
+            completeBtn.innerHTML = entry.completed ? '↩ Reaktivieren' : '✓ Erledigt';
+            completeBtn.onclick = (e) => {
+                e.stopPropagation();
+                toggleCompleted(dateStr, entryIndex);
+            };
+
+            // Bearbeiten-Button
+            const editBtn = document.createElement('button');
+            editBtn.className = 'action-btn edit';
+            editBtn.innerHTML = '✏️ Bearbeiten';
+            editBtn.onclick = (e) => {
+                e.stopPropagation();
+                editEntry(dateStr, entryIndex, entry);
+            };
+
+            // Löschen-Button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'action-btn delete';
+            deleteBtn.innerHTML = '🗑️ Löschen';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                deleteEntry(dateStr, entryIndex, entry);
+            };
+
+            actionsDiv.appendChild(completeBtn);
+            actionsDiv.appendChild(editBtn);
+            actionsDiv.appendChild(deleteBtn);
+
+            card.appendChild(actionsDiv);
 
             return card;
         }
@@ -621,6 +886,284 @@
 
         function closeModal() {
             document.getElementById('photoModal').classList.remove('show');
+        }
+
+        // ========================================
+        // NEUE FUNKTIONEN: Verwalten von Einträgen
+        // ========================================
+
+        // Filter: Erledigte ausblenden
+        function toggleCompletedFilter() {
+            hideCompleted = !hideCompleted;
+            const btn = document.getElementById('filterToggle');
+            if (hideCompleted) {
+                btn.textContent = '👁 Alle anzeigen';
+                btn.classList.add('active');
+            } else {
+                btn.textContent = '✓ Erledigte ausblenden';
+                btn.classList.remove('active');
+            }
+            loadCalendarEntries();
+        }
+
+        // Eintrag abhaken/reaktivieren
+        async function toggleCompleted(dateStr, entryIndex) {
+            if (!db) {
+                alert('⚠️ Offline-Modus: Funktion nicht verfügbar');
+                return;
+            }
+
+            try {
+                const docRef = db.collection('calendar').doc(dateStr);
+                const doc = await docRef.get();
+
+                if (doc.exists) {
+                    const data = doc.data();
+                    const entries = data.entries || [];
+
+                    if (entries[entryIndex]) {
+                        entries[entryIndex].completed = !entries[entryIndex].completed;
+                        entries[entryIndex].completedAt = entries[entryIndex].completed ? Date.now() : null;
+
+                        await docRef.update({ entries });
+                        console.log('✅ Status aktualisiert');
+                        await loadCalendarEntries();
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Aktualisieren:', error);
+                alert('Fehler beim Aktualisieren des Status');
+            }
+        }
+
+        // Eintrag löschen
+        async function deleteEntry(dateStr, entryIndex, entry) {
+            if (!confirm('🗑️ Eintrag wirklich löschen?')) {
+                return;
+            }
+
+            if (!db) {
+                alert('⚠️ Offline-Modus: Funktion nicht verfügbar');
+                return;
+            }
+
+            try {
+                const docRef = db.collection('calendar').doc(dateStr);
+                const doc = await docRef.get();
+
+                if (doc.exists) {
+                    const data = doc.data();
+                    let entries = data.entries || [];
+
+                    // Eintrag entfernen
+                    entries.splice(entryIndex, 1);
+
+                    if (entries.length === 0) {
+                        // Dokument löschen wenn leer
+                        await docRef.delete();
+                    } else {
+                        await docRef.update({ entries });
+                    }
+
+                    // Wenn Material-Request: auch den Request löschen
+                    if (entry.type === 'material' && entry.requestId) {
+                        await db.collection('materialRequests').doc(entry.requestId).delete();
+                        console.log('🗑️ Material-Request gelöscht');
+                    }
+
+                    console.log('✅ Eintrag gelöscht');
+                    await loadCalendarEntries();
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen:', error);
+                alert('Fehler beim Löschen des Eintrags');
+            }
+        }
+
+        // Eintrag bearbeiten - Modal öffnen
+        function editEntry(dateStr, entryIndex, entry) {
+            currentEditData = { dateStr, entryIndex, entry };
+
+            const modal = document.getElementById('editModal');
+            const icon = document.getElementById('editModalIcon');
+            const title = document.getElementById('editModalTitle');
+            const form = document.getElementById('editForm');
+
+            // Modal-Titel setzen
+            if (entry.type === 'material') {
+                icon.textContent = '📦';
+                title.textContent = 'Material-Bestellung bearbeiten';
+            } else if (entry.type === 'abnahme') {
+                icon.textContent = '✅';
+                title.textContent = 'Abnahme-Termin bearbeiten';
+            } else {
+                icon.textContent = '🚗';
+                title.textContent = 'Annahme-Eintrag';
+            }
+
+            // Formular-Felder dynamisch erstellen
+            form.innerHTML = '';
+
+            if (entry.type === 'material') {
+                form.innerHTML = `
+                    <div>
+                        <label>Datum:</label>
+                        <input type="date" id="editDate" value="${dateStr}" required>
+                    </div>
+                    <div>
+                        <label>Beschreibung:</label>
+                        <textarea id="editDescription" maxlength="200" required>${entry.description || ''}</textarea>
+                    </div>
+                    <div>
+                        <label>Bestellt von:</label>
+                        <input type="text" id="editRequestedBy" value="${entry.requestedBy || ''}" required>
+                    </div>
+                `;
+            } else if (entry.type === 'abnahme') {
+                form.innerHTML = `
+                    <div>
+                        <label>Geplantes Datum:</label>
+                        <input type="date" id="editDate" value="${dateStr}" required>
+                    </div>
+                    <div>
+                        <label>Kennzeichen:</label>
+                        <input type="text" id="editKennzeichen" value="${entry.kennzeichen || ''}" readonly>
+                    </div>
+                    <div>
+                        <label>Kunde:</label>
+                        <input type="text" id="editKunde" value="${entry.kunde || ''}" readonly>
+                    </div>
+                    <div>
+                        <label>Fahrzeug:</label>
+                        <input type="text" value="${entry.marke || ''} ${entry.modell || ''}" readonly>
+                    </div>
+                    <small style="color: #666;">💡 Kennzeichen und Kundendaten können nur in der Fahrzeug-Übersicht geändert werden.</small>
+                `;
+            } else {
+                // Annahme: Nicht bearbeitbar
+                form.innerHTML = `
+                    <div style="padding: 20px; background: #f0f9ff; border-radius: 8px; text-align: center;">
+                        <p>ℹ️ Annahme-Einträge können nicht bearbeitet werden.</p>
+                        <p style="margin-top: 10px; font-size: 13px; color: #666;">
+                            Änderungen bitte in der Fahrzeug-Übersicht vornehmen.
+                        </p>
+                    </div>
+                `;
+            }
+
+            modal.classList.add('show');
+            modal.onclick = (e) => {
+                if (e.target === modal) closeEditModal();
+            };
+        }
+
+        // Edit-Modal schließen
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('show');
+            currentEditData = null;
+        }
+
+        // Bearbeiteten Eintrag speichern
+        async function saveEditedEntry() {
+            if (!currentEditData || !db) return;
+
+            const { dateStr, entryIndex, entry } = currentEditData;
+
+            try {
+                if (entry.type === 'annahme') {
+                    closeEditModal();
+                    return;
+                }
+
+                const newDate = document.getElementById('editDate').value;
+
+                if (entry.type === 'material') {
+                    const description = document.getElementById('editDescription').value;
+                    const requestedBy = document.getElementById('editRequestedBy').value;
+
+                    // Material-Request aktualisieren
+                    if (entry.requestId) {
+                        await db.collection('materialRequests').doc(entry.requestId).update({
+                            description,
+                            requestedBy
+                        });
+                    }
+
+                    // Kalender-Eintrag aktualisieren
+                    const oldDocRef = db.collection('calendar').doc(dateStr);
+                    const oldDoc = await oldDocRef.get();
+
+                    if (oldDoc.exists) {
+                        let entries = oldDoc.data().entries || [];
+                        entries[entryIndex].description = description;
+                        entries[entryIndex].requestedBy = requestedBy;
+
+                        // Wenn Datum geändert: Eintrag verschieben
+                        if (newDate !== dateStr) {
+                            const movedEntry = entries.splice(entryIndex, 1)[0];
+
+                            // Altes Dokument aktualisieren oder löschen
+                            if (entries.length === 0) {
+                                await oldDocRef.delete();
+                            } else {
+                                await oldDocRef.update({ entries });
+                            }
+
+                            // Neues Dokument erstellen/aktualisieren
+                            const newDocRef = db.collection('calendar').doc(newDate);
+                            const newDoc = await newDocRef.get();
+                            const newEntries = newDoc.exists ? (newDoc.data().entries || []) : [];
+                            newEntries.push(movedEntry);
+                            await newDocRef.set({ entries: newEntries });
+                        } else {
+                            await oldDocRef.update({ entries });
+                        }
+                    }
+
+                } else if (entry.type === 'abnahme') {
+                    // Nur Datum ändern (andere Felder readonly)
+                    if (newDate !== dateStr) {
+                        // Eintrag aus altem Datum entfernen
+                        const oldDocRef = db.collection('calendar').doc(dateStr);
+                        const oldDoc = await oldDocRef.get();
+
+                        if (oldDoc.exists) {
+                            let entries = oldDoc.data().entries || [];
+                            const movedEntry = entries.splice(entryIndex, 1)[0];
+
+                            if (entries.length === 0) {
+                                await oldDocRef.delete();
+                            } else {
+                                await oldDocRef.update({ entries });
+                            }
+
+                            // Zu neuem Datum hinzufügen
+                            const newDocRef = db.collection('calendar').doc(newDate);
+                            const newDoc = await newDocRef.get();
+                            const newEntries = newDoc.exists ? (newDoc.data().entries || []) : [];
+                            newEntries.push(movedEntry);
+                            await newDocRef.set({ entries: newEntries });
+                        }
+
+                        // Fahrzeug-Daten aktualisieren
+                        const fahrzeugQuery = await db.collection('fahrzeuge')
+                            .where('kennzeichen', '==', entry.kennzeichen)
+                            .get();
+
+                        fahrzeugQuery.forEach(async (doc) => {
+                            await doc.ref.update({ geplantesAbnahmeDatum: newDate });
+                        });
+                    }
+                }
+
+                closeEditModal();
+                await loadCalendarEntries();
+                console.log('✅ Eintrag aktualisiert');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                alert('Fehler beim Speichern der Änderungen');
+            }
         }
     </script>
 </body>
