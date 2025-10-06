@@ -645,17 +645,34 @@
                     console.log('✅ Dropdown geladen (LocalStorage): ' + vehicles.length + ' angenommene Fahrzeuge');
                 }
 
+                // Migration: Alte baujahr-Werte in baujahrVon/baujahrBis konvertieren
+                vehicles = vehicles.map(v => {
+                    if (!v.baujahrVon && v.baujahr) {
+                        v.baujahrVon = v.baujahr;
+                        if (v.baujahr !== 'Älter') {
+                            v.baujahrBis = v.baujahr;
+                        }
+                    }
+                    return v;
+                });
+
                 // Dropdown leeren (außer Platzhalter)
                 dropdown.innerHTML = '<option value="">-- Fahrzeug auswählen --</option>';
 
-                // Fahrzeuge nach Datum sortieren (neueste zuerst)
-                vehicles.sort((a, b) => b.id - a.id);
+                // Fahrzeuge mit prozessStatus="bereit" zuerst anzeigen (PRIORISIERUNG)
+                vehicles.sort((a, b) => {
+                    const aBereit = (a.prozessStatus === 'bereit') ? 1 : 0;
+                    const bBereit = (b.prozessStatus === 'bereit') ? 1 : 0;
+                    if (aBereit !== bBereit) return bBereit - aBereit; // bereit zuerst
+                    return b.id - a.id; // dann nach Datum (neueste zuerst)
+                });
 
                 // Dropdown befüllen
                 vehicles.forEach(vehicle => {
                     const option = document.createElement('option');
                     option.value = vehicle.kennzeichen;
-                    option.textContent = `${vehicle.kennzeichen} - ${vehicle.marke} ${vehicle.modell} - ${vehicle.kundenname}`;
+                    const bereitBadge = (vehicle.prozessStatus === 'bereit') ? ' 🎯 [BEREIT ZUR ABNAHME]' : '';
+                    option.textContent = `${vehicle.kennzeichen} - ${vehicle.marke} ${vehicle.modell} - ${vehicle.kundenname}${bereitBadge}`;
                     dropdown.appendChild(option);
                 });
 

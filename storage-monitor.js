@@ -4,10 +4,11 @@
 
 class StorageMonitor {
   constructor() {
-    this.warningThreshold = 0.8; // 80% Warning
+    this.warningThreshold = 0.85; // 85% Warning
     this.criticalThreshold = 0.95; // 95% Critical
     this.checkInterval = 60000; // Check every minute
     this.intervalId = null;
+    this.warningShown = false; // Nur einmal warnen pro Session
   }
 
   // ================================================================
@@ -158,12 +159,26 @@ class StorageMonitor {
    * Warning Alert anzeigen
    */
   showWarningAlert(usage) {
-    const message = `⚠️ Speicher wird knapp!\n\n` +
+    // Nur einmal pro Session warnen
+    if (this.warningShown) return;
+
+    const message = `⚠️ SPEICHER WIRD KNAPP (${(usage.percentage * 100).toFixed(0)}%)!\n\n` +
+      `Verwendet: ${this.formatBytes(usage.used)} / ${this.formatBytes(usage.total)}\n` +
       `Verfügbar: ${this.formatBytes(usage.available)}\n\n` +
-      `Erwägen Sie, alte Einträge zu löschen.`;
+      `💡 EMPFEHLUNG:\n` +
+      `Löschen Sie alte abgeschlossene Fahrzeuge\n` +
+      `(älter als 6 Monate) in der Übersicht.\n\n` +
+      `Möchten Sie zur Übersicht gehen?`;
+
+    this.warningShown = true;
 
     if (typeof showToast === 'function') {
-      showToast(message, 'warning', 5000);
+      showToast(message, 'warning', 10000);
+    } else {
+      const proceed = confirm(message);
+      if (proceed && !window.location.href.includes('liste.html')) {
+        window.location.href = 'liste.html';
+      }
     }
   }
 

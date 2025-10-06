@@ -732,6 +732,17 @@
                 allVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
             }
 
+            // Migration: Alte baujahr-Werte in baujahrVon/baujahrBis konvertieren
+            allVehicles = allVehicles.map(v => {
+                if (!v.baujahrVon && v.baujahr) {
+                    v.baujahrVon = v.baujahr;
+                    if (v.baujahr !== 'Älter') {
+                        v.baujahrBis = v.baujahr;
+                    }
+                }
+                return v;
+            });
+
             updateStats();
             renderTable();
         }
@@ -1170,6 +1181,16 @@
                     return;
                 }
 
+                // Baujahr-Validierung: Von darf nicht > Bis sein
+                if (updatedData.baujahrVon && updatedData.baujahrBis) {
+                    const vonInt = parseInt(updatedData.baujahrVon);
+                    const bisInt = parseInt(updatedData.baujahrBis);
+                    if (!isNaN(vonInt) && !isNaN(bisInt) && vonInt > bisInt) {
+                        alert('❌ Baujahr "Von" darf nicht größer als "Bis" sein!');
+                        return;
+                    }
+                }
+
                 if (firebaseInitialized && firebaseApp) {
                     await firebaseApp.updateFahrzeug(id, updatedData);
                     console.log('✅ Fahrzeugdaten aktualisiert');
@@ -1497,7 +1518,17 @@
                     v.kundenId || '',
                     v.marke || '',
                     v.modell || '',
-                    v.baujahr || '',
+                    (() => {
+                        const baujahrVon = v.baujahrVon || v.baujahr;
+                        const baujahrBis = v.baujahrBis || v.baujahr;
+                        if (!baujahrVon && !baujahrBis) return '';
+                        if (baujahrVon && baujahrBis) {
+                            if (baujahrVon === baujahrBis) return baujahrVon;
+                            return `${baujahrVon} - ${baujahrBis}`;
+                        }
+                        if (baujahrVon) return `ab ${baujahrVon}`;
+                        return `bis ${baujahrBis}`;
+                    })(),
                     v.kmstand || '',
                     v.vin || '',
                     v.farbnummer || '',
