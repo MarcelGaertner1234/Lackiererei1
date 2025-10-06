@@ -49,7 +49,7 @@ class ErrorHandler {
    * User-freundliche Fehlermeldung anzeigen
    */
   showUserMessage(errorInfo) {
-    const userMessage = this.getUser Friendly Message(errorInfo);
+    const userMessage = this.getUserFriendlyMessage(errorInfo);
 
     // Toast Notification anzeigen (falls vorhanden)
     if (typeof showToast === 'function') {
