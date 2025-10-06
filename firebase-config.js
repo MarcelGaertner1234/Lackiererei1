@@ -116,7 +116,10 @@ async function getAllFahrzeugeFromFirestore() {
 
     const fahrzeuge = [];
     snapshot.forEach(doc => {
-      fahrzeuge.push(doc.data());
+      fahrzeuge.push({
+        id: doc.id,
+        ...doc.data()
+      });
     });
 
     // Sortierung im JavaScript (statt Firestore orderBy)
@@ -147,7 +150,11 @@ async function getFahrzeugByKennzeichen(kennzeichen) {
       return null;
     }
 
-    return snapshot.docs[0].data();
+    const doc = snapshot.docs[0];
+    return {
+      id: doc.id,
+      ...doc.data()
+    };
   } catch (error) {
     console.error("❌ Fehler beim Suchen:", error);
     return null;
@@ -224,7 +231,10 @@ function listenToFahrzeuge(callback) {
     .onSnapshot(snapshot => {
       const fahrzeuge = [];
       snapshot.forEach(doc => {
-        fahrzeuge.push(doc.data());
+        fahrzeuge.push({
+          id: doc.id,
+          ...doc.data()
+        });
       });
 
       // Sortierung im JavaScript
@@ -524,7 +534,10 @@ async function getAllKundenFromFirestore() {
 
     const kunden = [];
     snapshot.forEach(doc => {
-      kunden.push(doc.data());
+      kunden.push({
+        id: doc.id,
+        ...doc.data()
+      });
     });
 
     // Sortierung im JavaScript (alphabetisch nach Name)
@@ -552,7 +565,10 @@ async function getKundeById(kundeId) {
       return null;
     }
 
-    return doc.data();
+    return {
+      id: doc.id,
+      ...doc.data()
+    };
   } catch (error) {
     console.error("❌ Fehler beim Laden des Kunden:", error);
     return null;
@@ -575,7 +591,11 @@ async function getKundeByName(name) {
       return null;
     }
 
-    return snapshot.docs[0].data();
+    const doc = snapshot.docs[0];
+    return {
+      id: doc.id,
+      ...doc.data()
+    };
   } catch (error) {
     console.error("❌ Fehler beim Suchen des Kunden:", error);
     return null;
