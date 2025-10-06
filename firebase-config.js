@@ -111,19 +111,22 @@ async function getAllFahrzeugeFromFirestore() {
       throw new Error("Firestore nicht initialisiert");
     }
 
-    const snapshot = await db.collection('fahrzeuge')
-      .orderBy('id', 'desc')
-      .get();
+    // Ohne orderBy (kein Index erforderlich)
+    const snapshot = await db.collection('fahrzeuge').get();
 
     const fahrzeuge = [];
     snapshot.forEach(doc => {
       fahrzeuge.push(doc.data());
     });
 
+    // Sortierung im JavaScript (statt Firestore orderBy)
+    fahrzeuge.sort((a, b) => b.id - a.id);
+
     console.log("✅ Fahrzeuge geladen:", fahrzeuge.length);
     return fahrzeuge;
   } catch (error) {
-    console.error("❌ Fehler beim Laden:", error);
+    console.error("❌ Fehler beim Laden der Fahrzeuge:", error);
+    console.error("   Details:", error.message);
     return [];
   }
 }
@@ -216,13 +219,16 @@ function listenToFahrzeuge(callback) {
     return null;
   }
 
+  // Ohne orderBy (kein Index erforderlich)
   return db.collection('fahrzeuge')
-    .orderBy('id', 'desc')
     .onSnapshot(snapshot => {
       const fahrzeuge = [];
       snapshot.forEach(doc => {
         fahrzeuge.push(doc.data());
       });
+
+      // Sortierung im JavaScript
+      fahrzeuge.sort((a, b) => b.id - a.id);
 
       console.log("🔄 Fahrzeuge aktualisiert (Echtzeit):", fahrzeuge.length);
       callback(fahrzeuge);
@@ -481,6 +487,175 @@ function deleteAllPhotosFromLocalStorage() {
 }
 
 // ====================================================================
+// KUNDEN-VERWALTUNG
+// ====================================================================
+
+// Kunde in Firestore speichern
+async function saveKundeToFirestore(kundeData) {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    // Verwende ID oder generiere neue
+    const kundeId = (kundeData.id || 'kunde_' + Date.now()).toString();
+    kundeData.id = kundeId;
+
+    // Speichere in Firestore
+    await db.collection('kunden').doc(kundeId).set(kundeData);
+
+    console.log("✅ Kunde gespeichert:", kundeId);
+    return kundeId;
+  } catch (error) {
+    console.error("❌ Fehler beim Speichern des Kunden:", error);
+    throw error;
+  }
+}
+
+// Alle Kunden aus Firestore laden
+async function getAllKundenFromFirestore() {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    // Ohne orderBy (kein Index erforderlich)
+    const snapshot = await db.collection('kunden').get();
+
+    const kunden = [];
+    snapshot.forEach(doc => {
+      kunden.push(doc.data());
+    });
+
+    // Sortierung im JavaScript (alphabetisch nach Name)
+    kunden.sort((a, b) => a.name.localeCompare(b.name));
+
+    console.log("✅ Kunden geladen:", kunden.length);
+    return kunden;
+  } catch (error) {
+    console.error("❌ Fehler beim Laden der Kunden:", error);
+    console.error("   Details:", error.message);
+    return [];
+  }
+}
+
+// Kunde nach ID laden
+async function getKundeById(kundeId) {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    const doc = await db.collection('kunden').doc(String(kundeId)).get();
+
+    if (!doc.exists) {
+      return null;
+    }
+
+    return doc.data();
+  } catch (error) {
+    console.error("❌ Fehler beim Laden des Kunden:", error);
+    return null;
+  }
+}
+
+// Kunde nach Name suchen
+async function getKundeByName(name) {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    const snapshot = await db.collection('kunden')
+      .where('name', '==', name)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return null;
+    }
+
+    return snapshot.docs[0].data();
+  } catch (error) {
+    console.error("❌ Fehler beim Suchen des Kunden:", error);
+    return null;
+  }
+}
+
+// Kunde aktualisieren
+async function updateKundeInFirestore(kundeId, updates) {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    await db.collection('kunden').doc(String(kundeId)).update(updates);
+
+    console.log("✅ Kunde aktualisiert:", kundeId);
+    return true;
+  } catch (error) {
+    console.error("❌ Fehler beim Aktualisieren des Kunden:", error);
+    throw error;
+  }
+}
+
+// Kunde löschen
+async function deleteKundeFromFirestore(kundeId) {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    await db.collection('kunden').doc(String(kundeId)).delete();
+
+    console.log("✅ Kunde gelöscht:", kundeId);
+    return true;
+  } catch (error) {
+    console.error("❌ Fehler beim Löschen des Kunden:", error);
+    throw error;
+  }
+}
+
+// Kundenbesuch registrieren (automatisch bei neuer Annahme)
+async function registriereKundenbesuch(kundenname) {
+  try {
+    // Suche Kunde nach Name
+    let kunde = await getKundeByName(kundenname);
+
+    if (kunde) {
+      // Kunde existiert - aktualisiere Besuchszähler
+      const updates = {
+        anzahlBesuche: (kunde.anzahlBesuche || 0) + 1,
+        letzterBesuch: new Date().toISOString()
+      };
+
+      await updateKundeInFirestore(kunde.id, updates);
+      console.log(`✅ Besuch registriert für: ${kundenname} (${updates.anzahlBesuche}. Besuch)`);
+      return kunde.id;
+    } else {
+      // Neuer Kunde - erstelle Eintrag
+      const neuerKunde = {
+        id: 'kunde_' + Date.now(),
+        name: kundenname,
+        telefon: '',
+        email: '',
+        notizen: '',
+        erstbesuch: new Date().toISOString(),
+        letzterBesuch: new Date().toISOString(),
+        anzahlBesuche: 1
+      };
+
+      const kundeId = await saveKundeToFirestore(neuerKunde);
+      console.log(`✅ Neuer Kunde erstellt: ${kundenname}`);
+      return kundeId;
+    }
+  } catch (error) {
+    console.error("❌ Fehler beim Registrieren des Besuchs:", error);
+    return null;
+  }
+}
+
+// ====================================================================
 // EXPORT (für Verwendung in HTML-Dateien)
 // ====================================================================
 
@@ -490,7 +665,7 @@ window.firebaseApp = {
   db: () => db,
   storage: () => storage,
 
-  // Firestore Operationen
+  // Firestore Operationen (Fahrzeuge)
   saveFahrzeug: saveFahrzeugToFirestore,
   getAllFahrzeuge: getAllFahrzeugeFromFirestore,
   getFahrzeugByKennzeichen: getFahrzeugByKennzeichen,
@@ -498,6 +673,15 @@ window.firebaseApp = {
   deleteFahrzeug: deleteFahrzeugFromFirestore,
   deleteAllFahrzeuge: deleteAllFahrzeugeFromFirestore,
   listenToFahrzeuge: listenToFahrzeuge,
+
+  // Firestore Operationen (Kunden)
+  saveKunde: saveKundeToFirestore,
+  getAllKunden: getAllKundenFromFirestore,
+  getKundeById: getKundeById,
+  getKundeByName: getKundeByName,
+  updateKunde: updateKundeInFirestore,
+  deleteKunde: deleteKundeFromFirestore,
+  registriereKundenbesuch: registriereKundenbesuch,
 
   // Storage Operationen (falls Blaze Plan aktiviert)
   uploadPhoto: uploadPhotoToStorage,
