@@ -222,6 +222,15 @@
             background: #0b7dda;
         }
 
+        .btn-edit {
+            background: #ff9800;
+            color: white;
+        }
+
+        .btn-edit:hover {
+            background: #f57c00;
+        }
+
         .btn-delete {
             background: #f44336;
             color: white;
@@ -606,6 +615,7 @@
                         <td>
                             <div class="action-buttons">
                                 <button class="btn-small btn-view" onclick="viewDetails('${vehicle.id}')">👁️ Details</button>
+                                <button class="btn-small btn-edit" onclick="editVehicle('${vehicle.id}')">✏️ Bearbeiten</button>
                                 <button class="btn-small btn-delete" onclick="deleteVehicle('${vehicle.id}')">🗑️</button>
                             </div>
                         </td>
@@ -750,6 +760,65 @@
 
         function closeModal() {
             document.getElementById('detailModal').classList.remove('show');
+        }
+
+        // Fahrzeug bearbeiten
+        async function editVehicle(id) {
+            const vehicle = allVehicles.find(v => v.id == id);
+            if (!vehicle) {
+                alert('Fahrzeug nicht gefunden!');
+                return;
+            }
+
+            // Einfaches Prompt-basiertes Edit (kann später zu Modal erweitert werden)
+            const confirmed = confirm(
+                `Fahrzeug bearbeiten:\n\n` +
+                `${vehicle.kennzeichen} - ${vehicle.marke} ${vehicle.modell}\n` +
+                `Status: ${vehicle.status}\n\n` +
+                `Möchten Sie dieses Fahrzeug bearbeiten?`
+            );
+
+            if (!confirmed) return;
+
+            // Preis ändern
+            const neuerPreis = prompt('Vereinbarter Preis (€):', vehicle.vereinbarterPreis || '');
+            if (neuerPreis !== null) {
+                vehicle.vereinbarterPreis = parseFloat(neuerPreis) || null;
+            }
+
+            // Notizen ändern
+            const neueNotizen = prompt('Schadensbeschreibung / Notizen:', vehicle.notizen || '');
+            if (neueNotizen !== null) {
+                vehicle.notizen = neueNotizen;
+            }
+
+            // Status ändern (nur wenn aktuell abgeschlossen)
+            if (vehicle.status === 'abgeschlossen') {
+                const statusAendern = confirm('Status von "Abgeschlossen" zurück auf "Angenommen" setzen?');
+                if (statusAendern) {
+                    vehicle.status = 'angenommen';
+                }
+            }
+
+            // Speichern
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    await firebaseApp.updateFahrzeug(id, vehicle);
+                    console.log('✅ Fahrzeug aktualisiert');
+                } else {
+                    // LocalStorage Update
+                    const index = allVehicles.findIndex(v => v.id == id);
+                    if (index !== -1) {
+                        allVehicles[index] = vehicle;
+                        localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
+                    }
+                    loadData();
+                }
+                alert('✅ Fahrzeug erfolgreich aktualisiert!');
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                alert('❌ Fehler beim Speichern der Änderungen!');
+            }
         }
 
         // Fahrzeug löschen
@@ -1004,5 +1073,9 @@
         // Initial laden
         loadData();
     </script>
+
+    <!-- Error Handler & Storage Monitor -->
+    <script src="error-handler.js"></script>
+    <script src="storage-monitor.js"></script>
 </body>
 </html>
