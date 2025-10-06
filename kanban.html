@@ -260,6 +260,63 @@
             50% { opacity: 0.7; }
         }
 
+        /* DRINGLICHKEITS-BADGES */
+        .dringlichkeit-badge {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        /* Überfällig - Dunkelrot */
+        .dringlichkeit-badge.ueberfaellig {
+            background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
+            color: white;
+            animation: pulse-dringend 1s ease-in-out infinite;
+        }
+
+        .kanban-card.ueberfaellig-card {
+            border-left: 5px solid #c62828;
+            box-shadow: 0 4px 12px rgba(198, 40, 40, 0.3);
+        }
+
+        /* Dringend (0-1 Tag) - Rot mit Pulsieren */
+        .dringlichkeit-badge.dringend {
+            background: linear-gradient(135deg, #d32f2f 0%, #f44336 100%);
+            color: white;
+            animation: pulse-dringend 2s ease-in-out infinite;
+        }
+
+        .kanban-card.dringend-card {
+            border-left: 5px solid #d32f2f;
+            box-shadow: 0 3px 10px rgba(211, 47, 47, 0.3);
+        }
+
+        @keyframes pulse-dringend {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.85;
+                transform: scale(1.02);
+            }
+        }
+
+        /* Diese Woche (2-7 Tage) - Orange */
+        .dringlichkeit-badge.diese-woche {
+            background: linear-gradient(135deg, #ff9800 0%, #ffa726 100%);
+            color: white;
+        }
+
+        /* Geparkt (>7 Tage) - Grau */
+        .dringlichkeit-badge.geparkt {
+            background: linear-gradient(135deg, #757575 0%, #9e9e9e 100%);
+            color: white;
+        }
+
         .bereit-button {
             background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);
             color: white;
@@ -644,7 +701,23 @@
                 const countEl = document.getElementById(`count-${status}`);
 
                 // Fahrzeuge für diese Spalte filtern
-                const fahrzeuge = allFahrzeuge.filter(f => (f.prozessStatus || 'angenommen') === status);
+                let fahrzeuge = allFahrzeuge.filter(f => (f.prozessStatus || 'angenommen') === status);
+
+                // SORTIERUNG: Bei "angenommen" nach Dringlichkeit sortieren
+                if (status === 'angenommen') {
+                    fahrzeuge.sort((a, b) => {
+                        const daysA = calculateDaysUntilAbnahme(a);
+                        const daysB = calculateDaysUntilAbnahme(b);
+
+                        // Fahrzeuge OHNE Termin ganz nach unten
+                        if (daysA === null && daysB === null) return 0;
+                        if (daysA === null) return 1;
+                        if (daysB === null) return -1;
+
+                        // Sonst: dringendste (kleinste Tage) zuerst
+                        return daysA - daysB;
+                    });
+                }
 
                 // Count aktualisieren
                 countEl.textContent = fahrzeuge.length;
@@ -659,6 +732,22 @@
                     });
                 }
             });
+        }
+
+        // Berechnet Tage bis zur Abnahme
+        function calculateDaysUntilAbnahme(fahrzeug) {
+            if (!fahrzeug.geplantesAbnahmeDatum) return null;
+
+            const heute = new Date();
+            heute.setHours(0, 0, 0, 0);
+
+            const abnahme = new Date(fahrzeug.geplantesAbnahmeDatum);
+            abnahme.setHours(0, 0, 0, 0);
+
+            const diffTime = abnahme - heute;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            return diffDays;
         }
 
         // Kanban-Karte erstellen
@@ -690,8 +779,55 @@
                    </button>`
                 : '';
 
+            // DRINGLICHKEITS-BADGE für "angenommen"-Fahrzeuge
+            let dringlichkeitBadge = '';
+            const isAngenommen = (fahrzeug.prozessStatus === 'angenommen' || !fahrzeug.prozessStatus);
+
+            if (isAngenommen && fahrzeug.geplantesAbnahmeDatum) {
+                const tage = calculateDaysUntilAbnahme(fahrzeug);
+
+                if (tage !== null) {
+                    let badgeClass = '';
+                    let badgeIcon = '';
+                    let badgeText = '';
+
+                    if (tage < 0) {
+                        // Überfällig!
+                        badgeClass = 'dringlichkeit-badge ueberfaellig';
+                        badgeIcon = '❌';
+                        badgeText = `ÜBERFÄLLIG! (${Math.abs(tage)} Tage)`;
+                        card.classList.add('ueberfaellig-card');
+                    } else if (tage === 0) {
+                        // HEUTE!
+                        badgeClass = 'dringlichkeit-badge dringend';
+                        badgeIcon = '🚨';
+                        badgeText = 'HEUTE!';
+                        card.classList.add('dringend-card');
+                    } else if (tage === 1) {
+                        // MORGEN!
+                        badgeClass = 'dringlichkeit-badge dringend';
+                        badgeIcon = '🚨';
+                        badgeText = 'MORGEN!';
+                        card.classList.add('dringend-card');
+                    } else if (tage <= 7) {
+                        // Diese Woche
+                        badgeClass = 'dringlichkeit-badge diese-woche';
+                        badgeIcon = '⏰';
+                        badgeText = `In ${tage} Tagen`;
+                    } else {
+                        // Geparkt
+                        badgeClass = 'dringlichkeit-badge geparkt';
+                        badgeIcon = '📦';
+                        badgeText = `Noch ${tage} Tage`;
+                    }
+
+                    dringlichkeitBadge = `<div class="${badgeClass}">${badgeIcon} ${badgeText}</div>`;
+                }
+            }
+
             card.innerHTML = `
                 ${bereitBadge}
+                ${dringlichkeitBadge}
                 <div class="card-kennzeichen">${fahrzeug.kennzeichen}</div>
                 <div class="card-info">👤 <span class="card-kunde">${fahrzeug.kundenname}</span></div>
                 <div class="card-info">🚗 ${fahrzeug.marke} ${fahrzeug.modell}</div>
