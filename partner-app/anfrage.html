@@ -385,38 +385,39 @@
                 <div class="photo-preview" id="photoPreview"></div>
             </div>
 
-            <!-- Fahrzeugdaten -->
-            <div class="section-title">🚗 Fahrzeugdaten</div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="kennzeichen">Kennzeichen *</label>
-                    <input type="text" id="kennzeichen" placeholder="z.B. MOS-AB 123" required>
-                </div>
-                <div class="form-group">
-                    <label for="marke">Marke *</label>
-                    <select id="marke" required>
-                        <option value="">-- Bitte wählen --</option>
-                        <option value="Audi">Audi</option>
-                        <option value="BMW">BMW</option>
-                        <option value="Mercedes-Benz">Mercedes-Benz</option>
-                        <option value="Volkswagen">Volkswagen</option>
-                        <option value="Opel">Opel</option>
-                        <option value="Ford">Ford</option>
-                        <option value="Renault">Renault</option>
-                        <option value="Peugeot">Peugeot</option>
-                        <option value="Sonstige">Sonstige</option>
-                    </select>
-                </div>
-            </div>
+            <!-- Fahrzeug-Referenz -->
+            <div class="section-title">🚗 Fahrzeug-Referenz *</div>
+            <div class="form-group">
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Geben Sie das Kennzeichen an <strong>oder</strong> (falls nicht angemeldet) Ihre interne Auftragsnummer.
+                </p>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="modell">Modell *</label>
-                    <input type="text" id="modell" placeholder="z.B. Golf 8" required>
+                <div class="identification-toggle">
+                    <label class="toggle-option selected" onclick="selectFahrzeugReferenz('kennzeichen')">
+                        <input type="radio" name="referenzType" value="kennzeichen" checked>
+                        <div class="icon">🚗</div>
+                        <div class="label">Kennzeichen</div>
+                    </label>
+                    <label class="toggle-option" onclick="selectFahrzeugReferenz('auftrag')">
+                        <input type="radio" name="referenzType" value="auftrag">
+                        <div class="icon">📋</div>
+                        <div class="label">Auftragsnummer</div>
+                    </label>
                 </div>
-                <div class="form-group">
-                    <label for="baujahr">Baujahr</label>
-                    <input type="number" id="baujahr" placeholder="z.B. 2020" min="1990" max="2025">
+
+                <!-- Kennzeichen Eingabe -->
+                <div id="kennzeichenSection" class="identification-section">
+                    <label for="kennzeichen">Kennzeichen</label>
+                    <input type="text" id="kennzeichen" placeholder="z.B. MOS-AB 123" style="text-transform: uppercase;">
+                </div>
+
+                <!-- Auftragsnummer Eingabe -->
+                <div id="auftragSection" class="identification-section" style="display: none;">
+                    <label for="auftragsnummer">Auftragsnummer</label>
+                    <input type="text" id="auftragsnummer" placeholder="z.B. AH-2024-0123">
+                    <small style="color: #999; font-size: 12px; margin-top: 5px; display: block;">
+                        Ihre interne Auftragsnummer für nicht-angemeldete Fahrzeuge
+                    </small>
                 </div>
             </div>
 
@@ -568,11 +569,38 @@
             element.classList.add('selected');
         }
 
+        // Fahrzeug-Referenz Toggle
+        function selectFahrzeugReferenz(type) {
+            // Toggle options - nur innerhalb der Referenz-Gruppe
+            const referenzToggles = document.querySelectorAll('input[name="referenzType"]');
+            referenzToggles.forEach(toggle => {
+                toggle.parentElement.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+
+            // Show/hide sections
+            const kennzeichenSection = document.getElementById('kennzeichenSection');
+            const auftragSection = document.getElementById('auftragSection');
+
+            if (type === 'kennzeichen') {
+                kennzeichenSection.style.display = 'block';
+                auftragSection.style.display = 'none';
+                // Clear Auftragsnummer
+                document.getElementById('auftragsnummer').value = '';
+            } else {
+                kennzeichenSection.style.display = 'none';
+                auftragSection.style.display = 'block';
+                // Clear Kennzeichen
+                document.getElementById('kennzeichen').value = '';
+            }
+        }
+
         // Fahrzeugidentifikation Toggle
         function selectIdentification(type) {
-            // Toggle options
-            document.querySelectorAll('.toggle-option').forEach(opt => {
-                opt.classList.remove('selected');
+            // Toggle options - nur innerhalb der Identifikation-Gruppe
+            const identToggles = document.querySelectorAll('input[name="identificationType"]');
+            identToggles.forEach(toggle => {
+                toggle.parentElement.classList.remove('selected');
             });
             event.currentTarget.classList.add('selected');
 
@@ -648,6 +676,19 @@
                     throw new Error('Bitte fügen Sie mindestens ein Foto hinzu');
                 }
 
+                // Validierung: Kennzeichen ODER Auftragsnummer muss vorhanden sein
+                const kennzeichen = document.getElementById('kennzeichen').value.trim();
+                const auftragsnummer = document.getElementById('auftragsnummer').value.trim();
+                const referenzType = document.querySelector('input[name="referenzType"]:checked').value;
+
+                if (referenzType === 'kennzeichen' && !kennzeichen) {
+                    throw new Error('Bitte geben Sie das Kennzeichen ein');
+                }
+
+                if (referenzType === 'auftrag' && !auftragsnummer) {
+                    throw new Error('Bitte geben Sie Ihre Auftragsnummer ein');
+                }
+
                 // Validierung: VIN ODER Fahrzeugschein muss vorhanden sein
                 const vin = document.getElementById('vin').value.trim();
                 const identificationType = document.querySelector('input[name="identificationType"]:checked').value;
@@ -674,11 +715,10 @@
                     timestamp: timestamp,
                     erstelltAm: timestamp,
 
-                    // Fahrzeugdaten
-                    kennzeichen: document.getElementById('kennzeichen').value,
-                    marke: document.getElementById('marke').value,
-                    modell: document.getElementById('modell').value,
-                    baujahr: document.getElementById('baujahr').value || null,
+                    // Fahrzeug-Referenz
+                    referenzType: referenzType,
+                    kennzeichen: referenzType === 'kennzeichen' ? kennzeichen.toUpperCase() : null,
+                    auftragsnummer: referenzType === 'auftrag' ? auftragsnummer : null,
 
                     // Fahrzeugidentifikation
                     identificationType: identificationType,
