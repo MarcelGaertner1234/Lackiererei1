@@ -548,21 +548,12 @@
                 </div>
             </div>
 
-            <!-- Dringlichkeit -->
-            <div class="section-title">⏱️ Dringlichkeit</div>
-            <div class="dringlichkeit-group">
-                <label class="dringlichkeit-option selected" onclick="selectDringlichkeit(this, 'normal')">
-                    <input type="radio" name="dringlichkeit" value="normal" checked>
-                    <div class="icon">📅</div>
-                    <div class="label">Normal</div>
-                    <small>3-5 Werktage</small>
-                </label>
-                <label class="dringlichkeit-option" onclick="selectDringlichkeit(this, 'eilig')">
-                    <input type="radio" name="dringlichkeit" value="eilig">
-                    <div class="icon">⚡</div>
-                    <div class="label">Eilig</div>
-                    <small>1-2 Werktage</small>
-                </label>
+            <!-- Gewünschter Anliefertermin -->
+            <div class="section-title">📅 Gewünschter Termin (Fahrzeug-Anlieferung)</div>
+            <div id="terminvorschlaege" class="dringlichkeit-group">
+                <div style="text-align: center; padding: 20px; color: #999;">
+                    ⏳ Lade verfügbare Termine...
+                </div>
             </div>
 
             <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 30px;" id="submitBtn">
@@ -586,11 +577,139 @@
         let fahrzeugscheinPhotos = [];
         let partner = null;
 
+        // Smarte Terminvorschläge basierend auf Kalenderauslastung
+        async function ladeSmarteTe rminvorschlaege() {
+            const terminDiv = document.getElementById('terminvorschlaege');
+
+            if (!db) {
+                console.error('Firebase nicht initialisiert');
+                terminDiv.innerHTML = '<div style="color: red;">Fehler beim Laden der Termine</div>';
+                return;
+            }
+
+            try {
+                // Nächste 14 Tage laden und Auslastung berechnen
+                const heute = new Date();
+                heute.setHours(0, 0, 0, 0);
+                const terminOptionen = [];
+
+                console.log('📅 Lade Terminauslastung für nächste 14 Tage...');
+
+                for (let i = 0; i < 14; i++) {
+                    const datum = new Date(heute);
+                    datum.setDate(heute.getDate() + i);
+                    const dateStr = datum.toISOString().split('T')[0];
+
+                    // Termine für diesen Tag zählen (Annahme + Abnahme)
+                    const annahmeSnapshot = await db.collection('fahrzeuge')
+                        .where('annahmeDatum', '==', dateStr)
+                        .get();
+                    const abnahmeSnapshot = await db.collection('fahrzeuge')
+                        .where('geplantesAbnahmeDatum', '==', dateStr)
+                        .get();
+
+                    const totalTermine = annahmeSnapshot.size + abnahmeSnapshot.size;
+
+                    // Auslastung kategorisieren
+                    let auslastung;
+                    if (totalTermine <= 2) {
+                        auslastung = 'frei';
+                    } else if (totalTermine <= 4) {
+                        auslastung = 'normal';
+                    } else {
+                        auslastung = 'hoch';
+                    }
+
+                    terminOptionen.push({
+                        datum: datum,
+                        dateStr: dateStr,
+                        anzahlTermine: totalTermine,
+                        auslastung: auslastung,
+                        tageVonHeute: i
+                    });
+                }
+
+                console.log('✅ Terminoptionen geladen:', terminOptionen.length);
+
+                // 4 beste Termine auswählen
+                // Option 1 (EXPRESS): Nächster freier Tag (ab morgen) oder Tag +1
+                const option1 = terminOptionen.find(t => t.tageVonHeute >= 1 && t.auslastung === 'frei') || terminOptionen[1];
+
+                // Option 2 (SCHNELL): In 2-3 Tagen, bevorzugt frei
+                const option2 = terminOptionen.find(t => t.tageVonHeute >= 2 && t.tageVonHeute <= 3 && t.auslastung === 'frei')
+                             || terminOptionen.find(t => t.tageVonHeute >= 2 && t.tageVonHeute <= 3)
+                             || terminOptionen[2];
+
+                // Option 3 (NORMAL): In 4-6 Tagen, nicht hoch ausgelastet
+                const option3 = terminOptionen.find(t => t.tageVonHeute >= 4 && t.tageVonHeute <= 6 && t.auslastung !== 'hoch')
+                             || terminOptionen.find(t => t.tageVonHeute >= 4 && t.tageVonHeute <= 6)
+                             || terminOptionen[5];
+
+                // Option 4 (ENTSPANNT): In 7-10 Tagen, beliebig
+                const option4 = terminOptionen.find(t => t.tageVonHeute >= 7 && t.tageVonHeute <= 10)
+                             || terminOptionen[8];
+
+                const selectedTermine = [option1, option2, option3, option4];
+
+                console.log('🎯 Ausgewählte Termine:', selectedTermine.map(t => `${t.dateStr} (${t.auslastung})`));
+
+                // UI generieren
+                const icons = ['⚡', '🚀', '📅', '🌴'];
+                const labels = ['EXPRESS', 'SCHNELL', 'NORMAL', 'ENTSPANNT'];
+                const colors = ['#d32f2f', '#ff6f00', '#1976d2', '#388e3c'];
+
+                terminDiv.innerHTML = selectedTermine.map((t, idx) => {
+                    const auslastungIcon = t.auslastung === 'frei' ? '🟢' : t.auslastung === 'normal' ? '🟡' : '🔴';
+                    const auslastungText = t.auslastung === 'frei' ? 'Freie Kapazität' : t.auslastung === 'normal' ? 'Normale Auslastung' : 'Ausgelastet';
+
+                    const wochentag = t.datum.toLocaleDateString('de-DE', { weekday: 'short' });
+                    const tag = t.datum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+
+                    return `
+                        <label class="dringlichkeit-option ${idx === 0 ? 'selected' : ''}" onclick="selectTermin(this, '${t.dateStr}', '${labels[idx]}')">
+                            <input type="radio" name="anliefertermin" value="${t.dateStr}" ${idx === 0 ? 'checked' : ''}>
+                            <div class="icon" style="font-size: 28px;">${icons[idx]}</div>
+                            <div class="label" style="color: ${colors[idx]};">${labels[idx]}</div>
+                            <div style="font-size: 14px; font-weight: 600; margin: 5px 0; color: #333;">
+                                ${wochentag}, ${tag}
+                            </div>
+                            <small style="display: block;">${auslastungIcon} ${auslastungText}</small>
+                            <small style="display: block; color: #999; margin-top: 3px;">
+                                ${t.tageVonHeute === 0 ? 'Heute' : t.tageVonHeute === 1 ? 'Morgen' : `in ${t.tageVonHeute} Tagen`}
+                            </small>
+                        </label>
+                    `;
+                }).join('');
+
+                console.log('✅ Terminvorschläge UI generiert');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Terminvorschläge:', error);
+                terminDiv.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #999;">
+                        <div style="font-size: 40px; margin-bottom: 10px;">⚠️</div>
+                        <div>Terminvorschläge konnten nicht geladen werden.</div>
+                        <div style="font-size: 12px; margin-top: 10px;">Bitte laden Sie die Seite neu.</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Termin auswählen
+        function selectTermin(element, dateStr, label) {
+            document.querySelectorAll('.dringlichkeit-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            console.log(`📅 Termin gewählt: ${label} - ${dateStr}`);
+        }
+
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
             checkLogin();
             setupPhotoUpload();
             setupFahrzeugscheinUpload();
+            await ladeSmarteTe rminvorschlaege();
         });
 
         function checkLogin() {
@@ -638,13 +757,6 @@
         function removePhoto(index) {
             photos.splice(index, 1);
             displayPhotos();
-        }
-
-        function selectDringlichkeit(element, value) {
-            document.querySelectorAll('.dringlichkeit-option').forEach(opt => {
-                opt.classList.remove('selected');
-            });
-            element.classList.add('selected');
         }
 
         // Ersatzteil-Optionen Toggle (Radio Buttons - Single Choice)
@@ -824,7 +936,8 @@
 
                     // Anfrage
                     schadenBeschreibung: document.getElementById('schadenBeschreibung').value,
-                    dringlichkeit: document.querySelector('input[name="dringlichkeit"]:checked').value,
+                    anliefertermin: document.querySelector('input[name="anliefertermin"]:checked')?.value || null,
+                    dringlichkeitLabel: document.querySelector('input[name="anliefertermin"]:checked')?.parentElement.querySelector('.label')?.textContent || 'NORMAL',
                     fotos: photos,
 
                     // Status
