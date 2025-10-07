@@ -151,6 +151,95 @@
             text-align: center;
         }
 
+        /* Statistics Cards */
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .stat-card.blue {
+            background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%);
+        }
+
+        .stat-card.orange {
+            background: linear-gradient(135deg, #e65100 0%, #ff6f00 100%);
+        }
+
+        .stat-card.green {
+            background: linear-gradient(135deg, #2e7d32 0%, #66bb6a 100%);
+        }
+
+        .stat-card.yellow {
+            background: linear-gradient(135deg, #ffc107 0%, #ffd54f 100%);
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            opacity: 0.9;
+        }
+
+        /* Filter Buttons */
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-btn:hover {
+            border-color: #003366;
+            transform: translateY(-1px);
+        }
+
+        .filter-btn.active {
+            background: #003366;
+            color: white;
+            border-color: #003366;
+        }
+
+        .filter-count {
+            background: rgba(0,0,0,0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .filter-btn.active .filter-count {
+            background: rgba(255,255,255,0.3);
+        }
+
         /* Legend */
         .legend {
             display: flex;
@@ -174,6 +263,49 @@
             width: 20px;
             height: 20px;
             border-radius: 5px;
+        }
+
+        /* Overdue Badge */
+        .overdue-badge {
+            background: #ff1744;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .event-overdue {
+            border-left-color: #ff1744 !important;
+            background: #ffebee !important;
+        }
+
+        /* Capacity Warning */
+        .capacity-warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .capacity-warning.critical {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+
+        .capacity-warning-icon {
+            font-size: 24px;
+        }
+
+        .capacity-warning-text {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 600;
         }
 
         /* ========== TAGES-ANSICHT ========== */
@@ -700,6 +832,33 @@
             <button class="calendar-nav-btn" onclick="navigate('next')">Weiter ▶</button>
         </div>
 
+        <!-- Statistics Dashboard -->
+        <div class="stats-container" id="statsContainer">
+            <!-- Stats werden dynamisch generiert -->
+        </div>
+
+        <!-- Capacity Warning -->
+        <div id="capacityWarning"></div>
+
+        <!-- Filter Buttons -->
+        <div class="filter-buttons">
+            <button class="filter-btn active" onclick="toggleFilter('all')" data-filter="all">
+                Alle <span class="filter-count" id="count-all">0</span>
+            </button>
+            <button class="filter-btn" onclick="toggleFilter('annahme')" data-filter="annahme">
+                🔵 Annahmen <span class="filter-count" id="count-annahme">0</span>
+            </button>
+            <button class="filter-btn" onclick="toggleFilter('geplant')" data-filter="geplant">
+                🟡 Geplant <span class="filter-count" id="count-geplant">0</span>
+            </button>
+            <button class="filter-btn" onclick="toggleFilter('abgeschlossen')" data-filter="abgeschlossen">
+                🟢 Erledigt <span class="filter-count" id="count-abgeschlossen">0</span>
+            </button>
+            <button class="filter-btn" onclick="toggleFilter('overdue')" data-filter="overdue">
+                🔴 Überfällig <span class="filter-count" id="count-overdue">0</span>
+            </button>
+        </div>
+
         <!-- Legend -->
         <div class="legend">
             <div class="legend-item">
@@ -753,6 +912,8 @@
         let currentView = 'month'; // 'day', 'week', 'month'
         let firebaseApp = null;
         let firebaseInitialized = false;
+        let activeFilters = ['all']; // Filter-State
+        let maxCapacityPerDay = 8; // Konfigurierbar
 
         // Firebase initialisieren
         window.addEventListener('load', async function() {
@@ -793,6 +954,166 @@
             }
 
             renderCalendar();
+            renderStatistics();
+            updateFilterCounts();
+        }
+
+        // Filter Toggle
+        function toggleFilter(filterType) {
+            if (filterType === 'all') {
+                activeFilters = ['all'];
+            } else {
+                if (activeFilters.includes('all')) {
+                    activeFilters = [];
+                }
+
+                const index = activeFilters.indexOf(filterType);
+                if (index > -1) {
+                    activeFilters.splice(index, 1);
+                } else {
+                    activeFilters.push(filterType);
+                }
+
+                if (activeFilters.length === 0) {
+                    activeFilters = ['all'];
+                }
+            }
+
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                const filter = btn.getAttribute('data-filter');
+                if (activeFilters.includes(filter) || (activeFilters.includes('all') && filter === 'all')) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            renderCalendar();
+        }
+
+        // Update Filter Counts
+        function updateFilterCounts() {
+            const counts = { all: 0, annahme: 0, geplant: 0, abgeschlossen: 0, overdue: 0 };
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            allVehicles.forEach(vehicle => {
+                if (vehicle.datum) {
+                    counts.annahme++;
+                    counts.all++;
+                }
+
+                if (vehicle.geplantesAbnahmeDatum && vehicle.status === 'angenommen') {
+                    counts.geplant++;
+                    const geplantDate = new Date(vehicle.geplantesAbnahmeDatum);
+                    geplantDate.setHours(0, 0, 0, 0);
+                    if (geplantDate < today) counts.overdue++;
+                }
+
+                if (vehicle.status === 'abgeschlossen' && vehicle.abnahmeDatum) {
+                    counts.abgeschlossen++;
+                }
+            });
+
+            Object.keys(counts).forEach(key => {
+                const el = document.getElementById(`count-${key}`);
+                if (el) el.textContent = counts[key];
+            });
+        }
+
+        // Render Statistics
+        function renderStatistics() {
+            const container = document.getElementById('statsContainer');
+            if (!container) return;
+
+            let events = [];
+            if (currentView === 'day') {
+                events = getEventsForDateUnfiltered(formatDate(currentDate));
+            } else if (currentView === 'week') {
+                const start = new Date(currentDate);
+                start.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(start);
+                    day.setDate(start.getDate() + i);
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(day)));
+                }
+            } else {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const lastDay = new Date(year, month + 1, 0);
+                for (let day = 1; day <= lastDay.getDate(); day++) {
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(new Date(year, month, day))));
+                }
+            }
+
+            const stats = {
+                annahme: events.filter(e => e.type === 'annahme').length,
+                geplant: events.filter(e => e.type === 'geplant').length,
+                abgeschlossen: events.filter(e => e.type === 'abgeschlossen').length,
+                revenue: events.reduce((sum, e) => sum + (parseFloat(e.vehicle.vereinbarterPreis) || 0), 0)
+            };
+
+            const label = currentView === 'day' ? 'Heute' : currentView === 'week' ? 'Diese Woche' : 'Dieser Monat';
+
+            container.innerHTML = `
+                <div class="stat-card blue">
+                    <div class="stat-number">${stats.annahme}</div>
+                    <div class="stat-label">📋 Annahmen ${label}</div>
+                </div>
+                <div class="stat-card orange">
+                    <div class="stat-number">${stats.geplant}</div>
+                    <div class="stat-label">⏰ Geplant ${label}</div>
+                </div>
+                <div class="stat-card green">
+                    <div class="stat-number">${stats.abgeschlossen}</div>
+                    <div class="stat-label">✅ Abgeschlossen ${label}</div>
+                </div>
+                <div class="stat-card yellow">
+                    <div class="stat-number">€ ${stats.revenue.toFixed(0)}</div>
+                    <div class="stat-label">💰 Umsatz ${label}</div>
+                </div>
+            `;
+
+            if (currentView === 'day') {
+                const container2 = document.getElementById('capacityWarning');
+                const eventCount = events.length;
+                const pct = (eventCount / maxCapacityPerDay) * 100;
+
+                if (pct >= 100) {
+                    container2.innerHTML = `<div class="capacity-warning critical"><div class="capacity-warning-icon">🔴</div><div class="capacity-warning-text">Kapazität erreicht! ${eventCount}/${maxCapacityPerDay} Termine</div></div>`;
+                } else if (pct >= 80) {
+                    container2.innerHTML = `<div class="capacity-warning"><div class="capacity-warning-icon">⚠️</div><div class="capacity-warning-text">Tag fast ausgelastet: ${eventCount}/${maxCapacityPerDay} Termine (${pct.toFixed(0)}%)</div></div>`;
+                } else {
+                    container2.innerHTML = '';
+                }
+            }
+        }
+
+        function getEventsForDateUnfiltered(dateString) {
+            const events = [];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            allVehicles.forEach(vehicle => {
+                if (vehicle.datum && vehicle.datum === dateString) {
+                    events.push({ vehicle, type: 'annahme', typeName: 'Annahme', time: vehicle.zeit || '08:00', overdue: false });
+                }
+
+                if (vehicle.geplantesAbnahmeDatum) {
+                    const geplantDate = new Date(vehicle.geplantesAbnahmeDatum);
+                    if (formatDate(geplantDate) === dateString) {
+                        geplantDate.setHours(0, 0, 0, 0);
+                        const overdue = geplantDate < today && vehicle.status === 'angenommen';
+                        events.push({ vehicle, type: 'geplant', typeName: 'Geplante Abnahme', time: '10:00', overdue });
+                    }
+                }
+
+                if (vehicle.abnahmeDatum && vehicle.abnahmeDatum === dateString) {
+                    events.push({ vehicle, type: 'abgeschlossen', typeName: 'Abgeschlossen', time: vehicle.abnahmeZeit || '16:00', overdue: false });
+                }
+            });
+
+            return events.sort((a, b) => a.time.localeCompare(b.time));
         }
 
         // View wechseln
@@ -813,6 +1134,7 @@
             document.getElementById(newView + 'View').classList.add('active');
 
             renderCalendar();
+            renderStatistics();
         }
 
         // Navigation
@@ -895,11 +1217,15 @@
 
             events.forEach(event => {
                 const time = event.time || '00:00';
+                const overdueClass = event.overdue ? 'event-overdue' : '';
+                const overdueBadge = event.overdue ? '<span class="overdue-badge">ÜBERFÄLLIG</span>' : '';
+
                 html += `
-                    <div class="day-event-card ${event.type}" onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
+                    <div class="day-event-card ${event.type} ${overdueClass}" onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
                         <div class="day-event-header">
                             <div class="day-event-title">
                                 ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
+                                ${overdueBadge}
                             </div>
                             <div class="day-event-time">${time}</div>
                         </div>
@@ -939,13 +1265,16 @@
                 const time = event.time || '08:00';
                 const [hours, minutes] = time.split(':').map(Number);
                 const topPosition = (hours * 60 + minutes);
+                const overdueClass = event.overdue ? 'event-overdue' : '';
+                const overdueBadge = event.overdue ? '<span class="overdue-badge">ÜBERFÄLLIG</span>' : '';
 
                 html += `
-                    <div class="timeline-event ${event.type}"
+                    <div class="timeline-event ${event.type} ${overdueClass}"
                          style="top: ${topPosition}px; height: 50px;"
                          onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
                         <div class="timeline-event-title">
                             ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
+                            ${overdueBadge}
                         </div>
                         <div class="timeline-event-details">
                             ${event.typeName} • ${event.vehicle.kundenname}
@@ -997,9 +1326,10 @@
                 `;
 
                 events.slice(0, 3).forEach(event => {
+                    const overdueClass = event.overdue ? 'event-overdue' : '';
                     html += `
-                        <div class="week-event-badge ${event.type}">
-                            ${event.vehicle.kennzeichen}
+                        <div class="week-event-badge ${event.type} ${overdueClass}">
+                            ${event.vehicle.kennzeichen}${event.overdue ? ' ⚠️' : ''}
                         </div>
                     `;
                 });
@@ -1062,7 +1392,8 @@
 
                 if (events.length > 0) {
                     events.slice(0, 3).forEach(event => {
-                        html += `<span class="month-event-dot ${event.type}"></span>`;
+                        const overdueClass = event.overdue ? 'event-overdue' : '';
+                        html += `<span class="month-event-dot ${event.type} ${overdueClass}"></span>`;
                     });
 
                     if (events.length > 3) {
@@ -1094,39 +1425,65 @@
 
         function getEventsForDate(dateString) {
             const events = [];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
 
             allVehicles.forEach(vehicle => {
                 // Annahme
                 if (vehicle.datum && vehicle.datum === dateString) {
-                    events.push({
+                    const event = {
                         vehicle: vehicle,
                         type: 'annahme',
                         typeName: 'Annahme',
-                        time: vehicle.zeit || '08:00'
-                    });
+                        time: vehicle.zeit || '08:00',
+                        overdue: false
+                    };
+
+                    // Filter anwenden
+                    if (activeFilters.includes('all') || activeFilters.includes('annahme')) {
+                        events.push(event);
+                    }
                 }
 
                 // Geplante Abnahme
                 if (vehicle.geplantesAbnahmeDatum) {
                     const geplantDate = new Date(vehicle.geplantesAbnahmeDatum);
                     if (formatDate(geplantDate) === dateString) {
-                        events.push({
+                        const geplantDateCheck = new Date(vehicle.geplantesAbnahmeDatum);
+                        geplantDateCheck.setHours(0, 0, 0, 0);
+                        const isOverdue = geplantDateCheck < today && vehicle.status === 'angenommen';
+
+                        const event = {
                             vehicle: vehicle,
                             type: 'geplant',
                             typeName: 'Geplante Abnahme',
-                            time: '10:00'
-                        });
+                            time: '10:00',
+                            overdue: isOverdue
+                        };
+
+                        // Filter anwenden
+                        if (activeFilters.includes('all') || activeFilters.includes('geplant')) {
+                            events.push(event);
+                        } else if (activeFilters.includes('overdue') && isOverdue) {
+                            events.push(event);
+                        }
                     }
                 }
 
                 // Abnahme
                 if (vehicle.abnahmeDatum && vehicle.abnahmeDatum === dateString) {
-                    events.push({
+                    const event = {
                         vehicle: vehicle,
                         type: 'abgeschlossen',
                         typeName: 'Abgeschlossen',
-                        time: vehicle.abnahmeZeit || '16:00'
-                    });
+                        time: vehicle.abnahmeZeit || '16:00',
+                        overdue: false
+                    };
+
+                    // Filter anwenden
+                    if (activeFilters.includes('all') || activeFilters.includes('abgeschlossen')) {
+                        events.push(event);
+                    }
                 }
             });
 
