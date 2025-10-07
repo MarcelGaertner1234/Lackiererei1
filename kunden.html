@@ -741,9 +741,21 @@
                 console.warn('⚠️ Firebase nicht verfügbar, verwende LocalStorage:', error);
             }
 
-            await loadKunden();
-            await loadFahrzeuge();
-            updateStats();
+            // ✅ FIX: Parallel laden statt sequenziell für bessere Performance
+            try {
+                await Promise.all([
+                    loadKunden(),
+                    loadFahrzeuge()
+                ]);
+
+                // Jetzt sind BEIDE vollständig geladen - Stats aktualisieren
+                console.log('✅ Kunden und Fahrzeuge vollständig geladen');
+                updateStats();
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Daten:', error);
+                // Fallback: Stats trotzdem aktualisieren (mit leeren Daten)
+                updateStats();
+            }
         });
 
         // Kunden laden (Firebase + LocalStorage zusammenführen)
@@ -842,10 +854,21 @@
         function updateUmsatzStats() {
             const gesamtumsatz = calculateGesamtumsatz(currentUmsatzFilter);
             document.getElementById('totalUmsatz').textContent = gesamtumsatz.toFixed(2) + ' €';
+            console.log(`📊 Umsatz aktualisiert (${currentUmsatzFilter}):`, gesamtumsatz.toFixed(2) + ' €', `(basierend auf ${allFahrzeuge.length} Fahrzeugen)`);
         }
 
         // Gesamtumsatz berechnen
         function calculateGesamtumsatz(filter) {
+            // ✅ FIX: Validierung dass Daten geladen sind
+            if (!allKunden || allKunden.length === 0) {
+                console.log('⚠️ Keine Kunden geladen - Umsatz = 0');
+                return 0;
+            }
+            if (!allFahrzeuge || allFahrzeuge.length === 0) {
+                console.log('⚠️ Keine Fahrzeuge geladen - Umsatz = 0');
+                return 0;
+            }
+
             let sum = 0;
             for (const kunde of allKunden) {
                 sum += calculateKundenUmsatz(kunde.id, filter);
