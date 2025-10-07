@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anfrage-Details | Partner Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 40px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .header h1 {
+            color: #003366;
+            font-size: 24px;
+        }
+
+        .service-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .status-badge.neu { background: #e3f2fd; color: #1565c0; }
+        .status-badge.warte_kva { background: #fff3e0; color: #e65100; }
+        .status-badge.kva_gesendet { background: #f3e5f5; color: #6a1b9a; }
+        .status-badge.beauftragt { background: #e8f5e9; color: #2e7d32; }
+        .status-badge.in_arbeit { background: #fff3e0; color: #f57c00; }
+        .status-badge.fertig { background: #e8f5e9; color: #388e3c; }
+        .status-badge.offen { background: #e3f2fd; color: #1565c0; }
+
+        .detail-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .detail-section h2 {
+            font-size: 18px;
+            color: #003366;
+            margin-bottom: 15px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .detail-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #003366;
+        }
+
+        .detail-item .label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .detail-item .value {
+            font-size: 15px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .foto-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .foto-item {
+            position: relative;
+            width: 100%;
+            padding-top: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+
+        .foto-item:hover {
+            transform: scale(1.05);
+        }
+
+        .foto-item img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+        }
+
+        .lightbox .close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            font-size: 40px;
+            color: white;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .error {
+            text-align: center;
+            padding: 60px 20px;
+            color: #c62828;
+        }
+    </style>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div id="loading" class="loading">
+            ⏳ Lade Anfrage-Details...
+        </div>
+
+        <div id="error" class="error" style="display: none;">
+            ⚠️ Anfrage nicht gefunden
+        </div>
+
+        <div id="content" style="display: none;">
+            <div class="header">
+                <div>
+                    <h1 id="title">Anfrage-Details</h1>
+                    <div id="subtitle" style="color: #666; font-size: 14px; margin-top: 5px;"></div>
+                </div>
+                <a href="meine-anfragen.html" class="btn btn-secondary">← Zurück</a>
+            </div>
+
+            <div id="details"></div>
+        </div>
+    </div>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <button class="close" onclick="closeLightbox()">×</button>
+        <img id="lightboxImg" src="" alt="Foto">
+    </div>
+
+    <script src="../firebase-config.js"></script>
+    <script>
+        let anfrage = null;
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initFirebase();
+            await loadAnfrage();
+        });
+
+        async function loadAnfrage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const anfrageId = urlParams.get('id');
+
+            if (!anfrageId) {
+                showError('Keine Anfrage-ID angegeben');
+                return;
+            }
+
+            try {
+                const doc = await db.collection('partnerAnfragen').doc(anfrageId).get();
+
+                if (!doc.exists) {
+                    showError('Anfrage nicht gefunden');
+                    return;
+                }
+
+                anfrage = { id: doc.id, ...doc.data() };
+                renderAnfrage();
+
+            } catch (error) {
+                console.error('Fehler beim Laden:', error);
+                showError('Fehler beim Laden der Anfrage');
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error').textContent = message;
+        }
+
+        function renderAnfrage() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+
+            const serviceTyp = anfrage.serviceTyp || 'lackier';
+            const badge = getServiceBadge(serviceTyp);
+            const status = getStatusBadge(anfrage.status || 'offen');
+
+            document.getElementById('title').innerHTML = `${anfrage.kennzeichen || anfrage.auftragsnummer || 'Anfrage'} ${badge}`;
+            document.getElementById('subtitle').innerHTML = `${anfrage.partnerName} • ${status}`;
+
+            const detailsContainer = document.getElementById('details');
+            detailsContainer.innerHTML = renderServiceDetails(serviceTyp);
+        }
+
+        function getServiceBadge(serviceTyp) {
+            const badges = {
+                'lackier': { icon: '🎨', label: 'Lackier-Service', color: '#003366' },
+                'reifen': { icon: '🚗', label: 'Reifen-Service', color: '#1976d2' },
+                'pflege': { icon: '✨', label: 'Fahrzeugpflege', color: '#7b1fa2' },
+                'mechanik': { icon: '🔧', label: 'Mechanik', color: '#d32f2f' },
+                'tuev': { icon: '✅', label: 'TÜV/AU', color: '#388e3c' },
+                'versicherung': { icon: '🛡️', label: 'Versicherung', color: '#f57c00' }
+            };
+            const badge = badges[serviceTyp] || { icon: '📋', label: 'Service', color: '#666' };
+            return `<span class="service-badge" style="background: ${badge.color}">${badge.icon} ${badge.label}</span>`;
+        }
+
+        function getStatusBadge(status) {
+            const statusTexte = {
+                'neu': 'Neu eingegangen',
+                'warte_kva': 'In Prüfung',
+                'kva_gesendet': 'Angebot erstellt',
+                'beauftragt': 'Beauftragt',
+                'in_arbeit': 'In Lackierung',
+                'fertig': 'Abholbereit',
+                'offen': 'Offen'
+            };
+            return `<span class="status-badge ${status}">${statusTexte[status] || status}</span>`;
+        }
+
+        function renderServiceDetails(serviceTyp) {
+            const datum = new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            let html = `
+                <div class="detail-section">
+                    <h2>📋 Allgemeine Informationen</h2>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="label">Erstellt am</div>
+                            <div class="value">${datum}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="label">${anfrage.referenzType === 'auftrag' || anfrage.referenztyp === 'auftragsnummer' ? 'Auftragsnummer' : 'Kennzeichen'}</div>
+                            <div class="value">${anfrage.kennzeichen || anfrage.auftragsnummer || 'k.A.'}</div>
+                        </div>
+                        ${anfrage.vin ? `
+                        <div class="detail-item">
+                            <div class="label">VIN</div>
+                            <div class="value" style="font-family: monospace;">${anfrage.vin}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            // Service-spezifische Details
+            switch(serviceTyp) {
+                case 'reifen':
+                    html += renderReifenDetails();
+                    break;
+                case 'pflege':
+                    html += renderPflegeDetails();
+                    break;
+                case 'mechanik':
+                    html += renderMechanikDetails();
+                    break;
+                case 'tuev':
+                    html += renderTuevDetails();
+                    break;
+                case 'versicherung':
+                    html += renderVersicherungDetails();
+                    break;
+                case 'lackier':
+                default:
+                    html += renderLackierDetails();
+                    break;
+            }
+
+            // Fotos
+            if (anfrage.fotos && anfrage.fotos.length > 0) {
+                html += `
+                    <div class="detail-section">
+                        <h2>📷 Fotos (${anfrage.fotos.length})</h2>
+                        <div class="foto-gallery">
+                            ${anfrage.fotos.map((foto, i) => `
+                                <div class="foto-item" onclick="openLightbox('${foto}')">
+                                    <img src="${foto}" alt="Foto ${i + 1}">
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Anmerkungen
+            if (anfrage.anmerkungen) {
+                html += `
+                    <div class="detail-section">
+                        <h2>💬 Anmerkungen</h2>
+                        <div style="background: white; padding: 15px; border-radius: 8px; white-space: pre-wrap;">
+                            ${anfrage.anmerkungen}
+                        </div>
+                    </div>
+                `;
+            }
+
+            return html;
+        }
+
+        function renderLackierDetails() {
+            return `
+                <div class="detail-section">
+                    <h2>🎨 Lackier-Details</h2>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="label">Schadensbeschreibung</div>
+                            <div class="value">${anfrage.schadenBeschreibung || 'k.A.'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="label">Dringlichkeit</div>
+                            <div class="value">${anfrage.dringlichkeitLabel || 'Normal'}</div>
+                        </div>
+                        ${anfrage.karosseriearbeiten === 'ja' ? `
+                        <div class="detail-item" style="border-left-color: #ff9800;">
+                            <div class="label">Karosserie-Arbeiten</div>
+                            <div class="value">🔧 Demontage/Montage erforderlich</div>
+                        </div>
+                        ` : ''}
+                        ${anfrage.ersatzteilPraeferenz ? `
+                        <div class="detail-item">
+                            <div class="label">Ersatzteil-Präferenz</div>
+                            <div class="value">${anfrage.ersatzteilPraeferenz}</div>
+                        </div>
+                        ` : ''}
+                        ${anfrage.abholserviceGewuenscht ? `
+                        <div class="detail-item" style="border-left-color: #ff9800;">
+                            <div class="label">Abhol- & Bringservice</div>
+                            <div class="value">🚚 Gewünscht${anfrage.abholtermin ? ` am ${new Date(anfrage.abholtermin).toLocaleDateString('de-DE')}` : ''}</div>
+                        </div>
+                        ` : ''}
+                        ${anfrage.ersatzfahrzeugGewuenscht ? `
+                        <div class="detail-item" style="border-left-color: #2196f3;">
+                            <div class="label">Ersatzfahrzeug</div>
+                            <div class="value">🚘 Gewünscht</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderReifenDetails() {
+            return `
+                <div class="detail-section">
+                    <h2>🚗 Reifen-Details</h2>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="label">Wechsel</div>
+                            <div class="value">${anfrage.wechsel === 'ja' ? '✅ Ja' : '❌ Nein'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="label">Bestellung</div>
+                            <div class="value">${anfrage.bestellung ? '✅ Ja' : '❌ Nein'}</div>
+                        </div>
+                        ${anfrage.reifengroesse ? `
+                        <div class="detail-item">
+                            <div class="label">Reifengröße</div>
+                            <div class="value">${anfrage.reifengroesse}</div>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item">
+                            <div class="label">Montage & Wuchten</div>
+                            <div class="value">${anfrage.montageWuchten ? '✅ Ja' : '❌ Nein'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="label">Einlagerung</div>
+                            <div class="value">${anfrage.einlagerung ? '✅ Ja' : '❌ Nein'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="label">Gewünschter Termin</div>
+                            <div class="value">${anfrage.termin || 'k.A.'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPflegeDetails() {
+            const leistungen = [];
+            if (anfrage.leistungen) {
+                if (anfrage.leistungen.neuwagenAufbereitung) leistungen.push('Neuwagen-Aufbereitung');
+                if (anfrage.leistungen.innenAufbereitung) leistungen.push('Innen-Aufbereitung');
+                if (anfrage.leistungen.aussenAufbereitung) leistungen.push('Außen-Aufbereitung');
+                if (anfrage.leistungen.innenUndAussen) leistungen.push('Innen & Außen');
+                if (anfrage.leistungen.polsterreinigung) leistungen.push('Polsterreinigung');
+            }
+
+            return `
+                <div class="detail-section">
+                    <h2>✨ Pflege-Details</h2>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="label">Gewünschte Leistungen</div>
+                            <div class="value">${leistungen.join(', ') || 'Keine ausgewählt'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="label">Gewünschter Termin</div>
+                            <div class="value">${anfrage.termin || 'k.A.'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMechanikDetails() {
+            return `
+                <div class="detail-section">
+                    <h2>🔧 Mechanik-Details</h2>
+                    <div class="detail-grid">
+                        ${anfrage.termin === 'notfall' ? `
+                        <div class="detail-item" style="border-left-color: #c62828; background: #ffebee;">
+                            <div class="label">NOTFALL</div>
+                            <div class="value">🚨 Sofortige Bearbeitung erforderlich</div>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item">
+                            <div class="label">Problembeschreibung</div>
+                            <div class="value">${anfrage.problembeschreibung || 'k.A.'}</div>
+                        </div>
+                        ${anfrage.symptome ? `
+                        <div class="detail-item">
+                            <div class="label">Symptome</div>
+                            <div class="value">${anfrage.symptome}</div>
+                        </div>
+                        ` : ''}
+                        ${anfrage.fehlermeldungen ? `
+                        <div class="detail-item">
+                            <div class="label">Fehlermeldungen</div>
+                            <div class="value">${anfrage.fehlermeldungen}</div>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item">
+                            <div class="label">Gewünschter Termin</div>
+                            <div class="value">${anfrage.termin || 'k.A.'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTuevDetails() {
+            return `
+                <div class="detail-section">
+                    <h2>✅ TÜV/AU Details</h2>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="label">Untersuchungen</div>
+                            <div class="value">${anfrage.hu ? 'HU' : ''}${anfrage.hu && anfrage.au ? ' + ' : ''}${anfrage.au ? 'AU' : ''}</div>
+                        </div>
+                        ${anfrage.slotId ? `
+                        <div class="detail-item">
+                            <div class="label">Gebuchter Slot</div>
+                            <div class="value">${anfrage.slotId}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderVersicherungDetails() {
+            return `
+                <div class="detail-section">
+                    <h2>🛡️ Versicherungsschaden-Details</h2>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <div class="label">Schadendatum</div>
+                            <div class="value">${anfrage.schadendatum ? new Date(anfrage.schadendatum).toLocaleDateString('de-DE') : 'k.A.'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="label">Versicherung</div>
+                            <div class="value">${anfrage.versicherung || 'k.A.'}</div>
+                        </div>
+                        ${anfrage.versicherungsnummer ? `
+                        <div class="detail-item">
+                            <div class="label">Versicherungs-/Schadennummer</div>
+                            <div class="value">${anfrage.versicherungsnummer}</div>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item">
+                            <div class="label">Schadenart</div>
+                            <div class="value">${anfrage.schadenart || 'k.A.'}</div>
+                        </div>
+                        ${anfrage.gutachten ? `
+                        <div class="detail-item">
+                            <div class="label">Gutachten</div>
+                            <div class="value">${anfrage.gutachten}${anfrage.gutachter ? ` (${anfrage.gutachter})` : ''}</div>
+                        </div>
+                        ` : ''}
+                        ${anfrage.polizeiVorOrt ? `
+                        <div class="detail-item">
+                            <div class="label">Polizei vor Ort</div>
+                            <div class="value">✅ Ja${anfrage.aktenzeichen ? ` (${anfrage.aktenzeichen})` : ''}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    ${anfrage.schadenshergang ? `
+                    <div style="margin-top: 15px; background: white; padding: 15px; border-radius: 8px;">
+                        <div class="label">Schadenshergang</div>
+                        <div class="value" style="margin-top: 8px; white-space: pre-wrap;">${anfrage.schadenshergang}</div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function openLightbox(src) {
+            document.getElementById('lightboxImg').src = src;
+            document.getElementById('lightbox').classList.add('active');
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+        }
+    </script>
+</body>
+</html>
