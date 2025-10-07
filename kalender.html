@@ -331,6 +331,28 @@
             border-left-color: #f44336;
         }
 
+        /* Conflict Warning */
+        .conflict-warning {
+            background: #ffe0b2;
+            border-left: 4px solid #ff9800;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .conflict-warning.critical {
+            background: #ffcdd2;
+            border-left-color: #f44336;
+        }
+
+        .event-conflict {
+            border: 2px solid #ff9800 !important;
+            box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.2) !important;
+        }
+
         .capacity-warning-icon {
             font-size: 24px;
         }
@@ -946,6 +968,9 @@
         <!-- Capacity Warning -->
         <div id="capacityWarning"></div>
 
+        <!-- Conflict Warning -->
+        <div id="conflictWarning"></div>
+
         <!-- Filter Buttons -->
         <div class="filter-buttons">
             <button class="filter-btn active" onclick="toggleFilter('all')" data-filter="all">
@@ -1209,7 +1234,87 @@
                 } else {
                     container2.innerHTML = '';
                 }
+
+                // Check for conflicts
+                detectConflicts(events);
             }
+        }
+
+        // Detect time conflicts
+        function detectConflicts(events) {
+            const conflictContainer = document.getElementById('conflictWarning');
+            if (!conflictContainer) return;
+
+            const conflicts = [];
+
+            // Compare each event with others
+            for (let i = 0; i < events.length; i++) {
+                for (let j = i + 1; j < events.length; j++) {
+                    const e1 = events[i];
+                    const e2 = events[j];
+
+                    // Parse times (HH:MM format)
+                    const [h1, m1] = e1.time.split(':').map(Number);
+                    const [h2, m2] = e2.time.split(':').map(Number);
+
+                    const t1Start = h1 * 60 + m1;
+                    const t2Start = h2 * 60 + m2;
+
+                    // Assume 1 hour duration for each event
+                    const duration = 60; // minutes
+
+                    // Check for overlap
+                    if (Math.abs(t1Start - t2Start) < duration) {
+                        conflicts.push({
+                            event1: e1,
+                            event2: e2,
+                            time1: e1.time,
+                            time2: e2.time
+                        });
+                    }
+                }
+            }
+
+            if (conflicts.length > 0) {
+                const conflictClass = conflicts.length > 2 ? 'critical' : '';
+                const conflictList = conflicts.map(c =>
+                    `${c.event1.vehicle.kennzeichen} (${c.time1}) ↔ ${c.event2.vehicle.kennzeichen} (${c.time2})`
+                ).join('<br>');
+
+                conflictContainer.innerHTML = `
+                    <div class="conflict-warning ${conflictClass}">
+                        <div class="capacity-warning-icon">⚠️</div>
+                        <div class="capacity-warning-text">
+                            <strong>${conflicts.length} Termin-Konflikt${conflicts.length > 1 ? 'e' : ''} erkannt:</strong><br>
+                            ${conflictList}
+                        </div>
+                    </div>
+                `;
+
+                // Mark conflicting events
+                markConflictingEvents(conflicts);
+            } else {
+                conflictContainer.innerHTML = '';
+            }
+        }
+
+        function markConflictingEvents(conflicts) {
+            // Get all vehicle IDs involved in conflicts
+            const conflictingIds = new Set();
+            conflicts.forEach(c => {
+                conflictingIds.add(c.event1.vehicle.id);
+                conflictingIds.add(c.event2.vehicle.id);
+            });
+
+            // Mark events in DOM (after a short delay to ensure rendering is complete)
+            setTimeout(() => {
+                document.querySelectorAll('.day-event-card, .timeline-event').forEach(el => {
+                    const vehicleId = el.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+                    if (vehicleId && conflictingIds.has(vehicleId)) {
+                        el.classList.add('event-conflict');
+                    }
+                });
+            }, 100);
         }
 
         function getEventsForDateUnfiltered(dateString) {
