@@ -461,6 +461,9 @@
 
     <!-- Firebase Konfiguration -->
     <script src="firebase-config.js"></script>
+
+    <!-- Image Optimizer -->
+    <script src="image-optimizer.js"></script>
 </head>
 <body>
     <div class="container">
@@ -1305,33 +1308,24 @@
         const photoGrid = document.getElementById('photoGrid');
         let photos = [];
 
-        // Bild komprimieren (gegen LocalStorage QuotaExceededError)
-        async function compressImage(base64Image, maxWidth = 1200, maxHeight = 1200, quality = 0.5) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = function() {
-                    let width = img.width;
-                    let height = img.height;
-
-                    // Skalierung berechnen
-                    if (width > maxWidth || height > maxHeight) {
-                        const ratio = Math.min(maxWidth / width, maxHeight / height);
-                        width = width * ratio;
-                        height = height * ratio;
+        // Bild komprimieren mit ImageOptimizer (optimierte Speicher-Effizienz)
+        async function compressImage(base64Image, profileName = 'schadenFoto') {
+            // Nutze ImageOptimizer mit Fortschritts-Feedback
+            const result = await ImageOptimizer.compressImage(
+                base64Image,
+                profileName,
+                (progress, message) => {
+                    // Optional: Zeige Progress in Console
+                    if (progress === 100) {
+                        console.log(`✅ ${message}`);
                     }
+                }
+            );
 
-                    // Canvas für Komprimierung
-                    const canvas = document.createElement('canvas');
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
+            // Statistiken ausgeben (für Debugging)
+            console.log(`📊 Komprimierung: ${result.savings}% gespart (${(result.originalSize/1024).toFixed(0)}KB → ${(result.compressedSize/1024).toFixed(0)}KB)`);
 
-                    // Als JPEG mit reduzierter Qualität
-                    resolve(canvas.toDataURL('image/jpeg', quality));
-                };
-                img.src = base64Image;
-            });
+            return result.compressed;
         }
 
         photoInput.addEventListener('change', function(e) {
