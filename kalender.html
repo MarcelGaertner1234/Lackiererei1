@@ -129,6 +129,29 @@
             background: white;
         }
 
+        /* Animations */
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
         .header {
             text-align: center;
             margin-bottom: 30px;
@@ -453,6 +476,54 @@
         .event-conflict {
             border: 2px solid #ff9800 !important;
             box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.2) !important;
+        }
+
+        /* Drag & Drop States */
+        .draggable {
+            cursor: move;
+        }
+
+        .dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+            cursor: grabbing !important;
+        }
+
+        .drop-zone {
+            position: relative;
+        }
+
+        .drop-zone.drag-over {
+            background: rgba(33, 150, 243, 0.1) !important;
+            border: 2px dashed #2196F3 !important;
+        }
+
+        .drop-indicator {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #2196F3;
+            z-index: 100;
+            display: none;
+            pointer-events: none;
+        }
+
+        .drop-indicator.active {
+            display: block;
+        }
+
+        .drag-ghost {
+            position: fixed;
+            background: white;
+            border: 2px solid #2196F3;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            z-index: 9999;
+            pointer-events: none;
+            font-size: 14px;
+            max-width: 300px;
         }
 
         .capacity-warning-icon {
@@ -1581,7 +1652,14 @@
                 const overdueBadge = event.overdue ? '<span class="overdue-badge">ÜBERFÄLLIG</span>' : '';
 
                 html += `
-                    <div class="day-event-card ${event.type} ${overdueClass}" onclick="showEventDetails('${event.vehicle.id}', '${event.type}')" style="position: relative;">
+                    <div class="day-event-card ${event.type} ${overdueClass} draggable"
+                         draggable="true"
+                         data-vehicle-id="${event.vehicle.id}"
+                         data-event-type="${event.type}"
+                         ondragstart="handleDragStart(event)"
+                         ondragend="handleDragEnd(event)"
+                         onclick="showEventDetails('${event.vehicle.id}', '${event.type}')"
+                         style="position: relative;">
                         <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
                         <div class="day-event-header">
                             <div class="day-event-title">
@@ -1612,7 +1690,7 @@
                 html += `<div class="timeline-hour">${String(i).padStart(2, '0')}:00</div>`;
             }
 
-            html += '</div><div class="timeline-content"><div class="timeline-grid">';
+            html += '</div><div class="timeline-content drop-zone" data-date="' + formatDate(currentDate) + '" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)"><div class="timeline-grid">';
 
             // Grid-Linien
             for (let i = 0; i < 24; i++) {
@@ -1630,7 +1708,12 @@
                 const overdueBadge = event.overdue ? '<span class="overdue-badge">ÜBERFÄLLIG</span>' : '';
 
                 html += `
-                    <div class="timeline-event ${event.type} ${overdueClass}"
+                    <div class="timeline-event ${event.type} ${overdueClass} draggable"
+                         draggable="true"
+                         data-vehicle-id="${event.vehicle.id}"
+                         data-event-type="${event.type}"
+                         ondragstart="handleDragStart(event)"
+                         ondragend="handleDragEnd(event)"
                          style="top: ${topPosition}px; height: 50px; position: relative;"
                          onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
                         <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
@@ -1682,7 +1765,12 @@
                 const isToday = dateString === formatDate(new Date());
 
                 html += `
-                    <div class="week-day ${isToday ? 'today' : ''}" onclick="gotoDay(${day.getTime()})">
+                    <div class="week-day ${isToday ? 'today' : ''} drop-zone"
+                         data-date="${dateString}"
+                         ondragover="handleDragOver(event)"
+                         ondragleave="handleDragLeave(event)"
+                         ondrop="handleDrop(event)"
+                         onclick="gotoDay(${day.getTime()})">
                         <div class="week-day-number">${day.getDate()}</div>
                         <div class="week-events">
                 `;
@@ -1747,7 +1835,12 @@
                 const isToday = dateString === formatDate(new Date());
 
                 html += `
-                    <div class="month-day ${isToday ? 'today' : ''}" onclick="gotoDay(${date.getTime()})">
+                    <div class="month-day ${isToday ? 'today' : ''} drop-zone"
+                         data-date="${dateString}"
+                         ondragover="handleDragOver(event)"
+                         ondragleave="handleDragLeave(event)"
+                         ondrop="handleDrop(event)"
+                         onclick="gotoDay(${date.getTime()})">
                         <div class="month-day-number">${day}</div>
                         <div class="month-events">
                 `;
@@ -2281,6 +2374,148 @@
                 setTimeout(() => hint.remove(), 5000);
                 localStorage.setItem('keyboardHelpShown', 'true');
             }, 2000);
+        }
+
+        // ========== DRAG & DROP ==========
+        let draggedVehicleId = null;
+        let draggedEventType = null;
+        let dragGhost = null;
+
+        function handleDragStart(e) {
+            e.stopPropagation();
+            draggedVehicleId = e.target.getAttribute('data-vehicle-id');
+            draggedEventType = e.target.getAttribute('data-event-type');
+
+            e.target.classList.add('dragging');
+
+            // Create custom drag ghost
+            const vehicle = allVehicles.find(v => v.id === draggedVehicleId);
+            if (vehicle) {
+                dragGhost = document.createElement('div');
+                dragGhost.className = 'drag-ghost';
+                dragGhost.innerHTML = `
+                    <strong>${vehicle.kennzeichen}</strong><br>
+                    ${vehicle.marke} ${vehicle.modell}<br>
+                    <small>📅 Datum/Zeit verschieben</small>
+                `;
+                document.body.appendChild(dragGhost);
+
+                // Position ghost at cursor
+                const updateGhostPosition = (e) => {
+                    if (dragGhost) {
+                        dragGhost.style.left = `${e.clientX + 15}px`;
+                        dragGhost.style.top = `${e.clientY + 15}px`;
+                    }
+                };
+
+                document.addEventListener('dragover', updateGhostPosition);
+                e.target.addEventListener('dragend', () => {
+                    document.removeEventListener('dragover', updateGhostPosition);
+                }, { once: true });
+            }
+
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', draggedVehicleId);
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+
+            // Remove all drag-over states
+            document.querySelectorAll('.drag-over').forEach(el => {
+                el.classList.remove('drag-over');
+            });
+
+            // Remove ghost
+            if (dragGhost) {
+                dragGhost.remove();
+                dragGhost = null;
+            }
+
+            draggedVehicleId = null;
+            draggedEventType = null;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+
+            const dropZone = e.currentTarget;
+            dropZone.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            const dropZone = e.currentTarget;
+            // Only remove if leaving the drop zone completely
+            if (e.relatedTarget && !dropZone.contains(e.relatedTarget)) {
+                dropZone.classList.remove('drag-over');
+            }
+        }
+
+        async function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const dropZone = e.currentTarget;
+            dropZone.classList.remove('drag-over');
+
+            const newDate = dropZone.getAttribute('data-date');
+            const vehicle = allVehicles.find(v => v.id === draggedVehicleId);
+
+            if (!vehicle || !newDate) return;
+
+            // Calculate new time based on drop position (for timeline)
+            let newTime = null;
+            if (e.currentTarget.classList.contains('timeline-content')) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const relativeY = e.clientY - rect.top;
+                const totalMinutes = Math.floor(relativeY); // 1px = 1 minute
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                newTime = `${String(hours).padStart(2, '0')}:${String(Math.floor(minutes / 15) * 15).padStart(2, '0')}`; // Round to 15min
+            }
+
+            // Update vehicle based on event type
+            if (draggedEventType === 'annahme') {
+                vehicle.datum = newDate;
+                if (newTime) vehicle.zeit = newTime;
+            } else if (draggedEventType === 'geplant') {
+                vehicle.geplantesAbnahmeDatum = newDate;
+            } else if (draggedEventType === 'abgeschlossen') {
+                vehicle.abnahmeDatum = newDate;
+                if (newTime) vehicle.abnahmeZeit = newTime;
+            }
+
+            // Save and refresh
+            await saveToFirestore(vehicle);
+            await loadData();
+
+            // Show success toast
+            showToast(`✅ Termin verschoben nach ${newDate}${newTime ? ' um ' + newTime : ''}`);
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: #4caf50;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 10000;
+                animation: slideIn 0.3s;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
 
         // ========== MINI CALENDAR ==========
