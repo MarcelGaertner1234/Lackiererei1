@@ -954,10 +954,17 @@
 
         <!-- Calendar Header -->
         <div class="calendar-header">
-            <button class="calendar-nav-btn" onclick="navigate('prev')">◀ Zurück</button>
-            <button class="calendar-nav-btn" onclick="navigate('today')">Heute</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="calendar-nav-btn" onclick="navigate('prev')">◀ Zurück</button>
+                <button class="calendar-nav-btn" onclick="navigate('today')">Heute</button>
+            </div>
             <div class="calendar-title" id="calendarTitle">Oktober 2025</div>
-            <button class="calendar-nav-btn" onclick="navigate('next')">Weiter ▶</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="calendar-nav-btn" onclick="exportToPDF()" title="Als PDF exportieren">📄 PDF</button>
+                <button class="calendar-nav-btn" onclick="exportToICS()" title="Als iCal exportieren">📅 iCal</button>
+                <button class="calendar-nav-btn" onclick="exportToCSV()" title="Als CSV exportieren">📊 CSV</button>
+                <button class="calendar-nav-btn" onclick="navigate('next')">Weiter ▶</button>
+            </div>
         </div>
 
         <!-- Statistics Dashboard -->
@@ -1878,6 +1885,182 @@
                 loadData();
                 closeQuickActions();
             }
+        }
+
+        // ========== EXPORT FUNCTIONS ==========
+
+        // Export to PDF (using browser print)
+        function exportToPDF() {
+            const title = document.getElementById('calendarTitle').textContent;
+
+            // Create print-friendly version
+            const printWindow = window.open('', '_blank');
+            const printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Kalender Export - ${title}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 20px; }
+                        h1 { color: #003366; text-align: center; }
+                        .event { border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px; }
+                        .event.annahme { border-left: 4px solid #2196F3; }
+                        .event.geplant { border-left: 4px solid #ffc107; }
+                        .event.abgeschlossen { border-left: 4px solid #4caf50; }
+                        .overdue { background: #ffebee; border-left-color: #f44336 !important; }
+                        @media print { button { display: none; } }
+                    </style>
+                </head>
+                <body>
+                    <h1>📅 ${title}</h1>
+                    <button onclick="window.print()" style="margin: 20px auto; display: block; padding: 10px 20px;">Drucken / Als PDF speichern</button>
+                    ${generateEventList()}
+                </body>
+                </html>
+            `;
+
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+        }
+
+        function generateEventList() {
+            let html = '<div>';
+            let events = [];
+
+            if (currentView === 'day') {
+                events = getEventsForDateUnfiltered(formatDate(currentDate));
+            } else if (currentView === 'week') {
+                const start = new Date(currentDate);
+                start.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(start);
+                    day.setDate(start.getDate() + i);
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(day)));
+                }
+            } else {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const lastDay = new Date(year, month + 1, 0);
+                for (let day = 1; day <= lastDay.getDate(); day++) {
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(new Date(year, month, day))));
+                }
+            }
+
+            events.forEach(event => {
+                const overdueClass = event.overdue ? 'overdue' : '';
+                html += `
+                    <div class="event ${event.type} ${overdueClass}">
+                        <strong>${event.vehicle.kennzeichen}</strong> - ${event.vehicle.marke} ${event.vehicle.modell}<br>
+                        <strong>Kunde:</strong> ${event.vehicle.kundenname}<br>
+                        <strong>Typ:</strong> ${event.typeName} • <strong>Zeit:</strong> ${event.time}<br>
+                        ${event.vehicle.farbnummer ? `<strong>Farbnummer:</strong> ${event.vehicle.farbnummer}<br>` : ''}
+                        ${event.vehicle.vereinbarterPreis ? `<strong>Preis:</strong> € ${parseFloat(event.vehicle.vereinbarterPreis).toFixed(2)}` : ''}
+                        ${event.overdue ? '<br><span style="color: red; font-weight: bold;">⚠️ ÜBERFÄLLIG</span>' : ''}
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            return html;
+        }
+
+        // Export to iCal
+        function exportToICS() {
+            let events = [];
+
+            if (currentView === 'day') {
+                events = getEventsForDateUnfiltered(formatDate(currentDate));
+            } else if (currentView === 'week') {
+                const start = new Date(currentDate);
+                start.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(start);
+                    day.setDate(start.getDate() + i);
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(day)));
+                }
+            } else {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const lastDay = new Date(year, month + 1, 0);
+                for (let day = 1; day <= lastDay.getDate(); day++) {
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(new Date(year, month, day))));
+                }
+            }
+
+            let icsContent = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Fahrzeugannahme App//DE\n';
+
+            events.forEach(event => {
+                const date = event.vehicle.datum || event.vehicle.geplantesAbnahmeDatum || event.vehicle.abnahmeDatum;
+                const [day, month, year] = date.split('.');
+                const [hours, minutes] = event.time.split(':');
+                const startDate = new Date(year, month - 1, day, hours, minutes);
+                const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 hour
+
+                const formatICSDate = (d) => {
+                    return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                };
+
+                icsContent += `BEGIN:VEVENT\n`;
+                icsContent += `UID:${event.vehicle.id}@fahrzeugannahme\n`;
+                icsContent += `DTSTAMP:${formatICSDate(new Date())}\n`;
+                icsContent += `DTSTART:${formatICSDate(startDate)}\n`;
+                icsContent += `DTEND:${formatICSDate(endDate)}\n`;
+                icsContent += `SUMMARY:${event.vehicle.kennzeichen} - ${event.typeName}\n`;
+                icsContent += `DESCRIPTION:${event.vehicle.marke} ${event.vehicle.modell}\\nKunde: ${event.vehicle.kundenname}\n`;
+                icsContent += `END:VEVENT\n`;
+            });
+
+            icsContent += 'END:VCALENDAR';
+
+            const blob = new Blob([icsContent], { type: 'text/calendar' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kalender_${document.getElementById('calendarTitle').textContent.replace(/\s/g, '_')}.ics`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Export to CSV
+        function exportToCSV() {
+            let events = [];
+
+            if (currentView === 'day') {
+                events = getEventsForDateUnfiltered(formatDate(currentDate));
+            } else if (currentView === 'week') {
+                const start = new Date(currentDate);
+                start.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(start);
+                    day.setDate(start.getDate() + i);
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(day)));
+                }
+            } else {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const lastDay = new Date(year, month + 1, 0);
+                for (let day = 1; day <= lastDay.getDate(); day++) {
+                    events = events.concat(getEventsForDateUnfiltered(formatDate(new Date(year, month, day))));
+                }
+            }
+
+            let csvContent = 'Datum,Zeit,Kennzeichen,Marke,Modell,Kunde,Farbnummer,Typ,Preis,Überfällig\n';
+
+            events.forEach(event => {
+                const date = event.vehicle.datum || event.vehicle.geplantesAbnahmeDatum || event.vehicle.abnahmeDatum;
+                const preis = event.vehicle.vereinbarterPreis || '';
+                const overdue = event.overdue ? 'Ja' : 'Nein';
+
+                csvContent += `${date},${event.time},"${event.vehicle.kennzeichen}","${event.vehicle.marke}","${event.vehicle.modell}","${event.vehicle.kundenname}","${event.vehicle.farbnummer || ''}","${event.typeName}","${preis}","${overdue}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kalender_${document.getElementById('calendarTitle').textContent.replace(/\s/g, '_')}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
         // Responsive check on resize
