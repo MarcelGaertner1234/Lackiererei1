@@ -748,11 +748,18 @@
                 return;
             }
 
-            // Hybrid-Lösung: Fotos aus LocalStorage nachladen (falls nicht vorhanden)
+            // Fotos aus Firestore nachladen (falls nicht vorhanden)
             if (firebaseInitialized && firebaseApp && (!vehicle.photos || vehicle.photos.length === 0)) {
-                const photos = firebaseApp.loadPhotosLocal(vehicle.id, 'vorher');
-                vehicle.photos = photos;
-                console.log('🖼️ Vorher-Fotos aus LocalStorage geladen');
+                try {
+                    const photos = await firebaseApp.loadPhotosFromFirestore(vehicle.id, 'vorher');
+                    vehicle.photos = photos;
+                    console.log('🖼️ Vorher-Fotos aus Firestore geladen:', photos.length);
+                } catch (e) {
+                    // Fallback zu LocalStorage (für Migration)
+                    const photos = firebaseApp.loadPhotosLocal(vehicle.id, 'vorher');
+                    vehicle.photos = photos;
+                    console.log('🖼️ Vorher-Fotos aus LocalStorage geladen (Fallback)');
+                }
             }
 
             currentVehicle = vehicle;
@@ -1031,10 +1038,10 @@
                 if (firebaseInitialized && firebaseApp) {
                     console.log('💾 Hybrid-Update: Status → Firestore, Nachher-Fotos → LocalStorage');
 
-                    // 1. Nachher-Fotos in LocalStorage speichern (komprimiert)
-                    firebaseApp.savePhotosLocal(currentVehicle.id, nachherPhotos, 'nachher');
+                    // 1. Nachher-Fotos in Firestore speichern (komprimiert)
+                    await firebaseApp.savePhotosToFirestore(currentVehicle.id, nachherPhotos, 'nachher');
 
-                    // 2. Status OHNE Fotos in Firestore aktualisieren
+                    // 2. Status in Firestore aktualisieren
                     const dataForFirestore = {
                         ...abnahmeData
                     };
@@ -1044,8 +1051,8 @@
                     console.log('✅ Status in Firestore aktualisiert (ohne Fotos)');
                     console.log('✅ Nachher-Fotos in LocalStorage gespeichert');
 
-                    // 3. Vorher-Fotos aus LocalStorage laden für PDF
-                    const vorherPhotos = firebaseApp.loadPhotosLocal(currentVehicle.id, 'vorher');
+                    // 3. Vorher-Fotos aus Firestore laden für PDF
+                    const vorherPhotos = await firebaseApp.loadPhotosFromFirestore(currentVehicle.id, 'vorher');
 
                     // 4. PDF mit beiden Fotos erstellen
                     const dataForPDF = {

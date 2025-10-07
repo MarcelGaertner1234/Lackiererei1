@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foto-Migration LocalStorage → Firestore | Auto-Lackierzentrum</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            color: #003366;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .warning-box h3 {
+            color: #c7254e;
+            margin-bottom: 10px;
+        }
+
+        .warning-box ul {
+            margin-left: 20px;
+            color: #333;
+        }
+
+        .warning-box li {
+            margin: 5px 0;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .info-box h3 {
+            color: #003366;
+            margin-bottom: 10px;
+        }
+
+        .success-box {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .success-box h3 {
+            color: #155724;
+            margin-bottom: 10px;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px 10px 10px 0;
+        }
+
+        .btn-check {
+            background: #2196f3;
+            color: white;
+        }
+
+        .btn-check:hover {
+            background: #1976d2;
+        }
+
+        .btn-migrate {
+            background: #003366;
+            color: white;
+        }
+
+        .btn-migrate:hover {
+            background: #00509e;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,51,102,0.3);
+        }
+
+        .btn-cleanup {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-cleanup:hover {
+            background: #d32f2f;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .log {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+
+        .log-success {
+            color: #4caf50;
+        }
+
+        .log-error {
+            color: #f44336;
+            background: #ffebee;
+        }
+
+        .log-warning {
+            color: #ff9800;
+        }
+
+        .log-info {
+            color: #2196f3;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .progress {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 30px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #4caf50, #8bc34a);
+            height: 100%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+    </style>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- Firebase Konfiguration -->
+    <script src="firebase-config.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 Foto-Migration: LocalStorage → Firestore</h1>
+        <p class="subtitle">Überträgt alle Fotos von LocalStorage zu Firestore (Safari-kompatibel)</p>
+
+        <div class="warning-box">
+            <h3>⚠️ WICHTIG: Vor Migration beachten!</h3>
+            <ul>
+                <li>Migration ist SICHER - Fotos werden nur KOPIERT, nicht gelöscht!</li>
+                <li>LocalStorage-Fotos bleiben als Backup erhalten</li>
+                <li>Schließe ALLE anderen Tabs der App</li>
+                <li>Stabile Internetverbindung erforderlich</li>
+            </ul>
+        </div>
+
+        <div class="info-box">
+            <h3>📋 Was macht diese Migration?</h3>
+            <ol>
+                <li><strong>Prüfung:</strong> Findet alle Foto-Daten in LocalStorage</li>
+                <li><strong>Upload:</strong> Lädt Fotos zu Firestore hoch (komprimiert, Base64)</li>
+                <li><strong>Verifikation:</strong> Prüft ob Upload erfolgreich war</li>
+                <li><strong>Cleanup (Optional):</strong> Löscht LocalStorage nach erfolgreicher Migration</li>
+            </ol>
+        </div>
+
+        <div>
+            <button class="btn btn-check" onclick="checkLocalStorageFotos()" id="btnCheck">
+                🔍 LocalStorage Fotos prüfen
+            </button>
+            <button class="btn btn-migrate" onclick="runMigration()" id="btnMigrate" disabled>
+                🚀 Migration zu Firestore starten
+            </button>
+            <button class="btn btn-cleanup" onclick="cleanupLocalStorage()" id="btnCleanup" disabled style="display:none;">
+                🗑️ LocalStorage Cleanup (nach Migration)
+            </button>
+        </div>
+
+        <div id="stats" style="display: none;">
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="statLocalStorage">0</div>
+                    <div class="stat-label">Fahrzeuge in LocalStorage</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statVorher">0</div>
+                    <div class="stat-label">Vorher-Fotos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statNachher">0</div>
+                    <div class="stat-label">Nachher-Fotos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statMigriert">0</div>
+                    <div class="stat-label">Migriert</div>
+                </div>
+            </div>
+
+            <div class="progress" id="progress" style="display:none;">
+                <div class="progress-bar" id="progressBar" style="width: 0%;">0%</div>
+            </div>
+        </div>
+
+        <div class="log" id="migrationLog" style="display: none;">
+            <div class="log-entry log-info">📋 Bereit für Migration...</div>
+        </div>
+    </div>
+
+    <script>
+        let firebaseInitialized = false;
+        let localStorageFahrzeuge = [];
+        let migrationResults = [];
+
+        // Firebase initialisieren
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                const success = await initFirebase();
+                if (success) {
+                    firebaseInitialized = true;
+                    log('✅ Firebase initialisiert', 'success');
+                } else {
+                    log('❌ Firebase nicht konfiguriert - bitte firebase-config.js prüfen', 'error');
+                }
+            } catch (error) {
+                log('❌ Firebase Fehler: ' + error.message, 'error');
+            }
+        });
+
+        // Log-Funktion
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('migrationLog');
+            logDiv.style.display = 'block';
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+
+            // Auto-scroll
+            logDiv.scrollTop = logDiv.scrollHeight;
+
+            console.log(message);
+        }
+
+        // LocalStorage Fotos prüfen
+        async function checkLocalStorageFotos() {
+            if (!firebaseInitialized) {
+                alert('❌ Firebase nicht initialisiert!');
+                return;
+            }
+
+            try {
+                document.getElementById('btnCheck').disabled = true;
+                log('🔍 Prüfe LocalStorage Fotos...', 'info');
+
+                // Alle Foto-Keys finden
+                const keys = Object.keys(localStorage);
+                const fotoKeys = keys.filter(key => key.startsWith('fahrzeugfotos_'));
+
+                log(`📊 ${fotoKeys.length} Fahrzeuge mit Fotos gefunden`, 'info');
+
+                document.getElementById('statLocalStorage').textContent = fotoKeys.length;
+                document.getElementById('stats').style.display = 'block';
+
+                localStorageFahrzeuge = [];
+                let totalVorher = 0;
+                let totalNachher = 0;
+
+                for (const key of fotoKeys) {
+                    const fahrzeugId = key.replace('fahrzeugfotos_', '');
+                    const fotosData = JSON.parse(localStorage.getItem(key));
+
+                    const vorherCount = (fotosData.vorher || []).length;
+                    const nachherCount = (fotosData.nachher || []).length;
+
+                    totalVorher += vorherCount;
+                    totalNachher += nachherCount;
+
+                    localStorageFahrzeuge.push({
+                        fahrzeugId: fahrzeugId,
+                        vorher: fotosData.vorher || [],
+                        nachher: fotosData.nachher || []
+                    });
+
+                    log(`📷 ${fahrzeugId}: ${vorherCount} vorher, ${nachherCount} nachher`, 'info');
+                }
+
+                document.getElementById('statVorher').textContent = totalVorher;
+                document.getElementById('statNachher').textContent = totalNachher;
+
+                if (localStorageFahrzeuge.length > 0) {
+                    log(`✅ ${totalVorher + totalNachher} Fotos gefunden - Migration kann gestartet werden`, 'success');
+                    document.getElementById('btnMigrate').disabled = false;
+                } else {
+                    log('ℹ️ Keine Fotos in LocalStorage gefunden', 'info');
+                }
+
+                document.getElementById('btnCheck').disabled = false;
+
+            } catch (error) {
+                log('❌ Fehler bei Prüfung: ' + error.message, 'error');
+                document.getElementById('btnCheck').disabled = false;
+            }
+        }
+
+        // Migration durchführen
+        async function runMigration() {
+            if (localStorageFahrzeuge.length === 0) {
+                alert('Keine Fotos zum Migrieren!');
+                return;
+            }
+
+            const confirmed = confirm(
+                `🚀 Migration starten?\n\n` +
+                `${localStorageFahrzeuge.length} Fahrzeuge werden zu Firestore migriert.\n` +
+                `Dies kann einige Minuten dauern.\n\n` +
+                `Fortfahren?`
+            );
+
+            if (!confirmed) {
+                log('❌ Migration abgebrochen', 'warning');
+                return;
+            }
+
+            try {
+                document.getElementById('btnMigrate').disabled = true;
+                document.getElementById('progress').style.display = 'block';
+
+                log('🚀 Starte Migration...', 'info');
+
+                let migriert = 0;
+                const total = localStorageFahrzeuge.length;
+
+                for (let i = 0; i < localStorageFahrzeuge.length; i++) {
+                    const fahrzeug = localStorageFahrzeuge[i];
+                    const progress = Math.round(((i + 1) / total) * 100);
+
+                    document.getElementById('progressBar').style.width = progress + '%';
+                    document.getElementById('progressBar').textContent = progress + '%';
+
+                    log(`📦 ${i + 1}/${total}: Migriere ${fahrzeug.fahrzeugId}...`, 'info');
+
+                    try {
+                        // Vorher-Fotos
+                        if (fahrzeug.vorher.length > 0) {
+                            await window.firebaseApp.savePhotosToFirestore(fahrzeug.fahrzeugId, fahrzeug.vorher, 'vorher');
+                            log(`  ✅ ${fahrzeug.vorher.length} Vorher-Fotos → Firestore`, 'success');
+                        }
+
+                        // Nachher-Fotos
+                        if (fahrzeug.nachher.length > 0) {
+                            await window.firebaseApp.savePhotosToFirestore(fahrzeug.fahrzeugId, fahrzeug.nachher, 'nachher');
+                            log(`  ✅ ${fahrzeug.nachher.length} Nachher-Fotos → Firestore`, 'success');
+                        }
+
+                        migriert++;
+                        migrationResults.push({
+                            fahrzeugId: fahrzeug.fahrzeugId,
+                            success: true
+                        });
+
+                    } catch (error) {
+                        log(`  ❌ Fehler bei ${fahrzeug.fahrzeugId}: ${error.message}`, 'error');
+                        migrationResults.push({
+                            fahrzeugId: fahrzeug.fahrzeugId,
+                            success: false,
+                            error: error.message
+                        });
+                    }
+                }
+
+                document.getElementById('statMigriert').textContent = migriert;
+
+                log(`🎉 Migration abgeschlossen! ${migriert}/${total} Fahrzeuge migriert.`, 'success');
+
+                if (migriert === total) {
+                    log('✅ Alle Fotos erfolgreich zu Firestore migriert!', 'success');
+                    document.getElementById('btnCleanup').style.display = 'inline-block';
+                    document.getElementById('btnCleanup').disabled = false;
+
+                    // Success Box anzeigen
+                    const successBox = document.createElement('div');
+                    successBox.className = 'success-box';
+                    successBox.innerHTML = `
+                        <h3>✅ Migration erfolgreich!</h3>
+                        <p>Alle Fotos sind jetzt in Firestore gespeichert.</p>
+                        <p><strong>Vorteile:</strong></p>
+                        <ul>
+                            <li>✅ Safari-kompatibel (kein LocalStorage Problem mehr)</li>
+                            <li>✅ Cross-Device Sync (alle Geräte sehen gleiche Daten)</li>
+                            <li>✅ Kein Speicher-Limit (1GB statt 10MB)</li>
+                        </ul>
+                        <p style="margin-top: 15px;">
+                            <strong>Optional:</strong> Klicke "LocalStorage Cleanup" um alte Daten zu löschen (nur wenn alles funktioniert!)
+                        </p>
+                    `;
+                    document.querySelector('.container').insertBefore(successBox, document.getElementById('stats'));
+                }
+
+            } catch (error) {
+                log('❌ Fehler bei Migration: ' + error.message, 'error');
+                document.getElementById('btnMigrate').disabled = false;
+            }
+        }
+
+        // LocalStorage Cleanup (nach erfolgreicher Migration)
+        async function cleanupLocalStorage() {
+            const confirmed = confirm(
+                `⚠️ ACHTUNG: LocalStorage Cleanup\n\n` +
+                `Dies löscht alle Foto-Daten aus LocalStorage.\n` +
+                `Nur durchführen wenn Migration erfolgreich war!\n\n` +
+                `WIRKLICH löschen?`
+            );
+
+            if (!confirmed) {
+                log('❌ Cleanup abgebrochen', 'warning');
+                return;
+            }
+
+            try {
+                document.getElementById('btnCleanup').disabled = true;
+
+                log('🗑️ Starte LocalStorage Cleanup...', 'info');
+
+                const keys = Object.keys(localStorage);
+                const fotoKeys = keys.filter(key => key.startsWith('fahrzeugfotos_'));
+
+                for (const key of fotoKeys) {
+                    localStorage.removeItem(key);
+                    log(`  🗑️ ${key} gelöscht`, 'success');
+                }
+
+                log(`🎉 Cleanup abgeschlossen! ${fotoKeys.length} Einträge gelöscht.`, 'success');
+
+                setTimeout(() => {
+                    if (confirm('✅ Cleanup erfolgreich! App neu laden?')) {
+                        window.location.href = 'index.html';
+                    }
+                }, 1000);
+
+            } catch (error) {
+                log('❌ Fehler beim Cleanup: ' + error.message, 'error');
+                document.getElementById('btnCleanup').disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

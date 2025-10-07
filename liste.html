@@ -690,18 +690,18 @@
             console.log('🔄 Echtzeit-Listener aktiviert - Änderungen werden automatisch synchronisiert!');
 
             unsubscribeListener = firebaseApp.listenToFahrzeuge(function(fahrzeuge) {
-                // Hybrid-Lösung: Fotos aus LocalStorage nachladen
+                // KEIN automatisches Foto-Laden (Performance!)
+                // Fotos werden nur bei Detail-Ansicht geladen (Lazy Loading)
                 fahrzeuge.forEach(fahrzeug => {
-                    const allPhotos = firebaseApp.loadAllPhotosLocal(fahrzeug.id);
-                    fahrzeug.photos = allPhotos.vorher || [];
-                    fahrzeug.nachherPhotos = allPhotos.nachher || [];
+                    fahrzeug.photos = []; // Placeholder
+                    fahrzeug.nachherPhotos = [];
                 });
 
                 allVehicles = fahrzeuge;
                 updateStats();
                 renderTable();
                 console.log('🔄 Daten automatisch aktualisiert:', fahrzeuge.length, 'Fahrzeuge');
-                console.log('🖼️ Fotos aus LocalStorage geladen');
+                console.log('ℹ️ Fotos werden bei Bedarf nachgeladen (Lazy Loading)');
             });
         }
 
@@ -712,15 +712,14 @@
                     // Firebase Firestore verwenden
                     allVehicles = await firebaseApp.getAllFahrzeuge();
 
-                    // Hybrid-Lösung: Fotos aus LocalStorage nachladen
+                    // Lazy Loading: Fotos werden NICHT automatisch geladen (Performance!)
                     allVehicles.forEach(fahrzeug => {
-                        const allPhotos = firebaseApp.loadAllPhotosLocal(fahrzeug.id);
-                        fahrzeug.photos = allPhotos.vorher || [];
-                        fahrzeug.nachherPhotos = allPhotos.nachher || [];
+                        fahrzeug.photos = [];
+                        fahrzeug.nachherPhotos = [];
                     });
 
                     console.log('✅ Fahrzeuge aus Firestore geladen:', allVehicles.length);
-                    console.log('🖼️ Fotos aus LocalStorage geladen');
+                    console.log('ℹ️ Lazy Loading: Fotos werden bei Detail-Ansicht geladen');
                 } else {
                     // Fallback: LocalStorage verwenden
                     allVehicles = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
@@ -933,8 +932,8 @@
             renderTable();
         }
 
-        // Details anzeigen
-        function viewDetails(id) {
+        // Details anzeigen (mit Lazy Loading für Fotos)
+        async function viewDetails(id) {
             console.log('🔍 viewDetails aufgerufen mit ID:', id);
             console.log('📋 Alle Fahrzeuge:', allVehicles);
             const vehicle = allVehicles.find(v => v.id === id);
@@ -944,6 +943,23 @@
                 console.error('❌ Kein Fahrzeug gefunden mit ID:', id);
                 alert('❌ Fahrzeug nicht gefunden!');
                 return;
+            }
+
+            // LAZY LOADING: Fotos jetzt laden (nur bei Detail-Ansicht!)
+            if (firebaseInitialized && firebaseApp && (!vehicle.photos || vehicle.photos.length === 0)) {
+                console.log('📸 Lade Fotos für Fahrzeug:', id);
+                try {
+                    const allPhotos = await firebaseApp.loadAllPhotosFromFirestore(id);
+                    vehicle.photos = allPhotos.vorher || [];
+                    vehicle.nachherPhotos = allPhotos.nachher || [];
+                    console.log('✅ Fotos aus Firestore geladen:', vehicle.photos.length, 'vorher,', vehicle.nachherPhotos.length, 'nachher');
+                } catch (e) {
+                    // Fallback zu LocalStorage (für Migration)
+                    console.warn('⚠️ Firestore-Fehler, versuche LocalStorage');
+                    const allPhotos = firebaseApp.loadAllPhotosLocal(id);
+                    vehicle.photos = allPhotos.vorher || [];
+                    vehicle.nachherPhotos = allPhotos.nachher || [];
+                }
             }
 
             let html = `

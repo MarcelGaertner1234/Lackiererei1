@@ -417,10 +417,110 @@ async function migrateLocalStorageToFirestore() {
 }
 
 // ====================================================================
-// LOCALSTORAGE HELPER FÜR FOTOS (Hybrid-Lösung ohne Storage)
+// FIRESTORE FOTO-FUNKTIONEN (Subcollections statt LocalStorage)
 // ====================================================================
 
-// Fotos in LocalStorage speichern (separate Collection)
+// Fotos in Firestore speichern (Subcollection)
+async function savePhotosToFirestore(fahrzeugId, photos, type = 'vorher') {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    if (!photos || photos.length === 0) {
+      console.log(`ℹ️ Keine ${type}-Fotos zum Speichern`);
+      return true;
+    }
+
+    const photosRef = db.collection('fahrzeuge')
+      .doc(String(fahrzeugId))
+      .collection('fotos')
+      .doc(type);
+
+    await photosRef.set({
+      photos: photos,
+      count: photos.length,
+      lastUpdated: Date.now()
+    });
+
+    console.log(`✅ ${photos.length} ${type}-Fotos in Firestore gespeichert`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Fehler beim Speichern der ${type}-Fotos:`, error);
+    throw error;
+  }
+}
+
+// Fotos aus Firestore laden
+async function loadPhotosFromFirestore(fahrzeugId, type = 'vorher') {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    const photosRef = db.collection('fahrzeuge')
+      .doc(String(fahrzeugId))
+      .collection('fotos')
+      .doc(type);
+
+    const doc = await photosRef.get();
+
+    if (doc.exists) {
+      const data = doc.data();
+      return data.photos || [];
+    }
+
+    return [];
+  } catch (error) {
+    console.error(`❌ Fehler beim Laden der ${type}-Fotos:`, error);
+    return [];
+  }
+}
+
+// Alle Fotos eines Fahrzeugs laden (vorher + nachher)
+async function loadAllPhotosFromFirestore(fahrzeugId) {
+  try {
+    const vorher = await loadPhotosFromFirestore(fahrzeugId, 'vorher');
+    const nachher = await loadPhotosFromFirestore(fahrzeugId, 'nachher');
+
+    return {
+      vorher: vorher,
+      nachher: nachher
+    };
+  } catch (error) {
+    console.error("❌ Fehler beim Laden aller Fotos:", error);
+    return { vorher: [], nachher: [] };
+  }
+}
+
+// Fotos eines Fahrzeugs aus Firestore löschen
+async function deletePhotosFromFirestore(fahrzeugId) {
+  try {
+    if (!db) {
+      throw new Error("Firestore nicht initialisiert");
+    }
+
+    const fotosRef = db.collection('fahrzeuge')
+      .doc(String(fahrzeugId))
+      .collection('fotos');
+
+    // Beide Dokumente löschen
+    await fotosRef.doc('vorher').delete();
+    await fotosRef.doc('nachher').delete();
+
+    console.log(`✅ Fotos von Fahrzeug ${fahrzeugId} aus Firestore gelöscht`);
+    return true;
+  } catch (error) {
+    console.error("❌ Fehler beim Löschen der Fotos:", error);
+    return false;
+  }
+}
+
+// ====================================================================
+// LOCALSTORAGE HELPER FÜR FOTOS (DEPRECATED - nur für Migration)
+// ====================================================================
+
+// Fotos in LocalStorage speichern (DEPRECATED)
 function savePhotosToLocalStorage(fahrzeugId, photos, type = 'vorher') {
   try {
     const key = `fahrzeugfotos_${fahrzeugId}`;
@@ -710,7 +810,13 @@ window.firebaseApp = {
   urlToBase64: urlToBase64,
   urlsToBase64: urlsToBase64,
 
-  // LocalStorage Foto-Operationen (Hybrid-Lösung)
+  // Firestore Foto-Operationen (NEU - primär)
+  savePhotosToFirestore: savePhotosToFirestore,
+  loadPhotosFromFirestore: loadPhotosFromFirestore,
+  loadAllPhotosFromFirestore: loadAllPhotosFromFirestore,
+  deletePhotosFromFirestore: deletePhotosFromFirestore,
+
+  // LocalStorage Foto-Operationen (DEPRECATED - nur für Migration)
   savePhotosLocal: savePhotosToLocalStorage,
   loadPhotosLocal: loadPhotosFromLocalStorage,
   loadAllPhotosLocal: loadAllPhotosFromLocalStorage,
