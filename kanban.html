@@ -107,6 +107,45 @@
             font-size: 16px;
         }
 
+        .process-filter {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .process-filter label {
+            font-weight: 600;
+            color: #003366;
+            font-size: 16px;
+        }
+
+        .process-filter select {
+            padding: 12px 20px;
+            border: 2px solid #003366;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #003366;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 250px;
+        }
+
+        .process-filter select:hover {
+            background: #f0f7ff;
+            border-color: #667eea;
+        }
+
+        .process-filter select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.2);
+        }
+
         .kanban-board {
             display: grid;
             grid-template-columns: repeat(6, 1fr);
@@ -568,7 +607,21 @@
             <p>Ziehen Sie Fahrzeuge per Drag & Drop zwischen den Prozess-Schritten</p>
         </div>
 
-        <div class="kanban-board">
+        <!-- Prozess-Filter -->
+        <div class="process-filter">
+            <label for="processSelect">📋 Prozess wählen:</label>
+            <select id="processSelect" onchange="changeProcess()">
+                <option value="alle">Alle Prozesse</option>
+                <option value="lackier" selected>🎨 Lackierung</option>
+                <option value="reifen">🚗 Reifen-Service</option>
+                <option value="mechanik">🔧 Mechanik</option>
+                <option value="pflege">✨ Fahrzeugpflege</option>
+                <option value="tuev">✅ TÜV/AU</option>
+                <option value="versicherung">🛡️ Versicherung</option>
+            </select>
+        </div>
+
+        <div class="kanban-board" id="kanbanBoard">
             <!-- Spalte 1: Angenommen -->
             <div class="kanban-column column-angenommen" data-status="angenommen">
                 <div class="column-header">
@@ -641,6 +694,76 @@
         let allFahrzeuge = [];
         let firebaseInitialized = false;
         let firebaseApp = null;
+        let currentProcess = 'lackier'; // Aktuell gewählter Prozess
+
+        // Prozess-Definitionen (Service-spezifische Schritte)
+        const processDefinitions = {
+            lackier: {
+                name: '🎨 Lackierung',
+                steps: [
+                    { id: 'angenommen', icon: '📋', label: 'Angenommen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'vorbereitung', icon: '🔧', label: 'Vorbereitung', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'lackierung', icon: '🎨', label: 'Lackierung', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                    { id: 'trocknung', icon: '⏱️', label: 'Trocknung', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+                    { id: 'qualitaetskontrolle', icon: '🔍', label: 'Qualität', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+                    { id: 'bereit', icon: '✅', label: 'Bereit', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
+                ]
+            },
+            reifen: {
+                name: '🚗 Reifen-Service',
+                steps: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'bestellung', icon: '🛒', label: 'Bestellung', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'angekommen', icon: '📦', label: 'Angekommen', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                    { id: 'montage', icon: '🔧', label: 'Montage', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+                    { id: 'wuchten', icon: '⚖️', label: 'Wuchten', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+                    { id: 'fertig', icon: '✅', label: 'Fertig', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
+                ]
+            },
+            mechanik: {
+                name: '🔧 Mechanik',
+                steps: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'diagnose', icon: '🔍', label: 'Diagnose', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'angebot', icon: '💰', label: 'Angebot', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                    { id: 'beauftragt', icon: '✅', label: 'Beauftragt', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+                    { id: 'reparatur', icon: '🔧', label: 'Reparatur', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+                    { id: 'test', icon: '🧪', label: 'Test', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
+                    { id: 'fertig', icon: '🏁', label: 'Fertig', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
+                ]
+            },
+            pflege: {
+                name: '✨ Fahrzeugpflege',
+                steps: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'termin', icon: '📅', label: 'Termin', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'aufbereitung', icon: '✨', label: 'Aufbereitung', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                    { id: 'qualitaet', icon: '🔬', label: 'Qualität', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+                    { id: 'fertig', icon: '🏁', label: 'Fertig', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
+                ]
+            },
+            tuev: {
+                name: '✅ TÜV/AU',
+                steps: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'termin_gebucht', icon: '📅', label: 'Termin gebucht', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'pruefung', icon: '🔍', label: 'Prüfung', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                    { id: 'fertig', icon: '✅', label: 'Fertig', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+                    { id: 'abholbereit', icon: '🚗', label: 'Abholbereit', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
+                ]
+            },
+            versicherung: {
+                name: '🛡️ Versicherung',
+                steps: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'gutachten', icon: '📋', label: 'Gutachten', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'freigabe', icon: '✅', label: 'Freigabe', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+                    { id: 'reparatur', icon: '🔧', label: 'Reparatur', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+                    { id: 'qualitaet', icon: '🔬', label: 'Qualität', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+                    { id: 'fertig', icon: '🏁', label: 'Fertig', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
+                ]
+            }
+        };
 
         // Firebase initialisieren
         document.addEventListener('DOMContentLoaded', async function() {
@@ -692,16 +815,77 @@
             }
         }
 
+        // Prozess wechseln
+        function changeProcess() {
+            currentProcess = document.getElementById('processSelect').value;
+            console.log('🔄 Prozess gewechselt:', currentProcess);
+            renderKanbanBoard();
+        }
+
         // Kanban Board rendern
         function renderKanbanBoard() {
-            const statuses = ['angenommen', 'vorbereitung', 'lackierung', 'trocknung', 'qualitaetskontrolle', 'bereit'];
+            const boardContainer = document.getElementById('kanbanBoard');
+
+            // Board leeren
+            boardContainer.innerHTML = '';
+
+            // Aktuelle Prozess-Definition
+            const process = processDefinitions[currentProcess];
+            if (!process) {
+                console.error('❌ Prozess nicht gefunden:', currentProcess);
+                return;
+            }
+
+            // Grid-Spalten anpassen
+            boardContainer.style.gridTemplateColumns = `repeat(${process.steps.length}, 1fr)`;
+
+            // Spalten erstellen
+            process.steps.forEach(step => {
+                const column = document.createElement('div');
+                column.className = `kanban-column column-${step.id}`;
+                column.dataset.status = step.id;
+                column.innerHTML = `
+                    <div class="column-header" style="background: ${step.color}">
+                        <span class="column-count" id="count-${step.id}">0</span>
+                        <span>${step.icon} ${step.label}</span>
+                    </div>
+                    <div class="kanban-cards" id="cards-${step.id}">
+                        <div class="empty-column">Keine Fahrzeuge</div>
+                    </div>
+                `;
+                boardContainer.appendChild(column);
+            });
+
+            // Fahrzeuge rendern
+            renderFahrzeuge();
+        }
+
+        // Fahrzeuge rendern
+        function renderFahrzeuge() {
+            const process = processDefinitions[currentProcess];
+            if (!process) return;
+
+            const statuses = process.steps.map(s => s.id);
 
             statuses.forEach(status => {
                 const container = document.getElementById(`cards-${status}`);
                 const countEl = document.getElementById(`count-${status}`);
+                if (!container || !countEl) return;
 
                 // Fahrzeuge für diese Spalte filtern
-                let fahrzeuge = allFahrzeuge.filter(f => (f.prozessStatus || 'angenommen') === status);
+                // Nach serviceTyp UND prozessStatus filtern
+                let fahrzeuge = allFahrzeuge.filter(f => {
+                    const fahrzeugServiceTyp = f.serviceTyp || 'lackier'; // Default: lackier
+                    const fahrzeugStatus = f.prozessStatus || 'angenommen';
+
+                    // Wenn currentProcess 'alle', alle Services anzeigen
+                    // Ansonsten nur die zum Prozess passenden
+                    if (currentProcess === 'alle') {
+                        return fahrzeugStatus === status;
+                    } else {
+                        return fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
+                    }
+                });
 
                 // SORTIERUNG: Bei "angenommen" nach Dringlichkeit sortieren
                 if (status === 'angenommen') {
