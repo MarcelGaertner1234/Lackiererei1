@@ -308,6 +308,79 @@
             font-weight: 600;
         }
 
+        /* Quick Actions Menu */
+        .quick-actions-menu {
+            position: absolute;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+            z-index: 1000;
+            min-width: 200px;
+            display: none;
+        }
+
+        .quick-actions-menu.active {
+            display: block;
+        }
+
+        .quick-action-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+
+        .quick-action-item:last-child {
+            border-bottom: none;
+        }
+
+        .quick-action-item:hover {
+            background: #f5f5f5;
+        }
+
+        .quick-action-item.danger:hover {
+            background: #ffebee;
+            color: #f44336;
+        }
+
+        .quick-action-icon {
+            font-size: 18px;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Event Context Menu Trigger */
+        .event-actions-trigger {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            font-size: 16px;
+        }
+
+        .day-event-card:hover .event-actions-trigger,
+        .timeline-event:hover .event-actions-trigger {
+            opacity: 1;
+        }
+
+        .event-actions-trigger:hover {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
         /* ========== TAGES-ANSICHT ========== */
         .day-view {
             display: none;
@@ -1221,7 +1294,8 @@
                 const overdueBadge = event.overdue ? '<span class="overdue-badge">ÜBERFÄLLIG</span>' : '';
 
                 html += `
-                    <div class="day-event-card ${event.type} ${overdueClass}" onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
+                    <div class="day-event-card ${event.type} ${overdueClass}" onclick="showEventDetails('${event.vehicle.id}', '${event.type}')" style="position: relative;">
+                        <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
                         <div class="day-event-header">
                             <div class="day-event-title">
                                 ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
@@ -1270,8 +1344,9 @@
 
                 html += `
                     <div class="timeline-event ${event.type} ${overdueClass}"
-                         style="top: ${topPosition}px; height: 50px;"
+                         style="top: ${topPosition}px; height: 50px; position: relative;"
                          onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
+                        <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
                         <div class="timeline-event-title">
                             ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
                             ${overdueBadge}
@@ -1558,6 +1633,98 @@
             }
         });
 
+        // ========== QUICK ACTIONS ==========
+        let currentQuickActionVehicle = null;
+        let currentQuickActionType = null;
+
+        function showQuickActions(event, vehicleId, eventType) {
+            event.stopPropagation();
+
+            currentQuickActionVehicle = allVehicles.find(v => v.id === vehicleId);
+            currentQuickActionType = eventType;
+
+            const menu = document.getElementById('quickActionsMenu');
+            const rect = event.target.getBoundingClientRect();
+
+            // Position menu below trigger
+            menu.style.left = `${rect.left}px`;
+            menu.style.top = `${rect.bottom + 5}px`;
+            menu.classList.add('active');
+
+            // Close menu on outside click
+            setTimeout(() => {
+                document.addEventListener('click', closeQuickActionsOnOutsideClick);
+            }, 0);
+        }
+
+        function closeQuickActions() {
+            document.getElementById('quickActionsMenu').classList.remove('active');
+            document.removeEventListener('click', closeQuickActionsOnOutsideClick);
+        }
+
+        function closeQuickActionsOnOutsideClick(e) {
+            const menu = document.getElementById('quickActionsMenu');
+            if (!menu.contains(e.target)) {
+                closeQuickActions();
+            }
+        }
+
+        function quickActionComplete() {
+            if (!currentQuickActionVehicle) return;
+
+            const confirmed = confirm(`Fahrzeug ${currentQuickActionVehicle.kennzeichen} als abgeschlossen markieren?`);
+            if (confirmed) {
+                currentQuickActionVehicle.status = 'abgeschlossen';
+                currentQuickActionVehicle.abnahmeDatum = formatDate(new Date());
+                currentQuickActionVehicle.abnahmeZeit = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+                saveToFirestore(currentQuickActionVehicle);
+                loadData();
+                closeQuickActions();
+            }
+        }
+
+        function quickActionReschedule() {
+            if (!currentQuickActionVehicle) return;
+
+            const newDate = prompt('Neues Datum (TT.MM.JJJJ):', currentQuickActionVehicle.geplantesAbnahmeDatum || '');
+            if (newDate) {
+                currentQuickActionVehicle.geplantesAbnahmeDatum = newDate;
+                saveToFirestore(currentQuickActionVehicle);
+                loadData();
+                closeQuickActions();
+            }
+        }
+
+        function quickActionPDF() {
+            if (!currentQuickActionVehicle) return;
+
+            // Generate PDF based on event type
+            if (currentQuickActionType === 'annahme') {
+                window.open(`annahme.html?id=${currentQuickActionVehicle.id}&pdf=true`, '_blank');
+            } else if (currentQuickActionType === 'abgeschlossen' || currentQuickActionType === 'geplant') {
+                window.open(`abnahme.html?id=${currentQuickActionVehicle.id}&pdf=true`, '_blank');
+            }
+            closeQuickActions();
+        }
+
+        function quickActionDetails() {
+            if (!currentQuickActionVehicle) return;
+            showEventDetails(currentQuickActionVehicle.id, currentQuickActionType);
+            closeQuickActions();
+        }
+
+        function quickActionDelete() {
+            if (!currentQuickActionVehicle) return;
+
+            const confirmed = confirm(`Fahrzeug ${currentQuickActionVehicle.kennzeichen} wirklich löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden!`);
+            if (confirmed) {
+                deleteVehicle(currentQuickActionVehicle.id);
+                loadData();
+                closeQuickActions();
+            }
+        }
+
         // Responsive check on resize
         window.addEventListener('resize', function() {
             if (currentView === 'day') {
@@ -1565,5 +1732,29 @@
             }
         });
     </script>
+
+    <!-- Quick Actions Menu -->
+    <div id="quickActionsMenu" class="quick-actions-menu">
+        <div class="quick-action-item" onclick="quickActionComplete()">
+            <span class="quick-action-icon">✓</span>
+            <span>Als erledigt markieren</span>
+        </div>
+        <div class="quick-action-item" onclick="quickActionReschedule()">
+            <span class="quick-action-icon">📅</span>
+            <span>Datum ändern</span>
+        </div>
+        <div class="quick-action-item" onclick="quickActionPDF()">
+            <span class="quick-action-icon">📄</span>
+            <span>PDF erstellen</span>
+        </div>
+        <div class="quick-action-item" onclick="quickActionDetails()">
+            <span class="quick-action-icon">👁️</span>
+            <span>Details anzeigen</span>
+        </div>
+        <div class="quick-action-item danger" onclick="quickActionDelete()">
+            <span class="quick-action-icon">🗑️</span>
+            <span>Löschen</span>
+        </div>
+    </div>
 </body>
 </html>
