@@ -335,6 +335,93 @@
             flex-wrap: wrap;
         }
 
+        .status-actions {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .status-actions h4 {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .status-btn {
+            padding: 8px 14px;
+            border: 2px solid;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: white;
+        }
+
+        .status-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .status-btn.warte_kva {
+            border-color: #e65100;
+            color: #e65100;
+        }
+
+        .status-btn.warte_kva:hover {
+            background: #e65100;
+            color: white;
+        }
+
+        .status-btn.kva_gesendet {
+            border-color: #6a1b9a;
+            color: #6a1b9a;
+        }
+
+        .status-btn.kva_gesendet:hover {
+            background: #6a1b9a;
+            color: white;
+        }
+
+        .status-btn.beauftragt {
+            border-color: #2e7d32;
+            color: #2e7d32;
+        }
+
+        .status-btn.beauftragt:hover {
+            background: #2e7d32;
+            color: white;
+        }
+
+        .status-btn.in_arbeit {
+            border-color: #0277bd;
+            color: #0277bd;
+        }
+
+        .status-btn.in_arbeit:hover {
+            background: #0277bd;
+            color: white;
+        }
+
+        .status-btn.fertig {
+            border-color: #1b5e20;
+            color: #1b5e20;
+        }
+
+        .status-btn.fertig:hover {
+            background: #1b5e20;
+            color: white;
+        }
+
         .kva-box {
             background: #f0f9ff;
             padding: 20px;
@@ -864,7 +951,29 @@
 
                         ${kvaHTML}
 
-                        <div class="action-buttons" style="margin-top: 20px;">
+                        <!-- Quick Status Actions -->
+                        <div class="status-actions" onclick="event.stopPropagation();">
+                            <h4>⚡ Schnell-Status Änderung</h4>
+                            <div class="status-buttons">
+                                ${anfrage.status === 'neu' ? `
+                                    <button class="status-btn warte_kva" onclick="updateStatus('${anfrage.id}', 'warte_kva', event)">🔍 In Prüfung</button>
+                                ` : ''}
+                                ${anfrage.status === 'warte_kva' ? `
+                                    <button class="status-btn kva_gesendet" onclick="updateStatus('${anfrage.id}', 'kva_gesendet', event)">💰 Angebot senden</button>
+                                ` : ''}
+                                ${anfrage.status === 'kva_gesendet' ? `
+                                    <button class="status-btn beauftragt" onclick="updateStatus('${anfrage.id}', 'beauftragt', event)">✅ Beauftragen</button>
+                                ` : ''}
+                                ${anfrage.status === 'beauftragt' ? `
+                                    <button class="status-btn in_arbeit" onclick="updateStatus('${anfrage.id}', 'in_arbeit', event)">🎨 In Arbeit</button>
+                                ` : ''}
+                                ${anfrage.status === 'in_arbeit' ? `
+                                    <button class="status-btn fertig" onclick="updateStatus('${anfrage.id}', 'fertig', event)">🏁 Fertigstellen</button>
+                                ` : ''}
+                            </div>
+                        </div>
+
+                        <div class="action-buttons" style="margin-top: 20px;" onclick="event.stopPropagation();">
                             ${kvaButton}
                             <button class="btn btn-secondary btn-small" onclick="changeStatus('${anfrage.id}', '${anfrage.status}')">
                                 🔄 Status ändern
@@ -894,6 +1003,79 @@
 
         function closePhotoModal() {
             document.getElementById('photoModal').classList.remove('show');
+        }
+
+        // Schnelle Status-Änderung
+        async function updateStatus(anfrageId, newStatus, event) {
+            event.stopPropagation(); // Verhindert, dass Card-Click ausgelöst wird
+
+            const statusTexte = {
+                'neu': 'Neu eingegangen',
+                'warte_kva': 'In Prüfung',
+                'kva_gesendet': 'Angebot erstellt',
+                'beauftragt': 'Beauftragt',
+                'in_arbeit': 'In Arbeit',
+                'fertig': 'Fertig'
+            };
+
+            try {
+                // Status History erweitern
+                const anfrageDoc = await db.collection('partnerAnfragen').doc(anfrageId).get();
+                const currentData = anfrageDoc.data();
+                const statusHistory = currentData.statusHistory || [];
+
+                // Neuen Status-Eintrag hinzufügen
+                statusHistory.push({
+                    status: newStatus,
+                    timestamp: Date.now(),
+                    changedBy: 'Admin',
+                    changedAt: new Date().toISOString()
+                });
+
+                // Firestore aktualisieren
+                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    status: newStatus,
+                    statusText: statusTexte[newStatus],
+                    statusHistory: statusHistory,
+                    lastUpdated: Date.now()
+                });
+
+                console.log(`✅ Status geändert: ${anfrageId} → ${newStatus}`);
+
+                // UI aktualisieren
+                await loadAnfragen();
+
+                // Erfolgs-Feedback
+                showNotification(`Status aktualisiert: ${statusTexte[newStatus]}`);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Status-Update:', error);
+                alert('Fehler beim Ändern des Status: ' + error.message);
+            }
+        }
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #4caf50;
+                color: white;
+                padding: 15px 25px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                z-index: 10000;
+                font-weight: 600;
+                animation: slideIn 0.3s ease;
+            `;
+            notification.textContent = `✅ ${message}`;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
         }
 
         async function changeStatus(anfrageId, currentStatus) {

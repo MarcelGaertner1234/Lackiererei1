@@ -203,6 +203,130 @@
             padding: 60px 20px;
             color: #c62828;
         }
+
+        /* Kanban Board Styles */
+        .kanban-board {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 30px;
+            border-radius: 12px;
+            margin: 30px 0;
+        }
+
+        .kanban-board h2 {
+            text-align: center;
+            color: #003366;
+            margin-bottom: 25px;
+            font-size: 20px;
+        }
+
+        .kanban-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        .kanban-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step-circle {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            transition: all 0.3s;
+            background: #e0e0e0;
+            color: #999;
+            border: 4px solid #ccc;
+        }
+
+        .step-circle.completed {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+            border-color: #4caf50;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        }
+
+        .step-circle.active {
+            background: linear-gradient(135deg, #003366 0%, #00509e 100%);
+            color: white;
+            border-color: #003366;
+            box-shadow: 0 6px 20px rgba(0, 51, 102, 0.5);
+            transform: scale(1.2);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 6px 20px rgba(0, 51, 102, 0.5);
+            }
+            50% {
+                box-shadow: 0 6px 30px rgba(0, 51, 102, 0.8);
+            }
+        }
+
+        .step-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .step-time {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .kanban-step.completed .step-label {
+            color: #4caf50;
+        }
+
+        .kanban-step.active .step-label {
+            color: #003366;
+            font-size: 13px;
+        }
+
+        .kanban-connector {
+            position: absolute;
+            top: 30px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: #e0e0e0;
+            z-index: 1;
+        }
+
+        .kanban-connector-progress {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50 0%, #003366 100%);
+            transition: width 0.6s ease;
+        }
+
+        @media (max-width: 768px) {
+            .kanban-steps {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .kanban-connector {
+                display: none;
+            }
+
+            .step-circle {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+        }
     </style>
 
     <!-- Firebase SDKs -->
@@ -241,6 +365,7 @@
     <script src="../firebase-config.js"></script>
     <script>
         let anfrage = null;
+        let unsubscribe = null; // Firebase Listener
 
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
@@ -257,6 +382,7 @@
             }
 
             try {
+                // Initialer Ladevorgang
                 const doc = await db.collection('partnerAnfragen').doc(anfrageId).get();
 
                 if (!doc.exists) {
@@ -267,11 +393,73 @@
                 anfrage = { id: doc.id, ...doc.data() };
                 renderAnfrage();
 
+                // Live-Update Listener aktivieren
+                setupLiveUpdates(anfrageId);
+
             } catch (error) {
                 console.error('Fehler beim Laden:', error);
                 showError('Fehler beim Laden der Anfrage');
             }
         }
+
+        function setupLiveUpdates(anfrageId) {
+            // Alte Listener entfernen falls vorhanden
+            if (unsubscribe) unsubscribe();
+
+            // Firebase Echtzeit-Listener
+            unsubscribe = db.collection('partnerAnfragen').doc(anfrageId)
+                .onSnapshot((doc) => {
+                    if (doc.exists) {
+                        const newData = { id: doc.id, ...doc.data() };
+
+                        // Prüfen ob sich Status geändert hat
+                        if (anfrage && anfrage.status !== newData.status) {
+                            console.log('🔄 Status geändert:', anfrage.status, '→', newData.status);
+
+                            // Visuelles Feedback
+                            showUpdateNotification('Status aktualisiert!');
+                        }
+
+                        anfrage = newData;
+                        renderAnfrage(true); // true = Live-Update
+                    }
+                }, (error) => {
+                    console.error('Fehler beim Live-Update:', error);
+                });
+
+            console.log('✅ Live-Updates aktiviert für Anfrage:', anfrageId);
+        }
+
+        function showUpdateNotification(message) {
+            // Temporäre Benachrichtigung anzeigen
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #4caf50;
+                color: white;
+                padding: 15px 25px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                z-index: 10001;
+                font-weight: 600;
+                animation: slideIn 0.3s ease;
+            `;
+            notification.textContent = `🔄 ${message}`;
+            document.body.appendChild(notification);
+
+            // Nach 3 Sekunden ausblenden
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Cleanup beim Verlassen der Seite
+        window.addEventListener('beforeunload', () => {
+            if (unsubscribe) unsubscribe();
+        });
 
         function showError(message) {
             document.getElementById('loading').style.display = 'none';
@@ -351,6 +539,9 @@
                 </div>
             `;
 
+            // Kanban Board
+            html += renderKanbanBoard(serviceTyp);
+
             // Service-spezifische Details
             switch(serviceTyp) {
                 case 'reifen':
@@ -401,6 +592,123 @@
                     </div>
                 `;
             }
+
+            return html;
+        }
+
+        function renderKanbanBoard(serviceTyp) {
+            // Service-spezifische Kanban-Schritte definieren
+            const kanbanFlows = {
+                lackier: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', status: 'neu' },
+                    { id: 'warte_kva', icon: '🔍', label: 'Prüfung', status: 'warte_kva' },
+                    { id: 'kva_gesendet', icon: '💰', label: 'Angebot', status: 'kva_gesendet' },
+                    { id: 'beauftragt', icon: '✅', label: 'Beauftragt', status: 'beauftragt' },
+                    { id: 'in_arbeit', icon: '🎨', label: 'Lackierung', status: 'in_arbeit' },
+                    { id: 'qk', icon: '🔬', label: 'Qualität', status: 'qualitaetskontrolle' },
+                    { id: 'fertig', icon: '🏁', label: 'Abholbereit', status: 'fertig' }
+                ],
+                reifen: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', status: 'neu' },
+                    { id: 'bestellung', icon: '🛒', label: 'Bestellung', status: 'bestellung' },
+                    { id: 'angekommen', icon: '📦', label: 'Angekommen', status: 'angekommen' },
+                    { id: 'montage', icon: '🔧', label: 'Montage', status: 'montage' },
+                    { id: 'wuchten', icon: '⚖️', label: 'Wuchten', status: 'wuchten' },
+                    { id: 'fertig', icon: '✅', label: 'Fertig', status: 'fertig' }
+                ],
+                pflege: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', status: 'neu' },
+                    { id: 'termin', icon: '📅', label: 'Termin bestätigt', status: 'termin_bestaetigt' },
+                    { id: 'in_arbeit', icon: '✨', label: 'Aufbereitung', status: 'in_arbeit' },
+                    { id: 'qk', icon: '🔬', label: 'Qualität', status: 'qualitaetskontrolle' },
+                    { id: 'fertig', icon: '🏁', label: 'Fertig', status: 'fertig' }
+                ],
+                mechanik: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', status: 'neu' },
+                    { id: 'diagnose', icon: '🔍', label: 'Diagnose', status: 'diagnose' },
+                    { id: 'angebot', icon: '💰', label: 'Angebot', status: 'angebot' },
+                    { id: 'beauftragt', icon: '✅', label: 'Beauftragt', status: 'beauftragt' },
+                    { id: 'reparatur', icon: '🔧', label: 'Reparatur', status: 'reparatur' },
+                    { id: 'test', icon: '🧪', label: 'Test', status: 'test' },
+                    { id: 'fertig', icon: '🏁', label: 'Fertig', status: 'fertig' }
+                ],
+                tuev: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', status: 'neu' },
+                    { id: 'termin', icon: '📅', label: 'Termin gebucht', status: 'termin_gebucht' },
+                    { id: 'pruefung', icon: '🔍', label: 'Prüfung', status: 'in_pruefung' },
+                    { id: 'fertig', icon: '✅', label: 'Fertig', status: 'fertig' },
+                    { id: 'abholung', icon: '🚗', label: 'Abholbereit', status: 'abholbereit' }
+                ],
+                versicherung: [
+                    { id: 'neu', icon: '📥', label: 'Eingegangen', status: 'neu' },
+                    { id: 'gutachten', icon: '📋', label: 'Gutachten', status: 'gutachten' },
+                    { id: 'freigabe', icon: '✅', label: 'Freigabe', status: 'freigabe' },
+                    { id: 'reparatur', icon: '🔧', label: 'Reparatur', status: 'in_reparatur' },
+                    { id: 'qk', icon: '🔬', label: 'Qualität', status: 'qualitaetskontrolle' },
+                    { id: 'fertig', icon: '🏁', label: 'Fertig', status: 'fertig' }
+                ]
+            };
+
+            const steps = kanbanFlows[serviceTyp] || kanbanFlows['lackier'];
+            const currentStatus = anfrage.status || 'neu';
+            const statusHistory = anfrage.statusHistory || [];
+
+            // Aktuellen Schritt-Index finden
+            let currentStepIndex = steps.findIndex(s => s.status === currentStatus);
+            if (currentStepIndex === -1) currentStepIndex = 0;
+
+            // Fortschritt berechnen
+            const progress = ((currentStepIndex) / (steps.length - 1)) * 100;
+
+            let html = `
+                <div class="kanban-board">
+                    <h2>🔄 Status-Übersicht</h2>
+                    <div class="kanban-steps">
+                        <div class="kanban-connector">
+                            <div class="kanban-connector-progress" style="width: ${progress}%"></div>
+                        </div>
+            `;
+
+            steps.forEach((step, index) => {
+                const isCompleted = index < currentStepIndex;
+                const isActive = index === currentStepIndex;
+                const statusClass = isCompleted ? 'completed' : isActive ? 'active' : '';
+
+                // Zeitstempel finden
+                let timestamp = '';
+                if (statusHistory.length > 0) {
+                    const historyEntry = statusHistory.find(h => h.status === step.status);
+                    if (historyEntry && historyEntry.timestamp) {
+                        timestamp = new Date(historyEntry.timestamp).toLocaleDateString('de-DE', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    }
+                } else if (isActive || isCompleted) {
+                    // Fallback: Erstell-Datum verwenden
+                    timestamp = new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit'
+                    });
+                }
+
+                html += `
+                    <div class="kanban-step ${statusClass}">
+                        <div class="step-circle ${statusClass}">
+                            ${isCompleted ? '✓' : step.icon}
+                        </div>
+                        <div class="step-label">${step.label}</div>
+                        ${timestamp ? `<div class="step-time">${timestamp}</div>` : ''}
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
 
             return html;
         }

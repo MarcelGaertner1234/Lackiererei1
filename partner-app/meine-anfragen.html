@@ -48,7 +48,96 @@
         .nav-buttons {
             display: flex;
             gap: 10px;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
+        }
+
+        .filter-section {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+        }
+
+        .filter-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .filter-pill {
+            padding: 10px 18px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 25px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-pill:hover {
+            border-color: #003366;
+            transform: translateY(-2px);
+        }
+
+        .filter-pill.active {
+            background: #003366;
+            color: white;
+            border-color: #003366;
+        }
+
+        .filter-pill .count {
+            background: rgba(0,0,0,0.1);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .filter-pill.active .count {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .filter-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .filter-controls select,
+        .filter-controls input {
+            padding: 10px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            background: white;
+            transition: border 0.3s;
+        }
+
+        .filter-controls select:focus,
+        .filter-controls input:focus {
+            outline: none;
+            border-color: #003366;
+        }
+
+        .filter-reset {
+            padding: 10px 20px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .filter-reset:hover {
+            background: #d32f2f;
         }
 
         .btn {
@@ -253,11 +342,65 @@
             <a href="service-auswahl.html" class="btn btn-primary">➕ Neue Anfrage</a>
         </div>
 
+        <!-- Filter Section -->
+        <div class="filter-section" id="filterSection" style="display: none;">
+            <div class="filter-pills" id="filterPills">
+                <div class="filter-pill active" data-service="alle">
+                    <span>📋 Alle</span>
+                    <span class="count" id="count-alle">0</span>
+                </div>
+                <div class="filter-pill" data-service="lackier">
+                    <span>🎨 Lackier</span>
+                    <span class="count" id="count-lackier">0</span>
+                </div>
+                <div class="filter-pill" data-service="reifen">
+                    <span>🚗 Reifen</span>
+                    <span class="count" id="count-reifen">0</span>
+                </div>
+                <div class="filter-pill" data-service="pflege">
+                    <span>✨ Pflege</span>
+                    <span class="count" id="count-pflege">0</span>
+                </div>
+                <div class="filter-pill" data-service="mechanik">
+                    <span>🔧 Mechanik</span>
+                    <span class="count" id="count-mechanik">0</span>
+                </div>
+                <div class="filter-pill" data-service="tuev">
+                    <span>✅ TÜV/AU</span>
+                    <span class="count" id="count-tuev">0</span>
+                </div>
+                <div class="filter-pill" data-service="versicherung">
+                    <span>🛡️ Versicherung</span>
+                    <span class="count" id="count-versicherung">0</span>
+                </div>
+            </div>
+
+            <div class="filter-controls">
+                <select id="filterStatus">
+                    <option value="alle">Alle Status</option>
+                    <option value="neu">Neu eingegangen</option>
+                    <option value="warte_kva">In Prüfung</option>
+                    <option value="kva_gesendet">Angebot erstellt</option>
+                    <option value="beauftragt">Beauftragt</option>
+                    <option value="in_arbeit">In Arbeit</option>
+                    <option value="fertig">Abholbereit</option>
+                    <option value="offen">Offen</option>
+                </select>
+
+                <input type="text" id="filterSuche" placeholder="🔍 Suche Kennzeichen/Auftragsnummer..." />
+
+                <input type="date" id="filterDatumVon" placeholder="Von Datum" />
+                <input type="date" id="filterDatumBis" placeholder="Bis Datum" />
+
+                <button class="filter-reset" onclick="resetFilter()">✕ Filter zurücksetzen</button>
+            </div>
+        </div>
+
         <div id="loading" class="loading">
             <p>⏳ Anfragen werden geladen...</p>
         </div>
 
-        <div id="anf ragenListe" class="anfragen-liste" style="display: none;">
+        <div id="anfragenListe" class="anfragen-liste" style="display: none;">
             <!-- Wird dynamisch gefüllt -->
         </div>
 
@@ -274,12 +417,137 @@
     <script src="../firebase-config.js"></script>
     <script>
         let partner = null;
+        let alleAnfragen = []; // Alle Anfragen speichern
+        let activeFilters = {
+            service: 'alle',
+            status: 'alle',
+            suche: '',
+            datumVon: '',
+            datumBis: ''
+        };
 
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
             checkLogin();
             await loadAnfragen();
+            initFilter();
         });
+
+        function initFilter() {
+            // Service Pills
+            document.querySelectorAll('.filter-pill').forEach(pill => {
+                pill.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    activeFilters.service = pill.dataset.service;
+                    applyFilters();
+                });
+            });
+
+            // Status Dropdown
+            document.getElementById('filterStatus').addEventListener('change', (e) => {
+                activeFilters.status = e.target.value;
+                applyFilters();
+            });
+
+            // Suche
+            document.getElementById('filterSuche').addEventListener('input', (e) => {
+                activeFilters.suche = e.target.value.toLowerCase();
+                applyFilters();
+            });
+
+            // Datum Von
+            document.getElementById('filterDatumVon').addEventListener('change', (e) => {
+                activeFilters.datumVon = e.target.value;
+                applyFilters();
+            });
+
+            // Datum Bis
+            document.getElementById('filterDatumBis').addEventListener('change', (e) => {
+                activeFilters.datumBis = e.target.value;
+                applyFilters();
+            });
+        }
+
+        function resetFilter() {
+            activeFilters = {
+                service: 'alle',
+                status: 'alle',
+                suche: '',
+                datumVon: '',
+                datumBis: ''
+            };
+
+            document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+            document.querySelector('.filter-pill[data-service="alle"]').classList.add('active');
+            document.getElementById('filterStatus').value = 'alle';
+            document.getElementById('filterSuche').value = '';
+            document.getElementById('filterDatumVon').value = '';
+            document.getElementById('filterDatumBis').value = '';
+
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const liste = document.getElementById('anfragenListe');
+            liste.innerHTML = '';
+
+            console.log('🔍 Applying filters:', activeFilters);
+            console.log('📊 Total anfragen:', alleAnfragen.length);
+
+            const gefiltert = alleAnfragen.filter(anfrage => {
+                // Service Filter
+                if (activeFilters.service !== 'alle' && anfrage.serviceTyp !== activeFilters.service) {
+                    return false;
+                }
+
+                // Status Filter
+                if (activeFilters.status !== 'alle' && anfrage.status !== activeFilters.status) {
+                    return false;
+                }
+
+                // Suche Filter
+                if (activeFilters.suche) {
+                    const kennzeichen = (anfrage.kennzeichen || '').toLowerCase();
+                    const auftragsnummer = (anfrage.auftragsnummer || '').toLowerCase();
+                    if (!kennzeichen.includes(activeFilters.suche) && !auftragsnummer.includes(activeFilters.suche)) {
+                        return false;
+                    }
+                }
+
+                // Datum Von Filter
+                if (activeFilters.datumVon) {
+                    const anfrageDate = new Date(anfrage.timestamp || anfrage.erstelltAm);
+                    const filterDate = new Date(activeFilters.datumVon);
+                    if (anfrageDate < filterDate) {
+                        return false;
+                    }
+                }
+
+                // Datum Bis Filter
+                if (activeFilters.datumBis) {
+                    const anfrageDate = new Date(anfrage.timestamp || anfrage.erstelltAm);
+                    const filterDate = new Date(activeFilters.datumBis);
+                    filterDate.setHours(23, 59, 59, 999); // Ende des Tages
+                    if (anfrageDate > filterDate) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            console.log('✅ Gefilterte Anfragen:', gefiltert.length);
+
+            gefiltert.forEach(anfrage => {
+                const card = createAnfrageCard(anfrage);
+                liste.appendChild(card);
+            });
+
+            if (gefiltert.length === 0) {
+                liste.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">Keine Anfragen für die gewählten Filter</div>';
+            }
+        }
 
         function checkLogin() {
             partner = JSON.parse(localStorage.getItem('partner') || 'null');
@@ -299,8 +567,11 @@
 
         async function loadAnfragen() {
             const loading = document.getElementById('loading');
-            const liste = document.getElementById('anf ragenListe');
+            const liste = document.getElementById('anfragenListe');
             const emptyState = document.getElementById('emptyState');
+            const filterSection = document.getElementById('filterSection');
+
+            console.log('📊 Loading anfragen for partner:', partner);
 
             try {
                 if (!db) throw new Error('Firebase nicht verfügbar');
@@ -312,31 +583,66 @@
 
                 loading.style.display = 'none';
 
+                console.log('📦 Snapshot size:', snapshot.size);
+
                 if (snapshot.empty) {
+                    console.log('⚠️ Keine Anfragen gefunden für Partner:', partner.id);
                     emptyState.style.display = 'block';
                     return;
                 }
 
-                liste.style.display = 'flex';
-                liste.innerHTML = '';
-
-                // Sortiere im JavaScript (statt Firebase orderBy - vermeidet Index-Requirement)
-                const docs = snapshot.docs.sort((a, b) => {
-                    const timeA = a.data().timestamp || 0;
-                    const timeB = b.data().timestamp || 0;
+                // Alle Anfragen speichern
+                alleAnfragen = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })).sort((a, b) => {
+                    const timeA = a.timestamp || 0;
+                    const timeB = b.timestamp || 0;
                     return timeB - timeA; // Neueste zuerst
                 });
 
-                docs.forEach(doc => {
-                    const anfrage = doc.data();
-                    const card = createAnfrageCard(anfrage);
-                    liste.appendChild(card);
-                });
+                // Zähler aktualisieren
+                updateCounts();
+
+                // Filter anzeigen
+                console.log('✅ Zeige Filter-Section und Liste');
+                filterSection.style.display = 'block';
+                liste.style.display = 'flex';
+
+                // Initial anzeigen
+                applyFilters();
+                console.log('✅ Filter angewendet, Anzahl Cards:', liste.children.length);
 
             } catch (error) {
                 console.error('❌ Fehler beim Laden:', error);
                 loading.innerHTML = '<p style="color: #c62828;">⚠️ Fehler beim Laden der Anfragen</p>';
             }
+        }
+
+        function updateCounts() {
+            // Gesamt
+            document.getElementById('count-alle').textContent = alleAnfragen.length;
+
+            // Pro Service-Typ
+            const serviceCounts = {
+                lackier: 0,
+                reifen: 0,
+                pflege: 0,
+                mechanik: 0,
+                tuev: 0,
+                versicherung: 0
+            };
+
+            alleAnfragen.forEach(anfrage => {
+                const typ = anfrage.serviceTyp || 'lackier';
+                if (serviceCounts[typ] !== undefined) {
+                    serviceCounts[typ]++;
+                }
+            });
+
+            Object.keys(serviceCounts).forEach(typ => {
+                document.getElementById(`count-${typ}`).textContent = serviceCounts[typ];
+            });
         }
 
         function getServiceBadge(serviceTyp) {
