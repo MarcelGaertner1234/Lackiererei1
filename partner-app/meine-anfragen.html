@@ -182,15 +182,53 @@
             background: white;
             border: 2px solid #e0e0e0;
             border-radius: 12px;
-            padding: 20px;
             transition: all 0.3s;
-            cursor: pointer;
+            overflow: hidden;
         }
 
         .anfrage-card:hover {
             border-color: #003366;
             box-shadow: 0 4px 12px rgba(0,51,102,0.1);
-            transform: translateX(5px);
+        }
+
+        .anfrage-card-header {
+            padding: 20px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .anfrage-card-header:hover {
+            background: #f9f9f9;
+        }
+
+        .anfrage-card-header:active {
+            background: #f0f0f0;
+        }
+
+        .anfrage-card-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out;
+            padding: 0 20px;
+        }
+
+        .anfrage-card.expanded .anfrage-card-body {
+            max-height: 3000px;
+            padding: 0 20px 20px 20px;
+            transition: max-height 0.5s ease-in;
+        }
+
+        .toggle-icon {
+            display: inline-block;
+            transition: transform 0.3s;
+            font-size: 16px;
+            color: #003366;
+            margin-right: 8px;
+        }
+
+        .anfrage-card.expanded .toggle-icon {
+            transform: rotate(90deg);
         }
 
         .anfrage-header {
@@ -540,8 +578,8 @@
 
             console.log('✅ Gefilterte Anfragen:', gefiltert.length);
 
-            gefiltert.forEach(anfrage => {
-                const card = createAnfrageCard(anfrage);
+            gefiltert.forEach((anfrage, index) => {
+                const card = createAnfrageCard(anfrage, index);
                 liste.appendChild(card);
             });
 
@@ -706,9 +744,13 @@
             }
         }
 
-        function createAnfrageCard(anfrage) {
+        function createAnfrageCard(anfrage, index) {
             const card = document.createElement('div');
             card.className = 'anfrage-card';
+            // Erste Card standardmäßig ausgeklappt
+            if (index === 0) {
+                card.classList.add('expanded');
+            }
 
             const datum = new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', {
                 day: '2-digit',
@@ -822,16 +864,21 @@
             }
 
             card.innerHTML = `
-                <div class="anfrage-header">
-                    <div>
-                        <div class="anfrage-title">${anfrage.auftragsnummer || anfrage.kennzeichen || 'Fahrzeug'}</div>
-                        <div class="anfrage-date">${datum} ${getServiceBadge(anfrage.serviceTyp || 'lackier')}</div>
-                    </div>
-                    <div class="status-badge ${anfrage.status}">
-                        ${statusTexte[anfrage.status] || anfrage.status}
+                <div class="anfrage-card-header">
+                    <div class="anfrage-header">
+                        <div>
+                            <div class="anfrage-title">
+                                <span class="toggle-icon">▶</span>${anfrage.auftragsnummer || anfrage.kennzeichen || 'Fahrzeug'}
+                            </div>
+                            <div class="anfrage-date">${datum} ${getServiceBadge(anfrage.serviceTyp || 'lackier')}</div>
+                        </div>
+                        <div class="status-badge ${anfrage.status}">
+                            ${statusTexte[anfrage.status] || anfrage.status}
+                        </div>
                     </div>
                 </div>
-                <div class="anfrage-details">
+                <div class="anfrage-card-body">
+                    <div class="anfrage-details">
                     <div class="detail-item">
                         <div class="label">${anfrage.referenzType === 'auftrag' || anfrage.referenztyp === 'auftragsnummer' ? 'Auftragsnummer' : 'Kennzeichen'}</div>
                         <div class="value">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
@@ -854,14 +901,30 @@
                         <strong style="color: #1565c0; font-size: 13px;">🚘 Ersatzfahrzeug gewünscht</strong>
                     </div>
                     ` : ''}
+                    </div>
+                    ${kvaHTML}
                 </div>
-                ${kvaHTML}
             `;
 
-            // Klick öffnet Details
-            card.onclick = () => {
+            // Toggle-Funktion für Header
+            const header = card.querySelector('.anfrage-card-header');
+            header.onclick = (e) => {
+                e.stopPropagation();
+                card.classList.toggle('expanded');
+            };
+
+            // Detail-Link Button hinzufügen
+            const detailButton = document.createElement('button');
+            detailButton.className = 'btn btn-primary btn-small';
+            detailButton.textContent = '🔍 Details öffnen';
+            detailButton.style.cssText = 'margin-top: 15px;';
+            detailButton.onclick = (e) => {
+                e.stopPropagation();
                 window.location.href = `anfrage-detail.html?id=${anfrage.id}`;
             };
+
+            const cardBody = card.querySelector('.anfrage-card-body');
+            cardBody.appendChild(detailButton);
 
             return card;
         }
