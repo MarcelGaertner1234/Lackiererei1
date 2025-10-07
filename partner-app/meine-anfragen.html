@@ -339,11 +339,71 @@
             }
         }
 
+        function getServiceBadge(serviceTyp) {
+            const badges = {
+                'lackier': { icon: '🎨', label: 'Lackier-Service', color: '#003366' },
+                'reifen': { icon: '🚗', label: 'Reifen-Service', color: '#1976d2' },
+                'pflege': { icon: '✨', label: 'Fahrzeugpflege', color: '#7b1fa2' },
+                'mechanik': { icon: '🔧', label: 'Mechanik', color: '#d32f2f' },
+                'tuev': { icon: '✅', label: 'TÜV/AU', color: '#388e3c' },
+                'versicherung': { icon: '🛡️', label: 'Versicherung', color: '#f57c00' }
+            };
+            const badge = badges[serviceTyp] || { icon: '📋', label: 'Service', color: '#666' };
+            return `<span style="background: ${badge.color}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">${badge.icon} ${badge.label}</span>`;
+        }
+
+        function getServiceDetails(anfrage) {
+            const typ = anfrage.serviceTyp || 'lackier';
+
+            switch(typ) {
+                case 'reifen':
+                    return `
+                        <div class="detail-item"><div class="label">Wechsel</div><div class="value">${anfrage.wechsel === 'ja' ? '✅ Ja' : '❌ Nein'}</div></div>
+                        ${anfrage.bestellung ? `<div class="detail-item"><div class="label">Bestellung</div><div class="value">${anfrage.reifengroesse || 'Ja'}</div></div>` : ''}
+                        ${anfrage.montageWuchten ? `<div class="detail-item"><div class="value">🔧 Montage & Wuchten</div></div>` : ''}
+                        ${anfrage.einlagerung ? `<div class="detail-item"><div class="value">📦 Einlagerung</div></div>` : ''}
+                    `;
+                case 'pflege':
+                    const leistungen = [];
+                    if (anfrage.leistungen) {
+                        if (anfrage.leistungen.neuwagenAufbereitung) leistungen.push('Neuwagen-Aufbereitung');
+                        if (anfrage.leistungen.innenAufbereitung) leistungen.push('Innen-Aufbereitung');
+                        if (anfrage.leistungen.aussenAufbereitung) leistungen.push('Außen-Aufbereitung');
+                        if (anfrage.leistungen.innenUndAussen) leistungen.push('Innen & Außen');
+                        if (anfrage.leistungen.polsterreinigung) leistungen.push('Polsterreinigung');
+                    }
+                    return `<div class="detail-item"><div class="label">Leistungen</div><div class="value">${leistungen.join(', ') || 'k.A.'}</div></div>`;
+                case 'mechanik':
+                    return `
+                        <div class="detail-item"><div class="label">Problem</div><div class="value">${anfrage.problembeschreibung?.substring(0, 40)}...</div></div>
+                        ${anfrage.termin === 'notfall' ? `<div class="detail-item" style="background: #ffebee; padding: 8px; border-radius: 4px;"><strong style="color: #c62828;">🚨 NOTFALL</strong></div>` : ''}
+                    `;
+                case 'tuev':
+                    return `
+                        <div class="detail-item"><div class="label">Untersuchungen</div><div class="value">${anfrage.hu ? 'HU' : ''}${anfrage.hu && anfrage.au ? ' + ' : ''}${anfrage.au ? 'AU' : ''}</div></div>
+                        ${anfrage.slotId ? `<div class="detail-item"><div class="label">Slot</div><div class="value">${anfrage.slotId}</div></div>` : ''}
+                    `;
+                case 'versicherung':
+                    return `
+                        <div class="detail-item"><div class="label">Schadendatum</div><div class="value">${anfrage.schadendatum ? new Date(anfrage.schadendatum).toLocaleDateString('de-DE') : 'k.A.'}</div></div>
+                        <div class="detail-item"><div class="label">Versicherung</div><div class="value">${anfrage.versicherung || 'k.A.'}</div></div>
+                        ${anfrage.schadenart ? `<div class="detail-item"><div class="label">Art</div><div class="value">${anfrage.schadenart}</div></div>` : ''}
+                    `;
+                case 'lackier':
+                default:
+                    return `
+                        <div class="detail-item"><div class="label">Schaden</div><div class="value">${anfrage.schadenBeschreibung?.substring(0, 40)}${anfrage.schadenBeschreibung?.length > 40 ? '...' : ''}</div></div>
+                        <div class="detail-item"><div class="label">Dringlichkeit</div><div class="value">${anfrage.dringlichkeitLabel || (anfrage.dringlichkeit === 'eilig' ? '⚡ Eilig' : '📅 Normal')}</div></div>
+                        ${anfrage.karosseriearbeiten === 'ja' ? `<div class="detail-item" style="background: #fff3e0; padding: 10px; border-radius: 5px; border-left: 4px solid #ff9800;"><strong style="color: #e65100;">🔧 Karosserie-Arbeiten</strong></div>` : ''}
+                    `;
+            }
+        }
+
         function createAnfrageCard(anfrage) {
             const card = document.createElement('div');
             card.className = 'anfrage-card';
 
-            const datum = new Date(anfrage.timestamp).toLocaleDateString('de-DE', {
+            const datum = new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', {
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric',
@@ -458,7 +518,7 @@
                 <div class="anfrage-header">
                     <div>
                         <div class="anfrage-title">${anfrage.auftragsnummer || anfrage.kennzeichen || 'Fahrzeug'}</div>
-                        <div class="anfrage-date">${datum}</div>
+                        <div class="anfrage-date">${datum} ${getServiceBadge(anfrage.serviceTyp)}</div>
                     </div>
                     <div class="status-badge ${anfrage.status}">
                         ${statusTexte[anfrage.status] || anfrage.status}
@@ -466,27 +526,16 @@
                 </div>
                 <div class="anfrage-details">
                     <div class="detail-item">
-                        <div class="label">${anfrage.referenzType === 'auftrag' ? 'Auftragsnummer' : 'Kennzeichen'}</div>
+                        <div class="label">${anfrage.referenzType === 'auftrag' || anfrage.referenztyp === 'auftragsnummer' ? 'Auftragsnummer' : 'Kennzeichen'}</div>
                         <div class="value">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
                     </div>
+                    ${anfrage.vin ? `
                     <div class="detail-item">
                         <div class="label">VIN</div>
-                        <div class="value" style="font-family: monospace; font-size: 12px;">${anfrage.vin || 'Fahrzeugschein'}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="label">Schaden</div>
-                        <div class="value">${anfrage.schadenBeschreibung.substring(0, 40)}${anfrage.schadenBeschreibung.length > 40 ? '...' : ''}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="label">Dringlichkeit</div>
-                        <div class="value">${anfrage.dringlichkeitLabel || (anfrage.dringlichkeit === 'eilig' ? '⚡ Eilig' : '📅 Normal')}</div>
-                    </div>
-                    ${anfrage.karosseriearbeiten === 'ja' ? `
-                    <div class="detail-item" style="background: #fff3e0; padding: 10px; border-radius: 5px; border-left: 4px solid #ff9800;">
-                        <strong style="color: #e65100;">🔧 Karosserie-Arbeiten erforderlich</strong>
-                        <div style="font-size: 12px; margin-top: 3px; color: #999;">Demontage/Montage benötigt</div>
+                        <div class="value" style="font-family: monospace; font-size: 12px;">${anfrage.vin}</div>
                     </div>
                     ` : ''}
+                    ${getServiceDetails(anfrage)}
                     ${anfrage.abholserviceGewuenscht ? `
                     <div class="detail-item" style="background: #fff3e0; padding: 10px; border-radius: 5px; border-left: 4px solid #ff9800;">
                         <strong style="color: #e65100;">🚚 Abhol- & Bringservice gewünscht</strong>
