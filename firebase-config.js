@@ -45,6 +45,11 @@ function initFirebase() {
     // Firestore initialisieren
     db = firebase.firestore();
 
+    // Cache-Größe konfigurieren (Firebase 9+ empfohlen)
+    db.settings({
+      cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED
+    });
+
     // Offline-Persistenz aktivieren (App funktioniert auch offline!)
     db.enablePersistence({ synchronizeTabs: true })
       .then(() => {
@@ -63,8 +68,7 @@ function initFirebase() {
       storage = firebase.storage();
       console.log("✅ Firebase Storage verfügbar");
     } catch (storageError) {
-      console.warn("⚠️ Firebase Storage nicht verfügbar (Blaze Plan erforderlich)");
-      console.warn("→ Fotos werden in LocalStorage gespeichert");
+      console.log("ℹ️ Storage nicht aktiviert - LocalStorage wird verwendet");
       storage = null;
     }
 

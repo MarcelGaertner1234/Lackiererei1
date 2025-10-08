@@ -860,14 +860,38 @@
             for (const anfrage of alleAnfragen) {
                 const lastRead = localStorage.getItem(`chat_last_read_${anfrage.id}`) || '0';
 
-                const snapshot = await db.collection('partnerAnfragen')
-                    .doc(anfrage.id)
-                    .collection('chat')
-                    .where('sender', '==', 'werkstatt')
-                    .where('timestamp', '>', lastRead)
-                    .get();
+                try {
+                    // Versuche mit Composite Index (schneller)
+                    const snapshot = await db.collection('partnerAnfragen')
+                        .doc(anfrage.id)
+                        .collection('chat')
+                        .where('sender', '==', 'werkstatt')
+                        .where('timestamp', '>', lastRead)
+                        .get();
 
-                unreadCounts[anfrage.id] = snapshot.size;
+                    unreadCounts[anfrage.id] = snapshot.size;
+                } catch (error) {
+                    // Fallback: Nur nach sender filtern und clientseitig filtern
+                    if (error.code === 'failed-precondition' || error.message.includes('index')) {
+                        console.log('ℹ️ Verwende Fallback-Methode für Unread-Count (Index wird erstellt...)');
+
+                        const snapshot = await db.collection('partnerAnfragen')
+                            .doc(anfrage.id)
+                            .collection('chat')
+                            .where('sender', '==', 'werkstatt')
+                            .get();
+
+                        // Clientseitig nach timestamp filtern
+                        const unreadMessages = snapshot.docs.filter(doc =>
+                            doc.data().timestamp > lastRead
+                        );
+
+                        unreadCounts[anfrage.id] = unreadMessages.length;
+                    } else {
+                        console.error('❌ Fehler beim Laden der Unread-Counts:', error);
+                        unreadCounts[anfrage.id] = 0;
+                    }
+                }
             }
         }
 
