@@ -190,6 +190,46 @@
         }
 
         /* Kanban Board */
+        /* Status Filter Dropdown */
+        .status-filter-container {
+            margin-bottom: 20px;
+        }
+
+        .status-dropdown {
+            width: 100%;
+            max-width: 400px;
+            padding: 15px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #003366;
+            background: white;
+            border: 2px solid #003366;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23003366' d='M1.41 0L6 4.59 10.59 0 12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            padding-right: 45px;
+        }
+
+        .status-dropdown:hover {
+            border-color: #00509e;
+            box-shadow: 0 4px 12px rgba(0,51,102,0.15);
+        }
+
+        .status-dropdown:focus {
+            outline: none;
+            border-color: #00509e;
+            box-shadow: 0 0 0 3px rgba(0,51,102,0.1);
+        }
+
+        /* Single Column Container */
+        .single-column-container {
+            max-width: 100%;
+        }
+
         .kanban-board {
             display: grid;
             grid-template-columns: repeat(6, minmax(220px, 1fr));
@@ -772,60 +812,27 @@
             <p>⏳ Anfragen werden geladen...</p>
         </div>
 
-        <!-- Kanban Board -->
-        <div id="kanbanBoard" class="kanban-board" style="display: none;">
-            <!-- Status: Neu -->
-            <div class="kanban-column">
-                <div class="kanban-column-header">
-                    <span>🆕 Neu eingegangen</span>
-                    <span class="kanban-column-count" id="count-status-neu">0</span>
-                </div>
-                <div class="kanban-cards" id="column-neu"></div>
-            </div>
+        <!-- Status Filter Dropdown -->
+        <div id="statusFilterContainer" class="status-filter-container" style="display: none;">
+            <select id="statusFilter" class="status-dropdown">
+                <option value="alle">📋 Alle Anfragen (0)</option>
+                <option value="neu">🆕 Neu eingegangen (0)</option>
+                <option value="warte_kva">🔍 In Prüfung (0)</option>
+                <option value="kva_gesendet">💶 Angebot (0)</option>
+                <option value="beauftragt">✅ Beauftragt (0)</option>
+                <option value="in_arbeit">🔧 In Arbeit (0)</option>
+                <option value="fertig">🎉 Abholbereit (0)</option>
+            </select>
+        </div>
 
-            <!-- Status: In Prüfung -->
+        <!-- Single Column Display -->
+        <div id="singleColumnContainer" class="single-column-container" style="display: none;">
             <div class="kanban-column">
                 <div class="kanban-column-header">
-                    <span>🔍 In Prüfung</span>
-                    <span class="kanban-column-count" id="count-status-warte_kva">0</span>
+                    <span id="activeStatusLabel">📋 Alle Anfragen</span>
+                    <span class="kanban-column-count" id="activeStatusCount">0</span>
                 </div>
-                <div class="kanban-cards" id="column-warte_kva"></div>
-            </div>
-
-            <!-- Status: Angebot erstellt -->
-            <div class="kanban-column">
-                <div class="kanban-column-header">
-                    <span>💶 Angebot</span>
-                    <span class="kanban-column-count" id="count-status-kva_gesendet">0</span>
-                </div>
-                <div class="kanban-cards" id="column-kva_gesendet"></div>
-            </div>
-
-            <!-- Status: Beauftragt -->
-            <div class="kanban-column">
-                <div class="kanban-column-header">
-                    <span>✅ Beauftragt</span>
-                    <span class="kanban-column-count" id="count-status-beauftragt">0</span>
-                </div>
-                <div class="kanban-cards" id="column-beauftragt"></div>
-            </div>
-
-            <!-- Status: In Arbeit -->
-            <div class="kanban-column">
-                <div class="kanban-column-header">
-                    <span>🔧 In Arbeit</span>
-                    <span class="kanban-column-count" id="count-status-in_arbeit">0</span>
-                </div>
-                <div class="kanban-cards" id="column-in_arbeit"></div>
-            </div>
-
-            <!-- Status: Fertig -->
-            <div class="kanban-column">
-                <div class="kanban-column-header">
-                    <span>🎉 Abholbereit</span>
-                    <span class="kanban-column-count" id="count-status-fertig">0</span>
-                </div>
-                <div class="kanban-cards" id="column-fertig"></div>
+                <div class="kanban-cards" id="activeStatusCards"></div>
             </div>
         </div>
 
@@ -883,6 +890,7 @@
             datumBis: ''
         };
 
+        let currentStatus = 'alle'; // Aktuell gewählter Status im Dropdown
         let activeChatAnfrageId = null;
         let chatUnsubscribe = null;
         let unreadCounts = {}; // anfrageId -> unread count
@@ -917,32 +925,33 @@
                     document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
                     activeFilters.service = pill.dataset.service;
-                    renderKanban();
+                    renderSingleColumn(currentStatus);
                 });
             });
 
             // Suche
             document.getElementById('filterSuche').addEventListener('input', (e) => {
                 activeFilters.suche = e.target.value.toLowerCase();
-                renderKanban();
+                renderSingleColumn(currentStatus);
             });
 
             // Datum Von
             document.getElementById('filterDatumVon').addEventListener('change', (e) => {
                 activeFilters.datumVon = e.target.value;
-                renderKanban();
+                renderSingleColumn(currentStatus);
             });
 
             // Datum Bis
             document.getElementById('filterDatumBis').addEventListener('change', (e) => {
                 activeFilters.datumBis = e.target.value;
-                renderKanban();
+                renderSingleColumn(currentStatus);
             });
         }
 
         async function loadAnfragen() {
             const loading = document.getElementById('loading');
-            const kanbanBoard = document.getElementById('kanbanBoard');
+            const statusFilterContainer = document.getElementById('statusFilterContainer');
+            const singleColumnContainer = document.getElementById('singleColumnContainer');
             const emptyState = document.getElementById('emptyState');
             const filterSection = document.getElementById('filterSection');
 
@@ -973,9 +982,11 @@
                 await loadUnreadCounts();
 
                 updateCounts();
+                updateDropdownCounts();
                 filterSection.style.display = 'block';
-                kanbanBoard.style.display = 'grid';
-                renderKanban();
+                statusFilterContainer.style.display = 'block';
+                singleColumnContainer.style.display = 'block';
+                renderSingleColumn(currentStatus);
 
             } catch (error) {
                 console.error('❌ Fehler beim Laden:', error);
@@ -1049,9 +1060,45 @@
             });
         }
 
-        function renderKanban() {
+        // Dropdown Counts aktualisieren
+        function updateDropdownCounts() {
+            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
+            const statusLabels = {
+                alle: '📋 Alle Anfragen',
+                neu: '🆕 Neu eingegangen',
+                warte_kva: '🔍 In Prüfung',
+                kva_gesendet: '💶 Angebot',
+                beauftragt: '✅ Beauftragt',
+                in_arbeit: '🔧 In Arbeit',
+                fertig: '🎉 Abholbereit'
+            };
+
+            const statusCounts = { alle: alleAnfragen.length };
+            statuses.forEach(s => statusCounts[s] = 0);
+
+            alleAnfragen.forEach(anfrage => {
+                const status = anfrage.status || 'neu';
+                if (statusCounts[status] !== undefined) {
+                    statusCounts[status]++;
+                }
+            });
+
+            // Dropdown Options aktualisieren
+            const dropdown = document.getElementById('statusFilter');
+            Object.keys(statusLabels).forEach(status => {
+                const option = dropdown.querySelector(`option[value="${status}"]`);
+                if (option) {
+                    option.textContent = `${statusLabels[status]} (${statusCounts[status] || 0})`;
+                }
+            });
+        }
+
+        // Single Column rendern
+        function renderSingleColumn(status) {
+            currentStatus = status;
+
             // Filter anwenden
-            const gefiltert = alleAnfragen.filter(anfrage => {
+            let gefiltert = alleAnfragen.filter(anfrage => {
                 const serviceTyp = anfrage.serviceTyp || 'lackier';
                 if (activeFilters.service !== 'alle' && serviceTyp !== activeFilters.service) {
                     return false;
@@ -1081,37 +1128,39 @@
                 return true;
             });
 
-            // Spalten leeren
-            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
-            statuses.forEach(status => {
-                const column = document.getElementById(`column-${status}`);
-                column.innerHTML = '';
-                document.getElementById(`count-status-${status}`).textContent = '0';
-            });
+            // Status-Filter (außer "alle")
+            if (status !== 'alle') {
+                gefiltert = gefiltert.filter(anfrage => (anfrage.status || 'neu') === status);
+            }
 
-            // Status-Counts
-            const statusCounts = {};
-            statuses.forEach(s => statusCounts[s] = 0);
+            // Label und Count aktualisieren
+            const statusLabels = {
+                alle: '📋 Alle Anfragen',
+                neu: '🆕 Neu eingegangen',
+                warte_kva: '🔍 In Prüfung',
+                kva_gesendet: '💶 Angebot',
+                beauftragt: '✅ Beauftragt',
+                in_arbeit: '🔧 In Arbeit',
+                fertig: '🎉 Abholbereit'
+            };
 
-            // Cards in Spalten verteilen
+            document.getElementById('activeStatusLabel').textContent = statusLabels[status] || '📋 Alle Anfragen';
+            document.getElementById('activeStatusCount').textContent = gefiltert.length;
+
+            // Cards rendern
+            const cardsContainer = document.getElementById('activeStatusCards');
+            cardsContainer.innerHTML = '';
+
             gefiltert.forEach(anfrage => {
-                const status = anfrage.status || 'neu';
-                if (statusCounts[status] !== undefined) {
-                    statusCounts[status]++;
-                }
-
-                const column = document.getElementById(`column-${status}`);
-                if (column) {
-                    const card = createCompactCard(anfrage);
-                    column.appendChild(card);
-                }
-            });
-
-            // Counts aktualisieren
-            Object.keys(statusCounts).forEach(status => {
-                document.getElementById(`count-status-${status}`).textContent = statusCounts[status];
+                const card = createCompactCard(anfrage);
+                cardsContainer.appendChild(card);
             });
         }
+
+        // Status Filter Handler
+        document.getElementById('statusFilter').addEventListener('change', (e) => {
+            renderSingleColumn(e.target.value);
+        });
 
         function createCompactCard(anfrage) {
             const card = document.createElement('div');
@@ -1356,7 +1405,7 @@
             unreadCounts[anfrageId] = 0;
 
             // Kanban neu rendern um Badge zu entfernen
-            renderKanban();
+            renderSingleColumn(currentStatus);
         }
     </script>
 </body>
