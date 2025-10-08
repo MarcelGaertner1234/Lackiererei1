@@ -551,6 +551,23 @@
             background: #00509e;
         }
 
+        .card-btn-storno {
+            background: #d32f2f;
+            color: white;
+            border: 1px solid #b71c1c;
+        }
+
+        .card-btn-storno:hover {
+            background: #b71c1c;
+        }
+
+        .card-btn-storno:disabled {
+            background: #e0e0e0;
+            color: #999;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
         /* Chat Modal */
         .chat-modal {
             position: fixed;
@@ -1227,6 +1244,10 @@
                     <span class="chip-label">Fertig</span>
                     <span class="chip-count" id="chip-count-fertig">(0)</span>
                 </button>
+                <button class="visibility-chip active" data-status="storniert" onclick="toggleColumnFromPanel('storniert')">
+                    <span class="chip-label">Storniert</span>
+                    <span class="chip-count" id="chip-count-storniert">(0)</span>
+                </button>
             </div>
         </div>
 
@@ -1341,6 +1362,15 @@
                 </div>
                 <div class="kanban-cards" id="column-fertig"></div>
             </div>
+
+            <!-- Spalte: Storniert -->
+            <div class="kanban-column" id="kanban-column-storniert" data-status="storniert">
+                <div class="kanban-column-header" style="background: #d32f2f;">
+                    <span>Storniert</span>
+                    <span class="kanban-column-count" id="count-status-storniert">0</span>
+                </div>
+                <div class="kanban-cards" id="column-storniert"></div>
+            </div>
         </div>
 
         <div id="emptyState" class="empty-state" style="display: none;">
@@ -1443,7 +1473,7 @@
 
         // Spalten-Sichtbarkeit anwenden
         function applyColumnVisibility() {
-            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
+            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig', 'storniert'];
             statuses.forEach(status => {
                 const column = document.getElementById(`column-container-${status}`);
                 if (column) {
@@ -1459,7 +1489,7 @@
 
         // Visibility Panel aktualisieren
         function updateVisibilityPanel() {
-            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
+            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig', 'storniert'];
 
             statuses.forEach(status => {
                 const chip = document.querySelector(`.visibility-chip[data-status="${status}"]`);
@@ -1682,7 +1712,7 @@
             });
 
             // Spalten leeren
-            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
+            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig', 'storniert'];
             statuses.forEach(status => {
                 const column = document.getElementById(`column-${status}`);
                 if (column) {
@@ -1776,6 +1806,11 @@
                         💬 Chat
                         ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
                     </button>
+                    ${anfrage.status === 'beauftragt' ? `
+                        <button class="card-btn card-btn-storno" onclick="stornierenAnfrage('${anfrage.id}', event)">
+                            ❌ Stornieren
+                        </button>
+                    ` : ''}
                     <button class="card-btn card-btn-details" onclick="openDetails('${anfrage.id}')">
                         Details →
                     </button>
@@ -1795,6 +1830,52 @@
                 versicherung: 'Versicherung'
             };
             return labels[serviceTyp] || 'Service';
+        }
+
+        async function stornierenAnfrage(anfrageId, event) {
+            event?.stopPropagation();
+
+            const anfrage = alleAnfragen.find(a => a.id === anfrageId);
+            if (!anfrage) {
+                alert('Anfrage nicht gefunden.');
+                return;
+            }
+
+            // Nur "beauftragt" kann storniert werden
+            if (anfrage.status !== 'beauftragt') {
+                alert('Diese Anfrage kann nicht mehr storniert werden.\\n\\nNur Anfragen im Status "Beauftragt" können storniert werden.');
+                return;
+            }
+
+            // Bestätigung
+            const bestaetigung = confirm(
+                'Möchten Sie diese Anfrage wirklich stornieren?\\n\\n' +
+                `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
+                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                `Preis: ${anfrage.kva?.gesamt ? anfrage.kva.gesamt.toFixed(2) + ' €' : 'k.A.'}`
+            );
+
+            if (!bestaetigung) {
+                return;
+            }
+
+            // Optional: Storno-Grund erfragen
+            const grund = prompt('Grund für Stornierung (optional):') || 'Keine Angabe';
+
+            try {
+                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    status: 'storniert',
+                    storniertAm: new Date().toISOString(),
+                    storniertVon: partner.email,
+                    stornierungsGrund: grund
+                });
+
+                alert('✅ Anfrage erfolgreich storniert.');
+                await loadAnfragen();
+            } catch (error) {
+                console.error('❌ Fehler beim Stornieren:', error);
+                alert('❌ Fehler beim Stornieren der Anfrage.\\n\\nBitte versuchen Sie es erneut.');
+            }
         }
 
         function openDetails(anfrageId) {
