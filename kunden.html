@@ -3019,6 +3019,19 @@
         // Neuer Kunde Modal schließen
         function closeNeuerKundeModal() {
             document.getElementById('neuerKundeModal').classList.remove('active');
+            document.getElementById('neuerKundeForm').reset();
+            currentKundeId = null;
+
+            // ✅ Rabatt-Konditionen Felder zurücksetzen (NEU)
+            document.getElementById('rabattStufe1Prozent').value = '';
+            document.getElementById('rabattStufe1Ab').value = '';
+            document.getElementById('rabattStufe2Prozent').value = '';
+            document.getElementById('rabattStufe2Ab').value = '';
+            document.getElementById('rabattStufe3Prozent').value = '';
+            document.getElementById('rabattStufe3Ab').value = '';
+            document.getElementById('konditionenGeprueft').checked = false;
+            document.getElementById('konditionenDatum').value = '';
+            document.getElementById('konditionenDatum').disabled = true;
         }
 
         // Neuer Kunde Form Submit
@@ -3034,6 +3047,28 @@
                 }
             });
 
+            // ✅ Rabatt-Konditionen sammeln (NEU)
+            const rabattKonditionen = {};
+            const stufe1Prozent = parseFloat(document.getElementById('rabattStufe1Prozent').value);
+            const stufe1Ab = parseFloat(document.getElementById('rabattStufe1Ab').value);
+            const stufe2Prozent = parseFloat(document.getElementById('rabattStufe2Prozent').value);
+            const stufe2Ab = parseFloat(document.getElementById('rabattStufe2Ab').value);
+            const stufe3Prozent = parseFloat(document.getElementById('rabattStufe3Prozent').value);
+            const stufe3Ab = parseFloat(document.getElementById('rabattStufe3Ab').value);
+
+            if (!isNaN(stufe1Prozent) && !isNaN(stufe1Ab) && stufe1Ab > 0) {
+                rabattKonditionen.stufe1 = { rabatt: stufe1Prozent, ab: stufe1Ab };
+            }
+            if (!isNaN(stufe2Prozent) && !isNaN(stufe2Ab) && stufe2Ab > 0) {
+                rabattKonditionen.stufe2 = { rabatt: stufe2Prozent, ab: stufe2Ab };
+            }
+            if (!isNaN(stufe3Prozent) && !isNaN(stufe3Ab) && stufe3Ab > 0) {
+                rabattKonditionen.stufe3 = { rabatt: stufe3Prozent, ab: stufe3Ab };
+            }
+
+            const konditionenGeprueft = document.getElementById('konditionenGeprueft').checked;
+            const konditionenDatum = document.getElementById('konditionenDatum').value;
+
             const kundeData = {
                 id: currentKundeId || 'kunde_' + Date.now(),
                 name: document.getElementById('kundenName').value.trim(),
@@ -3041,6 +3076,10 @@
                 email: document.getElementById('kundenEmail').value.trim(),
                 notizen: document.getElementById('kundenNotizen').value.trim(),
                 tags: selectedTags, // ✅ Add tags
+                // ✅ Rabatt-Konditionen (NEU)
+                rabattKonditionen: Object.keys(rabattKonditionen).length > 0 ? rabattKonditionen : null,
+                konditionenGeprueft: konditionenGeprueft,
+                konditionenDatum: konditionenDatum || null,
                 // ✅ FIX: Nur bei neuem Kunden hinzufügen (verhindert undefined in Firebase)
                 ...(!currentKundeId ? {
                     erstbesuch: new Date().toISOString(),
@@ -3103,6 +3142,34 @@
                     checkbox.checked = kunde.tags && kunde.tags.includes(tagId);
                 }
             });
+
+            // ✅ Rabatt-Konditionen laden (NEU)
+            if (kunde.rabattKonditionen) {
+                const stufe1 = kunde.rabattKonditionen.stufe1;
+                const stufe2 = kunde.rabattKonditionen.stufe2;
+                const stufe3 = kunde.rabattKonditionen.stufe3;
+
+                document.getElementById('rabattStufe1Prozent').value = stufe1 ? stufe1.rabatt : '';
+                document.getElementById('rabattStufe1Ab').value = stufe1 ? stufe1.ab : '';
+                document.getElementById('rabattStufe2Prozent').value = stufe2 ? stufe2.rabatt : '';
+                document.getElementById('rabattStufe2Ab').value = stufe2 ? stufe2.ab : '';
+                document.getElementById('rabattStufe3Prozent').value = stufe3 ? stufe3.rabatt : '';
+                document.getElementById('rabattStufe3Ab').value = stufe3 ? stufe3.ab : '';
+            } else {
+                // Felder leeren wenn keine Konditionen
+                document.getElementById('rabattStufe1Prozent').value = '';
+                document.getElementById('rabattStufe1Ab').value = '';
+                document.getElementById('rabattStufe2Prozent').value = '';
+                document.getElementById('rabattStufe2Ab').value = '';
+                document.getElementById('rabattStufe3Prozent').value = '';
+                document.getElementById('rabattStufe3Ab').value = '';
+            }
+
+            // Konditionen-Checkbox und Datum
+            const konditionenGeprueft = kunde.konditionenGeprueft || false;
+            document.getElementById('konditionenGeprueft').checked = konditionenGeprueft;
+            document.getElementById('konditionenDatum').value = kunde.konditionenDatum || '';
+            document.getElementById('konditionenDatum').disabled = !konditionenGeprueft;
 
             document.getElementById('neuerKundeModal').classList.add('active');
         }
