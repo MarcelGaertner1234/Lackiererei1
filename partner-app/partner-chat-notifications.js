@@ -329,13 +329,16 @@
     // AUTO-INIT
     // ========================================
 
-    // Init when Firebase is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(initPartnerChatNotifications, 500);
-        });
-    } else {
-        setTimeout(initPartnerChatNotifications, 500);
+    // Init when Firebase is ready (via firebaseReady Event)
+    window.addEventListener('firebaseReady', () => {
+        console.log('🔔 Partner Chat-Notifications: firebaseReady empfangen');
+        initPartnerChatNotifications();
+    });
+
+    // Fallback: Falls Firebase bereits initialisiert ist (late load)
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+        console.log('🔔 Partner Chat-Notifications: Firebase bereits ready');
+        initPartnerChatNotifications();
     }
 
 })();

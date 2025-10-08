@@ -75,6 +75,10 @@ function initFirebase() {
     console.log("✅ Firebase erfolgreich initialisiert");
     console.log("📊 Projekt:", firebaseConfig.projectId);
 
+    // Custom Event für Chat-Notifications dispatchen
+    window.dispatchEvent(new Event('firebaseReady'));
+    console.log("📡 firebaseReady Event dispatched");
+
     return true;
   } catch (error) {
     console.error("❌ Firebase Initialisierung fehlgeschlagen:", error);
