@@ -144,6 +144,12 @@ service firebase.storage {
       allow read: if true;  // Public Read
       allow write: if request.resource.size < 10 * 1024 * 1024;  // Max 10 MB
     }
+
+    // 🆕 Partner-Anfragen Fotos (Multi-Service Anfragen)
+    match /partner-anfragen/{partnerId}/{allPaths=**} {
+      allow read: if true;  // Public Read für Partner
+      allow write: if request.resource.size < 10 * 1024 * 1024;  // Max 10 MB
+    }
   }
 }
 ```
@@ -151,6 +157,7 @@ service firebase.storage {
 **Warum diese Rules?**
 - ✅ Partner können Produktionsfotos sehen (für Live-Fortschritt)
 - ✅ Werkstatt kann Fotos hochladen (kanban.html Photo Upload)
+- ✅ **Partner können Multi-Service Anfragen mit Fotos erstellen** (multi-service-anfrage.html)
 - ✅ Max Dateigröße: 10 MB (verhindert Missbrauch)
 - ⚠️ Noch keine User-Authentication (für später)
 
