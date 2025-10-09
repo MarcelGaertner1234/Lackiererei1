@@ -159,11 +159,149 @@
             border-radius: 12px;
             padding: 25px;
             transition: all 0.3s;
+            overflow: hidden;
         }
 
         .anfrage-card:hover {
             border-color: #003366;
             box-shadow: 0 4px 12px rgba(0,51,102,0.1);
+        }
+
+        /* ========================================
+           COMPACT CARD VIEW (Stufe 1)
+           ======================================== */
+
+        .anfrage-card.collapsed {
+            max-height: 180px;
+        }
+
+        .anfrage-card.collapsed .detail-grid,
+        .anfrage-card.collapsed .photos-section,
+        .anfrage-card.collapsed .kva-box,
+        .anfrage-card.collapsed .status-actions,
+        .anfrage-card.collapsed .schadensbeschreibung,
+        .anfrage-card.collapsed .action-buttons {
+            display: none;
+        }
+
+        .anfrage-card.collapsed .anfrage-grid {
+            grid-template-columns: 1fr;
+            gap: 0;
+        }
+
+        .anfrage-card.collapsed .schadensbeschreibung-short {
+            display: block;
+            background: #f9f9f9;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .anfrage-card:not(.collapsed) .schadensbeschreibung-short {
+            display: none;
+        }
+
+        .toggle-card-btn {
+            background: #e0e0e0;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.2s;
+            color: #666;
+        }
+
+        .toggle-card-btn:hover {
+            background: #d0d0d0;
+            color: #003366;
+        }
+
+        .anfrage-card.collapsed .toggle-card-btn {
+            transform: rotate(180deg);
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .anfrage-card.collapsed .quick-actions {
+            display: none;
+        }
+
+        .actions-dropdown {
+            position: relative;
+        }
+
+        .actions-dropdown-btn {
+            padding: 8px 14px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .actions-dropdown-btn:hover {
+            background: #d0d0d0;
+        }
+
+        .actions-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 5px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 200px;
+            z-index: 100;
+            display: none;
+        }
+
+        .actions-dropdown.active .actions-dropdown-menu {
+            display: block;
+        }
+
+        .actions-dropdown-menu button {
+            display: block;
+            width: 100%;
+            padding: 10px 15px;
+            border: none;
+            background: white;
+            text-align: left;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .actions-dropdown-menu button:hover {
+            background: #f5f5f5;
+        }
+
+        .actions-dropdown-menu button:first-child {
+            border-radius: 6px 6px 0 0;
+        }
+
+        .actions-dropdown-menu button:last-child {
+            border-radius: 0 0 6px 6px;
         }
 
         .anfrage-card.neu {
@@ -1045,9 +1183,73 @@
             return `<span style="background: ${badge.color}; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 10px;">${badge.icon} ${badge.label}</span>`;
         }
 
+        // ========================================
+        // COMPACT CARD FUNCTIONS (Stufe 1)
+        // ========================================
+
+        function toggleCardCollapse(anfrageId, event) {
+            if (event) event.stopPropagation();
+
+            const card = document.querySelector(`.anfrage-card[data-anfrage-id="${anfrageId}"]`);
+            if (!card) return;
+
+            const isCollapsed = card.classList.toggle('collapsed');
+
+            // Icon rotation is handled by CSS
+            const icon = card.querySelector('.toggle-card-btn');
+            if (icon) {
+                icon.title = isCollapsed ? 'Details anzeigen' : 'Details verstecken';
+            }
+
+            // Save preference to localStorage
+            try {
+                const collapsedCards = JSON.parse(localStorage.getItem('admin_collapsed_cards') || '{}');
+                collapsedCards[anfrageId] = isCollapsed;
+                localStorage.setItem('admin_collapsed_cards', JSON.stringify(collapsedCards));
+            } catch (error) {
+                console.error('Could not save collapse state:', error);
+            }
+        }
+
+        function toggleActionsDropdown(anfrageId, event) {
+            if (event) event.stopPropagation();
+
+            const dropdown = document.querySelector(`#actions-dropdown-${anfrageId}`);
+            if (!dropdown) return;
+
+            // Close all other dropdowns
+            document.querySelectorAll('.actions-dropdown.active').forEach(d => {
+                if (d !== dropdown) d.classList.remove('active');
+            });
+
+            dropdown.classList.toggle('active');
+        }
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.actions-dropdown')) {
+                document.querySelectorAll('.actions-dropdown.active').forEach(d => {
+                    d.classList.remove('active');
+                });
+            }
+        });
+
+        function truncateText(text, maxLength) {
+            if (!text) return '';
+            return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+        }
+
         function createAnfrageCard(anfrage) {
             const card = document.createElement('div');
             card.className = 'anfrage-card ' + anfrage.status;
+            card.setAttribute('data-anfrage-id', anfrage.id);
+
+            // Check if this card should be collapsed (default: collapsed)
+            const collapsedCards = JSON.parse(localStorage.getItem('admin_collapsed_cards') || '{}');
+            const isCollapsed = collapsedCards.hasOwnProperty(anfrage.id) ? collapsedCards[anfrage.id] : true;
+            if (isCollapsed) {
+                card.classList.add('collapsed');
+            }
 
             const datum = new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', {
                 day: '2-digit',
@@ -1162,6 +1364,9 @@
                 kvaButton = `<a href="kva-erstellen.html?id=${anfrage.id}" class="btn btn-primary btn-small">💶 KVA erstellen</a>`;
             }
 
+            // Short description for collapsed view
+            const shortDescription = truncateText(anfrage.schadenBeschreibung, 80);
+
             card.innerHTML = `
                 <div class="anfrage-header">
                     <div>
@@ -1171,6 +1376,9 @@
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 12px;">
+                        <button class="toggle-card-btn" onclick="toggleCardCollapse('${anfrage.id}', event)" title="${isCollapsed ? 'Details anzeigen' : 'Details verstecken'}">
+                            ▼
+                        </button>
                         <div class="chat-icon-badge" onclick="openChat('${anfrage.id}', event)" title="Chat öffnen">
                             💬
                             ${getUnreadBadge(anfrage.id)}
@@ -1179,6 +1387,11 @@
                             ${statusTexte[anfrage.status] || anfrage.status}
                         </div>
                     </div>
+                </div>
+
+                <!-- Short description for collapsed view -->
+                <div class="schadensbeschreibung-short">
+                    ${shortDescription}
                 </div>
 
                 <div class="anfrage-grid">
