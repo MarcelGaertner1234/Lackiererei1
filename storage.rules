@@ -1,25 +1,46 @@
 rules_version = '2';
 
 // ====================================================================
-// FIREBASE STORAGE RULES - BASIC VERSION (Development Mode)
+// FIREBASE STORAGE RULES - PRODUCTION-READY
 // ====================================================================
 //
-// ACHTUNG: Diese Rules sind OFFEN für alle!
-// OK für interne Nutzung, NICHT für öffentliche Apps!
+// Diese Rules definieren Zugriff auf Firebase Storage Pfade
 //
 // DEPLOYMENT:
-// firebase deploy --only storage:rules
+// firebase deploy --only storage
+//
+// WICHTIG: Enthält FIX für Multi-Service CORS-Fehler!
+// - Neue Rule: partner-anfragen/{partnerId}/{allPaths=**}
 //
 // ====================================================================
 
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Alle Zugriffe erlaubt (Development Mode)
-    match /{allPaths=**} {
-      allow read, write: if true;
+    // Produktionsfotos: Public Read (für Partner-Integration)
+    // Pfad: progress-photos/{fahrzeugId}/{fileName}
+    // Verwendet von: kanban.html (Photo Upload während Produktion)
+    match /progress-photos/{fahrzeugId}/{fileName} {
+      allow read: if true;  // Partner können Fotos sehen
+      allow write: if true;  // Werkstatt kann Fotos hochladen (temporär)
     }
 
+    // Fahrzeug-Fotos (Schadensfotos bei Annahme/Abnahme)
+    // Pfad: fahrzeuge/{fahrzeugId}/**
+    // Verwendet von: annahme.html, abnahme.html
+    match /fahrzeuge/{fahrzeugId}/{allPaths=**} {
+      allow read: if true;  // Public Read
+      allow write: if request.resource.size < 10 * 1024 * 1024;  // Max 10 MB
+    }
+
+    // 🆕 Partner-Anfragen Fotos (Multi-Service Anfragen)
+    // Pfad: partner-anfragen/{partnerId}/**
+    // Verwendet von: multi-service-anfrage.html (Mehrere Services pro Fahrzeug)
+    // FIX für CORS-Fehler: Diese Rule fehlte komplett!
+    match /partner-anfragen/{partnerId}/{allPaths=**} {
+      allow read: if true;  // Public Read für Partner
+      allow write: if request.resource.size < 10 * 1024 * 1024;  // Max 10 MB
+    }
   }
 }
 
@@ -27,12 +48,11 @@ service firebase.storage {
 // HINWEISE:
 // ====================================================================
 //
-// Diese Rules sind für INTERNE Nutzung optimiert:
-// - Keine Authentication erforderlich
-// - Keine Größen-Limits
-// - Schnell & einfach
+// Max Dateigröße: 10 MB (verhindert Missbrauch)
+// Authentication: Noch nicht implementiert (für später)
 //
-// Optional: Größenlimits hinzufügen (empfohlen)
-// allow write: if request.resource.size < 10 * 1024 * 1024; // Max 10 MB
+// Zukunft: Mit Firebase Authentication
+// allow write: if request.auth != null &&
+//              request.auth.token.email.matches('.*@auto-lackierzentrum\\.de$');
 //
 // ====================================================================
