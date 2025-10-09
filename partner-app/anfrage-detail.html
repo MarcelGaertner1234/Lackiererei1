@@ -534,15 +534,95 @@
                 }
 
                 anfrage = { id: doc.id, ...doc.data() };
+
+                // NEU: Fahrzeug laden (für Live-Produktionsfortschritt)
+                if (anfrage.kennzeichen) {
+                    await loadFahrzeugByKennzeichen(anfrage.kennzeichen);
+                } else if (anfrage.auftragsnummer) {
+                    await loadFahrzeugByAuftragsnummer(anfrage.auftragsnummer);
+                }
+
                 renderAnfrage();
 
                 // Live-Update Listener aktivieren
                 setupLiveUpdates(anfrageId);
 
+                // NEU: Live-Updates für Fahrzeug
+                if (anfrage.kennzeichen) {
+                    setupLiveFahrzeugUpdates(anfrage.kennzeichen);
+                }
+
             } catch (error) {
                 console.error('Fehler beim Laden:', error);
                 showError('Fehler beim Laden der Anfrage');
             }
+        }
+
+        // NEU: Fahrzeug per Kennzeichen laden
+        async function loadFahrzeugByKennzeichen(kennzeichen) {
+            try {
+                const snapshot = await db.collection('fahrzeuge')
+                    .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                    .limit(1)
+                    .get();
+
+                if (!snapshot.empty) {
+                    const fahrzeugDoc = snapshot.docs[0];
+                    anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+                    console.log('✅ Fahrzeug geladen:', fahrzeugDoc.id, '- Kennzeichen:', kennzeichen);
+                } else {
+                    console.log('ℹ️ Kein Fahrzeug mit Kennzeichen gefunden:', kennzeichen);
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Fahrzeugs:', error);
+            }
+        }
+
+        // NEU: Fahrzeug per Auftragsnummer laden (Fallback)
+        async function loadFahrzeugByAuftragsnummer(auftragsnummer) {
+            try {
+                const snapshot = await db.collection('fahrzeuge')
+                    .where('auftragsnummer', '==', auftragsnummer)
+                    .limit(1)
+                    .get();
+
+                if (!snapshot.empty) {
+                    const fahrzeugDoc = snapshot.docs[0];
+                    anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+                    console.log('✅ Fahrzeug geladen:', fahrzeugDoc.id, '- Auftragsnummer:', auftragsnummer);
+                } else {
+                    console.log('ℹ️ Kein Fahrzeug mit Auftragsnummer gefunden:', auftragsnummer);
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Fahrzeugs:', error);
+            }
+        }
+
+        // NEU: Live-Updates für Fahrzeug (Real-Time Produktionsfortschritt)
+        function setupLiveFahrzeugUpdates(kennzeichen) {
+            db.collection('fahrzeuge')
+                .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                .limit(1)
+                .onSnapshot((snapshot) => {
+                    if (!snapshot.empty) {
+                        const fahrzeugDoc = snapshot.docs[0];
+                        const newData = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+
+                        // Prüfen ob sich statusHistory geändert hat
+                        if (anfrage.fahrzeug &&
+                            JSON.stringify(anfrage.fahrzeug.statusHistory) !== JSON.stringify(newData.statusHistory)) {
+                            console.log('🔄 Fahrzeug aktualisiert - neue statusHistory');
+                            showUpdateNotification('Neuer Produktionsfortschritt!');
+                        }
+
+                        anfrage.fahrzeug = newData;
+                        renderAnfrage(true);  // true = Live-Update
+                    }
+                }, (error) => {
+                    console.error('❌ Fehler beim Live-Update des Fahrzeugs:', error);
+                });
+
+            console.log('✅ Live-Updates für Fahrzeug aktiviert:', kennzeichen);
         }
 
         function setupLiveUpdates(anfrageId) {
@@ -819,8 +899,9 @@
             };
 
             const steps = kanbanFlows[serviceTyp] || kanbanFlows['lackier'];
-            const currentStatus = anfrage.status || 'neu';
-            const statusHistory = anfrage.statusHistory || [];
+            // NEU: Nutze Fahrzeug-Daten (wenn vorhanden) für Live-Produktionsfortschritt
+            const currentStatus = anfrage.fahrzeug?.prozessStatus || anfrage.status || 'neu';
+            const statusHistory = anfrage.fahrzeug?.statusHistory || anfrage.statusHistory || [];
 
             // Aktuellen Schritt-Index finden
             let currentStepIndex = steps.findIndex(s => s.status === currentStatus);
