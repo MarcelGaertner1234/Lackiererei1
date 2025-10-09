@@ -921,6 +921,107 @@
             }
         }
 
+        /* Payment Toggle Switch */
+        .payment-toggle {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+        }
+
+        .payment-toggle input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: relative;
+            width: 44px;
+            height: 22px;
+            background: #ccc;
+            border-radius: 11px;
+            cursor: pointer;
+            transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            left: 2px;
+            top: 2px;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .payment-toggle input:checked + .toggle-slider {
+            background: #4caf50;
+        }
+
+        .payment-toggle input:checked + .toggle-slider::before {
+            transform: translateX(22px);
+        }
+
+        .payment-toggle input:disabled + .toggle-slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toggle-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            white-space: nowrap;
+            transition: color 0.3s;
+        }
+
+        .payment-toggle input:checked ~ .toggle-label {
+            color: #4caf50;
+        }
+
+        .toggle-label .status-icon {
+            font-size: 14px;
+            margin-right: 2px;
+        }
+
+        /* Mobile: Kompaktere Toggle-Ansicht */
+        @media (max-width: 768px) {
+            .payment-toggle {
+                gap: 6px;
+            }
+
+            .toggle-slider {
+                width: 40px;
+                height: 20px;
+            }
+
+            .toggle-slider::before {
+                width: 16px;
+                height: 16px;
+            }
+
+            .payment-toggle input:checked + .toggle-slider::before {
+                transform: translateX(20px);
+            }
+
+            .toggle-label {
+                font-size: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .toggle-label {
+                display: none; /* Nur Icon auf sehr kleinen Screens */
+            }
+        }
+
         /* Toast Notifications */
         .toast-container {
             position: fixed;
@@ -1596,6 +1697,11 @@
                             valueA = a.status;
                             valueB = b.status;
                             break;
+                        case 'bezahlt':
+                            // Boolean sortieren: false (ausstehend) → true (bezahlt)
+                            valueA = a.bezahlt ? 1 : 0;
+                            valueB = b.bezahlt ? 1 : 0;
+                            break;
                         default:
                             return 0;
                     }
@@ -1667,6 +1773,7 @@
                             <tr>
                                 <th class="checkbox-cell"><input type="checkbox" class="table-checkbox" id="selectAllCheckbox" onchange="toggleAllVehicles()"></th>
                                 <th class="${getSortClass('kennzeichen')}" onclick="sortTable('kennzeichen')">Kennzeichen</th>
+                                <th class="${getSortClass('bezahlt')}" onclick="sortTable('bezahlt')">Bezahlung</th>
                                 <th class="${getSortClass('fahrzeug')}" onclick="sortTable('fahrzeug')">Fahrzeug</th>
                                 <th>Service</th>
                                 <th class="${getSortClass('farbnummer')}" onclick="sortTable('farbnummer')">Farbnummer</th>
@@ -1717,6 +1824,20 @@
                     <tr class="${selectedVehicles.has(vehicle.id) ? 'row-selected' : ''}" data-vehicle-id="${vehicle.id}">
                         <td class="checkbox-cell"><input type="checkbox" class="table-checkbox vehicle-checkbox" data-vehicle-id="${vehicle.id}" ${selectedVehicles.has(vehicle.id) ? 'checked' : ''} onchange="toggleVehicleSelection('${vehicle.id}')"></td>
                         <td data-label="Kennzeichen"><strong>${vehicle.kennzeichen}</strong></td>
+                        <td data-label="Bezahlung">
+                            <label class="payment-toggle">
+                                <input
+                                    type="checkbox"
+                                    ${vehicle.bezahlt ? 'checked' : ''}
+                                    onchange="togglePayment('${vehicle.id}', this.checked)"
+                                >
+                                <span class="toggle-slider"></span>
+                                <span class="toggle-label">
+                                    <span class="status-icon">${vehicle.bezahlt ? '✅' : '⏳'}</span>
+                                    ${vehicle.bezahlt ? 'Bezahlt' : 'Ausstehend'}
+                                </span>
+                            </label>
+                        </td>
                         <td data-label="Fahrzeug">${vehicle.marke} ${vehicle.modell}</td>
                         <td data-label="Service"><span title="${serviceLabel}">${serviceLabel}</span></td>
                         <td data-label="Farbnummer"><strong style="color: #c7254e;">${vehicle.farbnummer}</strong></td>
@@ -2960,6 +3081,58 @@
                 allVehicles = allVehicles.filter(v => v.id !== id);
                 localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
                 loadData();
+            }
+        }
+
+        // Payment Status Toggle
+        async function togglePayment(fahrzeugId, isPaid) {
+            try {
+                const updateData = {
+                    bezahlt: isPaid,
+                    bezahltAm: isPaid ? new Date().toISOString() : null,
+                    lastModified: new Date().toISOString()
+                };
+
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Update
+                    await firebaseApp.db()
+                        .collection('fahrzeuge')
+                        .doc(fahrzeugId)
+                        .update(updateData);
+
+                    console.log(`✅ Payment Status aktualisiert: ${isPaid ? 'BEZAHLT' : 'AUSSTEHEND'}`);
+
+                    // Toast Notification
+                    showToast(
+                        isPaid ? '✅ Als bezahlt markiert' : '⏳ Zahlung ausstehend',
+                        isPaid ? 'success' : 'info'
+                    );
+
+                    // Echtzeit-Listener aktualisiert automatisch die Tabelle
+                } else {
+                    // LocalStorage Fallback
+                    const vehicle = allVehicles.find(v => v.id === fahrzeugId);
+                    if (vehicle) {
+                        vehicle.bezahlt = isPaid;
+                        vehicle.bezahltAm = updateData.bezahltAm;
+                        vehicle.lastModified = updateData.lastModified;
+                        localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
+                        renderTable(); // Tabelle neu rendern
+                        showToast(
+                            isPaid ? '✅ Als bezahlt markiert' : '⏳ Zahlung ausstehend',
+                            isPaid ? 'success' : 'info'
+                        );
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Aktualisieren des Payment-Status:', error);
+                showToast('Fehler beim Aktualisieren des Zahlungsstatus', 'error');
+
+                // Bei Fehler: Checkbox zurücksetzen
+                const checkbox = document.querySelector(`input[onchange*="${fahrzeugId}"]`);
+                if (checkbox) {
+                    checkbox.checked = !isPaid; // Zurück zum vorherigen Zustand
+                }
             }
         }
 
