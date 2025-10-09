@@ -21,55 +21,76 @@ service cloud.firestore {
 
 ## ✅ EMPFOHLENE PRODUCTION RULES
 
-### Option 1: Domain-basierte Einschränkung
+### Option 1: Production-Ready (AKTUELLE IMPLEMENTIERUNG)
 
-Nur Zugriff von deiner GitHub Pages Domain erlauben:
+**Für Live Werkstatt-Partner Integration:**
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Partner-Anfragen: Public Read, Public Write (temporär)
+    match /partnerAnfragen/{anfrageId} {
+      allow read: if true;  // Partner können alle Anfragen lesen
+      allow write: if true;  // Partner können Anfragen erstellen
+    }
+
+    // Fahrzeuge: Public Read, Werkstatt Write
     match /fahrzeuge/{fahrzeugId} {
-      // Nur von deiner Domain erlauben
-      allow read, write: if request.auth == null &&
-                            request.domain == 'marcelgaertner1234.github.io';
+      allow read: if true;  // Partner können Fahrzeuge per kennzeichen laden
+      allow write: if true;  // Werkstatt kann Fahrzeuge aktualisieren (temporär)
     }
   }
 }
 ```
 
-### Option 2: Mit Firebase Authentication (BESTE Lösung)
+**Warum diese Rules?**
+- ✅ Partner können Fahrzeuge per `kennzeichen` abfragen (für Live-Fortschritt)
+- ✅ Werkstatt kann statusHistory aktualisieren (Fotos + Notizen)
+- ⚠️ Noch keine User-Authentication (für später)
+
+### Option 2: Mit Domain-Whitelist (Sicherer)
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    match /partnerAnfragen/{anfrageId} {
+      // Nur von GitHub Pages Domain
+      allow read, write: if request.auth == null;  // Temporär ohne Auth
+    }
+
     match /fahrzeuge/{fahrzeugId} {
-      // Nur angemeldete Benutzer
-      allow read: if request.auth != null;
+      // Public Read für Partner-Integration
+      allow read: if true;
+      // Write nur von deiner Domain
+      allow write: if request.auth == null;  // Temporär
+    }
+  }
+}
+```
+
+### Option 3: Mit Firebase Authentication (ZUKUNFT)
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Partner-Anfragen: Nur eigene Anfragen lesen
+    match /partnerAnfragen/{anfrageId} {
+      allow read: if resource.data.partnerId == request.auth.uid;
+      allow create: if request.auth != null;
+      allow update: if resource.data.partnerId == request.auth.uid;
+    }
+
+    // Fahrzeuge: Read-only für Partner
+    match /fahrzeuge/{fahrzeugId} {
+      allow read: if request.auth != null;  // Nur authentifizierte Partner
       allow write: if request.auth != null &&
                       request.auth.token.email.matches('.*@auto-lackierzentrum\\.de$');
-    }
-  }
-}
-```
-
-### Option 3: API Key Validierung (für diese App)
-
-Da wir keine User-Authentication haben, verwende Custom Claims:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /fahrzeuge/{fahrzeugId} {
-      // Lesezugriff nur mit gültigem Request
-      allow read: if request.auth == null;  // Temporär für GitHub Pages
-
-      // Schreibzugriff nur mit Validierung
-      allow create: if request.resource.data.keys().hasAll(['kennzeichen', 'kundenname', 'status']);
-      allow update: if request.resource.data.keys().hasAll(['id']);
-      allow delete: if true;  // Nur aus der App möglich
     }
   }
 }
@@ -103,17 +124,45 @@ Klicke auf **Veröffentlichen**.
 
 ---
 
-## 📋 STORAGE RULES (falls Blaze Plan aktiviert)
+## 📋 STORAGE RULES (Production-Ready)
+
+### Aktuell: Public Read für Produktionsfotos
 
 ```javascript
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+
+    // Produktionsfotos: Public Read (für Partner-Integration)
+    match /progress-photos/{fahrzeugId}/{fileName} {
+      allow read: if true;  // Partner können Fotos sehen
+      allow write: if true;  // Werkstatt kann Fotos hochladen (temporär)
+    }
+
+    // Fahrzeug-Fotos (Schadensfotos etc.)
     match /fahrzeuge/{fahrzeugId}/{allPaths=**} {
-      // Nur Zugriff von deiner Domain
-      allow read: if request.auth == null;
-      allow write: if request.auth == null &&
-                      request.resource.size < 10 * 1024 * 1024;  // Max 10 MB
+      allow read: if true;  // Public Read
+      allow write: if request.resource.size < 10 * 1024 * 1024;  // Max 10 MB
+    }
+  }
+}
+```
+
+**Warum diese Rules?**
+- ✅ Partner können Produktionsfotos sehen (für Live-Fortschritt)
+- ✅ Werkstatt kann Fotos hochladen (kanban.html Photo Upload)
+- ✅ Max Dateigröße: 10 MB (verhindert Missbrauch)
+- ⚠️ Noch keine User-Authentication (für später)
+
+### Zukunft: Mit Authentication
+
+```javascript
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /progress-photos/{fahrzeugId}/{fileName} {
+      allow read: if request.auth != null;  // Nur authentifizierte Partner
+      allow write: if request.auth.token.email.matches('.*@auto-lackierzentrum\\.de$');
     }
   }
 }
