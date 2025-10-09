@@ -921,6 +921,118 @@
             }
         }
 
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 350px;
+        }
+
+        .toast {
+            background: white;
+            padding: 16px 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideInRight 0.3s ease-out;
+            border-left: 4px solid #ccc;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            min-width: 300px;
+        }
+
+        .toast.toast-success {
+            border-left-color: #4caf50;
+            background: #f1f8f4;
+        }
+
+        .toast.toast-error {
+            border-left-color: #f44336;
+            background: #fef1f0;
+        }
+
+        .toast.toast-warning {
+            border-left-color: #ff9800;
+            background: #fff8f0;
+        }
+
+        .toast.toast-info {
+            border-left-color: #2196f3;
+            background: #f0f7ff;
+        }
+
+        .toast-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .toast-message {
+            flex: 1;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .toast-close:hover {
+            color: #333;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
+        .toast.removing {
+            animation: slideOutRight 0.3s ease-in;
+        }
+
+        @media (max-width: 768px) {
+            .toast-container {
+                right: 10px;
+                left: 10px;
+                max-width: none;
+            }
+
+            .toast {
+                min-width: 0;
+                font-size: 13px;
+                padding: 12px 16px;
+            }
+        }
+
         @media (max-width: 320px) {
             .container {
                 padding: 8px;
@@ -1017,6 +1129,9 @@
     <script src="global-chat-notifications.js"></script>
 </head>
 <body>
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
     <div class="container">
         <!-- Desktop Navigation -->
         <div class="nav-bar">
@@ -1592,7 +1707,7 @@
 
             if (!vehicle) {
                 console.error('❌ Kein Fahrzeug gefunden mit ID:', id);
-                alert('❌ Fahrzeug nicht gefunden!');
+                showToast('Fahrzeug nicht gefunden', 'error');
                 return;
             }
 
@@ -1915,12 +2030,59 @@
             }
         }
 
+        // ========================================
+        // TOAST NOTIFICATION SYSTEM
+        // ========================================
+        function showToast(message, type = 'success', duration = 4000) {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            // Icon basierend auf Typ
+            const icons = {
+                success: '✓',
+                error: '✕',
+                warning: '⚠',
+                info: 'ℹ'
+            };
+
+            // Toast Element erstellen
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <span class="toast-icon">${icons[type] || icons.info}</span>
+                <span class="toast-message">${message}</span>
+                <button class="toast-close" onclick="closeToast(this)">&times;</button>
+            `;
+
+            // Zum Container hinzufügen
+            container.appendChild(toast);
+
+            // Auto-dismiss nach duration
+            if (duration > 0) {
+                setTimeout(() => {
+                    closeToast(toast.querySelector('.toast-close'));
+                }, duration);
+            }
+
+            return toast;
+        }
+
+        function closeToast(button) {
+            const toast = button.closest ? button.closest('.toast') : button.parentElement;
+            if (!toast) return;
+
+            toast.classList.add('removing');
+            setTimeout(() => {
+                toast.remove();
+            }, 300); // Match animation duration
+        }
+
         // Physische Fahrzeugannahme für Partner-Aufträge
         function physischeAnnahme(fahrzeugId) {
             const vehicle = allVehicles.find(v => v.id === fahrzeugId);
 
             if (!vehicle) {
-                alert('❌ Fahrzeug nicht gefunden!');
+                showToast('Fahrzeug nicht gefunden', 'error');
                 return;
             }
 
@@ -1959,7 +2121,7 @@
         function editAllData(id) {
             const vehicle = allVehicles.find(v => v.id === id);
             if (!vehicle) {
-                alert('❌ Fahrzeug nicht gefunden!');
+                showToast('Fahrzeug nicht gefunden', 'error');
                 return;
             }
 
@@ -2161,7 +2323,7 @@
 
                         if (!proceed) {
                             // User hat abgebrochen → Modal schließen und neu laden
-                            alert('ℹ️ Ihre Änderungen wurden NICHT gespeichert.\n\nDas Fahrzeug wird neu geladen.');
+                            showToast('Ihre Änderungen wurden nicht gespeichert. Das Fahrzeug wird neu geladen', 'info', 5000);
                             closeEditModal();
                             await loadData();
                             viewDetails(id);
@@ -2204,7 +2366,7 @@
 
                 // Validierung
                 if (!updatedData.kennzeichen || !updatedData.marke || !updatedData.farbnummer) {
-                    alert('❌ Bitte Kennzeichen, Marke und Farbnummer ausfüllen!');
+                    showToast('Bitte Kennzeichen, Marke und Farbnummer ausfüllen', 'error');
                     return;
                 }
 
@@ -2213,7 +2375,7 @@
                     const vonInt = parseInt(updatedData.baujahrVon);
                     const bisInt = parseInt(updatedData.baujahrBis);
                     if (!isNaN(vonInt) && !isNaN(bisInt) && vonInt > bisInt) {
-                        alert('❌ Baujahr "Von" darf nicht größer als "Bis" sein!');
+                        showToast('Baujahr "Von" darf nicht größer als "Bis" sein', 'error');
                         return;
                     }
                 }
@@ -2224,7 +2386,7 @@
                 if (firebaseInitialized && firebaseApp) {
                     await firebaseApp.updateFahrzeug(id, updatedData);
                     console.log('✅ Fahrzeugdaten aktualisiert');
-                    alert('✅ Alle Änderungen wurden gespeichert!');
+                    showToast('Alle Änderungen wurden gespeichert', 'success');
                     closeEditModal();
                     viewDetails(id); // Details neu laden
                 } else {
@@ -2233,14 +2395,14 @@
                     if (vehicle) {
                         Object.assign(vehicle, updatedData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
-                        alert('✅ Alle Änderungen wurden gespeichert!');
+                        showToast('Alle Änderungen wurden gespeichert', 'success');
                         closeEditModal();
                         loadData(); // Tabelle neu laden
                     }
                 }
             } catch (error) {
                 console.error('Fehler beim Speichern:', error);
-                alert('Fehler beim Speichern der Änderungen!');
+                showToast('Fehler beim Speichern der Änderungen', 'error');
             }
         }
 
@@ -2248,7 +2410,7 @@
         async function editVehicle(id) {
             const vehicle = allVehicles.find(v => v.id == id);
             if (!vehicle) {
-                alert('Fahrzeug nicht gefunden!');
+                showToast('Fahrzeug nicht gefunden', 'error');
                 return;
             }
 
@@ -2296,10 +2458,10 @@
                     }
                     loadData();
                 }
-                alert('✅ Fahrzeug erfolgreich aktualisiert!');
+                showToast('Fahrzeug erfolgreich aktualisiert', 'success');
             } catch (error) {
                 console.error('Fehler beim Speichern:', error);
-                alert('Fehler beim Speichern der Änderungen!');
+                showToast('Fehler beim Speichern der Änderungen', 'error');
             }
         }
 
@@ -2357,7 +2519,7 @@
                     console.log('✅ Alle Kunden aus Firestore gelöscht');
 
                     // Echtzeit-Listener aktualisiert automatisch die Liste
-                    alert('✅ Alle Fahrzeuge und Kundendaten wurden gelöscht.');
+                    showToast('Alle Fahrzeuge und Kundendaten wurden gelöscht', 'success');
                 } else {
                     // Fallback: LocalStorage verwenden
                     localStorage.removeItem('fahrzeuge');
@@ -2365,7 +2527,7 @@
                     allVehicles = [];
                     allKunden = [];
                     loadData();
-                    alert('✅ Alle Fahrzeuge und Kundendaten wurden gelöscht.');
+                    showToast('Alle Fahrzeuge und Kundendaten wurden gelöscht', 'success');
                 }
             } catch (error) {
                 console.error('Fehler beim Löschen aller Daten:', error);
@@ -2375,7 +2537,7 @@
                 allVehicles = [];
                 allKunden = [];
                 loadData();
-                alert('✅ Alle Daten wurden gelöscht (LocalStorage).');
+                showToast('Alle Daten wurden gelöscht', 'success');
             }
         }
 
@@ -2386,7 +2548,7 @@
                 const preis = parseFloat(preisInput.value);
 
                 if (isNaN(preis) || preis < 0) {
-                    alert('❌ Bitte geben Sie einen gültigen Preis ein!');
+                    showToast('Bitte geben Sie einen gültigen Preis ein', 'error');
                     return;
                 }
 
@@ -2398,19 +2560,19 @@
                 if (firebaseInitialized && firebaseApp) {
                     await firebaseApp.updateFahrzeug(id, updateData);
                     console.log(`✅ Preis gespeichert: ${preis}€`);
-                    alert(`✅ Preis ${preis.toFixed(2)}€ wurde gespeichert!`);
+                    showToast(`Preis ${preis.toFixed(2)}€ wurde gespeichert`, 'success');
                 } else {
                     // Fallback: LocalStorage
                     const vehicle = allVehicles.find(v => v.id === id);
                     if (vehicle) {
                         Object.assign(vehicle, updateData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
-                        alert(`✅ Preis ${preis.toFixed(2)}€ wurde gespeichert!`);
+                        showToast(`Preis ${preis.toFixed(2)}€ wurde gespeichert`, 'success');
                     }
                 }
             } catch (error) {
                 console.error('Fehler beim Speichern des Preises:', error);
-                alert('Fehler beim Speichern des Preises!');
+                showToast('Fehler beim Speichern des Preises', 'error');
             }
         }
 
@@ -2428,19 +2590,19 @@
                 if (firebaseInitialized && firebaseApp) {
                     await firebaseApp.updateFahrzeug(id, updateData);
                     console.log(`✅ Farbvariante gespeichert: ${farbvariante}`);
-                    alert(`✅ Farbvariante "${farbvariante}" wurde gespeichert!`);
+                    showToast(`Farbvariante "${farbvariante}" wurde gespeichert`, 'success');
                 } else {
                     // Fallback: LocalStorage
                     const vehicle = allVehicles.find(v => v.id === id);
                     if (vehicle) {
                         Object.assign(vehicle, updateData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
-                        alert(`✅ Farbvariante "${farbvariante}" wurde gespeichert!`);
+                        showToast(`Farbvariante "${farbvariante}" wurde gespeichert`, 'success');
                     }
                 }
             } catch (error) {
                 console.error('Fehler beim Speichern der Farbvariante:', error);
-                alert('Fehler beim Speichern der Farbvariante!');
+                showToast('Fehler beim Speichern der Farbvariante', 'error');
             }
         }
 
@@ -2451,13 +2613,13 @@
                 const file = fileInput.files[0];
 
                 if (!file) {
-                    alert('⚠️ Bitte wählen Sie zuerst eine PDF-Datei aus!');
+                    showToast('Bitte wählen Sie zuerst eine PDF-Datei aus', 'warning');
                     return;
                 }
 
                 // Größenprüfung (1 MB = 1,000,000 Bytes)
                 if (file.size > 1000000) {
-                    alert('❌ PDF ist zu groß! Maximale Größe: 1 MB\nAktuelle Größe: ' + (file.size / 1000000).toFixed(2) + ' MB');
+                    showToast(`PDF ist zu groß! Maximale Größe: 1 MB. Aktuelle Größe: ${(file.size / 1000000).toFixed(2)} MB`, 'error', 6000);
                     return;
                 }
 
@@ -2482,7 +2644,7 @@
                         if (firebaseInitialized && firebaseApp) {
                             await firebaseApp.updateFahrzeug(id, { pdfs: pdfs });
                             console.log(`✅ PDF hochgeladen: ${file.name}`);
-                            alert(`✅ PDF "${file.name}" wurde erfolgreich hochgeladen!`);
+                            showToast(`PDF "${file.name}" wurde erfolgreich hochgeladen`, 'success');
 
                             // Modal neu laden
                             closeModal();
@@ -2491,7 +2653,7 @@
                             // Fallback: LocalStorage
                             vehicle.pdfs = pdfs;
                             localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
-                            alert(`✅ PDF "${file.name}" wurde erfolgreich hochgeladen!`);
+                            showToast(`PDF "${file.name}" wurde erfolgreich hochgeladen`, 'success');
                             closeModal();
                             setTimeout(() => viewDetails(id), 300);
                         }
@@ -2500,14 +2662,14 @@
                         fileInput.value = '';
                     } catch (error) {
                         console.error('Fehler beim Hochladen:', error);
-                        alert('Fehler beim Hochladen des PDFs!');
+                        showToast('Fehler beim Hochladen des PDFs', 'error');
                     }
                 };
 
                 reader.readAsDataURL(file);
             } catch (error) {
                 console.error('Fehler beim PDF-Upload:', error);
-                alert('Fehler beim PDF-Upload!');
+                showToast('Fehler beim PDF-Upload', 'error');
             }
         }
 
@@ -2516,7 +2678,7 @@
             try {
                 const vehicle = allVehicles.find(v => v.id === id);
                 if (!vehicle || !vehicle.pdfs || !vehicle.pdfs[pdfIndex]) {
-                    alert('❌ PDF nicht gefunden!');
+                    showToast('PDF nicht gefunden', 'error');
                     return;
                 }
 
@@ -2531,7 +2693,7 @@
                 console.log(`📥 PDF heruntergeladen: ${pdf.name}`);
             } catch (error) {
                 console.error('Fehler beim Download:', error);
-                alert('Fehler beim Herunterladen des PDFs!');
+                showToast('Fehler beim Herunterladen des PDFs', 'error');
             }
         }
 
@@ -2539,7 +2701,7 @@
         function exportToCSV() {
             try {
                 if (allVehicles.length === 0) {
-                    alert('⚠️ Keine Fahrzeuge zum Exportieren vorhanden!');
+                    showToast('Keine Fahrzeuge zum Exportieren vorhanden', 'warning');
                     return;
                 }
 
@@ -2597,10 +2759,10 @@
                 link.click();
 
                 console.log(`✅ ${allVehicles.length} Fahrzeuge exportiert`);
-                alert(`✅ ${allVehicles.length} Fahrzeuge wurden exportiert!`);
+                showToast(`${allVehicles.length} Fahrzeuge wurden exportiert`, 'success');
             } catch (error) {
                 console.error('Fehler beim CSV-Export:', error);
-                alert('Fehler beim Exportieren!');
+                showToast('Fehler beim Exportieren', 'error');
             }
         }
 
