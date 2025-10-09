@@ -1022,6 +1022,108 @@
             }
         }
 
+        /* Payment Status Cell - Wrapper für beide Toggles */
+        .payment-status-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px 0;
+        }
+
+        /* Invoice Toggle - Blau für Rechnung geschrieben */
+        .invoice-toggle {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+        }
+
+        .invoice-toggle input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .invoice-toggle .toggle-slider {
+            position: relative;
+            width: 44px;
+            height: 22px;
+            background: #ccc;
+            border-radius: 11px;
+            cursor: pointer;
+            transition: background 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .invoice-toggle .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            left: 2px;
+            top: 2px;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        /* Checked state - Material Blue */
+        .invoice-toggle input:checked + .toggle-slider {
+            background: #2196f3; /* Material Blue statt Grün */
+        }
+
+        .invoice-toggle input:checked + .toggle-slider::before {
+            transform: translateX(22px);
+        }
+
+        .invoice-toggle .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #333;
+            transition: color 0.3s;
+        }
+
+        .invoice-toggle input:checked ~ .toggle-label {
+            color: #2196f3;
+        }
+
+        /* Mobile Optimierungen für beide Toggles */
+        @media (max-width: 768px) {
+            .payment-status-cell {
+                gap: 10px;
+            }
+
+            .invoice-toggle .toggle-slider {
+                width: 40px;
+                height: 20px;
+            }
+
+            .invoice-toggle .toggle-slider::before {
+                width: 16px;
+                height: 16px;
+            }
+
+            .invoice-toggle input:checked + .toggle-slider::before {
+                transform: translateX(20px);
+            }
+
+            .invoice-toggle .toggle-label {
+                font-size: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .invoice-toggle .toggle-label {
+                display: none; /* Nur Icon auf sehr kleinen Screens */
+            }
+        }
+
         /* Toast Notifications */
         .toast-container {
             position: fixed;
@@ -1773,7 +1875,7 @@
                             <tr>
                                 <th class="checkbox-cell"><input type="checkbox" class="table-checkbox" id="selectAllCheckbox" onchange="toggleAllVehicles()"></th>
                                 <th class="${getSortClass('kennzeichen')}" onclick="sortTable('kennzeichen')">Kennzeichen</th>
-                                <th class="${getSortClass('bezahlt')}" onclick="sortTable('bezahlt')">Bezahlung</th>
+                                <th class="${getSortClass('bezahlt')}" onclick="sortTable('bezahlt')">Bezahlung / Rechnungen</th>
                                 <th class="${getSortClass('fahrzeug')}" onclick="sortTable('fahrzeug')">Fahrzeug</th>
                                 <th>Service</th>
                                 <th class="${getSortClass('farbnummer')}" onclick="sortTable('farbnummer')">Farbnummer</th>
@@ -1824,19 +1926,36 @@
                     <tr class="${selectedVehicles.has(vehicle.id) ? 'row-selected' : ''}" data-vehicle-id="${vehicle.id}">
                         <td class="checkbox-cell"><input type="checkbox" class="table-checkbox vehicle-checkbox" data-vehicle-id="${vehicle.id}" ${selectedVehicles.has(vehicle.id) ? 'checked' : ''} onchange="toggleVehicleSelection('${vehicle.id}')"></td>
                         <td data-label="Kennzeichen"><strong>${vehicle.kennzeichen}</strong></td>
-                        <td data-label="Bezahlung">
-                            <label class="payment-toggle">
-                                <input
-                                    type="checkbox"
-                                    ${vehicle.bezahlt ? 'checked' : ''}
-                                    onchange="togglePayment('${vehicle.id}', this.checked)"
-                                >
-                                <span class="toggle-slider"></span>
-                                <span class="toggle-label">
-                                    <span class="status-icon">${vehicle.bezahlt ? '✅' : '⏳'}</span>
-                                    ${vehicle.bezahlt ? 'Bezahlt' : 'Ausstehend'}
-                                </span>
-                            </label>
+                        <td data-label="Bezahlung / Rechnungen">
+                            <div class="payment-status-cell">
+                                <!-- Payment Toggle -->
+                                <label class="payment-toggle">
+                                    <input
+                                        type="checkbox"
+                                        ${vehicle.bezahlt ? 'checked' : ''}
+                                        onchange="togglePayment('${vehicle.id}', this.checked)"
+                                    >
+                                    <span class="toggle-slider"></span>
+                                    <span class="toggle-label">
+                                        <span class="status-icon">💰</span>
+                                        ${vehicle.bezahlt ? 'Bezahlt' : 'Ausstehend'}
+                                    </span>
+                                </label>
+
+                                <!-- Invoice Toggle -->
+                                <label class="invoice-toggle">
+                                    <input
+                                        type="checkbox"
+                                        ${vehicle.rechnungGeschrieben ? 'checked' : ''}
+                                        onchange="toggleInvoice('${vehicle.id}', this.checked)"
+                                    >
+                                    <span class="toggle-slider"></span>
+                                    <span class="toggle-label">
+                                        <span class="status-icon">📄</span>
+                                        ${vehicle.rechnungGeschrieben ? 'Rechnung erstellt' : 'Rechnung offen'}
+                                    </span>
+                                </label>
+                            </div>
                         </td>
                         <td data-label="Fahrzeug">${vehicle.marke} ${vehicle.modell}</td>
                         <td data-label="Service"><span title="${serviceLabel}">${serviceLabel}</span></td>
@@ -3132,6 +3251,58 @@
                 const checkbox = document.querySelector(`input[onchange*="${fahrzeugId}"]`);
                 if (checkbox) {
                     checkbox.checked = !isPaid; // Zurück zum vorherigen Zustand
+                }
+            }
+        }
+
+        // Invoice Status Toggle
+        async function toggleInvoice(fahrzeugId, isInvoiced) {
+            try {
+                const updateData = {
+                    rechnungGeschrieben: isInvoiced,
+                    rechnungGeschriebenAm: isInvoiced ? new Date().toISOString() : null,
+                    lastModified: new Date().toISOString()
+                };
+
+                if (firebaseInitialized && firebaseApp) {
+                    // Firebase Update
+                    await firebaseApp.db()
+                        .collection('fahrzeuge')
+                        .doc(fahrzeugId)
+                        .update(updateData);
+
+                    console.log(`✅ Invoice Status aktualisiert: ${isInvoiced ? 'RECHNUNG ERSTELLT' : 'RECHNUNG OFFEN'}`);
+
+                    // Toast Notification mit passendem Icon
+                    showToast(
+                        isInvoiced ? '📄 Rechnung erstellt' : '⏳ Rechnung offen',
+                        isInvoiced ? 'success' : 'info'
+                    );
+
+                    // Echtzeit-Listener aktualisiert automatisch die Tabelle
+                } else {
+                    // LocalStorage Fallback
+                    const vehicle = allVehicles.find(v => v.id === fahrzeugId);
+                    if (vehicle) {
+                        vehicle.rechnungGeschrieben = isInvoiced;
+                        vehicle.rechnungGeschriebenAm = updateData.rechnungGeschriebenAm;
+                        vehicle.lastModified = updateData.lastModified;
+                        localStorage.setItem('fahrzeuge', JSON.stringify(allVehicles));
+                        renderTable(); // Tabelle neu rendern
+                        showToast(
+                            isInvoiced ? '📄 Rechnung erstellt' : '⏳ Rechnung offen',
+                            isInvoiced ? 'success' : 'info'
+                        );
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Aktualisieren des Rechnungs-Status:', error);
+                showToast('Fehler beim Aktualisieren des Rechnungsstatus', 'error');
+
+                // Bei Fehler: Checkbox zurücksetzen
+                const checkbox = document.querySelector(`input[onchange*="toggleInvoice('${fahrzeugId}'"]`);
+                if (checkbox) {
+                    checkbox.checked = !isInvoiced; // Zurück zum vorherigen Zustand
                 }
             }
         }
