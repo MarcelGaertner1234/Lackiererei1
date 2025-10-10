@@ -704,9 +704,16 @@
 
             document.getElementById('kvaTitle').innerHTML = `🔗 Multi-Service Kostenaufstellung`;
             document.getElementById('kvaDescription').innerHTML = `
-                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #003366;">
-                    <strong style="color: #003366;">Services in dieser Gruppe:</strong><br>
-                    ${serviceLabels}
+                <div style="background: #fff3e0; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
+                    <div style="font-size: 16px; font-weight: 600; color: #e65100; margin-bottom: 12px;">
+                        📋 Bitte erstellen Sie Preise für ALLE Services
+                    </div>
+                    <div style="font-size: 14px; color: #666; margin-bottom: 10px;">
+                        <strong style="color: #003366;">Gebuchte Services:</strong> ${serviceLabels}
+                    </div>
+                    <div style="font-size: 13px; color: #666;">
+                        💡 Tipp: Füllen Sie für jeden Service die Preisfelder aus. Der Partner erhält danach ein einheitliches Angebot für alle Services.
+                    </div>
                 </div>
             `;
 
@@ -894,30 +901,43 @@
                 anfrage.id = anfrageId; // Store ID
 
                 // ============================================
-                // MULTI-SERVICE ERKENNUNG
+                // NEU: VEREINFACHTE MULTI-SERVICE ERKENNUNG
                 // ============================================
-                if (anfrage.multiServiceGroup) {
+                if (anfrage.isMultiService && anfrage.services && anfrage.servicesData) {
+                    // NEU: Multi-Service mit allen Daten in EINEM Dokument
                     isMultiService = true;
-                    multiServiceGroupId = anfrage.multiServiceGroup;
-
-                    console.log('🔗 Multi-Service Gruppe erkannt:', multiServiceGroupId);
-
-                    // Lade ALLE Anfragen dieser Gruppe
-                    const groupSnapshot = await db.collection('partnerAnfragen')
-                        .where('multiServiceGroup', '==', multiServiceGroupId)
-                        .get();
-
                     multiServiceAnfragen = [];
-                    groupSnapshot.forEach(groupDoc => {
-                        multiServiceAnfragen.push({ id: groupDoc.id, ...groupDoc.data() });
+
+                    console.log('🔗 Multi-Service Anfrage erkannt:', anfrage.services);
+
+                    // Erstelle virtuelle Service-Anfragen aus servicesData
+                    anfrage.services.forEach(serviceTyp => {
+                        const serviceInfo = anfrage.servicesData[serviceTyp];
+                        if (serviceInfo) {
+                            multiServiceAnfragen.push({
+                                id: anfrageId, // Gleiche ID (alle gehören zur selben Anfrage)
+                                serviceTyp: serviceTyp,
+                                serviceData: serviceInfo.serviceData || {},
+                                fotos: serviceInfo.fotos || [],
+                                // Gemeinsame Felder übernehmen
+                                kennzeichen: anfrage.kennzeichen,
+                                auftragsnummer: anfrage.auftragsnummer,
+                                partnerName: anfrage.partnerName,
+                                partnerEmail: anfrage.partnerEmail,
+                                timestamp: anfrage.timestamp,
+                                vin: anfrage.vin,
+                                fahrzeugscheinFotos: anfrage.fahrzeugscheinFotos,
+                                dringlichkeit: anfrage.dringlichkeit,
+                                referenzType: anfrage.referenzType
+                            });
+                        }
                     });
 
-                    console.log(`✅ ${multiServiceAnfragen.length} Anfragen in Multi-Service Gruppe geladen`);
+                    console.log(`✅ ${multiServiceAnfragen.length} Services in Multi-Service Anfrage geladen`);
 
-                    // Prüfen ob IRGENDEINE Anfrage bereits KVA hat
-                    const hasExistingKVA = multiServiceAnfragen.some(a => a.kva);
-                    if (hasExistingKVA) {
-                        if (!confirm('Für diese Multi-Service Gruppe existiert bereits ein KVA. Möchten Sie ihn überschreiben?')) {
+                    // Prüfen ob bereits KVA existiert
+                    if (anfrage.kva) {
+                        if (!confirm('Für diese Multi-Service Anfrage existiert bereits ein KVA. Möchten Sie ihn überschreiben?')) {
                             window.location.href = 'admin-anfragen.html';
                             return;
                         }
@@ -1396,13 +1416,12 @@
 
                 if (isMultiService) {
                     // ============================================
-                    // MULTI-SERVICE KVA SPEICHERN
+                    // NEU: VEREINFACHTE MULTI-SERVICE KVA SPEICHERN
                     // ============================================
-                    console.log('💾 Speichere Multi-Service KVA für', multiServiceAnfragen.length, 'Anfragen');
+                    console.log('💾 Speichere Multi-Service KVA für', multiServiceAnfragen.length, 'Services');
 
-                    // Gemeinsame KVA-Daten für die Gruppe
-                    const groupKvaData = {
-                        multiServiceGroup: multiServiceGroupId,
+                    // KVA-Daten für ALLE Services
+                    const kvaData = {
                         isMultiService: true,
                         services: [], // Array mit KVA für jeden Service
                         termine: {
@@ -1425,7 +1444,6 @@
 
                         const serviceKvaData = {
                             serviceTyp: serviceTyp,
-                            anfrageId: serviceAnfrage.id,
                             varianten: {}
                         };
 
@@ -1452,27 +1470,20 @@
                             serviceKvaData.varianten[variantType] = variantData;
                         });
 
-                        groupKvaData.services.push(serviceKvaData);
+                        kvaData.services.push(serviceKvaData);
                     });
 
-                    console.log('💾 Multi-Service KVA Daten:', groupKvaData);
+                    console.log('💾 Multi-Service KVA Daten:', kvaData);
 
-                    // Batch-Update: ALLE Anfragen der Gruppe bekommen das GLEICHE KVA
-                    const batch = db.batch();
-
-                    multiServiceAnfragen.forEach(serviceAnfrage => {
-                        const docRef = db.collection('partnerAnfragen').doc(serviceAnfrage.id);
-                        batch.update(docRef, {
-                            kva: groupKvaData,
-                            status: 'kva_gesendet',
-                            statusText: 'Angebot erstellt',
-                            lastUpdated: Date.now()
-                        });
+                    // NEU: Nur EIN Dokument updaten (nicht mehrere!)
+                    await db.collection('partnerAnfragen').doc(anfrageId).update({
+                        kva: kvaData,
+                        status: 'kva_gesendet',
+                        statusText: 'Angebot erstellt',
+                        lastUpdated: Date.now()
                     });
 
-                    await batch.commit();
-
-                    console.log(`✅ Multi-Service KVA gespeichert für ${multiServiceAnfragen.length} Anfragen`);
+                    console.log(`✅ Multi-Service KVA gespeichert für ${multiServiceAnfragen.length} Services`);
 
                 } else {
                     // ============================================

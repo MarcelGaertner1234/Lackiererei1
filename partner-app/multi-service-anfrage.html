@@ -1467,11 +1467,15 @@
                 }
                 commonData.fahrzeugscheinFotos = fahrzeugscheinUrls;
 
-                // Create one request per service
-                const promises = selectedServices.map(async (serviceType) => {
+                // ============================================
+                // NEU: Sammle ALLE Service-Daten in EINEM Objekt
+                // ============================================
+                const allServicesData = {};
+
+                for (const serviceType of selectedServices) {
                     const serviceData = {};
 
-                    // Extract service-specific fields
+                    // Service-spezifische Felder sammeln
                     for (let [key, value] of formData.entries()) {
                         if (key.startsWith(serviceType + '_')) {
                             const fieldName = key.replace(serviceType + '_', '');
@@ -1479,34 +1483,46 @@
                         }
                     }
 
-                    // Upload photos for this service
+                    // Service-Fotos komprimieren
                     let photoUrls = [];
                     if (uploadedPhotos[serviceType] && uploadedPhotos[serviceType].length > 0) {
                         photoUrls = await uploadServicePhotos(serviceType, uploadedPhotos[serviceType]);
                     }
 
-                    // Create request document
-                    const requestData = {
-                        ...commonData,
-                        serviceTyp: serviceType,
+                    // In allServicesData speichern
+                    allServicesData[serviceType] = {
                         serviceData: serviceData,
-                        fotos: photoUrls,
-                        partnerId: partner.id,
-                        partnerName: partner.name,
-                        partnerEmail: partner.email || partner.kontakt || '',
-                        status: 'neu',
-                        auftragsnummer: commonData.auftragsnummer || `REQ-${Date.now()}-${serviceType.substring(0, 3).toUpperCase()}`,
-                        timestamp: Date.now(),
-                        erstelltAm: new Date().toISOString(),
-                        multiServiceGroup: multiServiceGroupId
+                        fotos: photoUrls
                     };
+                }
 
-                    return db.collection('partnerAnfragen').add(requestData);
-                });
+                // ============================================
+                // NEU: Erstelle EINE EINZIGE Multi-Service Anfrage
+                // ============================================
+                const multiServiceRequest = {
+                    ...commonData,
+                    serviceTyp: 'multi_service',  // Neuer Service-Typ für Multi-Service
+                    services: selectedServices,  // Array: ['lackier', 'reifen', 'tuev']
+                    servicesData: allServicesData,  // Objekt mit allen Service-Details
+                    partnerId: partner.id,
+                    partnerName: partner.name,
+                    partnerEmail: partner.email || partner.kontakt || '',
+                    status: 'neu',
+                    statusText: 'Neu eingegangen',
+                    auftragsnummer: commonData.auftragsnummer || `MULTI-${Date.now()}`,
+                    timestamp: Date.now(),
+                    erstelltAm: new Date().toISOString(),
+                    isMultiService: true,  // Flag für Multi-Service
+                    serviceCount: selectedServices.length,
+                    schadenBeschreibung: `Multi-Service Anfrage: ${selectedServices.map(s => serviceLabels[s]).join(', ')}`
+                };
 
-                await Promise.all(promises);
+                console.log('💾 Erstelle Multi-Service Anfrage:', multiServiceRequest);
 
-                alert(`✅ Erfolgreich ${selectedServices.length} Anfrage${selectedServices.length > 1 ? 'n' : ''} erstellt!`);
+                // Speichere NUR EINE Anfrage in Firebase
+                await db.collection('partnerAnfragen').add(multiServiceRequest);
+
+                alert(`✅ Multi-Service Anfrage erfolgreich erstellt (${selectedServices.length} Services)!`);
                 sessionStorage.removeItem('selectedServices');
                 window.location.href = 'meine-anfragen.html';
 
