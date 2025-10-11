@@ -860,6 +860,31 @@
                 minute: '2-digit'
             });
 
+            // Dringlichkeit-Label formatieren
+            const dringlichkeitLabels = {
+                'EXPRESS': '⚡⚡⚡ EXPRESS',
+                'SCHNELL': '⚡⚡ SCHNELL',
+                'NORMAL': '📅 NORMAL',
+                'ENTSPANNT': '🕐 ENTSPANNT'
+            };
+            const dringlichkeitText = dringlichkeitLabels[anfrage.dringlichkeitLabel] || anfrage.dringlichkeitLabel || '📅 NORMAL';
+
+            // Anliefertermin formatieren
+            let anlieferterminText = 'k.A.';
+            if (anfrage.anliefertermin) {
+                const anlieferDatum = new Date(anfrage.anliefertermin);
+                anlieferterminText = anlieferDatum.toLocaleDateString('de-DE', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                });
+            }
+
+            // Identifikationstyp ermitteln
+            const identifikationsText = anfrage.identificationType === 'vin'
+                ? 'Per VIN identifiziert'
+                : 'Per Fahrzeugschein identifiziert';
+
             let photosHTML = '';
             if (anfrage.fotos && anfrage.fotos.length > 0) {
                 photosHTML = `
@@ -881,22 +906,63 @@
                     <div class="info-item">
                         <div class="label">Fahrzeugdaten</div>
                         <div class="value" style="font-size: 12px; color: #666;">
-                            Aus VIN ermittelt
+                            ${identifikationsText}
                         </div>
                     </div>
                     <div class="info-item">
                         <div class="label">Dringlichkeit</div>
-                        <div class="value">${anfrage.dringlichkeit === 'eilig' ? '⚡ Eilig' : '📅 Normal'}</div>
+                        <div class="value">${dringlichkeitText}</div>
                     </div>
                     <div class="info-item">
                         <div class="label">Eingegangen am</div>
                         <div class="value">${datum}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">Wunsch-Anliefertermin</div>
+                        <div class="value">${anlieferterminText}</div>
                     </div>
                 </div>
                 <div class="schadensbeschreibung">
                     <div class="label">Schadensbeschreibung:</div>
                     <div class="text">${anfrage.schadenBeschreibung}</div>
                 </div>
+                ${anfrage.marke || anfrage.modell || anfrage.baujahr ? `
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #003366;">
+                        <div style="font-weight: 600; color: #003366; margin-bottom: 10px;">🚗 Fahrzeugdaten für Kalkulation</div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 13px;">
+                            ${anfrage.marke ? `
+                                <div>
+                                    <strong>Marke:</strong> ${anfrage.marke}
+                                </div>
+                            ` : ''}
+                            ${anfrage.modell ? `
+                                <div>
+                                    <strong>Modell:</strong> ${anfrage.modell}
+                                </div>
+                            ` : ''}
+                            ${anfrage.baujahr ? `
+                                <div>
+                                    <strong>Baujahr:</strong> ${anfrage.baujahr}
+                                </div>
+                            ` : ''}
+                            ${anfrage.kilometerstand ? `
+                                <div>
+                                    <strong>Kilometerstand:</strong> ${Number(anfrage.kilometerstand).toLocaleString('de-DE')} km
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+                ${anfrage.karosseriearbeiten ? `
+                    <div style="background: ${anfrage.karosseriearbeiten === 'ja' ? '#fff3e0' : '#e8f5e9'}; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid ${anfrage.karosseriearbeiten === 'ja' ? '#ff9800' : '#4caf50'};">
+                        <div style="font-weight: 600; color: ${anfrage.karosseriearbeiten === 'ja' ? '#e65100' : '#2e7d32'}; margin-bottom: 10px;">
+                            ${anfrage.karosseriearbeiten === 'ja' ? '🔧 Karosserie-Arbeiten erforderlich' : '✅ Keine Demontage nötig'}
+                        </div>
+                        <div style="font-size: 14px; color: #333;">
+                            ${anfrage.karosseriearbeiten === 'ja' ? 'Demontage/Montage von Teilen notwendig (erhöhter Arbeitsaufwand)' : 'Direktlackierung möglich (ohne Demontage)'}
+                        </div>
+                    </div>
+                ` : ''}
                 ${anfrage.ersatzteilPraeferenz ? `
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #4caf50;">
                         <div style="font-weight: 600; color: #2e7d32; margin-bottom: 10px;">Ersatzteil-Präferenz</div>
@@ -923,6 +989,46 @@
                                         <img src="${foto}" alt="Fahrzeugschein ${index + 1}" onclick="window.open('${foto}', '_blank')">
                                     `).join('')}
                                 </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
+                ${anfrage.lieferoption || anfrage.ersatzfahrzeugGewuenscht ? `
+                    <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #9c27b0;">
+                        <div style="font-weight: 600; color: #6a1b9a; margin-bottom: 10px;">🚗 Lieferoptionen & Services</div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 13px;">
+                            ${anfrage.lieferoption ? `
+                                <div>
+                                    <strong>Anlieferung:</strong>
+                                    ${anfrage.lieferoption === 'selbst_bringen' ? '✅ Partner bringt Fahrzeug selbst' : '🚚 Abholservice gewünscht'}
+                                </div>
+                            ` : ''}
+                            ${anfrage.ersatzfahrzeugGewuenscht ? `
+                                <div>
+                                    <strong>Ersatzfahrzeug:</strong>
+                                    ${anfrage.ersatzfahrzeugGewuenscht ? '🚙 Ja, benötigt' : 'Nein'}
+                                </div>
+                            ` : ''}
+                        </div>
+                        ${anfrage.lieferoption === 'abholung' && (anfrage.abholtermin || anfrage.abholadresse) ? `
+                            <div style="background: rgba(255,255,255,0.5); padding: 12px; border-radius: 6px; margin-top: 12px;">
+                                <div style="font-size: 12px; color: #6a1b9a; font-weight: 600; margin-bottom: 8px;">📍 Abholservice Details:</div>
+                                ${anfrage.abholtermin ? `
+                                    <div style="font-size: 13px; color: #333; margin-bottom: 5px;">
+                                        <strong>Termin:</strong> ${new Date(anfrage.abholtermin).toLocaleString('de-DE', {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            year: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        })}
+                                    </div>
+                                ` : ''}
+                                ${anfrage.abholadresse ? `
+                                    <div style="font-size: 13px; color: #333;">
+                                        <strong>Adresse:</strong> ${anfrage.abholadresse}
+                                    </div>
+                                ` : ''}
                             </div>
                         ` : ''}
                     </div>
@@ -1185,7 +1291,19 @@
                     notizen: document.getElementById('notizen').value || '',
                     erstelltAm: new Date().toISOString(),
                     erstelltVon: 'Admin',
-                    gewaehlteVariante: null // Wird vom Partner gewählt
+                    gewaehlteVariante: null, // Wird vom Partner gewählt
+
+                    // NEU: Fahrzeugidentifikation aus Anfrage übernehmen (9 Felder)
+                    identificationType: anfrage.identificationType || null,
+                    vin: anfrage.vin || null,
+                    fahrzeugscheinFotos: anfrage.fahrzeugscheinFotos || [],
+
+                    // NEU: Lieferoptionen aus Anfrage übernehmen
+                    lieferoption: anfrage.lieferoption || null,
+                    abholserviceGewuenscht: anfrage.abholserviceGewuenscht || false,
+                    abholtermin: anfrage.abholtermin || null,
+                    abholadresse: anfrage.abholadresse || null,
+                    ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false
                 };
 
                 // Dynamisch alle gerenderten Varianten auslesen
