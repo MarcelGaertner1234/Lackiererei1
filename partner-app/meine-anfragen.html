@@ -377,7 +377,7 @@
         /* Kanban Board */
         .kanban-board {
             display: grid;
-            grid-template-columns: repeat(6, minmax(220px, 1fr));
+            grid-template-columns: repeat(7, minmax(220px, 1fr));
             gap: 15px;
             overflow-x: auto;
             padding-bottom: 15px;
@@ -549,6 +549,16 @@
 
         .card-btn-details:hover {
             background: #00509e;
+        }
+
+        .card-btn-accept {
+            background: #4caf50;
+            color: white;
+            border: 1px solid #388e3c;
+        }
+
+        .card-btn-accept:hover {
+            background: #388e3c;
         }
 
         .card-btn-storno {
@@ -1264,6 +1274,10 @@
                     <span class="chip-label">Beauftragt</span>
                     <span class="chip-count" id="chip-count-beauftragt">(0)</span>
                 </button>
+                <button class="visibility-chip active" data-status="abholung" onclick="toggleColumnFromPanel('abholung')">
+                    <span class="chip-label">Abholung</span>
+                    <span class="chip-count" id="chip-count-abholung">(0)</span>
+                </button>
                 <button class="visibility-chip active" data-status="in_arbeit" onclick="toggleColumnFromPanel('in_arbeit')">
                     <span class="chip-label">Arbeit</span>
                     <span class="chip-count" id="chip-count-in_arbeit">(0)</span>
@@ -1371,6 +1385,15 @@
                     <span class="kanban-column-count" id="count-status-beauftragt">0</span>
                 </div>
                 <div class="kanban-cards" id="column-beauftragt"></div>
+            </div>
+
+            <!-- Status: Abholung -->
+            <div class="kanban-column" id="column-container-abholung">
+                <div class="kanban-column-header" style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white;">
+                    <span>🚙 Abholung</span>
+                    <span class="kanban-column-count" id="count-status-abholung">0</span>
+                </div>
+                <div class="kanban-cards" id="column-abholung"></div>
             </div>
 
             <!-- Status: In Arbeit -->
@@ -1501,7 +1524,7 @@
 
         // Spalten-Sichtbarkeit anwenden
         function applyColumnVisibility() {
-            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig', 'storniert'];
+            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'abholung', 'in_arbeit', 'fertig', 'storniert'];
             statuses.forEach(status => {
                 const column = document.getElementById(`column-container-${status}`);
                 if (column) {
@@ -1517,7 +1540,7 @@
 
         // Visibility Panel aktualisieren
         function updateVisibilityPanel() {
-            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig', 'storniert'];
+            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'abholung', 'in_arbeit', 'fertig', 'storniert'];
 
             statuses.forEach(status => {
                 const chip = document.querySelector(`.visibility-chip[data-status="${status}"]`);
@@ -1742,7 +1765,7 @@
             // Single-Service only (Multi-Service Feature removed)
 
             // Spalten leeren
-            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig', 'storniert'];
+            const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'abholung', 'in_arbeit', 'fertig', 'storniert'];
             statuses.forEach(status => {
                 const column = document.getElementById(`column-${status}`);
                 if (column) {
@@ -1843,6 +1866,11 @@
                         💬 Chat
                         ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
                     </button>
+                    ${anfrage.status === 'kva_gesendet' ? `
+                        <button class="card-btn card-btn-accept" onclick="annehmenKVA('${anfrage.id}', event)">
+                            ✅ Annehmen
+                        </button>
+                    ` : ''}
                     ${anfrage.status === 'beauftragt' ? `
                         <button class="card-btn card-btn-storno" onclick="stornierenAnfrage('${anfrage.id}', event)">
                             ❌ Stornieren
@@ -1912,6 +1940,120 @@
             } catch (error) {
                 console.error('❌ Fehler beim Stornieren:', error);
                 alert('❌ Fehler beim Stornieren der Anfrage.\\n\\nBitte versuchen Sie es erneut.');
+            }
+        }
+
+        async function annehmenKVA(anfrageId, event) {
+            event?.stopPropagation();
+
+            const anfrage = alleAnfragen.find(a => a.id === anfrageId);
+            if (!anfrage) {
+                alert('Anfrage nicht gefunden.');
+                return;
+            }
+
+            // Nur "kva_gesendet" kann angenommen werden
+            if (anfrage.status !== 'kva_gesendet') {
+                alert('Diese Anfrage kann nicht angenommen werden.\\n\\nNur Anfragen mit Status "Angebot erstellt" können angenommen werden.');
+                return;
+            }
+
+            // Prüfen ob anliefertermin vorhanden
+            if (!anfrage.anliefertermin) {
+                alert('⚠️ Kein Anliefertermin vorhanden.\\n\\nDie Anfrage kann nicht angenommen werden, da kein Anliefertermin festgelegt ist.');
+                return;
+            }
+
+            // Bestätigung
+            const bestaetigung = confirm(
+                'Möchten Sie dieses Angebot annehmen?\\n\\n' +
+                `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
+                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                `Anliefertermin: ${new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')}\\n` +
+                `Preis: ${anfrage.kva?.gesamt ? anfrage.kva.gesamt.toFixed(2) + ' €' : 'k.A.'}`
+            );
+
+            if (!bestaetigung) {
+                return;
+            }
+
+            try {
+                // 1. Status auf "beauftragt" ändern
+                const updateData = {
+                    status: 'beauftragt',
+                    statusText: 'Beauftragt',
+                    beauftragtAm: new Date().toISOString(),
+                    beauftragtVon: partner?.email || partner?.name || partner?.id || 'Unbekannt'
+                };
+
+                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vorher)
+                if (anfrage.abholserviceGewuenscht) {
+                    const anlieferDate = new Date(anfrage.anliefertermin);
+                    const abholDate = new Date(anlieferDate);
+                    abholDate.setDate(anlieferDate.getDate() - 1);
+                    const abholtermin = abholDate.toISOString().split('T')[0];
+                    updateData.abholtermin = abholtermin;
+                }
+
+                await db.collection('partnerAnfragen').doc(anfrageId).update(updateData);
+
+                // 3. Kalender-Events erstellen (Abholung + Start)
+                await createCalendarEvents(anfrage, updateData.abholtermin);
+
+                alert('✅ Angebot erfolgreich angenommen!\\n\\nDie Termine wurden in den Kalender eingetragen.');
+                await loadAnfragen();
+            } catch (error) {
+                console.error('❌ Fehler beim Annehmen:', error);
+                alert('❌ Fehler beim Annehmen der Anfrage.\\n\\nBitte versuchen Sie es erneut.');
+            }
+        }
+
+        async function createCalendarEvents(anfrage, abholtermin) {
+            try {
+                // Event 1: Abholung (nur wenn Abholservice gewünscht)
+                if (anfrage.abholserviceGewuenscht && abholtermin) {
+                    const abholEventData = {
+                        id: 'evt_abholung_' + anfrage.id + '_' + Date.now(),
+                        typ: 'abholung',
+                        datum: abholtermin,
+                        zeit: '09:00',
+                        kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || 'Unbekannt',
+                        serviceTyp: anfrage.serviceTyp,
+                        anfrageId: anfrage.id,
+                        partnerId: anfrage.partnerId,
+                        partnerName: anfrage.partnerName,
+                        abholadresse: anfrage.abholadresse || 'Nicht angegeben',
+                        erstellt: new Date().toISOString(),
+                        status: 'geplant',
+                        titel: `🚙 Abholung: ${anfrage.kennzeichen || anfrage.auftragsnummer}`
+                    };
+
+                    await db.collection('kalenderEvents').doc(abholEventData.id).set(abholEventData);
+                    console.log('✅ Abholung-Event erstellt:', abholEventData.id);
+                }
+
+                // Event 2: Start (Anliefertermin)
+                const startEventData = {
+                    id: 'evt_start_' + anfrage.id + '_' + Date.now(),
+                    typ: 'start',
+                    datum: anfrage.anliefertermin,
+                    zeit: '09:00',
+                    kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || 'Unbekannt',
+                    serviceTyp: anfrage.serviceTyp,
+                    anfrageId: anfrage.id,
+                    partnerId: anfrage.partnerId,
+                    partnerName: anfrage.partnerName,
+                    erstellt: new Date().toISOString(),
+                    status: 'geplant',
+                    titel: `🔧 Start: ${anfrage.kennzeichen || anfrage.auftragsnummer}`
+                };
+
+                await db.collection('kalenderEvents').doc(startEventData.id).set(startEventData);
+                console.log('✅ Start-Event erstellt:', startEventData.id);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der Kalender-Events:', error);
+                // Fehler nicht werfen, damit die Anfrage trotzdem angenommen wird
             }
         }
 

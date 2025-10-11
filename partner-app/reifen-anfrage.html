@@ -1144,33 +1144,25 @@
 
                     <!-- Abholservice Details -->
                     <div id="abholserviceDetails" class="conditional-field" style="display: none;">
+                        <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+                            <p style="margin: 0; color: #1976d2; font-size: 13px; line-height: 1.6;">
+                                📍 <strong>Abholung:</strong> Wir holen das Fahrzeug am <strong>Vortag vor dem Anliefertermin</strong> an Ihrer Geschäftsadresse ab.<br>
+                                <small style="color: #666;">Den genauen Abholtermin erhalten Sie mit dem Kostenvoranschlag.</small>
+                            </p>
+                        </div>
                         <div class="form-group">
                             <label for="abholadresse">Abholadresse</label>
                             <input type="text" id="abholadresse" placeholder="Straße, Hausnummer, PLZ Ort">
                         </div>
                         <div class="form-group">
-                            <label for="abholtermin">Gewünschter Abholtermin</label>
-                            <input type="datetime-local" id="abholtermin">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="ersatzfahrzeugGewuenscht" style="width: 18px; height: 18px; margin-right: 10px; cursor: pointer;">
+                                <span style="font-size: 14px;">
+                                    Ersatzfahrzeug gewünscht <small style="color: #999;">(+Aufpreis)</small>
+                                </span>
+                            </label>
                         </div>
                     </div>
-                </div>
-
-                <!-- Ersatzfahrzeug -->
-                <div class="form-group" style="margin-top: 25px;">
-                    <label>Benötigen Sie ein Ersatzfahrzeug während der Reparatur?</label>
-                    <div class="toggle-group">
-                        <label class="toggle-option" onclick="selectErsatzfahrzeug(this, false)">
-                            <input type="radio" name="ersatzfahrzeug" value="nein" checked>
-                            ❌ Nein, danke
-                        </label>
-                        <label class="toggle-option" onclick="selectErsatzfahrzeug(this, true)">
-                            <input type="radio" name="ersatzfahrzeug" value="ja">
-                            🚙 Ja, benötigt
-                        </label>
-                    </div>
-                    <small style="color: #999; font-size: 12px; margin-top: 10px; display: block;">
-                        💡 Wir werden Sie bei Verfügbarkeit und Kosten kontaktieren
-                    </small>
                 </div>
             </div>
 
@@ -1542,7 +1534,9 @@
             } else {
                 abholserviceDetails.style.display = 'none';
                 document.getElementById('abholadresse').value = '';
-                document.getElementById('abholtermin').value = '';
+                if (document.getElementById('ersatzfahrzeugGewuenscht')) {
+                    document.getElementById('ersatzfahrzeugGewuenscht').checked = false;
+                }
             }
         }
 
@@ -1762,7 +1756,7 @@
 
             // Lieferoptionen (NEU)
             const lieferoption = document.querySelector('input[name="lieferoption"]:checked').value;
-            const ersatzfahrzeug = document.querySelector('input[name="ersatzfahrzeug"]:checked').value;
+            const ersatzfahrzeugCheckbox = document.getElementById('ersatzfahrzeugGewuenscht');
             html += `
                 <div class="summary-section">
                     <h3>🚗 Lieferung & Services</h3>
@@ -1772,10 +1766,10 @@
                         <p class="label" style="margin-top: 10px;">Abholadresse</p>
                         <p>${document.getElementById('abholadresse').value || 'Nicht angegeben'}</p>
                         <p class="label" style="margin-top: 5px;">Abholtermin</p>
-                        <p>${document.getElementById('abholtermin').value ? new Date(document.getElementById('abholtermin').value).toLocaleString('de-DE') : 'Nicht angegeben'}</p>
+                        <p>Wird 1 Tag vor Anliefertermin festgelegt</p>
+                        <p class="label" style="margin-top: 10px;">Ersatzfahrzeug</p>
+                        <p>${ersatzfahrzeugCheckbox?.checked ? '🚙 Ja, benötigt' : '❌ Nein, danke'}</p>
                     ` : ''}
-                    <p class="label" style="margin-top: 10px;">Ersatzfahrzeug</p>
-                    <p>${ersatzfahrzeug === 'ja' ? '🚙 Ja, benötigt' : '❌ Nein, danke'}</p>
                 </div>
             `;
 
@@ -1847,12 +1841,14 @@
                     vin: identificationType === 'vin' ? document.getElementById('vin').value.toUpperCase() : null,
                     fahrzeugscheinFotos: identificationType === 'fahrzeugschein' ? compressedFahrzeugscheinFotos : [],
 
-                    // Reifen-Daten
-                    reifenTyp: document.querySelector('input[name="reifenTyp"]:checked').value,
-                    serviceArt: document.querySelector('input[name="serviceArt"]:checked').value,
-                    reifenDimension: document.getElementById('reifenDimension').value || null,
-                    reifenAnzahl: document.getElementById('reifenAnzahl').value,
-                    anmerkungen: document.getElementById('anmerkungen').value || null,
+                    // Reifen-Daten (serviceData-Objekt für KVA-Anzeige)
+                    serviceData: {
+                        typ: document.querySelector('input[name="reifenTyp"]:checked').value,
+                        art: document.querySelector('input[name="serviceArt"]:checked').value,
+                        dimension: document.getElementById('reifenDimension').value || null,
+                        anzahl: document.getElementById('reifenAnzahl').value,
+                        info: document.getElementById('anmerkungen').value || null
+                    },
 
                     // Termin
                     anliefertermin: termin ? termin.value : null,
@@ -1861,9 +1857,9 @@
                     // Lieferoptionen (NEU)
                     lieferoption: lieferoption,
                     abholserviceGewuenscht: lieferoption === 'abholung',
-                    abholtermin: lieferoption === 'abholung' ? (document.getElementById('abholtermin').value || null) : null,
+                    abholtermin: null, // Wird vom Lackierer im KVA festgelegt (1 Tag vor Anliefertermin)
                     abholadresse: lieferoption === 'abholung' ? (document.getElementById('abholadresse').value || null) : null,
-                    ersatzfahrzeugGewuenscht: ersatzfahrzeugWert === 'ja',
+                    ersatzfahrzeugGewuenscht: lieferoption === 'abholung' ? (document.getElementById('ersatzfahrzeugGewuenscht')?.checked || false) : false,
 
                     fotos: compressedPhotos, // Komprimierte Fotos!
 

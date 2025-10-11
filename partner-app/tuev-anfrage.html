@@ -1059,6 +1059,15 @@
                         </label>
                     </div>
                 </div>
+
+                <!-- NEU: TÜV-Fälligkeit -->
+                <div class="form-group" style="margin-top: 25px;">
+                    <label for="tuevFaelligkeit">TÜV-Fälligkeit (optional)</label>
+                    <input type="date" id="tuevFaelligkeit" style="width: 100%;">
+                    <small style="color: #999; font-size: 12px; margin-top: 5px; display: block;">
+                        💡 Wann läuft die aktuelle TÜV-Plakette ab? (Falls bekannt)
+                    </small>
+                </div>
             </div>
 
             <!-- Step 5: Fahrzeugtyp -->
@@ -1160,28 +1169,24 @@
 
                     <!-- Abholservice Details -->
                     <div id="abholserviceDetails" style="display: none; margin-top: 20px;">
-                        <div class="form-group">
-                            <label for="abholtermin">Gewünschter Abholtermin</label>
-                            <input type="datetime-local" id="abholtermin">
+                        <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+                            <p style="margin: 0; color: #1976d2; font-size: 13px; line-height: 1.6;">
+                                📍 <strong>Abholung:</strong> Wir holen das Fahrzeug am <strong>Vortag vor dem Anliefertermin</strong> an Ihrer Geschäftsadresse ab.<br>
+                                <small style="color: #666;">Den genauen Abholtermin erhalten Sie mit dem Kostenvoranschlag.</small>
+                            </p>
                         </div>
                         <div class="form-group">
                             <label for="abholadresse">Abholadresse</label>
                             <input type="text" id="abholadresse" placeholder="z.B. Autohaus Mustermann, Hauptstraße 123, 74821 Mosbach">
                         </div>
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-top: 25px;">
-                    <label>Ersatzfahrzeug benötigt?</label>
-                    <div class="toggle-group">
-                        <label class="toggle-option" onclick="selectErsatzfahrzeug('nein')">
-                            <input type="radio" name="ersatzfahrzeug" value="nein" checked>
-                            ❌ Nein
-                        </label>
-                        <label class="toggle-option" onclick="selectErsatzfahrzeug('ja')">
-                            <input type="radio" name="ersatzfahrzeug" value="ja">
-                            ✅ Ja, benötigt
-                        </label>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="ersatzfahrzeugGewuenscht" style="width: 18px; height: 18px; margin-right: 10px; cursor: pointer;">
+                                <span style="font-size: 14px;">
+                                    Ersatzfahrzeug gewünscht <small style="color: #999;">(+Aufpreis)</small>
+                                </span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -1587,8 +1592,10 @@
                 abholserviceDiv.style.display = 'block';
             } else {
                 abholserviceDiv.style.display = 'none';
-                document.getElementById('abholtermin').value = '';
                 document.getElementById('abholadresse').value = '';
+                if (document.getElementById('ersatzfahrzeugGewuenscht')) {
+                    document.getElementById('ersatzfahrzeugGewuenscht').checked = false;
+                }
             }
         }
 
@@ -1758,10 +1765,12 @@
             const serviceArtLabel = serviceArt === 'tuev' ? 'TÜV (Hauptuntersuchung)' :
                                     serviceArt === 'au' ? 'AU (Abgasuntersuchung)' :
                                     serviceArt === 'kombi' ? 'TÜV + AU Kombi' : 'Nachuntersuchung';
+            const tuevFaelligkeit = document.getElementById('tuevFaelligkeit').value;
             html += `
                 <div class="summary-section">
                     <h3> Service-Art</h3>
                     <p>${serviceArtLabel}</p>
+                    ${tuevFaelligkeit ? `<p class="label" style="margin-top: 10px;">TÜV-Fälligkeit</p><p>${new Date(tuevFaelligkeit).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>` : ''}
                 </div>
             `;
 
@@ -1801,29 +1810,21 @@
 
             // Lieferoptionen (NEU)
             const lieferoption = document.querySelector('input[name="lieferoption"]:checked').value;
-            const ersatzfahrzeug = document.querySelector('input[name="ersatzfahrzeug"]:checked').value;
+            const ersatzfahrzeugCheckbox = document.getElementById('ersatzfahrzeugGewuenscht');
 
             html += `
                 <div class="summary-section">
-                    <h3>🚗 Lieferoptionen</h3>
+                    <h3>🚗 Lieferung & Services</h3>
                     <p class="label">Anlieferung</p>
-                    <p>${lieferoption === 'selbst_bringen' ? '🚙 Selbst bringen' : '🚛 Abholservice gewünscht'}</p>
-            `;
-
-            if (lieferoption === 'abholung') {
-                const abholtermin = document.getElementById('abholtermin').value;
-                const abholadresse = document.getElementById('abholadresse').value;
-                if (abholtermin) {
-                    html += `<p class="label">Abholtermin</p><p>${new Date(abholtermin).toLocaleString('de-DE')}</p>`;
-                }
-                if (abholadresse) {
-                    html += `<p class="label">Abholadresse</p><p>${abholadresse}</p>`;
-                }
-            }
-
-            html += `
-                    <p class="label" style="margin-top: 10px;">Ersatzfahrzeug</p>
-                    <p>${ersatzfahrzeug === 'ja' ? '✅ Ja, benötigt' : '❌ Nein'}</p>
+                    <p>${lieferoption === 'selbst_bringen' ? '✅ Partner bringt Fahrzeug selbst' : '🚚 Abholservice gewünscht'}</p>
+                    ${lieferoption === 'abholung' ? `
+                        <p class="label" style="margin-top: 10px;">Abholadresse</p>
+                        <p>${document.getElementById('abholadresse').value || 'Nicht angegeben'}</p>
+                        <p class="label" style="margin-top: 5px;">Abholtermin</p>
+                        <p>Wird 1 Tag vor Anliefertermin festgelegt</p>
+                        <p class="label" style="margin-top: 10px;">Ersatzfahrzeug</p>
+                        <p>${ersatzfahrzeugCheckbox?.checked ? '🚙 Ja, benötigt' : '❌ Nein, danke'}</p>
+                    ` : ''}
                 </div>
             `;
 
@@ -1865,7 +1866,6 @@
                 const identificationType = document.querySelector('input[name="identificationType"]:checked').value;
                 const termin = document.querySelector('input[name="anliefertermin"]:checked');
                 const lieferoption = document.querySelector('input[name="lieferoption"]:checked').value;
-                const ersatzfahrzeug = document.querySelector('input[name="ersatzfahrzeug"]:checked').value;
 
                 const anfrageId = 'req_' + Date.now();
                 const timestamp = new Date().toISOString();
@@ -1894,10 +1894,13 @@
                     vin: identificationType === 'vin' ? document.getElementById('vin').value.toUpperCase() : null,
                     fahrzeugscheinFotos: identificationType === 'fahrzeugschein' ? compressedFahrzeugschein : [],
 
-                    // TÜV-Daten
-                    serviceArt: document.querySelector('input[name="serviceArt"]:checked').value,
+                    // TÜV-Daten (serviceData-Objekt für KVA-Anzeige)
+                    serviceData: {
+                        pruefung: document.querySelector('input[name="serviceArt"]:checked').value,
+                        faelligkeit: document.getElementById('tuevFaelligkeit').value || null,
+                        anmerkungen: document.querySelector('input[name="vorbereitung"]:checked').value
+                    },
                     fahrzeugtyp: document.querySelector('input[name="fahrzeugtyp"]:checked').value,
-                    vorbereitung: document.querySelector('input[name="vorbereitung"]:checked').value,
                     anmerkungen: document.getElementById('anmerkungen').value || null,
 
                     // Termin
@@ -1907,9 +1910,9 @@
                     // Lieferoptionen (NEU)
                     lieferoption: lieferoption,
                     abholserviceGewuenscht: lieferoption === 'abholung',
-                    abholtermin: lieferoption === 'abholung' ? (document.getElementById('abholtermin').value || null) : null,
+                    abholtermin: null, // Wird vom Lackierer im KVA festgelegt (1 Tag vor Anliefertermin)
                     abholadresse: lieferoption === 'abholung' ? (document.getElementById('abholadresse').value || null) : null,
-                    ersatzfahrzeugGewuenscht: ersatzfahrzeug === 'ja',
+                    ersatzfahrzeugGewuenscht: lieferoption === 'abholung' ? (document.getElementById('ersatzfahrzeugGewuenscht')?.checked || false) : false,
 
                     fotos: compressedPhotos, // Komprimierte Fotos!
 

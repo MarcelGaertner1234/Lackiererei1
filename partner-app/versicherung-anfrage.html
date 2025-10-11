@@ -1109,6 +1109,28 @@
                             <div class="description">Direkte Reparatur ohne Gutachten (z.B. Bagatellschaden)</div>
                         </label>
                     </div>
+
+                    <!-- NEU: Schadennummer & Versicherung -->
+                    <div class="form-group" style="margin-top: 30px; padding-top: 25px; border-top: 2px solid #e0e0e0;">
+                        <h4 style="color: #003366; margin-bottom: 15px; font-size: 16px;">📋 Versicherungsdaten</h4>
+                        <p style="color: #666; font-size: 13px; margin-bottom: 20px;">
+                            Diese Angaben helfen bei der Abrechnung mit der Versicherung.
+                        </p>
+                        <div style="margin-bottom: 15px;">
+                            <label for="schadennummer">Schadennummer (optional)</label>
+                            <input type="text" id="schadennummer" placeholder="z.B. VSN-2024-123456" style="text-transform: uppercase;">
+                            <small style="color: #999; font-size: 12px; margin-top: 5px; display: block;">
+                                💡 Falls bereits eine Schadennummer von der Versicherung vergeben wurde
+                            </small>
+                        </div>
+                        <div style="margin-bottom: 0;">
+                            <label for="versicherung">Versicherung (optional)</label>
+                            <input type="text" id="versicherung" placeholder="z.B. Allianz, HUK24, Debeka">
+                            <small style="color: #999; font-size: 12px; margin-top: 5px; display: block;">
+                                💡 Name der Versicherung, falls bekannt
+                            </small>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1149,29 +1171,25 @@
                     </div>
 
                     <!-- Abholservice Details -->
-                    <div id="abholserviceDetails" style="display: none; margin-top: 20px;">
-                        <div class="form-group">
-                            <label for="abholtermin">Gewünschter Abholtermin</label>
-                            <input type="datetime-local" id="abholtermin">
+                    <div id="abholserviceDetails" class="conditional-field" style="display: none;">
+                        <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+                            <p style="margin: 0; color: #1976d2; font-size: 13px; line-height: 1.6;">
+                                📍 <strong>Abholung:</strong> Wir holen das Fahrzeug am <strong>Vortag vor dem zugesagten Termin</strong> an Ihrer Geschäftsadresse ab.<br>
+                                <small style="color: #666;">Den genauen Abholtermin erhalten Sie mit dem Kostenvoranschlag.</small>
+                            </p>
                         </div>
                         <div class="form-group">
                             <label for="abholadresse">Abholadresse</label>
-                            <input type="text" id="abholadresse" placeholder="z.B. Autohaus Mustermann, Hauptstraße 123, 74821 Mosbach">
+                            <input type="text" id="abholadresse" placeholder="Straße, Hausnummer, PLZ Ort">
                         </div>
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-top: 25px;">
-                    <label>Ersatzfahrzeug benötigt?</label>
-                    <div class="toggle-group">
-                        <label class="toggle-option" onclick="selectErsatzfahrzeug('nein')">
-                            <input type="radio" name="ersatzfahrzeug" value="nein" checked>
-                            Nein
-                        </label>
-                        <label class="toggle-option" onclick="selectErsatzfahrzeug('ja')">
-                            <input type="radio" name="ersatzfahrzeug" value="ja">
-                            Ja, benötigt
-                        </label>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="ersatzfahrzeugGewuenscht" style="width: 18px; height: 18px; margin-right: 10px; cursor: pointer;">
+                                <span style="font-size: 14px;">
+                                    Ersatzfahrzeug gewünscht <small style="color: #999;">(+Aufpreis)</small>
+                                </span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -1567,8 +1585,10 @@
                 abholserviceDetails.style.display = 'block';
             } else {
                 abholserviceDetails.style.display = 'none';
-                document.getElementById('abholtermin').value = '';
                 document.getElementById('abholadresse').value = '';
+                if (document.getElementById('ersatzfahrzeugGewuenscht')) {
+                    document.getElementById('ersatzfahrzeugGewuenscht').checked = false;
+                }
             }
         }
 
@@ -1666,6 +1686,14 @@
             element.querySelector('input').checked = true;
         }
 
+        // XSS Protection Helper
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // Summary Generation
         function generateSummary() {
             const summaryContent = document.getElementById('summaryContent');
@@ -1756,13 +1784,18 @@
                 `;
             }
 
-            // Gutachten
+            // Gutachten & Versicherungsdaten
             const gutachtenLabel = gutachten === 'gewuenscht' ? 'Ja, Gutachten gewünscht' :
                                    gutachten === 'vorhanden' ? 'Gutachten vorhanden' : 'Kein Gutachten';
+            const schadennummer = document.getElementById('schadennummer').value;
+            const versicherung = document.getElementById('versicherung').value;
             html += `
                 <div class="summary-section">
-                    <h3> Gutachten</h3>
+                    <h3> Gutachten & Versicherung</h3>
+                    <p class="label">Gutachten</p>
                     <p>${gutachtenLabel}</p>
+                    ${schadennummer ? `<p class="label" style="margin-top: 10px;">Schadennummer</p><p>${schadennummer}</p>` : ''}
+                    ${versicherung ? `<p class="label" style="margin-top: 10px;">Versicherung</p><p>${versicherung}</p>` : ''}
                 </div>
             `;
 
@@ -1781,30 +1814,22 @@
 
             // Lieferoptionen (NEU)
             const lieferoption = document.querySelector('input[name="lieferoption"]:checked').value;
-            const ersatzfahrzeug = document.querySelector('input[name="ersatzfahrzeug"]:checked').value;
+            const ersatzfahrzeugCheckbox = document.getElementById('ersatzfahrzeugGewuenscht');
 
             html += `
                 <div class="summary-section">
-                    <h3>🚗 Lieferoptionen</h3>
+                    <h3>🚗 Lieferung & Services</h3>
                     <p class="label">Anlieferung</p>
-                    <p>${lieferoption === 'selbst_bringen' ? '🚙 Selbst bringen' : '🚛 Abholservice gewünscht'}</p>
-            `;
-
-            if (lieferoption === 'abholung') {
-                const abholtermin = document.getElementById('abholtermin').value;
-                const abholadresse = document.getElementById('abholadresse').value;
-                if (abholtermin) {
-                    html += `<p class="label">Abholtermin</p><p>${new Date(abholtermin).toLocaleString('de-DE')}</p>`;
-                }
-                if (abholadresse) {
-                    html += `<p class="label">Abholadresse</p><p>${abholadresse}</p>`;
-                }
-            }
-
-            html += `
-                <p class="label" style="margin-top: 10px;">Ersatzfahrzeug</p>
-                <p>${ersatzfahrzeug === 'ja' ? '✅ Ja, benötigt' : '❌ Nein'}</p>
-            </div>
+                    <p>${lieferoption === 'selbst_bringen' ? '✅ Partner bringt Fahrzeug selbst' : '🚚 Abholservice gewünscht'}</p>
+                    ${lieferoption === 'abholung' ? `
+                        <p class="label" style="margin-top: 10px;">Abholadresse</p>
+                        <p>${document.getElementById('abholadresse').value || 'Nicht angegeben'}</p>
+                        <p class="label" style="margin-top: 5px;">Abholtermin</p>
+                        <p>Wird 1 Tag vor Anliefertermin festgelegt</p>
+                        <p class="label" style="margin-top: 10px;">Ersatzfahrzeug</p>
+                        <p>${ersatzfahrzeugCheckbox?.checked ? '🚙 Ja, benötigt' : '❌ Nein, danke'}</p>
+                    ` : ''}
+                </div>
             `;
 
             // Anmerkungen
@@ -1869,10 +1894,14 @@
                     baujahr: parseInt(document.getElementById('baujahr').value),
                     kilometerstand: document.getElementById('kilometerstand').value ? parseInt(document.getElementById('kilometerstand').value) : null,
 
-                    // Versicherungs-Daten
+                    // Versicherungs-Daten (serviceData-Objekt für KVA-Anzeige)
+                    serviceData: {
+                        schadennummer: (document.getElementById('schadennummer').value || '').toUpperCase() || null,
+                        versicherung: document.getElementById('versicherung').value || null,
+                        gutachten: document.querySelector('input[name="gutachten"]:checked').value,
+                        hergang: document.getElementById('schadensBeschreibung').value || null
+                    },
                     schadensart: document.querySelector('input[name="schadensart"]:checked').value,
-                    schadensBeschreibung: document.getElementById('schadensBeschreibung').value || null,
-                    gutachten: document.querySelector('input[name="gutachten"]:checked').value,
                     anmerkungen: document.getElementById('anmerkungen').value || null,
 
                     // Termin
@@ -1882,9 +1911,9 @@
                     // Lieferoptionen (NEU)
                     lieferoption: document.querySelector('input[name="lieferoption"]:checked').value,
                     abholserviceGewuenscht: document.querySelector('input[name="lieferoption"]:checked').value === 'abholung',
-                    abholtermin: document.getElementById('abholtermin').value || null,
-                    abholadresse: document.getElementById('abholadresse').value || null,
-                    ersatzfahrzeugGewuenscht: document.querySelector('input[name="ersatzfahrzeug"]:checked').value === 'ja',
+                    abholtermin: null, // Wird vom Lackierer im KVA festgelegt (1 Tag vor Anliefertermin)
+                    abholadresse: document.querySelector('input[name="lieferoption"]:checked').value === 'abholung' ? (document.getElementById('abholadresse').value || null) : null,
+                    ersatzfahrzeugGewuenscht: document.querySelector('input[name="lieferoption"]:checked').value === 'abholung' ? (document.getElementById('ersatzfahrzeugGewuenscht')?.checked || false) : false,
 
                     fotos: compressedPhotos, // Komprimierte Fotos!
 
