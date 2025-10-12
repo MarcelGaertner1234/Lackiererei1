@@ -1790,6 +1790,14 @@
                     <textarea id="kundenNotizen" rows="3" placeholder="z.B. Stammkunde seit 2020, bevorzugt Premium-Lack..."></textarea>
                 </div>
                 <div class="form-group">
+                    <label for="partnerCode">🤝 Partner-Code (B2B)</label>
+                    <input type="text" id="partnerCode" placeholder="z.B. VW-BUCHEN-2024 (für Autohäuser/Partner mit Portal-Zugang)">
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        ℹ️ Wenn dieser Kunde ein B2B-Partner mit Portal-Zugang ist, gib hier seinen Partner-Code ein.
+                        Rabatt-Konditionen werden dann automatisch im Partner-Portal synchronisiert.
+                    </small>
+                </div>
+                <div class="form-group">
                     <label style="font-weight: 600; color: #003366; margin-bottom: 10px; display: block;">🏷️ Tags</label>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                         <label class="tag-checkbox">
@@ -3152,6 +3160,8 @@
             const konditionenGeprueft = document.getElementById('konditionenGeprueft').checked;
             const konditionenDatum = document.getElementById('konditionenDatum').value;
 
+            const partnerCode = document.getElementById('partnerCode').value.trim();
+
             const kundeData = {
                 id: currentKundeId || 'kunde_' + Date.now(),
                 name: document.getElementById('kundenName').value.trim(),
@@ -3159,6 +3169,7 @@
                 email: document.getElementById('kundenEmail').value.trim(),
                 notizen: document.getElementById('kundenNotizen').value.trim(),
                 tags: selectedTags, // ✅ Add tags
+                partnerCode: partnerCode || null, // ✅ Partner-Code für B2B-Kunden
                 // ✅ Rabatt-Konditionen (NEU)
                 rabattKonditionen: Object.keys(rabattKonditionen).length > 0 ? rabattKonditionen : null,
                 konditionenGeprueft: konditionenGeprueft,
@@ -3197,6 +3208,27 @@
                     showSuccessToast(`Neuer Kunde "${kundeData.name}" erstellt!`);
                 }
 
+                // ✅ SYNC zu Partner Collection (wenn Partner-Code vorhanden)
+                if (partnerCode && firebaseInitialized && firebaseApp?.db) {
+                    try {
+                        console.log(`🔄 Synce Rabatt-Konditionen zu Partner "${partnerCode}"...`);
+                        const partnerRef = firebaseApp.db.collection('partner').doc(partnerCode);
+
+                        const syncData = {
+                            rabattKonditionen: kundeData.rabattKonditionen,
+                            konditionenGeprueft: kundeData.konditionenGeprueft,
+                            konditionenDatum: kundeData.konditionenDatum
+                        };
+
+                        await partnerRef.set(syncData, { merge: true });
+                        console.log(`✅ Rabatt-Konditionen zu Partner "${partnerCode}" synchronisiert!`);
+                        console.log('   📊 Daten:', syncData);
+                    } catch (syncError) {
+                        console.warn('⚠️ Fehler beim Sync zu Partner Collection:', syncError);
+                        // Nicht kritisch - Kunde wurde bereits gespeichert
+                    }
+                }
+
                 closeNeuerKundeModal();
                 await loadKunden();
                 updateStats();
@@ -3217,6 +3249,7 @@
             document.getElementById('kundenTelefon').value = kunde.telefon || '';
             document.getElementById('kundenEmail').value = kunde.email || '';
             document.getElementById('kundenNotizen').value = kunde.notizen || '';
+            document.getElementById('partnerCode').value = kunde.partnerCode || '';
 
             // ✅ Set tag checkboxes based on kunde.tags
             ['vip', 'stammkunde', 'neukunde', 'flotte', 'gewerbe', 'privat'].forEach(tagId => {
