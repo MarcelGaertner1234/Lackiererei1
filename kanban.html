@@ -814,8 +814,8 @@
         <div class="process-filter">
             <label for="processSelect">📋 Prozess wählen:</label>
             <select id="processSelect" onchange="changeProcess()">
-                <option value="alle">Alle Prozesse</option>
-                <option value="lackier" selected>🎨 Lackierung</option>
+                <option value="alle" selected>Alle Prozesse</option>
+                <option value="lackier">🎨 Lackierung</option>
                 <option value="reifen">🚗 Reifen-Service</option>
                 <option value="mechanik">🔧 Mechanik</option>
                 <option value="pflege">✨ Fahrzeugpflege</option>
@@ -883,6 +883,7 @@
         let firebaseInitialized = false;
         let firebaseApp = null;
         let currentProcess = 'lackier'; // Aktuell gewählter Prozess
+        let unsubscribeListener = null; // Realtime Listener cleanup function
 
         // Prozess-Definitionen (Service-spezifische Schritte)
         const processDefinitions = {
@@ -890,6 +891,7 @@
                 name: '📋 Alle Prozesse',
                 steps: [
                     { id: 'angenommen', icon: '📥', label: 'Neu/Angenommen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'terminiert', icon: '📅', label: 'Terminiert', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
                     { id: 'vorbereitung', icon: '🔧', label: 'Vorbereitung', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                     { id: 'in_arbeit', icon: '⚙️', label: 'In Arbeit', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                     { id: 'qualitaetskontrolle', icon: '🔍', label: 'Qualität', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
@@ -900,6 +902,7 @@
                 name: '🎨 Lackierung',
                 steps: [
                     { id: 'angenommen', icon: '📋', label: 'Angenommen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'terminiert', icon: '📅', label: 'Terminiert', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
                     { id: 'vorbereitung', icon: '🔧', label: 'Vorbereitung', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                     { id: 'lackierung', icon: '🎨', label: 'Lackierung', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                     { id: 'trocknung', icon: '⏱️', label: 'Trocknung', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
@@ -911,6 +914,7 @@
                 name: '🚗 Reifen-Service',
                 steps: [
                     { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'terminiert', icon: '📅', label: 'Terminiert', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
                     { id: 'bestellung', icon: '🛒', label: 'Bestellung', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                     { id: 'angekommen', icon: '📦', label: 'Angekommen', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                     { id: 'montage', icon: '🔧', label: 'Montage', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
@@ -922,11 +926,12 @@
                 name: '🔧 Mechanik',
                 steps: [
                     { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'terminiert', icon: '📅', label: 'Terminiert', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
                     { id: 'diagnose', icon: '🔍', label: 'Diagnose', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                     { id: 'angebot', icon: '💰', label: 'Angebot', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                     { id: 'beauftragt', icon: '✅', label: 'Beauftragt', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
                     { id: 'reparatur', icon: '🔧', label: 'Reparatur', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
-                    { id: 'test', icon: '🧪', label: 'Test', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
+                    { id: 'test', icon: '🧪', label: 'Test', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
                     { id: 'fertig', icon: '🏁', label: 'Fertig', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
                 ]
             },
@@ -934,7 +939,8 @@
                 name: '✨ Fahrzeugpflege',
                 steps: [
                     { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
-                    { id: 'termin', icon: '📅', label: 'Termin', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'terminiert', icon: '📅', label: 'Terminiert', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
+                    { id: 'termin', icon: '🗓️', label: 'Termin', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                     { id: 'aufbereitung', icon: '✨', label: 'Aufbereitung', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                     { id: 'qualitaet', icon: '🔬', label: 'Qualität', color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
                     { id: 'fertig', icon: '🏁', label: 'Fertig', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
@@ -944,7 +950,8 @@
                 name: '✅ TÜV/AU',
                 steps: [
                     { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
-                    { id: 'termin_gebucht', icon: '📅', label: 'Termin gebucht', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+                    { id: 'terminiert', icon: '📅', label: 'Terminiert', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
+                    { id: 'termin_gebucht', icon: '🗓️', label: 'Termin gebucht', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                     { id: 'pruefung', icon: '🔍', label: 'Prüfung', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                     { id: 'fertig', icon: '✅', label: 'Fertig', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
                     { id: 'abholbereit', icon: '🚗', label: 'Abholbereit', color: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' }
@@ -954,6 +961,7 @@
                 name: '🛡️ Versicherung',
                 steps: [
                     { id: 'neu', icon: '📥', label: 'Eingegangen', color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                    { id: 'terminiert', icon: '📅', label: 'Terminiert', color: 'linear-gradient(135deg, #ffa751 0%, #ffe259 100%)' },
                     { id: 'gutachten', icon: '📋', label: 'Gutachten', color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                     { id: 'freigabe', icon: '✅', label: 'Freigabe', color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                     { id: 'reparatur', icon: '🔧', label: 'Reparatur', color: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
@@ -978,38 +986,52 @@
                 console.warn('⚠️ Firebase nicht verfügbar, verwende LocalStorage:', error);
             }
 
-            await loadFahrzeuge();
+            // Realtime Listener aktivieren (ersetzt loadFahrzeuge)
+            setupRealtimeListener();
             renderKanbanBoard();
             setupDragAndDrop();
         });
 
-        // Fahrzeuge laden
-        async function loadFahrzeuge() {
-            try {
-                if (firebaseInitialized && firebaseApp) {
-                    allFahrzeuge = await firebaseApp.getAllFahrzeuge();
-                    console.log(`✅ ${allFahrzeuge.length} Fahrzeuge aus Firebase geladen`);
-                } else {
-                    allFahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                    console.log(`✅ ${allFahrzeuge.length} Fahrzeuge aus LocalStorage geladen`);
+        // Realtime Listener für Fahrzeuge (NEU!)
+        function setupRealtimeListener() {
+            if (firebaseInitialized && firebaseApp) {
+                console.log('🔄 Aktiviere Realtime Listener für Kanban Board...');
+
+                // Unsubscribe alter Listener falls vorhanden
+                if (unsubscribeListener) {
+                    unsubscribeListener();
                 }
 
-                // Migration: Alte baujahr-Werte in baujahrVon/baujahrBis konvertieren
-                allFahrzeuge = allFahrzeuge.map(f => {
-                    if (!f.baujahrVon && f.baujahr) {
-                        f.baujahrVon = f.baujahr;
-                        if (f.baujahr !== 'Älter') {
-                            f.baujahrBis = f.baujahr;
-                        }
-                    }
-                    return f;
-                });
+                // Neuen Realtime Listener registrieren
+                unsubscribeListener = firebaseApp.listenToFahrzeuge(function(fahrzeuge) {
+                    console.log(`🔥 Realtime Update: ${fahrzeuge.length} Fahrzeuge empfangen`);
 
-                // Filter: Nur Fahrzeuge mit Status "angenommen" (nicht abgeschlossen)
+                    // Migration: Alte baujahr-Werte in baujahrVon/baujahrBis konvertieren
+                    allFahrzeuge = fahrzeuge.map(f => {
+                        if (!f.baujahrVon && f.baujahr) {
+                            f.baujahrVon = f.baujahr;
+                            if (f.baujahr !== 'Älter') {
+                                f.baujahrBis = f.baujahr;
+                            }
+                        }
+                        return f;
+                    });
+
+                    // Filter: Nur Fahrzeuge mit Status "angenommen" (nicht abgeschlossen)
+                    allFahrzeuge = allFahrzeuge.filter(f => f.status !== 'abgeschlossen');
+
+                    console.log(`✅ ${allFahrzeuge.length} aktive Fahrzeuge (ohne abgeschlossen)`);
+
+                    // Board automatisch neu rendern
+                    renderKanbanBoard();
+                    setupDragAndDrop();
+                });
+            } else {
+                // Fallback: LocalStorage
+                console.log('⚠️ Firebase nicht verfügbar, verwende LocalStorage');
+                allFahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
                 allFahrzeuge = allFahrzeuge.filter(f => f.status !== 'abgeschlossen');
-            } catch (error) {
-                console.error('❌ Fehler beim Laden der Fahrzeuge:', error);
-                allFahrzeuge = [];
+                console.log(`✅ ${allFahrzeuge.length} Fahrzeuge aus LocalStorage geladen`);
             }
         }
 
@@ -1082,6 +1104,9 @@
                         // Verschiedene Prozess-Status auf Standard-Spalten mappen
                         if (status === 'angenommen') {
                             return ['angenommen', 'neu'].includes(fahrzeugStatus);
+                        } else if (status === 'terminiert') {
+                            // NEU: Terminiert-Spalte zeigt ALLE terminierten Fahrzeuge (service-unabhängig)
+                            return fahrzeugStatus === 'terminiert';
                         } else if (status === 'in_arbeit') {
                             return ['lackierung', 'trocknung', 'montage', 'wuchten', 'reparatur', 'aufbereitung', 'pruefung'].includes(fahrzeugStatus);
                         } else if (status === 'bereit') {
@@ -1090,6 +1115,11 @@
                             return fahrzeugStatus === status;
                         }
                     } else {
+                        // SPEZIAL: Terminiert-Spalte zeigt auch alte "angenommen" Status
+                        if (status === 'terminiert') {
+                            return fahrzeugServiceTyp === currentProcess &&
+                                   (fahrzeugStatus === 'terminiert' || fahrzeugStatus === 'angenommen');
+                        }
                         return fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
                     }
                 });
@@ -1501,11 +1531,18 @@
                 let photoURL = null;
 
                 // Firebase Storage Upload
-                if (firebaseInitialized && firebase.storage) {
-                    const storageRef = firebase.storage().ref(`progress-photos/${fahrzeugId}/${newStatus}_${Date.now()}.jpg`);
-                    await storageRef.put(photoFile);
-                    photoURL = await storageRef.getDownloadURL();
-                    console.log('✅ Foto hochgeladen:', photoURL);
+                if (firebaseInitialized && firebaseApp) {
+                    const storage = firebaseApp.storage();
+                    if (storage) {
+                        const storageRef = storage.ref(`progress-photos/${fahrzeugId}/${newStatus}_${Date.now()}.jpg`);
+                        await storageRef.put(photoFile);
+                        photoURL = await storageRef.getDownloadURL();
+                        console.log('✅ Foto hochgeladen:', photoURL);
+                    } else {
+                        // Storage nicht verfügbar - Fallback zu DataURL
+                        photoURL = currentPhotoData.photoDataURL;
+                        console.log('⚠️ Storage nicht verfügbar, verwende DataURL');
+                    }
                 } else {
                     // Fallback: DataURL verwenden (LocalStorage)
                     photoURL = currentPhotoData.photoDataURL;
