@@ -2200,26 +2200,31 @@
                 datum: heute.toLocaleDateString('de-DE'),
                 zeit: heute.toLocaleTimeString('de-DE'),
 
-                // Fahrzeugdaten
-                kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
+                // Fahrzeugdaten (aus anfrage ODER serviceData.fahrzeugdaten)
+                kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || '',
                 kundenname: anfrage.partnerName || 'Partner',
-                marke: anfrage.marke || '',
-                modell: anfrage.modell || '',
-                baujahrVon: anfrage.baujahrVon || anfrage.baujahr || '',
-                baujahrBis: anfrage.baujahrBis || anfrage.baujahr || '',
-                kmstand: anfrage.kmstand || '',
-                vin: anfrage.vin || '',
+                marke: anfrage.marke || anfrage.serviceData?.fahrzeugdaten?.marke || '',
+                modell: anfrage.modell || anfrage.serviceData?.fahrzeugdaten?.modell || '',
+                baujahrVon: anfrage.baujahrVon || anfrage.baujahr || anfrage.serviceData?.fahrzeugdaten?.baujahr || '',
+                baujahrBis: anfrage.baujahrBis || anfrage.baujahr || anfrage.serviceData?.fahrzeugdaten?.baujahr || '',
+                kmstand: anfrage.kmstand || anfrage.kilometerstand || anfrage.serviceData?.fahrzeugdaten?.kilometerstand || '',
+                vin: anfrage.vin || anfrage.serviceData?.fahrzeugdaten?.vin || '',
 
-                // Lack-Informationen
-                farbname: anfrage.farbname || '',
-                farbnummer: anfrage.farbnummer || '',
-                lackart: anfrage.lackart || 'Metallic',
-                farbvariante: anfrage.farbvariante || '',
+                // Lack-Informationen (NUR für serviceTyp === 'lackier')
+                ...(serviceTyp === 'lackier' && {
+                    farbname: anfrage.farbname || '',
+                    farbnummer: anfrage.farbnummer || '',
+                    lackart: anfrage.lackart || 'Metallic',
+                    farbvariante: anfrage.farbvariante || ''
+                }),
 
                 // Service & Status (MIT VALIDIERUNG!)
                 serviceTyp: serviceTyp, // Verwende validierten serviceTyp (nicht anfrage.serviceTyp!)
                 status: 'angenommen',
                 prozessStatus: 'terminiert', // Neue Spalte "Terminiert"
+
+                // Service-spezifische Daten (NEU! - z.B. Reifen: {typ, art, dimension, anzahl})
+                serviceData: anfrage.serviceData || {},
 
                 // Termine & Planung (VALIDIERT & NORMALISIERT!)
                 geplantesAbnahmeDatum: anliefertermin, // → Kalender-Event (YYYY-MM-DD Format)
@@ -2233,7 +2238,10 @@
 
                 // Preis & Details
                 vereinbarterPreis: anfrage.kva?.gesamt || anfrage.kva?.gesamtpreis || null,
-                notizen: anfrage.schadenBeschreibung || anfrage.beschreibung || '',
+                notizen: anfrage.schadenBeschreibung ||
+                         anfrage.beschreibung ||
+                         anfrage.serviceData?.info ||
+                         anfrage.anmerkungen || '',
 
                 // Partner-Informationen
                 partnerId: anfrage.partnerId || '',
@@ -2259,6 +2267,18 @@
                 ],
                 lastModified: timestamp
             };
+
+            // DEBUG: Fahrzeug-Daten-Mapping loggen
+            console.log('📋 Fahrzeug-Daten erstellt:', {
+                serviceTyp: fahrzeugData.serviceTyp,
+                kennzeichen: fahrzeugData.kennzeichen,
+                marke: fahrzeugData.marke,
+                modell: fahrzeugData.modell,
+                baujahr: fahrzeugData.baujahrVon,
+                serviceData: fahrzeugData.serviceData,
+                hasLackFelder: !!fahrzeugData.farbname,
+                anliefertermin: fahrzeugData.geplantesAbnahmeDatum
+            });
 
             return fahrzeugData;
         }
