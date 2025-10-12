@@ -992,6 +992,68 @@
             setupDragAndDrop();
         });
 
+        // ========================================
+        // CROSS-CHECK FILTER: Partner-Fahrzeuge gegen stornierte Anfragen prüfen
+        // ========================================
+        async function filterStorniertePartnerAuftraege(fahrzeuge) {
+            // Nur Partner-Portal Fahrzeuge prüfen
+            const partnerFahrzeuge = fahrzeuge.filter(f => f.quelle === 'Partner-Portal');
+            if (partnerFahrzeuge.length === 0) {
+                console.log('   ℹ️ CROSS-CHECK: Keine Partner-Fahrzeuge gefunden');
+                return fahrzeuge;
+            }
+
+            console.log(`🔍 CROSS-CHECK: Prüfe ${partnerFahrzeuge.length} Partner-Fahrzeuge gegen stornierte Anfragen...`);
+
+            try {
+                // Stornierte Anfragen aus Firestore laden
+                const db = firebase.firestore();
+                const anfrageSnapshot = await db.collection('partnerAnfragen')
+                    .where('status', '==', 'storniert')
+                    .get();
+
+                // Set von stornierten Kennzeichen erstellen
+                const stornierteKennzeichen = new Set();
+                anfrageSnapshot.docs.forEach(doc => {
+                    const anfrage = doc.data();
+                    const kz = (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase();
+                    if (kz) {
+                        stornierteKennzeichen.add(kz);
+                        console.log(`   📋 Stornierte Anfrage: ${kz}`);
+                    }
+                });
+
+                console.log(`   📊 ${stornierteKennzeichen.size} stornierte Anfragen gefunden`);
+
+                // Fahrzeuge filtern - Entferne Fahrzeuge mit stornierten Anfragen
+                const gefiltert = fahrzeuge.filter(f => {
+                    const fzKennzeichen = (f.kennzeichen || '').toUpperCase();
+
+                    // Wenn es ein Partner-Fahrzeug ist UND das Kennzeichen storniert ist
+                    if (f.quelle === 'Partner-Portal' && stornierteKennzeichen.has(fzKennzeichen)) {
+                        console.log(`   🚫 Überspringe Fahrzeug mit stornierter Anfrage: ${f.kennzeichen}`);
+                        return false; // Ausfiltern
+                    }
+
+                    return true; // Behalten
+                });
+
+                const entfernt = fahrzeuge.length - gefiltert.length;
+                if (entfernt > 0) {
+                    console.log(`   ✅ CROSS-CHECK abgeschlossen: ${entfernt} Fahrzeuge ausgeblendet`);
+                } else {
+                    console.log(`   ✅ CROSS-CHECK abgeschlossen: Keine Konflikte gefunden`);
+                }
+
+                return gefiltert;
+
+            } catch (error) {
+                console.error('❌ CROSS-CHECK Fehler:', error);
+                // Bei Fehler: Alle Fahrzeuge anzeigen (fail-safe)
+                return fahrzeuge;
+            }
+        }
+
         // Realtime Listener für Fahrzeuge (NEU!)
         function setupRealtimeListener() {
             if (firebaseInitialized && firebaseApp) {
@@ -1002,8 +1064,8 @@
                     unsubscribeListener();
                 }
 
-                // Neuen Realtime Listener registrieren
-                unsubscribeListener = firebaseApp.listenToFahrzeuge(function(fahrzeuge) {
+                // Neuen Realtime Listener registrieren (ASYNC CALLBACK!)
+                unsubscribeListener = firebaseApp.listenToFahrzeuge(async function(fahrzeuge) {
                     console.log(`🔥 Realtime Update: ${fahrzeuge.length} Fahrzeuge empfangen`);
 
                     // Migration: Alte baujahr-Werte in baujahrVon/baujahrBis konvertieren
@@ -1037,6 +1099,18 @@
                     const nachFilter = allFahrzeuge.length;
                     const gefiltert = vorFilter - nachFilter;
                     console.log(`✅ ${nachFilter} aktive Fahrzeuge (${gefiltert} gefiltert: abgeschlossen + storniert)`);
+
+                    // ✅ CROSS-CHECK: Partner-Fahrzeuge gegen stornierte Anfragen prüfen
+                    const vorCrossCheck = allFahrzeuge.length;
+                    allFahrzeuge = await filterStorniertePartnerAuftraege(allFahrzeuge);
+                    const nachCrossCheck = allFahrzeuge.length;
+                    const crossCheckGefiltert = vorCrossCheck - nachCrossCheck;
+
+                    if (crossCheckGefiltert > 0) {
+                        console.log(`🚫 CROSS-CHECK: ${crossCheckGefiltert} Fahrzeuge mit stornierten Anfragen ausgeblendet`);
+                    }
+
+                    console.log(`✅ FINAL: ${nachCrossCheck} Fahrzeuge im Kanban`);
 
                     // Board automatisch neu rendern
                     renderKanbanBoard();

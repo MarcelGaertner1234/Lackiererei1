@@ -1201,6 +1201,121 @@
                 font-weight: 600;
             }
         }
+
+        /* ========================================
+           CASCADE DELETE DEBUG PANEL
+           ======================================== */
+        .debug-panel {
+            background: #f5f5f5;
+            border: 2px solid #ff9800;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .debug-panel.active {
+            display: block;
+        }
+
+        .debug-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ff9800;
+        }
+
+        .debug-panel-header h3 {
+            margin: 0;
+            color: #e65100;
+            font-size: 18px;
+        }
+
+        .debug-toggle-btn {
+            background: #ff9800;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            margin-left: 15px;
+            transition: all 0.3s;
+        }
+
+        .debug-toggle-btn:hover {
+            background: #f57c00;
+        }
+
+        .debug-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            font-size: 12px;
+        }
+
+        .debug-table thead {
+            background: #e65100;
+            color: white;
+        }
+
+        .debug-table th {
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .debug-table td {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .debug-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .debug-table tr:hover {
+            background: #fff8e1;
+        }
+
+        .debug-status-success {
+            background: #4caf50;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .debug-status-failed {
+            background: #f44336;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .debug-details {
+            font-size: 11px;
+            color: #666;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .debug-empty {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+            font-style: italic;
+        }
     </style>
 
     <!-- Firebase SDKs -->
@@ -1266,6 +1381,20 @@
                 <input type="text" id="filterSuche" placeholder="Suche Kennzeichen..." />
                 <input type="date" id="filterDatumVon" placeholder="Von Datum" />
                 <input type="date" id="filterDatumBis" placeholder="Bis Datum" />
+                <button class="debug-toggle-btn" onclick="toggleDebugPanel()" style="margin-left: 15px;">
+                    🐛 CASCADE DELETE Debug
+                </button>
+            </div>
+        </div>
+
+        <!-- CASCADE DELETE Debug Panel -->
+        <div id="debugPanel" class="debug-panel">
+            <div class="debug-panel-header">
+                <h3>🐛 CASCADE DELETE Debug Log</h3>
+                <button class="debug-toggle-btn" onclick="clearDebugLog()">Log löschen</button>
+            </div>
+            <div id="debugTableContainer">
+                <div class="debug-empty">Keine Logs vorhanden. Stornieren Sie eine Anfrage, um Logs zu sehen.</div>
             </div>
         </div>
 
@@ -1501,6 +1630,7 @@
         let activeChatAnfrageId = null;
         let chatUnsubscribe = null;
         let unreadCounts = {}; // anfrageId -> unread count
+        let cascadeDeleteLog = []; // 🐛 Debug-Log für CASCADE DELETE Operations
 
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
@@ -2227,6 +2357,15 @@
                         await deleteFahrzeugCompletely(fahrzeugId);
 
                         console.log('✅ CASCADE DELETE ERFOLG: Fahrzeug erfolgreich gelöscht aus Kanban');
+
+                        // 🐛 DEBUG LOG: Erfolgreiche Deletion
+                        addDebugLog({
+                            anfrageId: anfrage.id,
+                            kennzeichen: kennzeichen,
+                            fahrzeugId: fahrzeugId,
+                            success: true,
+                            details: `Fahrzeug erfolgreich gelöscht. Quelle: ${fahrzeugData.quelle}, Service: ${fahrzeugData.serviceTyp}`
+                        });
                     } else {
                         // FEHLER: Fahrzeug nicht gefunden trotz 3 Versuchen
                         console.warn('❌ CASCADE DELETE FAILED: Fahrzeug nicht gefunden nach 3 Suchversuchen!');
@@ -2240,6 +2379,15 @@
                         console.warn('      1. Fahrzeug wurde noch nicht in fahrzeuge Collection angelegt');
                         console.warn('      2. Kennzeichen-Mismatch (Leerzeichen, Bindestriche)');
                         console.warn('      3. Fahrzeug wurde bereits manuell gelöscht');
+
+                        // 🐛 DEBUG LOG: Fehlgeschlagene Deletion
+                        addDebugLog({
+                            anfrageId: anfrage.id,
+                            kennzeichen: kennzeichen,
+                            fahrzeugId: null,
+                            success: false,
+                            details: `Fahrzeug nicht gefunden trotz 3 Suchversuchen. Gesucht: ${kennzeichen.toUpperCase()} (Partner-Portal + ohne quelle + original case)`
+                        });
 
                         // Optional: User-Warnung (deaktiviert für bessere UX)
                         // alert('⚠️ WARNUNG: Fahrzeug konnte nicht aus Werkstatt-Kanban entfernt werden!\n\nBitte prüfen Sie die Übersicht und löschen Sie es ggf. manuell.');
@@ -2288,6 +2436,101 @@
             } catch (error) {
                 console.error('❌ Fehler beim Löschen des Fahrzeugs:', error);
                 throw error; // Error weitergeben für Fehlerbehandlung in stornierenAnfrage()
+            }
+        }
+
+        // ========================================
+        // CASCADE DELETE DEBUG FUNCTIONS
+        // ========================================
+
+        /**
+         * Fügt einen Debug-Log-Eintrag hinzu
+         * @param {Object} logEntry - Log-Eintrag mit Details
+         */
+        function addDebugLog(logEntry) {
+            cascadeDeleteLog.unshift({
+                ...logEntry,
+                timestamp: new Date().toLocaleString('de-DE')
+            });
+
+            // Maximal 20 Einträge behalten
+            if (cascadeDeleteLog.length > 20) {
+                cascadeDeleteLog = cascadeDeleteLog.slice(0, 20);
+            }
+
+            renderDebugPanel();
+            console.log('🐛 Debug-Log hinzugefügt:', logEntry);
+        }
+
+        /**
+         * Rendert das Debug-Panel mit allen Logs
+         */
+        function renderDebugPanel() {
+            const container = document.getElementById('debugTableContainer');
+            if (!container) return;
+
+            if (cascadeDeleteLog.length === 0) {
+                container.innerHTML = '<div class="debug-empty">Keine Logs vorhanden. Stornieren Sie eine Anfrage, um Logs zu sehen.</div>';
+                return;
+            }
+
+            const tableHTML = `
+                <table class="debug-table">
+                    <thead>
+                        <tr>
+                            <th>Zeitstempel</th>
+                            <th>Anfrage-ID</th>
+                            <th>Kennzeichen</th>
+                            <th>Fahrzeug ID</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${cascadeDeleteLog.map(log => `
+                            <tr>
+                                <td>${log.timestamp}</td>
+                                <td>${log.anfrageId.substring(0, 12)}...</td>
+                                <td><strong>${log.kennzeichen}</strong></td>
+                                <td>${log.fahrzeugId || '-'}</td>
+                                <td>
+                                    <span class="${log.success ? 'debug-status-success' : 'debug-status-failed'}">
+                                        ${log.success ? '✅ ERFOLG' : '❌ FEHLER'}
+                                    </span>
+                                </td>
+                                <td class="debug-details" title="${log.details}">${log.details}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = tableHTML;
+        }
+
+        /**
+         * Togglet die Sichtbarkeit des Debug-Panels
+         */
+        function toggleDebugPanel() {
+            const panel = document.getElementById('debugPanel');
+            if (!panel) return;
+
+            panel.classList.toggle('active');
+
+            // Beim ersten Öffnen rendern
+            if (panel.classList.contains('active') && cascadeDeleteLog.length > 0) {
+                renderDebugPanel();
+            }
+        }
+
+        /**
+         * Löscht alle Debug-Logs
+         */
+        function clearDebugLog() {
+            if (confirm('Möchten Sie wirklich alle Debug-Logs löschen?')) {
+                cascadeDeleteLog = [];
+                renderDebugPanel();
+                console.log('🐛 Debug-Logs gelöscht');
             }
         }
 
