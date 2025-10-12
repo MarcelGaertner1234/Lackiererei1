@@ -2876,25 +2876,55 @@
                     let preis = 0;
                     let preisQuelle = null;
 
-                    if (anfrage.kva.varianten && anfrage.kva.gewaehlteVariante) {
-                        preis = parseFloat(anfrage.kva.varianten[anfrage.kva.gewaehlteVariante]?.gesamt) || 0;
-                        preisQuelle = `Variante ${anfrage.kva.gewaehlteVariante}`;
-                    } else if (anfrage.kva.gesamt) {
+                    // PRIORITÄT 1: Varianten-System (mit Fallback wenn gewaehlteVariante null)
+                    if (anfrage.kva.varianten && typeof anfrage.kva.varianten === 'object') {
+                        let varianteZuNutzen = anfrage.kva.gewaehlteVariante;
+
+                        // FALLBACK: Wenn gewaehlteVariante null/undefined, intelligente Auswahl
+                        if (!varianteZuNutzen) {
+                            const verfuegbar = Object.keys(anfrage.kva.varianten);
+                            console.log(`   🔄 Fallback: gewaehlteVariante ist ${varianteZuNutzen} → Suche beste Variante aus: [${verfuegbar.join(', ')}]`);
+
+                            // Prioritäts-Reihenfolge: original > partner > zubehoer > erste verfügbare
+                            if (verfuegbar.includes('original')) {
+                                varianteZuNutzen = 'original';
+                                console.log('   ✅ Fallback: "original" Variante gewählt');
+                            } else if (verfuegbar.includes('partner')) {
+                                varianteZuNutzen = 'partner';
+                                console.log('   ✅ Fallback: "partner" Variante gewählt');
+                            } else if (verfuegbar.includes('zubehoer')) {
+                                varianteZuNutzen = 'zubehoer';
+                                console.log('   ✅ Fallback: "zubehoer" Variante gewählt');
+                            } else if (verfuegbar.length > 0) {
+                                varianteZuNutzen = verfuegbar[0];
+                                console.log(`   ✅ Fallback: Erste Variante "${varianteZuNutzen}" gewählt`);
+                            }
+                        }
+
+                        // Preis aus gewählter Variante extrahieren
+                        if (varianteZuNutzen && anfrage.kva.varianten[varianteZuNutzen]?.gesamt) {
+                            preis = parseFloat(anfrage.kva.varianten[varianteZuNutzen].gesamt) || 0;
+                            preisQuelle = `Variante ${varianteZuNutzen}`;
+                        }
+                    }
+
+                    // PRIORITÄT 2-7: Andere Preis-Felder (falls keine Varianten oder Varianten ohne Preis)
+                    if (preis === 0 && anfrage.kva.gesamt) {
                         preis = parseFloat(anfrage.kva.gesamt) || 0;
                         preisQuelle = 'kva.gesamt';
-                    } else if (anfrage.kva.gesamtpreis) {
+                    } else if (preis === 0 && anfrage.kva.gesamtpreis) {
                         preis = parseFloat(anfrage.kva.gesamtpreis) || 0;
                         preisQuelle = 'kva.gesamtpreis';
-                    } else if (anfrage.kva.preis) {
+                    } else if (preis === 0 && anfrage.kva.preis) {
                         preis = parseFloat(anfrage.kva.preis) || 0;
                         preisQuelle = 'kva.preis';
-                    } else if (anfrage.kva.total) {
+                    } else if (preis === 0 && anfrage.kva.total) {
                         preis = parseFloat(anfrage.kva.total) || 0;
                         preisQuelle = 'kva.total';
-                    } else if (anfrage.kva.betrag) {
+                    } else if (preis === 0 && anfrage.kva.betrag) {
                         preis = parseFloat(anfrage.kva.betrag) || 0;
                         preisQuelle = 'kva.betrag';
-                    } else if (anfrage.kva.kosten) {
+                    } else if (preis === 0 && anfrage.kva.kosten) {
                         preis = parseFloat(anfrage.kva.kosten) || 0;
                         preisQuelle = 'kva.kosten';
                     }
