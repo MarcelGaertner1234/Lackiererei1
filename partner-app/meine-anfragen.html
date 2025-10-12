@@ -578,6 +578,17 @@
             opacity: 0.5;
         }
 
+        .card-btn-decline {
+            background: #fff;
+            color: #d32f2f;
+            border: 2px solid #d32f2f;
+        }
+
+        .card-btn-decline:hover {
+            background: #d32f2f;
+            color: white;
+        }
+
         /* Mobile: Kompakte Buttons @768px */
         @media (max-width: 768px) {
             .card-actions {
@@ -1834,13 +1845,14 @@
                     const gewaehlte = anfrage.kva.gewaehlteVariante;
                     if (gewaehlte && anfrage.kva.varianten[gewaehlte]) {
                         preis = anfrage.kva.varianten[gewaehlte].gesamt.toFixed(2) + '€';
-                    } else if (anfrage.kva.varianten.partner) {
-                        preis = anfrage.kva.varianten.partner.gesamt.toFixed(2) + '€';
                     } else if (anfrage.kva.varianten.original) {
+                        // FIX: Original-Variante priorisieren (statt partner)
                         preis = anfrage.kva.varianten.original.gesamt.toFixed(2) + '€';
+                    } else if (anfrage.kva.varianten.zubehoer) {
+                        preis = anfrage.kva.varianten.zubehoer.gesamt.toFixed(2) + '€';
                     }
                 } else if (anfrage.kva.gesamt) {
-                    preis = anfrage.kva.gesamt + '€';
+                    preis = anfrage.kva.gesamt.toFixed(2) + '€';
                 }
             }
 
@@ -1853,12 +1865,23 @@
                 </div>
             `;
 
+            // FIX: KVA-Termine priorisieren (start-ende) statt Kundenwunsch
+            let terminAnzeige = '';
+            if (anfrage.kva?.termine?.start && anfrage.kva?.termine?.ende) {
+                const startDate = new Date(anfrage.kva.termine.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                const endeDate = new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                terminAnzeige = `<div>⏰ ${startDate}-${endeDate}</div>`;
+            } else if (anfrage.anliefertermin) {
+                terminAnzeige = `<div>⏰ ${new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')}</div>`;
+            }
+
             card.innerHTML = `
                 ${serviceBadgeHTML}
                 <div class="card-kennzeichen">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
                 <div class="card-meta">
-                    <div>📅 ${datum}</div>
-                    ${anfrage.anliefertermin ? `<div>⏰ ${new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')}</div>` : ''}
+                    ${anfrage.kva?.termine?.start ? `<div>🗓️ Start: ${new Date(anfrage.kva.termine.start).toLocaleDateString('de-DE')}</div>` : `<div>📅 ${datum}</div>`}
+                    ${anfrage.kva?.termine?.ende ? `<div>🏁 Fertig: ${new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE')}</div>` : terminAnzeige}
+                    ${anfrage.kva?.termine?.abholzeit ? `<div>🕐 ${anfrage.kva.termine.abholzeit} Uhr</div>` : ''}
                 </div>
                 <div class="card-preis">💶 ${preis}</div>
                 <div class="card-actions">
@@ -1869,6 +1892,9 @@
                     ${anfrage.status === 'kva_gesendet' ? `
                         <button class="card-btn card-btn-accept" onclick="annehmenKVA('${anfrage.id}', event)">
                             ✅ Annehmen
+                        </button>
+                        <button class="card-btn card-btn-decline" onclick="ablehnenKVA('${anfrage.id}', event)">
+                            ❌ Ablehnen
                         </button>
                     ` : ''}
                     ${anfrage.status === 'beauftragt' ? `
@@ -2130,6 +2156,60 @@
             } catch (error) {
                 console.error('❌ Fehler beim Annehmen:', error);
                 alert(`❌ Fehler beim Annehmen der Anfrage.\\n\\nDetails: ${error.message}\\n\\nBitte versuchen Sie es erneut.`);
+            }
+        }
+
+        /**
+         * Ablehnen eines KVA-Angebots (NEU!)
+         * Partner kann Angebot ablehnen mit optionalem Grund
+         * Status wird zurück auf "neu" gesetzt
+         */
+        async function ablehnenKVA(anfrageId, event) {
+            event?.stopPropagation();
+
+            const anfrage = alleAnfragen.find(a => a.id === anfrageId);
+            if (!anfrage) {
+                alert('Anfrage nicht gefunden.');
+                return;
+            }
+
+            // Nur "kva_gesendet" kann abgelehnt werden
+            if (anfrage.status !== 'kva_gesendet') {
+                alert('Diese Anfrage kann nicht abgelehnt werden.\\n\\nNur Anfragen mit Status "Angebot erstellt" können abgelehnt werden.');
+                return;
+            }
+
+            // Optional: Ablehnungsgrund erfragen
+            const grund = prompt('Grund für Ablehnung (optional):', '');
+            if (grund === null) return; // User cancelled
+
+            // Bestätigung
+            const bestaetigung = confirm(
+                'Möchten Sie dieses Angebot wirklich ablehnen?\\n\\n' +
+                `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
+                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                (grund ? `\\nGrund: ${grund}` : '') +
+                '\\n\\nDie Werkstatt wird über die Ablehnung informiert.'
+            );
+
+            if (!bestaetigung) return;
+
+            try {
+                // Status zurück auf "neu" + Ablehnung markieren
+                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    status: 'neu',
+                    statusText: 'Neu eingegangen',
+                    kvaAbgelehnt: true,
+                    ablehnungsGrund: grund || 'Keine Angabe',
+                    abgelehntAm: new Date().toISOString(),
+                    abgelehntVon: partner?.email || partner?.name || 'Partner'
+                });
+
+                alert('❌ Angebot abgelehnt.\\n\\nDie Werkstatt wird benachrichtigt und kann ein neues Angebot erstellen.');
+                await loadAnfragen();
+            } catch (error) {
+                console.error('❌ Fehler beim Ablehnen:', error);
+                alert('❌ Fehler beim Ablehnen des Angebots.\\n\\nBitte versuchen Sie es erneut.');
             }
         }
 
@@ -2527,7 +2607,15 @@
             anfragen.forEach(anfrage => {
                 // Nur fertige Anfragen mit KVA zählen
                 if (anfrage.status === 'fertig' && anfrage.kva && anfrage.kva.freigegeben) {
-                    const preis = parseFloat(anfrage.kva.gesamtpreis) || 0;
+                    // FIX: Preis aus gewählter Variante oder gesamt
+                    let preis = 0;
+                    if (anfrage.kva.varianten && anfrage.kva.gewaehlteVariante) {
+                        preis = parseFloat(anfrage.kva.varianten[anfrage.kva.gewaehlteVariante]?.gesamt) || 0;
+                    } else if (anfrage.kva.gesamt) {
+                        preis = parseFloat(anfrage.kva.gesamt) || 0;
+                    } else if (anfrage.kva.gesamtpreis) {
+                        preis = parseFloat(anfrage.kva.gesamtpreis) || 0;
+                    }
                     const erstelltAm = anfrage.kva.erstelltAm ? anfrage.kva.erstelltAm.toDate() : null;
 
                     if (!erstelltAm) return;
