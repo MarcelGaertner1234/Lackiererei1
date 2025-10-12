@@ -1200,11 +1200,13 @@
                    </button>`
                 : '';
 
-            // DRINGLICHKEITS-BADGE für "angenommen"-Fahrzeuge
+            // DRINGLICHKEITS-BADGE - NUR für Planungs-Phasen (angenommen, terminiert, neu)
+            // Grund: In Arbeits-Phasen (lackierung, trocknung) ist Fortschritt wichtiger als Deadline
             let dringlichkeitBadge = '';
-            const isAngenommen = (fahrzeug.prozessStatus === 'angenommen' || !fahrzeug.prozessStatus);
+            const planungsPhasen = ['angenommen', 'terminiert', 'neu'];
+            const isPlanung = planungsPhasen.includes(fahrzeug.prozessStatus || 'angenommen');
 
-            if (isAngenommen && fahrzeug.geplantesAbnahmeDatum) {
+            if (isPlanung && fahrzeug.geplantesAbnahmeDatum) {
                 const tage = calculateDaysUntilAbnahme(fahrzeug);
 
                 if (tage !== null) {
@@ -1246,9 +1248,22 @@
                 }
             }
 
-            // ABHOLUNGS-BADGE für "angenommen"-Fahrzeuge (NEU)
+            // SPEZIELLER BADGE für "bereit"-Fahrzeuge mit überfälligem Abnahme-Termin
+            if (fahrzeug.prozessStatus === 'bereit' && fahrzeug.geplantesAbnahmeDatum) {
+                const tage = calculateDaysUntilAbnahme(fahrzeug);
+                if (tage !== null && tage < 0) {
+                    dringlichkeitBadge = `<div class="dringlichkeit-badge ueberfaellig">
+                        ❌ ABNAHME ÜBERFÄLLIG! (${Math.abs(tage)} Tage)
+                    </div>`;
+                    card.classList.add('ueberfaellig-card');
+                }
+            }
+
+            // ABHOLUNGS-BADGE - FÜR ALLE PHASEN (außer "bereit" = bereits abholbereit)
+            // Zeigt Abholung in ALLEN Spalten, damit Werkstatt frühzeitig planen kann
             let abholungBadge = '';
-            if (isAngenommen && fahrzeug.fahrzeugAbholung === 'ja') {
+            const showAbholungBadge = (fahrzeug.prozessStatus !== 'bereit' && fahrzeug.prozessStatus !== 'fertig' && fahrzeug.prozessStatus !== 'abholbereit');
+            if (showAbholungBadge && fahrzeug.fahrzeugAbholung === 'ja') {
                 const abholdatumText = fahrzeug.abholdatum
                     ? new Date(fahrzeug.abholdatum).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
                     : 'Termin offen';
