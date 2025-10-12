@@ -2826,19 +2826,36 @@
             let umsatzMonat = 0;
             let umsatzGesamt = 0;
 
+            console.log('💶 ========== UMSATZ-BERECHNUNG START ==========');
+            console.log(`📊 ${anfragen.length} Anfragen werden geprüft`);
+
             anfragen.forEach(anfrage => {
                 // FIX: Beauftragte, laufende UND fertige Anfragen mit KVA zählen (nicht nur fertig!)
                 // WICHTIG: Dynamic Status nutzen (verknüpft Werkstatt-Produktionsfortschritt!)
                 const dynamicStatus = getDynamicStatus(anfrage);
+
+                console.log(`\n🔍 Prüfe: ${anfrage.kennzeichen || anfrage.auftragsnummer || anfrage.id}`);
+                console.log(`   📌 Status (dynamisch): ${dynamicStatus}`);
+                console.log(`   📌 Status (statisch): ${anfrage.status}`);
+                console.log(`   📌 KVA vorhanden: ${anfrage.kva ? 'JA ✅' : 'NEIN ❌'}`);
+                console.log(`   📌 Fahrzeug verknüpft: ${anfrage.fahrzeug ? 'JA ✅' : 'NEIN ❌'}`);
+
                 if (['beauftragt', 'in_arbeit', 'fertig'].includes(dynamicStatus) && anfrage.kva) {
+                    console.log('   ✅ Status + KVA OK → Prüfe Preis...');
+
                     // FIX: Preis aus gewählter Variante oder gesamt
                     let preis = 0;
                     if (anfrage.kva.varianten && anfrage.kva.gewaehlteVariante) {
                         preis = parseFloat(anfrage.kva.varianten[anfrage.kva.gewaehlteVariante]?.gesamt) || 0;
+                        console.log(`   💰 Preis (Variante ${anfrage.kva.gewaehlteVariante}): ${preis}€`);
                     } else if (anfrage.kva.gesamt) {
                         preis = parseFloat(anfrage.kva.gesamt) || 0;
+                        console.log(`   💰 Preis (gesamt): ${preis}€`);
                     } else if (anfrage.kva.gesamtpreis) {
                         preis = parseFloat(anfrage.kva.gesamtpreis) || 0;
+                        console.log(`   💰 Preis (gesamtpreis): ${preis}€`);
+                    } else {
+                        console.log('   ❌ KEIN PREIS gefunden in KVA!');
                     }
 
                     // FIX: Robuste Date-Parsing (unterstützt Firestore Timestamp, ISO-String, Number, Date)
@@ -2864,26 +2881,48 @@
 
                     // Validation: Check if date is valid
                     if (!erstelltAm || isNaN(erstelltAm.getTime())) {
-                        console.warn('⚠️ Ungültiges KVA-Datum für Anfrage:', anfrage.id, 'erstelltAm:', anfrage.kva.erstelltAm);
+                        console.warn('   ❌ Ungültiges KVA-Datum für Anfrage:', anfrage.id, 'erstelltAm:', anfrage.kva.erstelltAm);
                         return; // Skip this anfrage
                     }
 
+                    console.log(`   📅 KVA-Datum: ${erstelltAm.toLocaleDateString('de-DE')} (Jahr: ${erstelltAm.getFullYear()})`);
+
                     // Gesamt (dieses Jahr)
                     if (erstelltAm.getFullYear() === currentYear) {
+                        console.log(`   ✅ Jahr ${currentYear} passt → GEZÄHLT in Gesamt!`);
                         umsatzGesamt += preis;
 
                         // Monat
                         if (erstelltAm.getMonth() === currentMonth) {
+                            console.log(`   ✅ Monat ${currentMonth + 1} passt → GEZÄHLT in Monat!`);
                             umsatzMonat += preis;
 
                             // Woche
                             if (erstelltAm >= currentWeekStart) {
+                                console.log(`   ✅ Woche passt → GEZÄHLT in Woche!`);
                                 umsatzWoche += preis;
+                            } else {
+                                console.log(`   ⏭️ Nicht in aktueller Woche (ab ${currentWeekStart.toLocaleDateString('de-DE')})`);
                             }
+                        } else {
+                            console.log(`   ⏭️ Nicht im aktuellen Monat (aktuell: ${currentMonth + 1})`);
                         }
+                    } else {
+                        console.log(`   ❌ ÜBERSPRUNGEN: Falsches Jahr (${erstelltAm.getFullYear()} ≠ ${currentYear})`);
                     }
+                } else {
+                    const grund = !['beauftragt', 'in_arbeit', 'fertig'].includes(dynamicStatus)
+                        ? `Status "${dynamicStatus}" nicht zählbar`
+                        : 'KVA fehlt';
+                    console.log(`   ❌ ÜBERSPRUNGEN: ${grund}`);
                 }
             });
+
+            console.log('\n💶 ========== UMSATZ-BERECHNUNG ENDE ==========');
+            console.log(`💰 Umsatz Woche:  ${umsatzWoche.toFixed(2)}€`);
+            console.log(`💰 Umsatz Monat:  ${umsatzMonat.toFixed(2)}€`);
+            console.log(`💰 Umsatz Gesamt: ${umsatzGesamt.toFixed(2)}€`);
+            console.log('===============================================\n');
 
             return { umsatzWoche, umsatzMonat, umsatzGesamt };
         }
