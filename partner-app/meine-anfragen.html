@@ -1500,7 +1500,7 @@
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
             loadHiddenColumns();
-            checkLogin();
+            await checkLogin();  // NEU: await für Firestore-Abfrage
             await loadAnfragen();
             initFilter();
         });
@@ -1582,12 +1582,40 @@
             toggleColumn(status);
         }
 
-        function checkLogin() {
+        async function checkLogin() {
             partner = JSON.parse(localStorage.getItem('partner') || 'null');
             if (!partner) {
                 window.location.href = 'index.html';
                 return;
             }
+
+            // NEU: Aktuelle Partner-Daten aus Firestore laden (für Rabatt-Konditionen)
+            try {
+                if (db && partner.id) {
+                    console.log('🔄 Lade aktuelle Partner-Daten aus Firestore für ID:', partner.id);
+                    const partnerDoc = await db.collection('partner').doc(partner.id).get();
+
+                    if (partnerDoc.exists) {
+                        const firestoreData = partnerDoc.data();
+                        // Partner-Objekt mit Firestore-Daten aktualisieren
+                        partner = {
+                            id: partner.id,
+                            ...firestoreData
+                        };
+                        // LocalStorage aktualisieren
+                        localStorage.setItem('partner', JSON.stringify(partner));
+                        console.log('✅ Partner-Daten aus Firestore aktualisiert');
+                        console.log('   📊 RabattKonditionen:', partner.rabattKonditionen ? 'JA ✅' : 'NEIN ❌');
+                        console.log('   📊 konditionenGeprueft:', partner.konditionenGeprueft ? 'JA ✅' : 'NEIN ❌');
+                    } else {
+                        console.warn('⚠️ Partner-Dokument nicht in Firestore gefunden:', partner.id);
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Fehler beim Laden der Partner-Daten aus Firestore:', error);
+                // Fahre mit LocalStorage-Daten fort (Fallback)
+            }
+
             document.getElementById('partnerName').textContent = partner.name;
         }
 
