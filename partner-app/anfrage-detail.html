@@ -1034,8 +1034,63 @@
             const currentStatus = anfrage.fahrzeug?.prozessStatus || anfrage.status || 'neu';
             const statusHistory = anfrage.fahrzeug?.statusHistory || anfrage.statusHistory || [];
 
-            // Aktuellen Schritt-Index finden
-            let currentStepIndex = steps.findIndex(s => s.status === currentStatus);
+            // STATUS-MAPPING: Werkstatt-Status → Partner-Portal-Status
+            // Die Werkstatt verwendet andere Status-Namen als das Partner-Portal
+            // (z.B. 'abgeschlossen', 'bereit' vs. 'fertig')
+            function mapWerkstattToPartnerStatus(werkstattStatus, serviceTyp) {
+                // Globales Mapping (alle Services)
+                const globalMapping = {
+                    'abgeschlossen': 'fertig',  // Fahrzeug abgeholt → Fertig
+                    'abholbereit': 'abholbereit', // TÜV: Abholbereit bleibt
+                    'angenommen': 'neu'  // Alte Fahrzeuge ohne 'terminiert'
+                };
+
+                // Service-spezifisches Mapping
+                const serviceMapping = {
+                    'lackier': {
+                        'bereit': 'fertig',  // Werkstatt 'bereit' → Partner 'fertig'
+                        'lackierung': 'in_arbeit',
+                        'trocknung': 'in_arbeit'
+                    },
+                    'reifen': {
+                        'fertig': 'fertig'
+                    },
+                    'mechanik': {
+                        'reparatur': 'reparatur',
+                        'test': 'test'
+                    },
+                    'pflege': {
+                        'aufbereitung': 'in_arbeit',
+                        'qualitaet': 'qk'
+                    },
+                    'tuev': {
+                        'pruefung': 'pruefung'
+                    },
+                    'versicherung': {
+                        'reparatur': 'in_reparatur',
+                        'qualitaet': 'qualitaetskontrolle'
+                    }
+                };
+
+                // 1. Prüfe globales Mapping
+                if (globalMapping[werkstattStatus]) {
+                    return globalMapping[werkstattStatus];
+                }
+
+                // 2. Prüfe service-spezifisches Mapping
+                if (serviceMapping[serviceTyp] && serviceMapping[serviceTyp][werkstattStatus]) {
+                    return serviceMapping[serviceTyp][werkstattStatus];
+                }
+
+                // 3. Kein Mapping gefunden → Original-Status zurückgeben
+                return werkstattStatus;
+            }
+
+            // Aktuellen Status mappen
+            const mappedStatus = mapWerkstattToPartnerStatus(currentStatus, serviceTyp);
+
+            // Aktuellen Schritt-Index finden (mit gemapptem Status)
+            let currentStepIndex = steps.findIndex(s => s.status === mappedStatus);
             if (currentStepIndex === -1) currentStepIndex = 0;
 
             // Fortschritt berechnen
