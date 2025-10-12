@@ -28,6 +28,58 @@ const firebaseConfig = {
 let db = null;
 let storage = null;
 
+// ====================================================================
+// DIAGNOSE-FUNKTIONEN
+// ====================================================================
+
+// Prüft ob Firestore wirklich online ist (nicht nur Offline-Cache)
+async function checkFirestoreConnection() {
+  console.log("🔍 Prüfe Firestore-Verbindung...");
+
+  try {
+    if (!db) {
+      console.error("❌ Firestore nicht initialisiert!");
+      return false;
+    }
+
+    // Test-Write: Versuche ein Test-Dokument zu schreiben
+    const testDocRef = db.collection('_connection_test').doc('test');
+    const testData = {
+      timestamp: Date.now(),
+      test: true
+    };
+
+    console.log("🔄 Sende Test-Schreibzugriff zu Firestore...");
+    await testDocRef.set(testData);
+
+    console.log("✅ FIRESTORE ONLINE - Schreibzugriff erfolgreich!");
+
+    // Test-Dokument sofort wieder löschen
+    await testDocRef.delete();
+
+    return true;
+  } catch (error) {
+    console.error("❌ FIRESTORE OFFLINE oder keine Berechtigung!");
+    console.error("❌ Fehler-Details:", error.message);
+    console.error("❌ Fehler-Code:", error.code);
+
+    if (error.code === 'permission-denied') {
+      console.error("❌ PROBLEM: Security Rules verbieten Zugriff!");
+      console.error("   → Lösung: Firebase Console → Firestore → Rules prüfen");
+      alert("⚠️ FIREBASE FEHLER: Keine Berechtigung zum Schreiben!\n\nBitte Security Rules in Firebase Console prüfen.");
+    } else if (error.code === 'unavailable') {
+      console.error("❌ PROBLEM: Keine Netzwerkverbindung zu Firebase!");
+      console.error("   → Lösung: Internetverbindung prüfen");
+      alert("⚠️ FIREBASE FEHLER: Keine Verbindung zu Firebase!\n\nBitte Internetverbindung prüfen.");
+    } else {
+      console.error("❌ PROBLEM: Unbekannter Fehler:", error);
+      alert(`⚠️ FIREBASE FEHLER: ${error.message}\n\nBitte Screenshot der Console an Support senden.`);
+    }
+
+    return false;
+  }
+}
+
 // Firebase initialisieren
 function initFirebase() {
   try {
@@ -78,6 +130,9 @@ function initFirebase() {
     // Custom Event für Chat-Notifications dispatchen
     window.dispatchEvent(new Event('firebaseReady'));
     console.log("📡 firebaseReady Event dispatched");
+
+    // DIAGNOSE: Prüfe ob Firestore Online ist (NEU!)
+    checkFirestoreConnection();
 
     return true;
   } catch (error) {
@@ -252,6 +307,34 @@ function listenToFahrzeuge(callback) {
       callback(fahrzeuge);
     }, error => {
       console.error("❌ Fehler beim Echtzeit-Listener:", error);
+    });
+}
+
+// Echtzeit-Listener für Kunden (synchronisiert automatisch!) - NEU!
+function listenToKunden(callback) {
+  if (!db) {
+    console.error("Firestore nicht initialisiert");
+    return null;
+  }
+
+  // Ohne orderBy (kein Index erforderlich)
+  return db.collection('kunden')
+    .onSnapshot(snapshot => {
+      const kunden = [];
+      snapshot.forEach(doc => {
+        kunden.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+
+      // Sortierung im JavaScript (alphabetisch nach Name)
+      kunden.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+      console.log("🔄 Kunden aktualisiert (Echtzeit):", kunden.length);
+      callback(kunden);
+    }, error => {
+      console.error("❌ Fehler beim Kunden-Listener:", error);
     });
 }
 
@@ -649,7 +732,7 @@ async function getAllKundenFromFirestore() {
     });
 
     // Sortierung im JavaScript (alphabetisch nach Name)
-    kunden.sort((a, b) => a.name.localeCompare(b.name));
+    kunden.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     console.log("✅ Kunden geladen:", kunden.length);
     return kunden;
@@ -745,8 +828,17 @@ async function deleteKundeFromFirestore(kundeId) {
 }
 
 // Kundenbesuch registrieren (automatisch bei neuer Annahme)
-async function registriereKundenbesuch(kundenname) {
+// UPDATED: Akzeptiert jetzt auch Objekt mit vollen Kundendaten
+async function registriereKundenbesuch(kundeData) {
   try {
+    // Backward compatibility: Wenn String übergeben wird, als name verwenden
+    const kundenname = typeof kundeData === 'string' ? kundeData : kundeData.name;
+
+    if (!kundenname) {
+      console.error("❌ Kein Kundenname angegeben!");
+      return null;
+    }
+
     // Suche Kunde nach Name
     let kunde = await getKundeByName(kundenname);
 
@@ -757,28 +849,42 @@ async function registriereKundenbesuch(kundenname) {
         letzterBesuch: new Date().toISOString()
       };
 
+      // Wenn neue Daten übergeben wurden, auch diese aktualisieren
+      if (typeof kundeData === 'object') {
+        if (kundeData.email && !kunde.email) updates.email = kundeData.email;
+        if (kundeData.telefon && !kunde.telefon) updates.telefon = kundeData.telefon;
+        if (kundeData.partnerId && !kunde.partnerId) updates.partnerId = kundeData.partnerId;
+        if (kundeData.notizen) {
+          updates.notizen = (kunde.notizen || '') + '\n' + kundeData.notizen;
+        }
+      }
+
       await updateKundeInFirestore(kunde.id, updates);
       console.log(`✅ Besuch registriert für: ${kundenname} (${updates.anzahlBesuche}. Besuch)`);
       return kunde.id;
     } else {
-      // Neuer Kunde - erstelle Eintrag
+      // Neuer Kunde - erstelle Eintrag mit allen verfügbaren Daten
       const neuerKunde = {
         id: 'kunde_' + Date.now(),
         name: kundenname,
-        telefon: '',
-        email: '',
-        notizen: '',
+        telefon: typeof kundeData === 'object' ? (kundeData.telefon || '') : '',
+        email: typeof kundeData === 'object' ? (kundeData.email || '') : '',
+        partnerId: typeof kundeData === 'object' ? (kundeData.partnerId || '') : '',
+        notizen: typeof kundeData === 'object' ? (kundeData.notizen || '') : '',
         erstbesuch: new Date().toISOString(),
         letzterBesuch: new Date().toISOString(),
         anzahlBesuche: 1
       };
 
       const kundeId = await saveKundeToFirestore(neuerKunde);
-      console.log(`✅ Neuer Kunde erstellt: ${kundenname}`);
+      console.log(`✅ Neuer Kunde erstellt: ${kundenname} (ID: ${kundeId})`);
+      console.log(`   📧 Email: ${neuerKunde.email || 'N/A'}`);
+      console.log(`   📞 Telefon: ${neuerKunde.telefon || 'N/A'}`);
       return kundeId;
     }
   } catch (error) {
     console.error("❌ Fehler beim Registrieren des Besuchs:", error);
+    console.error("   Details:", error.message);
     return null;
   }
 }
@@ -810,6 +916,7 @@ window.firebaseApp = {
   updateKunde: updateKundeInFirestore,
   deleteKunde: deleteKundeFromFirestore,
   registriereKundenbesuch: registriereKundenbesuch,
+  listenToKunden: listenToKunden, // NEU!
 
   // Storage Operationen (falls Blaze Plan aktiviert)
   uploadPhoto: uploadPhotoToStorage,
