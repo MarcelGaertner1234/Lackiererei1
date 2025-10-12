@@ -1255,6 +1255,11 @@
                     <span>Versicherung</span>
                     <span class="count" id="count-versicherung">0</span>
                 </div>
+                <!-- ✅ NEU: Storniert-Pill (Read-Only, zeigt nur Count) -->
+                <div class="filter-pill" data-service="storniert" style="opacity: 0.6; cursor: default; border-color: #c62828;">
+                    <span>❌ Storniert</span>
+                    <span class="count" id="count-storniert" style="background: rgba(198,40,40,0.2);">0</span>
+                </div>
             </div>
 
             <div class="filter-controls">
@@ -1816,10 +1821,16 @@
         }
 
         function updateCounts() {
-            // Gesamt
-            document.getElementById('count-alle').textContent = alleAnfragen.length;
+            // ✅ FILTER: Stornierte Anfragen NICHT zählen
+            const aktiveAnfragen = alleAnfragen.filter(anfrage => {
+                const status = getDynamicStatus(anfrage);
+                return status !== 'storniert';
+            });
 
-            // Pro Service-Typ
+            // Gesamt (ohne stornierte)
+            document.getElementById('count-alle').textContent = aktiveAnfragen.length;
+
+            // Pro Service-Typ (ohne stornierte)
             const serviceCounts = {
                 lackier: 0,
                 reifen: 0,
@@ -1829,7 +1840,7 @@
                 versicherung: 0
             };
 
-            alleAnfragen.forEach(anfrage => {
+            aktiveAnfragen.forEach(anfrage => {
                 const typ = anfrage.serviceTyp || 'lackier';
                 if (serviceCounts[typ] !== undefined) {
                     serviceCounts[typ]++;
@@ -1839,6 +1850,14 @@
             Object.keys(serviceCounts).forEach(typ => {
                 document.getElementById(`count-${typ}`).textContent = serviceCounts[typ];
             });
+
+            // Stornierte separat zählen (für Storniert-Pill)
+            const stornierteCount = alleAnfragen.filter(a => getDynamicStatus(a) === 'storniert').length;
+            const stornierteCountEl = document.getElementById('count-storniert');
+            if (stornierteCountEl) {
+                stornierteCountEl.textContent = stornierteCount;
+            }
+            console.log(`📊 updateCounts: ${aktiveAnfragen.length} aktive, ${stornierteCount} stornierte Anfragen`);
         }
 
         // Dropdown Counts aktualisieren
@@ -1849,6 +1868,12 @@
          * @returns {string} Status für Kanban-Spalte ('neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'abholung', 'in_arbeit', 'fertig', 'storniert')
          */
         function getDynamicStatus(anfrage) {
+            // 🚨 HÖCHSTE PRIORITÄT: Storniert bleibt IMMER storniert!
+            if (anfrage.status === 'storniert') {
+                console.log(`❌ getDynamicStatus: ${anfrage.kennzeichen || anfrage.id} - STORNIERT (wird nicht überschrieben)`);
+                return 'storniert';
+            }
+
             // 1. PRIORITÄT: Wenn Fahrzeug verknüpft ist, Werkstatt-Status bevorzugen
             if (anfrage.fahrzeug?.prozessStatus) {
                 const werkstattStatus = anfrage.fahrzeug.prozessStatus;
@@ -1964,6 +1989,13 @@
             gefiltert.forEach(anfrage => {
                 // NEU: Intelligente Status-Bestimmung (Werkstatt-Status hat Priorität)
                 const status = getDynamicStatus(anfrage);
+
+                // ✅ FILTER: Stornierte Anfragen NICHT rendern
+                if (status === 'storniert') {
+                    console.log(`⏭️ renderKanban: Überspringe stornierte Anfrage "${anfrage.kennzeichen || anfrage.id}"`);
+                    return; // Skip rendering
+                }
+
                 if (statusCounts[status] !== undefined) {
                     statusCounts[status]++;
                 }
@@ -2877,6 +2909,12 @@
                 // FIX: Beauftragte, laufende UND fertige Anfragen mit KVA zählen (nicht nur fertig!)
                 // WICHTIG: Dynamic Status nutzen (verknüpft Werkstatt-Produktionsfortschritt!)
                 const dynamicStatus = getDynamicStatus(anfrage);
+
+                // ✅ FILTER: Stornierte Anfragen NICHT in Umsatz zählen
+                if (anfrage.status === 'storniert' || dynamicStatus === 'storniert') {
+                    console.log(`\n⏭️ calculateUmsatz: Überspringe STORNIERTE Anfrage "${anfrage.kennzeichen || anfrage.id}"`);
+                    return; // Skip calculation
+                }
 
                 console.log(`\n🔍 Prüfe: ${anfrage.kennzeichen || anfrage.auftragsnummer || anfrage.id}`);
                 console.log(`   📌 Status (dynamisch): ${dynamicStatus}`);
