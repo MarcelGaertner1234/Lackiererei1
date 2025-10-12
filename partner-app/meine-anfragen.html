@@ -1957,6 +1957,7 @@
             const grund = prompt('Grund für Stornierung (optional):') || 'Keine Angabe';
 
             try {
+                // 1. Anfrage auf "storniert" setzen
                 await db.collection('partnerAnfragen').doc(anfrageId).update({
                     status: 'storniert',
                     storniertAm: new Date().toISOString(),
@@ -1964,11 +1965,72 @@
                     stornierungsGrund: grund
                 });
 
-                alert('✅ Anfrage erfolgreich storniert.');
+                // 2. NEU: Zugehöriges Fahrzeug aus Kanban löschen (CASCADE DELETE)
+                const kennzeichen = anfrage.kennzeichen || anfrage.auftragsnummer;
+                if (kennzeichen) {
+                    console.log('🔍 Suche Fahrzeug mit Kennzeichen:', kennzeichen);
+
+                    const fahrzeugSnapshot = await db.collection('fahrzeuge')
+                        .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                        .where('quelle', '==', 'Partner-Portal')
+                        .limit(1)
+                        .get();
+
+                    if (!fahrzeugSnapshot.empty) {
+                        const fahrzeugId = fahrzeugSnapshot.docs[0].id;
+                        console.log('🗑️ Lösche Fahrzeug aus Kanban:', fahrzeugId);
+
+                        // Fahrzeug komplett löschen (inkl. Subcollections)
+                        await deleteFahrzeugCompletely(fahrzeugId);
+
+                        console.log('✅ Fahrzeug erfolgreich gelöscht aus Kanban');
+                    } else {
+                        console.log('ℹ️ Kein zugehöriges Fahrzeug im Kanban gefunden (möglicherweise noch nicht akzeptiert)');
+                    }
+                }
+
+                alert('✅ Anfrage erfolgreich storniert und aus Kanban entfernt.');
                 await loadAnfragen();
             } catch (error) {
                 console.error('❌ Fehler beim Stornieren:', error);
                 alert('❌ Fehler beim Stornieren der Anfrage.\\n\\nBitte versuchen Sie es erneut.');
+            }
+        }
+
+        /**
+         * CASCADE DELETE: Löscht Fahrzeug komplett inkl. Subcollections
+         * @param {string} fahrzeugId - Die ID des zu löschenden Fahrzeugs
+         */
+        async function deleteFahrzeugCompletely(fahrzeugId) {
+            console.log('🗑️ deleteFahrzeugCompletely() gestartet für:', fahrzeugId);
+
+            const batch = db.batch();
+            let deletedCount = 0;
+
+            try {
+                // 1. Fotos Subcollection löschen (fahrzeuge/{id}/fotos/*)
+                const fotosSnapshot = await db.collection('fahrzeuge')
+                    .doc(fahrzeugId)
+                    .collection('fotos')
+                    .get();
+
+                fotosSnapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                    deletedCount++;
+                });
+                console.log(`📸 ${fotosSnapshot.docs.length} Foto-Dokumente zum Löschen markiert`);
+
+                // 2. Hauptdokument löschen (fahrzeuge/{id})
+                batch.delete(db.collection('fahrzeuge').doc(fahrzeugId));
+                deletedCount++;
+
+                // 3. Batch commit (atomare Operation)
+                await batch.commit();
+
+                console.log(`✅ ${deletedCount} Dokumente erfolgreich gelöscht (Fahrzeug + ${fotosSnapshot.docs.length} Fotos)`);
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen des Fahrzeugs:', error);
+                throw error; // Error weitergeben für Fehlerbehandlung in stornierenAnfrage()
             }
         }
 
