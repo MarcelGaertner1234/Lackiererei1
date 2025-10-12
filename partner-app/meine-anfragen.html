@@ -2176,27 +2176,73 @@
                     stornierungsGrund: grund
                 });
 
-                // 2. NEU: Zugehöriges Fahrzeug aus Kanban löschen (CASCADE DELETE)
+                // 2. CASCADE DELETE - Zugehöriges Fahrzeug aus Kanban löschen (3-STUFIGE SUCHE)
                 const kennzeichen = anfrage.kennzeichen || anfrage.auftragsnummer;
                 if (kennzeichen) {
-                    console.log('🔍 Suche Fahrzeug mit Kennzeichen:', kennzeichen);
+                    console.log('🔍 CASCADE DELETE: Suche Fahrzeug mit Kennzeichen:', kennzeichen);
 
-                    const fahrzeugSnapshot = await db.collection('fahrzeuge')
+                    // VERSUCH 1: Mit quelle-Filter (Standard-Fall)
+                    let fahrzeugSnapshot = await db.collection('fahrzeuge')
                         .where('kennzeichen', '==', kennzeichen.toUpperCase())
                         .where('quelle', '==', 'Partner-Portal')
                         .limit(1)
                         .get();
 
+                    console.log(`   📊 VERSUCH 1 (quelle=Partner-Portal): ${fahrzeugSnapshot.size} Treffer`);
+
+                    // VERSUCH 2: Ohne quelle-Filter (Fallback, falls quelle-Field fehlt)
+                    if (fahrzeugSnapshot.empty) {
+                        console.log('   ⚠️ Kein Fahrzeug mit quelle=Partner-Portal gefunden, suche OHNE quelle-Filter...');
+                        fahrzeugSnapshot = await db.collection('fahrzeuge')
+                            .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                            .limit(1)
+                            .get();
+
+                        console.log(`   📊 VERSUCH 2 (ohne quelle): ${fahrzeugSnapshot.size} Treffer`);
+                    }
+
+                    // VERSUCH 3: Original-Kennzeichen (falls toUpperCase() Probleme macht)
+                    if (fahrzeugSnapshot.empty && kennzeichen !== kennzeichen.toUpperCase()) {
+                        console.log('   ⚠️ Versuche mit Original-Kennzeichen (ohne toUpperCase):', kennzeichen);
+                        fahrzeugSnapshot = await db.collection('fahrzeuge')
+                            .where('kennzeichen', '==', kennzeichen)
+                            .limit(1)
+                            .get();
+
+                        console.log(`   📊 VERSUCH 3 (original case): ${fahrzeugSnapshot.size} Treffer`);
+                    }
+
+                    // Fahrzeug gefunden → Löschen
                     if (!fahrzeugSnapshot.empty) {
                         const fahrzeugId = fahrzeugSnapshot.docs[0].id;
+                        const fahrzeugData = fahrzeugSnapshot.docs[0].data();
                         console.log('🗑️ Lösche Fahrzeug aus Kanban:', fahrzeugId);
+                        console.log('   📄 Fahrzeug-Daten:', {
+                            kennzeichen: fahrzeugData.kennzeichen,
+                            quelle: fahrzeugData.quelle,
+                            serviceTyp: fahrzeugData.serviceTyp
+                        });
 
                         // Fahrzeug komplett löschen (inkl. Subcollections)
                         await deleteFahrzeugCompletely(fahrzeugId);
 
-                        console.log('✅ Fahrzeug erfolgreich gelöscht aus Kanban');
+                        console.log('✅ CASCADE DELETE ERFOLG: Fahrzeug erfolgreich gelöscht aus Kanban');
                     } else {
-                        console.log('ℹ️ Kein zugehöriges Fahrzeug im Kanban gefunden (möglicherweise noch nicht akzeptiert)');
+                        // FEHLER: Fahrzeug nicht gefunden trotz 3 Versuchen
+                        console.warn('❌ CASCADE DELETE FAILED: Fahrzeug nicht gefunden nach 3 Suchversuchen!');
+                        console.warn('   📊 Suchkriterien:', {
+                            kennzeichen: kennzeichen,
+                            kennzeichenUpper: kennzeichen.toUpperCase(),
+                            anfrageId: anfrage.id,
+                            auftragsnummer: anfrage.auftragsnummer
+                        });
+                        console.warn('   💡 Mögliche Ursachen:');
+                        console.warn('      1. Fahrzeug wurde noch nicht in fahrzeuge Collection angelegt');
+                        console.warn('      2. Kennzeichen-Mismatch (Leerzeichen, Bindestriche)');
+                        console.warn('      3. Fahrzeug wurde bereits manuell gelöscht');
+
+                        // Optional: User-Warnung (deaktiviert für bessere UX)
+                        // alert('⚠️ WARNUNG: Fahrzeug konnte nicht aus Werkstatt-Kanban entfernt werden!\n\nBitte prüfen Sie die Übersicht und löschen Sie es ggf. manuell.');
                     }
                 }
 

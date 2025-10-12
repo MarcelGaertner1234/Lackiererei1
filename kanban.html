@@ -1017,10 +1017,26 @@
                         return f;
                     });
 
-                    // Filter: Nur Fahrzeuge mit Status "angenommen" (nicht abgeschlossen)
-                    allFahrzeuge = allFahrzeuge.filter(f => f.status !== 'abgeschlossen');
+                    // Filter: Nur aktive Fahrzeuge (ohne abgeschlossen + stornierte)
+                    const vorFilter = allFahrzeuge.length;
+                    allFahrzeuge = allFahrzeuge.filter(f => {
+                        // Abgeschlossene Fahrzeuge ausfiltern
+                        if (f.status === 'abgeschlossen') return false;
 
-                    console.log(`✅ ${allFahrzeuge.length} aktive Fahrzeuge (ohne abgeschlossen)`);
+                        // ✅ SAFETY-FILTER: Stornierte Partner-Aufträge ausfiltern
+                        // Falls CASCADE DELETE in Partner-App fehlgeschlagen ist, verhindert dieser Filter die Anzeige
+                        // (Backup-Lösung für Robustheit)
+                        if (f.quelle === 'Partner-Portal-STORNIERT') {
+                            console.log(`⏭️ Werkstatt-Kanban: Überspringe stornierte Partner-Anfrage "${f.kennzeichen}"`);
+                            return false;
+                        }
+
+                        return true;
+                    });
+
+                    const nachFilter = allFahrzeuge.length;
+                    const gefiltert = vorFilter - nachFilter;
+                    console.log(`✅ ${nachFilter} aktive Fahrzeuge (${gefiltert} gefiltert: abgeschlossen + storniert)`);
 
                     // Board automatisch neu rendern
                     renderKanbanBoard();
