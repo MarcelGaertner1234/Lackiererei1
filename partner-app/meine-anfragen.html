@@ -2709,9 +2709,33 @@
                     } else if (anfrage.kva.gesamtpreis) {
                         preis = parseFloat(anfrage.kva.gesamtpreis) || 0;
                     }
-                    const erstelltAm = anfrage.kva.erstelltAm ? anfrage.kva.erstelltAm.toDate() : null;
 
-                    if (!erstelltAm) return;
+                    // FIX: Robuste Date-Parsing (unterstützt Firestore Timestamp, ISO-String, Number, Date)
+                    let erstelltAm = null;
+                    if (anfrage.kva.erstelltAm) {
+                        // Fall 1: Firestore Timestamp (hat toDate() Methode)
+                        if (typeof anfrage.kva.erstelltAm.toDate === 'function') {
+                            erstelltAm = anfrage.kva.erstelltAm.toDate();
+                        }
+                        // Fall 2: ISO-String oder andere String-Formate
+                        else if (typeof anfrage.kva.erstelltAm === 'string') {
+                            erstelltAm = new Date(anfrage.kva.erstelltAm);
+                        }
+                        // Fall 3: Number (Milliseconds seit Epoch)
+                        else if (typeof anfrage.kva.erstelltAm === 'number') {
+                            erstelltAm = new Date(anfrage.kva.erstelltAm);
+                        }
+                        // Fall 4: Bereits ein Date-Objekt
+                        else if (anfrage.kva.erstelltAm instanceof Date) {
+                            erstelltAm = anfrage.kva.erstelltAm;
+                        }
+                    }
+
+                    // Validation: Check if date is valid
+                    if (!erstelltAm || isNaN(erstelltAm.getTime())) {
+                        console.warn('⚠️ Ungültiges KVA-Datum für Anfrage:', anfrage.id, 'erstelltAm:', anfrage.kva.erstelltAm);
+                        return; // Skip this anfrage
+                    }
 
                     // Gesamt (dieses Jahr)
                     if (erstelltAm.getFullYear() === currentYear) {
