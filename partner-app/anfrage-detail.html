@@ -566,12 +566,30 @@
                     .limit(1)
                     .get();
 
+                // DEBUG: Verify Firestore query
+                console.log('🔍 DEBUG: Fahrzeug-Query Result:', {
+                    kennzeichen: kennzeichen,
+                    kennzeichenUpperCase: kennzeichen.toUpperCase(),
+                    found: !snapshot.empty,
+                    documentCount: snapshot.size
+                });
+
                 if (!snapshot.empty) {
                     const fahrzeugDoc = snapshot.docs[0];
                     anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
                     console.log('✅ Fahrzeug geladen:', fahrzeugDoc.id, '- Kennzeichen:', kennzeichen);
+
+                    // DEBUG: Show loaded fahrzeug data
+                    console.log('🔍 DEBUG: Fahrzeug-Daten:', {
+                        id: fahrzeugDoc.id,
+                        kennzeichen: fahrzeugDoc.data().kennzeichen,
+                        prozessStatus: fahrzeugDoc.data().prozessStatus,
+                        statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0,
+                        quelle: fahrzeugDoc.data().quelle
+                    });
                 } else {
                     console.log('ℹ️ Kein Fahrzeug mit Kennzeichen gefunden:', kennzeichen);
+                    console.warn('⚠️ DEBUG: Mögliche Ursachen: kennzeichen field fehlt in Firestore oder Groß/Kleinschreibung');
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Fahrzeugs:', error);
@@ -600,26 +618,54 @@
 
         // NEU: Live-Updates für Fahrzeug (Real-Time Produktionsfortschritt)
         function setupLiveFahrzeugUpdates(kennzeichen) {
+            console.log('🔍 DEBUG: setupLiveFahrzeugUpdates() gestartet für kennzeichen:', kennzeichen);
+
             db.collection('fahrzeuge')
                 .where('kennzeichen', '==', kennzeichen.toUpperCase())
                 .limit(1)
                 .onSnapshot((snapshot) => {
+                    // DEBUG: onSnapshot triggered
+                    console.log('🔍 DEBUG: onSnapshot triggered:', {
+                        snapshotSize: snapshot.size,
+                        isEmpty: snapshot.empty,
+                        timestamp: new Date().toISOString()
+                    });
+
                     if (!snapshot.empty) {
                         const fahrzeugDoc = snapshot.docs[0];
                         const newData = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+
+                        // DEBUG: Show updated data
+                        console.log('🔍 DEBUG: Fahrzeug onSnapshot Data:', {
+                            fahrzeugId: fahrzeugDoc.id,
+                            prozessStatus: fahrzeugDoc.data().prozessStatus,
+                            statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0,
+                            latestStatus: fahrzeugDoc.data().statusHistory?.slice(-1)[0]?.status || 'keine'
+                        });
 
                         // Prüfen ob sich statusHistory geändert hat
                         if (anfrage.fahrzeug &&
                             JSON.stringify(anfrage.fahrzeug.statusHistory) !== JSON.stringify(newData.statusHistory)) {
                             console.log('🔄 Fahrzeug aktualisiert - neue statusHistory');
+                            console.log('🔍 DEBUG: StatusHistory Änderung:', {
+                                old: anfrage.fahrzeug.statusHistory,
+                                new: newData.statusHistory
+                            });
                             showUpdateNotification('Neuer Produktionsfortschritt!');
                         }
 
                         anfrage.fahrzeug = newData;
                         renderAnfrage(true);  // true = Live-Update
+                    } else {
+                        console.warn('⚠️ DEBUG: onSnapshot triggered but snapshot is empty!');
                     }
                 }, (error) => {
                     console.error('❌ Fehler beim Live-Update des Fahrzeugs:', error);
+                    console.error('🔍 DEBUG: Error details:', {
+                        code: error.code,
+                        message: error.message,
+                        kennzeichen: kennzeichen
+                    });
                 });
 
             console.log('✅ Live-Updates für Fahrzeug aktiviert:', kennzeichen);

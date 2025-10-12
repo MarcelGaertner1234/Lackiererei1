@@ -2127,6 +2127,16 @@
                     fahrzeugData.kundenId = kundeId; // Kunde verknüpfen
                 }
 
+                // DEBUG: Verify kennzeichen field mapping
+                console.log('🔍 DEBUG: Prepared Fahrzeug-Daten:', {
+                    id: fahrzeugData.id,
+                    kennzeichen: fahrzeugData.kennzeichen,
+                    originalKennzeichen: anfrage.kennzeichen,
+                    auftragsnummer: anfrage.auftragsnummer,
+                    serviceTyp: fahrzeugData.serviceTyp,
+                    prozessStatus: fahrzeugData.prozessStatus
+                });
+
                 // 5. ATOMIC UPDATE: Batch Transaction für Konsistenz
                 console.log('🔄 Starte Batch Transaction...');
                 console.log('📋 Fahrzeug-Daten (VOR batch.commit):', JSON.stringify({
@@ -2211,6 +2221,15 @@
                     prozessStatus: verifyDoc.data().prozessStatus,
                     geplantesAbnahmeDatum: verifyDoc.data().geplantesAbnahmeDatum
                 }, null, 2));
+
+                // DEBUG: Verify kennzeichen field in Firestore
+                console.log('🔍 DEBUG: Gespeichertes Fahrzeug in Firestore:', {
+                    exists: verifyDoc.exists,
+                    kennzeichen: verifyDoc.data()?.kennzeichen,
+                    prozessStatus: verifyDoc.data()?.prozessStatus,
+                    quelle: verifyDoc.data()?.quelle,
+                    anfrageId: verifyDoc.data()?.anfrageId
+                });
 
                 // 6. Kalender-Eintrag erstellen (DEAKTIVIERT - nicht benötigt)
                 // HINWEIS: kanban.html nutzt Realtime Listener auf 'fahrzeuge' Collection
@@ -2679,8 +2698,8 @@
             let umsatzGesamt = 0;
 
             anfragen.forEach(anfrage => {
-                // Nur fertige Anfragen mit KVA zählen
-                if (anfrage.status === 'fertig' && anfrage.kva && anfrage.kva.freigegeben) {
+                // FIX: Beauftragte, laufende UND fertige Anfragen mit KVA zählen (nicht nur fertig!)
+                if (['beauftragt', 'in_arbeit', 'fertig'].includes(anfrage.status) && anfrage.kva) {
                     // FIX: Preis aus gewählter Variante oder gesamt
                     let preis = 0;
                     if (anfrage.kva.varianten && anfrage.kva.gewaehlteVariante) {
