@@ -1656,6 +1656,9 @@
             });
         }
 
+        // Global variable to store unsubscribe function for realtime listener
+        let anfrageNUnsubscribe = null;
+
         async function loadAnfragen() {
             const loading = document.getElementById('loading');
             const columnVisibilityPanel = document.getElementById('columnVisibilityPanel');
@@ -1666,45 +1669,57 @@
             try {
                 if (!db) throw new Error('Firebase nicht verfügbar');
 
-                const snapshot = await db.collection('partnerAnfragen')
+                console.log('🔥 Setting up realtime listener for partnerAnfragen...');
+
+                // ✅ REALTIME LISTENER: Automatically updates UI when data changes
+                anfrageNUnsubscribe = db.collection('partnerAnfragen')
                     .where('partnerId', '==', partner.id)
-                    .get();
+                    .onSnapshot(async (snapshot) => {
+                        console.log('🔄 Realtime Update: Received', snapshot.size, 'anfragen');
 
-                loading.style.display = 'none';
+                        loading.style.display = 'none';
 
-                if (snapshot.empty) {
-                    emptyState.style.display = 'block';
-                    return;
-                }
+                        if (snapshot.empty) {
+                            emptyState.style.display = 'block';
+                            kanbanBoard.style.display = 'none';
+                            columnVisibilityPanel.style.display = 'none';
+                            filterSection.style.display = 'none';
+                            return;
+                        }
 
-                alleAnfragen = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })).sort((a, b) => {
-                    const timeA = a.timestamp || 0;
-                    const timeB = b.timestamp || 0;
-                    return timeB - timeA;
-                });
+                        alleAnfragen = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        })).sort((a, b) => {
+                            const timeA = a.timestamp || 0;
+                            const timeB = b.timestamp || 0;
+                            return timeB - timeA;
+                        });
 
-                // NEU: Fahrzeug-Daten für Live-Produktionsfortschritt laden
-                await loadFahrzeugeForAnfragen(alleAnfragen);
+                        // NEU: Fahrzeug-Daten für Live-Produktionsfortschritt laden
+                        await loadFahrzeugeForAnfragen(alleAnfragen);
 
-                // Unread Counts laden
-                await loadUnreadCounts();
+                        // Unread Counts laden
+                        await loadUnreadCounts();
 
-                updateCounts();
-                filterSection.style.display = 'block';
-                columnVisibilityPanel.style.display = 'flex';
-                kanbanBoard.style.display = 'grid';
-                renderKanban();
-                applyColumnVisibility();
+                        updateCounts();
+                        filterSection.style.display = 'block';
+                        columnVisibilityPanel.style.display = 'flex';
+                        kanbanBoard.style.display = 'grid';
+                        emptyState.style.display = 'none';
+                        renderKanban();
+                        applyColumnVisibility();
 
-                // Umsatz-Dashboard rendern
-                console.log('📊 Rufe renderUmsatzDashboard() auf mit:', alleAnfragen.length, 'Anfragen');
-                renderUmsatzDashboard(alleAnfragen, partner);
+                        // Umsatz-Dashboard rendern
+                        console.log('📊 Rufe renderUmsatzDashboard() auf mit:', alleAnfragen.length, 'Anfragen');
+                        renderUmsatzDashboard(alleAnfragen, partner);
+                    }, (error) => {
+                        console.error('❌ Realtime Listener Error:', error);
+                        loading.innerHTML = '<p style="color: #c62828;">⚠️ Fehler beim Laden der Anfragen</p>';
+                    });
 
             } catch (error) {
-                console.error('❌ Fehler beim Laden:', error);
+                console.error('❌ Fehler beim Setup des Realtime Listeners:', error);
                 loading.innerHTML = '<p style="color: #c62828;">⚠️ Fehler beim Laden der Anfragen</p>';
             }
         }
@@ -2154,7 +2169,7 @@
                 }
 
                 alert('✅ Anfrage erfolgreich storniert und aus Kanban entfernt.');
-                await loadAnfragen();
+                // ✅ REMOVED: await loadAnfragen() - Realtime listener updates UI automatically
             } catch (error) {
                 console.error('❌ Fehler beim Stornieren:', error);
                 alert('❌ Fehler beim Stornieren der Anfrage.\\n\\nBitte versuchen Sie es erneut.');
