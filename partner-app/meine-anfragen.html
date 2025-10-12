@@ -1964,6 +1964,17 @@
                 return;
             }
 
+            // Datums-Validierung: anliefertermin muss in der Zukunft liegen
+            const heute = new Date();
+            heute.setHours(0, 0, 0, 0);
+            const anlieferDate = new Date(anfrage.anliefertermin);
+            anlieferDate.setHours(0, 0, 0, 0);
+
+            if (anlieferDate < heute) {
+                alert('⚠️ Ungültiger Anliefertermin.\\n\\nDer Anliefertermin liegt in der Vergangenheit. Bitte kontaktieren Sie die Werkstatt.');
+                return;
+            }
+
             // Bestätigung
             const bestaetigung = confirm(
                 'Möchten Sie dieses Angebot annehmen?\\n\\n' +
@@ -1987,73 +1998,320 @@
                 };
 
                 // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vorher)
+                let abholtermin = null;
                 if (anfrage.abholserviceGewuenscht) {
-                    const anlieferDate = new Date(anfrage.anliefertermin);
                     const abholDate = new Date(anlieferDate);
                     abholDate.setDate(anlieferDate.getDate() - 1);
-                    const abholtermin = abholDate.toISOString().split('T')[0];
+                    abholtermin = abholDate.toISOString().split('T')[0];
                     updateData.abholtermin = abholtermin;
                 }
 
-                await db.collection('partnerAnfragen').doc(anfrageId).update(updateData);
+                // 3. Kunden registrieren (NEU! - Mit vollen Daten)
+                console.log('👤 Registriere Kunden...');
+                const kundeId = await firebaseApp.registriereKundenbesuch({
+                    name: anfrage.partnerName || 'Partner',
+                    email: anfrage.partnerEmail || '',
+                    telefon: anfrage.partnerTelefon || anfrage.telefon || '',
+                    partnerId: anfrage.partnerId || '',
+                    notizen: `Partner-Anfrage ${anfrage.id} - Service: ${getServiceLabel(anfrage.serviceTyp)}`
+                });
+                if (kundeId) {
+                    console.log('✅ Kunde registriert:', kundeId);
+                } else {
+                    console.error('❌ FEHLER: Kunde wurde NICHT erstellt!');
+                    alert('⚠️ WARNUNG: Kunde konnte nicht registriert werden!\n\nBitte Console öffnen (F12) und Screenshot senden.');
+                    // Trotzdem fortfahren - Fahrzeug ohne Kunden-Verknüpfung erstellen
+                }
 
-                // 3. Kalender-Events erstellen (Abholung + Start)
-                await createCalendarEvents(anfrage, updateData.abholtermin);
+                // 4. Fahrzeug-Daten vorbereiten (NEUE PIPELINE)
+                console.log('📋 Erstelle Fahrzeug-Dokument aus Partner-Anfrage...');
+                const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin);
+                if (kundeId) {
+                    fahrzeugData.kundenId = kundeId; // Kunde verknüpfen
+                }
 
-                alert('✅ Angebot erfolgreich angenommen!\\n\\nDie Termine wurden in den Kalender eingetragen.');
+                // 5. ATOMIC UPDATE: Batch Transaction für Konsistenz
+                console.log('🔄 Starte Batch Transaction...');
+                console.log('📋 Fahrzeug-Daten (VOR batch.commit):', JSON.stringify({
+                    id: fahrzeugData.id,
+                    kennzeichen: fahrzeugData.kennzeichen,
+                    serviceTyp: fahrzeugData.serviceTyp,
+                    prozessStatus: fahrzeugData.prozessStatus,
+                    geplantesAbnahmeDatum: fahrzeugData.geplantesAbnahmeDatum
+                }, null, 2));
+
+                // 4.1 FOTOS SEPARAT SPEICHERN (wie annahme.html - Hybrid-Storage)
+                console.log('📸 Speichere Fotos in Firestore Subcollection...');
+                const schadenfotos = anfrage.schadenfotos || anfrage.photos || [];
+                if (schadenfotos.length > 0) {
+                    try {
+                        await firebaseApp.savePhotosToFirestore(fahrzeugData.id, schadenfotos, 'vorher');
+                        console.log(`✅ ${schadenfotos.length} Fotos in Firestore gespeichert (fahrzeuge/${fahrzeugData.id}/fotos/vorher)`);
+                    } catch (e) {
+                        console.error('❌ Fehler beim Speichern der Fotos in Firestore:', e);
+                        // Fallback zu LocalStorage
+                        console.log('⚠️ Fallback: Speichere Fotos in LocalStorage...');
+                        firebaseApp.savePhotosLocal(fahrzeugData.id, schadenfotos, 'vorher');
+                        console.log('✅ Fotos in LocalStorage gespeichert (Fallback)');
+                    }
+                } else {
+                    console.log('ℹ️ Keine Fotos vorhanden - Foto-Speicherung wird übersprungen');
+                }
+
+                // 4.2 FOTOS AUS FAHRZEUG-DATEN ENTFERNEN (KRITISCH!)
+                console.log('🔧 Entferne Fotos aus Fahrzeug-Daten vor Firestore-Speicherung...');
+                const dataForFirestore = {...fahrzeugData};
+                delete dataForFirestore.photos; // ← KRITISCH: Fotos sind bereits in Subcollection gespeichert!
+                console.log('✅ photos-Array entfernt (Hybrid-Storage aktiv)');
+
+                // 4.3 BATCH-TRANSACTION (OHNE FOTOS)
+                const batch = db.batch();
+
+                // Update partnerAnfragen
+                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                batch.update(anfrageRef, updateData);
+
+                // Create fahrzeuge document (OHNE photos-Array)
+                const fahrzeugRef = db.collection('fahrzeuge').doc(dataForFirestore.id);
+                batch.set(fahrzeugRef, dataForFirestore);
+
+                // Commit both operations atomically (mit Error Handling)
+                try {
+                    await batch.commit();
+                    console.log('✅ Batch committed successfully!');
+                } catch (batchError) {
+                    console.error('❌ BATCH COMMIT FEHLGESCHLAGEN!', batchError);
+                    console.error('   Error Code:', batchError.code);
+                    console.error('   Error Message:', batchError.message);
+                    console.error('   Error Stack:', batchError.stack);
+
+                    // User-freundliche Fehlermeldung
+                    let errorMsg = 'Firestore Batch Commit fehlgeschlagen!\n\n';
+                    if (batchError.code === 'permission-denied') {
+                        errorMsg += '❌ PROBLEM: Keine Berechtigung zum Schreiben!\n\n';
+                        errorMsg += 'Lösung: Firebase Console → Firestore → Rules prüfen';
+                    } else if (batchError.code === 'unavailable') {
+                        errorMsg += '❌ PROBLEM: Keine Verbindung zu Firebase!\n\n';
+                        errorMsg += 'Lösung: Internetverbindung prüfen';
+                    } else {
+                        errorMsg += `Fehler: ${batchError.message}\n\n`;
+                        errorMsg += 'Bitte Screenshot der Console senden (F12)';
+                    }
+
+                    alert(`❌ FIREBASE FEHLER\n\n${errorMsg}`);
+                    throw batchError; // Re-throw to stop execution
+                }
+
+                // 5.1 VERIFIKATION: Prüfen ob Fahrzeug in Firestore existiert (NEU!)
+                console.log('🔍 Verifiziere Firestore-Speicherung...');
+                const verifyDoc = await db.collection('fahrzeuge').doc(fahrzeugData.id).get();
+                if (!verifyDoc.exists) {
+                    throw new Error('❌ KRITISCHER FEHLER: Fahrzeug wurde NICHT in Firestore gespeichert!');
+                }
+                console.log('✅ Fahrzeug in Firestore verifiziert:', verifyDoc.id);
+                console.log('📋 Gespeicherte Daten:', JSON.stringify({
+                    serviceTyp: verifyDoc.data().serviceTyp,
+                    prozessStatus: verifyDoc.data().prozessStatus,
+                    geplantesAbnahmeDatum: verifyDoc.data().geplantesAbnahmeDatum
+                }, null, 2));
+
+                // 6. Kalender-Eintrag erstellen (NEU!)
+                console.log('📅 Erstelle Kalender-Eintrag...');
+                await createCalendarEntryForPartner(fahrzeugData);
+                console.log('✅ Kalender-Eintrag erstellt');
+
+                console.log('✅ Fahrzeug erfolgreich erstellt in Kanban & Kalender:', fahrzeugData.id);
+                console.log('   → Kanban: Spalte "Terminiert" (prozessStatus=' + fahrzeugData.prozessStatus + ')');
+                console.log('   → Kalender: Anliefertermin', anfrage.anliefertermin);
+                console.log('   → ServiceTyp:', fahrzeugData.serviceTyp);
+
+                alert(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`);
                 await loadAnfragen();
             } catch (error) {
                 console.error('❌ Fehler beim Annehmen:', error);
-                alert('❌ Fehler beim Annehmen der Anfrage.\\n\\nBitte versuchen Sie es erneut.');
+                alert(`❌ Fehler beim Annehmen der Anfrage.\\n\\nDetails: ${error.message}\\n\\nBitte versuchen Sie es erneut.`);
             }
         }
 
-        async function createCalendarEvents(anfrage, abholtermin) {
-            try {
-                // Event 1: Abholung (nur wenn Abholservice gewünscht)
-                if (anfrage.abholserviceGewuenscht && abholtermin) {
-                    const abholEventData = {
-                        id: 'evt_abholung_' + anfrage.id + '_' + Date.now(),
-                        typ: 'abholung',
-                        datum: abholtermin,
-                        zeit: '09:00',
-                        kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || 'Unbekannt',
-                        serviceTyp: anfrage.serviceTyp,
-                        anfrageId: anfrage.id,
-                        partnerId: anfrage.partnerId,
-                        partnerName: anfrage.partnerName,
-                        abholadresse: anfrage.abholadresse || 'Nicht angegeben',
-                        erstellt: new Date().toISOString(),
-                        status: 'geplant',
-                        titel: `🚙 Abholung: ${anfrage.kennzeichen || anfrage.auftragsnummer}`
-                    };
+        /**
+         * Bereitet Fahrzeug-Daten für die Erstellung vor (mit Validierung)
+         * aus einer akzeptierten Partner-Anfrage
+         * @returns {Object} Fahrzeug-Daten bereit für Firestore
+         */
+        async function prepareFahrzeugData(anfrage, abholtermin) {
+            console.log('🔍 prepareFahrzeugData() gestartet');
+            console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
+            console.log('📋 Anfrage kennzeichen:', anfrage.kennzeichen);
+            console.log('📋 Anfrage anliefertermin:', anfrage.anliefertermin);
 
-                    await db.collection('kalenderEvents').doc(abholEventData.id).set(abholEventData);
-                    console.log('✅ Abholung-Event erstellt:', abholEventData.id);
+            // VALIDIERUNG 1: Kennzeichen/Auftragsnummer erforderlich
+            if (!anfrage.kennzeichen && !anfrage.auftragsnummer) {
+                const error = 'Kennzeichen oder Auftragsnummer erforderlich';
+                console.error('❌', error);
+                throw new Error(error);
+            }
+
+            // VALIDIERUNG 2: serviceTyp muss gültig sein (MIT FALLBACK!)
+            const gueltigeServiceTypen = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev', 'versicherung'];
+            let serviceTyp = anfrage.serviceTyp;
+
+            if (!serviceTyp || !gueltigeServiceTypen.includes(serviceTyp)) {
+                console.warn(`⚠️ Ungültiger serviceTyp: "${serviceTyp}" → Fallback zu "lackier"`);
+                serviceTyp = 'lackier'; // Default-Wert statt Error
+            }
+
+            console.log('✅ ServiceTyp validiert:', serviceTyp);
+
+            // VALIDIERUNG 3: anliefertermin muss vorhanden sein
+            if (!anfrage.anliefertermin) {
+                const error = 'Anliefertermin ist erforderlich';
+                console.error('❌', error);
+                throw new Error(error);
+            }
+
+            // VALIDIERUNG 4: Datumsformat normalisieren zu YYYY-MM-DD
+            let anliefertermin = anfrage.anliefertermin;
+            if (anliefertermin.includes('.')) {
+                // Deutsches Format: "15.10.2025" → "2025-10-15"
+                const parts = anliefertermin.split('.');
+                if (parts.length === 3) {
+                    anliefertermin = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    console.log(`📅 Datum normalisiert: ${anfrage.anliefertermin} → ${anliefertermin}`);
+                }
+            } else if (anliefertermin.includes('/')) {
+                // US Format: "10/15/2025" → "2025-10-15"
+                const parts = anliefertermin.split('/');
+                if (parts.length === 3) {
+                    anliefertermin = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+                    console.log(`📅 Datum normalisiert: ${anfrage.anliefertermin} → ${anliefertermin}`);
+                }
+            }
+            console.log('✅ Anliefertermin validiert:', anliefertermin);
+
+            // EINDEUTIGE ID: Timestamp-basiert (kompatibel mit liste.html/kalender.html)
+            const timestamp = Date.now();
+            const fahrzeugId = 'fzg_' + timestamp; // z.B. fzg_1728745123456
+            const heute = new Date();
+
+            // Fahrzeug-Objekt für Kanban + Kalender erstellen
+            const fahrzeugData = {
+                // IDs & Timestamps (EINDEUTIGE ID!)
+                id: fahrzeugId,
+                datum: heute.toLocaleDateString('de-DE'),
+                zeit: heute.toLocaleTimeString('de-DE'),
+
+                // Fahrzeugdaten
+                kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
+                kundenname: anfrage.partnerName || 'Partner',
+                marke: anfrage.marke || '',
+                modell: anfrage.modell || '',
+                baujahrVon: anfrage.baujahrVon || anfrage.baujahr || '',
+                baujahrBis: anfrage.baujahrBis || anfrage.baujahr || '',
+                kmstand: anfrage.kmstand || '',
+                vin: anfrage.vin || '',
+
+                // Lack-Informationen
+                farbname: anfrage.farbname || '',
+                farbnummer: anfrage.farbnummer || '',
+                lackart: anfrage.lackart || 'Metallic',
+                farbvariante: anfrage.farbvariante || '',
+
+                // Service & Status (MIT VALIDIERUNG!)
+                serviceTyp: serviceTyp, // Verwende validierten serviceTyp (nicht anfrage.serviceTyp!)
+                status: 'angenommen',
+                prozessStatus: 'terminiert', // Neue Spalte "Terminiert"
+
+                // Termine & Planung (VALIDIERT & NORMALISIERT!)
+                geplantesAbnahmeDatum: anliefertermin, // → Kalender-Event (YYYY-MM-DD Format)
+
+                // Abholung (falls gewünscht)
+                fahrzeugAbholung: anfrage.abholserviceGewuenscht ? 'ja' : 'nein',
+                abholadresse: anfrage.abholadresse || '',
+                abholdatum: abholtermin || '',
+                abholzeit: anfrage.abholzeit || '09:00',
+                abholnotiz: anfrage.abholnotiz || '',
+
+                // Preis & Details
+                vereinbarterPreis: anfrage.kva?.gesamt || anfrage.kva?.gesamtpreis || null,
+                notizen: anfrage.schadenBeschreibung || anfrage.beschreibung || '',
+
+                // Partner-Informationen
+                partnerId: anfrage.partnerId || '',
+                partnerName: anfrage.partnerName || '',
+                partnerEmail: anfrage.partnerEmail || '',
+                anfrageId: anfrage.id, // Referenz zur Partner-Anfrage
+
+                // Photos & Signature (WERDEN SEPARAT IN SUBCOLLECTION GESPEICHERT)
+                photos: [], // Leerer Platzhalter - Fotos werden in fahrzeuge/{id}/fotos/vorher gespeichert
+                signature: null, // Wird bei physischer Annahme ergänzt
+
+                // Prozess-Tracking
+                prozessTimestamps: {
+                    terminiert: timestamp
+                },
+                statusHistory: [
+                    {
+                        status: 'terminiert',
+                        timestamp: timestamp,
+                        foto: null,
+                        notiz: 'Partner-Anfrage akzeptiert und terminiert'
+                    }
+                ],
+                lastModified: timestamp
+            };
+
+            return fahrzeugData;
+        }
+
+        /**
+         * Erstellt Kalender-Eintrag für Partner-akzeptiertes Fahrzeug
+         * @param {Object} fahrzeugData - Fahrzeugdaten mit geplantesAbnahmeDatum
+         */
+        async function createCalendarEntryForPartner(fahrzeugData) {
+            console.log('📅 createCalendarEntryForPartner() gestartet');
+            console.log('📋 geplantesAbnahmeDatum:', fahrzeugData.geplantesAbnahmeDatum);
+
+            if (!fahrzeugData.geplantesAbnahmeDatum) {
+                console.warn('⚠️ Kein Abnahme-Datum vorhanden - Kalender-Eintrag wird ÜBERSPRUNGEN');
+                return;
+            }
+
+            const abnahmeDatum = fahrzeugData.geplantesAbnahmeDatum;
+            const calendarEntry = {
+                type: 'abnahme',
+                kennzeichen: fahrzeugData.kennzeichen,
+                kunde: fahrzeugData.kundenname,
+                marke: fahrzeugData.marke || '',
+                modell: fahrzeugData.modell || '',
+                timestamp: Date.now()
+            };
+
+            console.log('📋 Kalender-Eintrag-Daten:', JSON.stringify(calendarEntry, null, 2));
+
+            try {
+                const docRef = db.collection('calendar').doc(abnahmeDatum);
+                console.log('📅 Lade existierende Kalender-Einträge für', abnahmeDatum);
+                const doc = await docRef.get();
+
+                let existingEntries = [];
+                if (doc.exists) {
+                    existingEntries = doc.data().entries || [];
+                    console.log(`📅 ${existingEntries.length} existierende Einträge gefunden`);
+                } else {
+                    console.log('📅 Keine existierenden Einträge - erstelle neues Kalender-Dokument');
                 }
 
-                // Event 2: Start (Anliefertermin)
-                const startEventData = {
-                    id: 'evt_start_' + anfrage.id + '_' + Date.now(),
-                    typ: 'start',
-                    datum: anfrage.anliefertermin,
-                    zeit: '09:00',
-                    kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || 'Unbekannt',
-                    serviceTyp: anfrage.serviceTyp,
-                    anfrageId: anfrage.id,
-                    partnerId: anfrage.partnerId,
-                    partnerName: anfrage.partnerName,
-                    erstellt: new Date().toISOString(),
-                    status: 'geplant',
-                    titel: `🔧 Start: ${anfrage.kennzeichen || anfrage.auftragsnummer}`
-                };
-
-                await db.collection('kalenderEvents').doc(startEventData.id).set(startEventData);
-                console.log('✅ Start-Event erstellt:', startEventData.id);
-
+                existingEntries.push(calendarEntry);
+                await docRef.set({ entries: existingEntries });
+                console.log('✅ Kalender-Eintrag erfolgreich erstellt für', abnahmeDatum);
+                console.log(`📅 Gesamt ${existingEntries.length} Einträge für dieses Datum`);
             } catch (error) {
-                console.error('❌ Fehler beim Erstellen der Kalender-Events:', error);
-                // Fehler nicht werfen, damit die Anfrage trotzdem angenommen wird
+                console.error('❌ FEHLER beim Erstellen des Kalender-Eintrags:', error);
+                console.error('❌ Fehler-Details:', error.message);
+                console.error('❌ Error Stack:', error.stack);
+                // WICHTIG: Fehler NICHT werfen - Kalender-Fehler soll Fahrzeug-Erstellung nicht blockieren
+                // Aber USER WARNEN via Alert!
+                alert(`⚠️ WARNUNG: Fahrzeug wurde erstellt, aber Kalender-Eintrag fehlgeschlagen!\n\nFehler: ${error.message}\n\nBitte Kalender manuell prüfen.`);
             }
         }
 
