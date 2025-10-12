@@ -1658,6 +1658,9 @@
                     return timeB - timeA;
                 });
 
+                // NEU: Fahrzeug-Daten für Live-Produktionsfortschritt laden
+                await loadFahrzeugeForAnfragen(alleAnfragen);
+
                 // Unread Counts laden
                 await loadUnreadCounts();
 
@@ -1675,6 +1678,57 @@
                 console.error('❌ Fehler beim Laden:', error);
                 loading.innerHTML = '<p style="color: #c62828;">⚠️ Fehler beim Laden der Anfragen</p>';
             }
+        }
+
+        /**
+         * Lädt Fahrzeug-Daten für alle Anfragen (für Live-Produktionsfortschritt)
+         * Verknüpft anfrage.fahrzeug mit dem entsprechenden Fahrzeug aus der fahrzeuge Collection
+         */
+        async function loadFahrzeugeForAnfragen(anfragen) {
+            console.log('🚗 loadFahrzeugeForAnfragen() gestartet für', anfragen.length, 'Anfragen');
+
+            const promises = anfragen.map(async (anfrage) => {
+                try {
+                    // Nur laden wenn Kennzeichen vorhanden
+                    if (anfrage.kennzeichen) {
+                        const snapshot = await db.collection('fahrzeuge')
+                            .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                            .limit(1)
+                            .get();
+
+                        if (!snapshot.empty) {
+                            const fahrzeugDoc = snapshot.docs[0];
+                            anfrage.fahrzeug = {
+                                id: fahrzeugDoc.id,
+                                ...fahrzeugDoc.data()
+                            };
+                            console.log(`✅ Fahrzeug verknüpft: ${anfrage.kennzeichen} → prozessStatus: ${anfrage.fahrzeug.prozessStatus}`);
+                        } else {
+                            console.log(`ℹ️ Kein Fahrzeug gefunden für: ${anfrage.kennzeichen}`);
+                        }
+                    } else if (anfrage.auftragsnummer) {
+                        // Fallback: Suche per Auftragsnummer
+                        const snapshot = await db.collection('fahrzeuge')
+                            .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                            .limit(1)
+                            .get();
+
+                        if (!snapshot.empty) {
+                            const fahrzeugDoc = snapshot.docs[0];
+                            anfrage.fahrzeug = {
+                                id: fahrzeugDoc.id,
+                                ...fahrzeugDoc.data()
+                            };
+                            console.log(`✅ Fahrzeug verknüpft: ${anfrage.auftragsnummer} → prozessStatus: ${anfrage.fahrzeug.prozessStatus}`);
+                        }
+                    }
+                } catch (error) {
+                    console.error(`❌ Fehler beim Laden von Fahrzeug für Anfrage ${anfrage.id}:`, error);
+                }
+            });
+
+            await Promise.all(promises);
+            console.log('✅ Fahrzeug-Verknüpfung abgeschlossen');
         }
 
         async function loadUnreadCounts() {
@@ -1744,6 +1798,73 @@
         }
 
         // Dropdown Counts aktualisieren
+        /**
+         * Intelligente Status-Bestimmung: Werkstatt-Status hat Priorität über Partner-Status
+         * Mappt Werkstatt-Produktionsstatus auf Partner-Kanban-Spalten
+         * @param {Object} anfrage - Die Anfrage mit optionalem verknüpften Fahrzeug
+         * @returns {string} Status für Kanban-Spalte ('neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'abholung', 'in_arbeit', 'fertig', 'storniert')
+         */
+        function getDynamicStatus(anfrage) {
+            // 1. PRIORITÄT: Wenn Fahrzeug verknüpft ist, Werkstatt-Status bevorzugen
+            if (anfrage.fahrzeug?.prozessStatus) {
+                const werkstattStatus = anfrage.fahrzeug.prozessStatus;
+
+                console.log(`🔍 getDynamicStatus: ${anfrage.kennzeichen || anfrage.id} - Werkstatt: ${werkstattStatus}`);
+
+                // Werkstatt-Status → Partner-Kanban-Spalte Mapping
+                const statusMapping = {
+                    // Lackierung
+                    'angenommen': 'beauftragt',        // Neu angenommen → Beauftragt
+                    'terminiert': 'beauftragt',        // Termin vereinbart → Beauftragt
+                    'vorbereitung': 'in_arbeit',       // Vorbereitung → In Arbeit
+                    'lackierung': 'in_arbeit',         // Lackierung → In Arbeit
+                    'trocknung': 'in_arbeit',          // Trocknung → In Arbeit
+                    'qualitaetskontrolle': 'in_arbeit', // QK → In Arbeit
+                    'bereit': 'abholung',              // Bereit → Abholung (Partner soll abholen!)
+                    'abgeschlossen': 'fertig',         // Abgeschlossen (abgeholt) → Fertig
+
+                    // Reifen
+                    'neu': 'beauftragt',               // Neu → Beauftragt
+                    'bestellung': 'in_arbeit',         // Bestellung → In Arbeit
+                    'angekommen': 'in_arbeit',         // Angekommen → In Arbeit
+                    'montage': 'in_arbeit',            // Montage → In Arbeit
+                    'wuchten': 'in_arbeit',            // Wuchten → In Arbeit
+                    'fertig': 'abholung',              // Fertig → Abholung
+
+                    // Mechanik
+                    'diagnose': 'in_arbeit',           // Diagnose → In Arbeit
+                    'angebot': 'warte_kva',            // Angebot erstellt → Warte auf KVA
+                    'beauftragt': 'beauftragt',        // Beauftragt → Beauftragt
+                    'reparatur': 'in_arbeit',          // Reparatur → In Arbeit
+                    'test': 'in_arbeit',               // Test → In Arbeit
+
+                    // Pflege
+                    'termin': 'beauftragt',            // Termin → Beauftragt
+                    'aufbereitung': 'in_arbeit',       // Aufbereitung → In Arbeit
+                    'qualitaet': 'in_arbeit',          // Qualität → In Arbeit
+
+                    // TÜV
+                    'termin_gebucht': 'beauftragt',    // Termin gebucht → Beauftragt
+                    'pruefung': 'in_arbeit',           // Prüfung → In Arbeit
+                    'abholbereit': 'abholung',         // Abholbereit → Abholung
+
+                    // Versicherung
+                    'gutachten': 'warte_kva',          // Gutachten → Warte auf KVA
+                    'freigabe': 'beauftragt',          // Freigabe → Beauftragt
+                    'in_reparatur': 'in_arbeit'        // In Reparatur → In Arbeit
+                };
+
+                const mappedStatus = statusMapping[werkstattStatus] || 'beauftragt';
+                console.log(`   → Gemappter Status: ${mappedStatus}`);
+                return mappedStatus;
+            }
+
+            // 2. FALLBACK: Partner-Status (für Anfragen ohne Fahrzeug-Verknüpfung)
+            const fallbackStatus = anfrage.status || 'neu';
+            console.log(`ℹ️ getDynamicStatus: ${anfrage.id} - Fallback Partner-Status: ${fallbackStatus}`);
+            return fallbackStatus;
+        }
+
         function renderKanban() {
             // Filter anwenden
             let gefiltert = alleAnfragen.filter(anfrage => {
@@ -1797,7 +1918,8 @@
 
             // Cards in Spalten verteilen
             gefiltert.forEach(anfrage => {
-                const status = anfrage.status || 'neu';
+                // NEU: Intelligente Status-Bestimmung (Werkstatt-Status hat Priorität)
+                const status = getDynamicStatus(anfrage);
                 if (statusCounts[status] !== undefined) {
                     statusCounts[status]++;
                 }
