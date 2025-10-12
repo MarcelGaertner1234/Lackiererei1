@@ -1289,7 +1289,7 @@
                     <span class="chip-count" id="chip-count-beauftragt">(0)</span>
                 </button>
                 <button class="visibility-chip active" data-status="abholung" onclick="toggleColumnFromPanel('abholung')">
-                    <span class="chip-label">Abholung</span>
+                    <span class="chip-label">Auto anliefern</span>
                     <span class="chip-count" id="chip-count-abholung">(0)</span>
                 </button>
                 <button class="visibility-chip active" data-status="in_arbeit" onclick="toggleColumnFromPanel('in_arbeit')">
@@ -1404,7 +1404,7 @@
             <!-- Status: Abholung -->
             <div class="kanban-column" id="column-container-abholung">
                 <div class="kanban-column-header" style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white;">
-                    <span>🚙 Abholung</span>
+                    <span>🚙 Auto anliefern</span>
                     <span class="kanban-column-count" id="count-status-abholung">0</span>
                 </div>
                 <div class="kanban-cards" id="column-abholung"></div>
@@ -1820,7 +1820,7 @@
                     'lackierung': 'in_arbeit',         // Lackierung → In Arbeit
                     'trocknung': 'in_arbeit',          // Trocknung → In Arbeit
                     'qualitaetskontrolle': 'in_arbeit', // QK → In Arbeit
-                    'bereit': 'abholung',              // Bereit → Abholung (Partner soll abholen!)
+                    'bereit': 'abholung',              // Bereit → Auto anliefern (Partner soll abholen!)
                     'abgeschlossen': 'fertig',         // Abgeschlossen (abgeholt) → Fertig
 
                     // Reifen
@@ -1829,7 +1829,7 @@
                     'angekommen': 'in_arbeit',         // Angekommen → In Arbeit
                     'montage': 'in_arbeit',            // Montage → In Arbeit
                     'wuchten': 'in_arbeit',            // Wuchten → In Arbeit
-                    'fertig': 'abholung',              // Fertig → Abholung
+                    'fertig': 'abholung',              // Fertig → Auto anliefern
 
                     // Mechanik
                     'diagnose': 'in_arbeit',           // Diagnose → In Arbeit
@@ -1846,7 +1846,7 @@
                     // TÜV
                     'termin_gebucht': 'beauftragt',    // Termin gebucht → Beauftragt
                     'pruefung': 'in_arbeit',           // Prüfung → In Arbeit
-                    'abholbereit': 'abholung',         // Abholbereit → Abholung
+                    'abholbereit': 'abholung',         // Abholbereit → Auto anliefern
 
                     // Versicherung
                     'gutachten': 'warte_kva',          // Gutachten → Warte auf KVA
@@ -2028,11 +2028,18 @@
                             ❌ Ablehnen
                         </button>
                     ` : ''}
-                    ${anfrage.status === 'beauftragt' ? `
-                        <button class="card-btn card-btn-storno" onclick="stornierenAnfrage('${anfrage.id}', event)">
-                            ❌ Stornieren
-                        </button>
-                    ` : ''}
+                    ${(() => {
+                        const dynStatus = getDynamicStatus(anfrage);
+                        const isStornierbar = dynStatus === 'beauftragt';
+                        return `
+                            <button class="card-btn card-btn-storno"
+                                    ${!isStornierbar ? 'disabled' : ''}
+                                    style="opacity: ${isStornierbar ? '1' : '0.5'}; cursor: ${isStornierbar ? 'pointer' : 'not-allowed'};"
+                                    onclick="${isStornierbar ? `stornierenAnfrage('${anfrage.id}', event)` : 'event.stopPropagation(); return false;'}">
+                                ❌ Stornieren ${!isStornierbar ? '(nicht möglich)' : ''}
+                            </button>
+                        `;
+                    })()}
                     <button class="card-btn card-btn-details" onclick="openDetails('${anfrage.id}')">
                         Details →
                     </button>
@@ -2821,7 +2828,9 @@
 
             anfragen.forEach(anfrage => {
                 // FIX: Beauftragte, laufende UND fertige Anfragen mit KVA zählen (nicht nur fertig!)
-                if (['beauftragt', 'in_arbeit', 'fertig'].includes(anfrage.status) && anfrage.kva) {
+                // WICHTIG: Dynamic Status nutzen (verknüpft Werkstatt-Produktionsfortschritt!)
+                const dynamicStatus = getDynamicStatus(anfrage);
+                if (['beauftragt', 'in_arbeit', 'fertig'].includes(dynamicStatus) && anfrage.kva) {
                     // FIX: Preis aus gewählter Variante oder gesamt
                     let preis = 0;
                     if (anfrage.kva.varianten && anfrage.kva.gewaehlteVariante) {
