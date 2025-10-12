@@ -329,7 +329,8 @@ function listenToKunden(callback) {
       });
 
       // Sortierung im JavaScript (alphabetisch nach Name)
-      kunden.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      // String() konvertiert auch Objekte/Arrays zu String (z.B. {foo: 'bar'} → "[object Object]")
+      kunden.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
       console.log("🔄 Kunden aktualisiert (Echtzeit):", kunden.length);
       callback(kunden);
@@ -732,7 +733,8 @@ async function getAllKundenFromFirestore() {
     });
 
     // Sortierung im JavaScript (alphabetisch nach Name)
-    kunden.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    // String() konvertiert auch Objekte/Arrays zu String (z.B. {foo: 'bar'} → "[object Object]")
+    kunden.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
     console.log("✅ Kunden geladen:", kunden.length);
     return kunden;
