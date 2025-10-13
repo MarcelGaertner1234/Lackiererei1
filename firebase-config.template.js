@@ -9,13 +9,13 @@
  * WICHTIG: Für lokale Entwicklung echte firebase-config.js verwenden!
  */
 
-// Detect if running in CI environment
-const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
-const useEmulator = process.env.FIREBASE_EMULATOR === 'true' || isCI;
+// Always use Emulator for CI/CD Template
+// (This template is ONLY used in GitHub Actions with Firebase Emulators)
+const useEmulator = true;
 
 console.log('🔥 Firebase Config Loading...');
-console.log('  Environment: ' + (isCI ? 'CI (GitHub Actions)' : 'Local'));
-console.log('  Use Emulator: ' + (useEmulator ? 'YES' : 'NO'));
+console.log('  Environment: CI/CD (GitHub Actions)');
+console.log('  Use Emulator: YES');
 
 // Firebase Configuration (Demo Project für Emulator)
 const firebaseConfig = {
