@@ -188,7 +188,10 @@ async function fillPartnerRequestForm(page, data = {}) {
   // FIX #1: Upload fake photo AND call displayPhotos() + updateNextButtonState()
   await page.evaluate(() => {
     const fakePhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-    window.photos = [fakePhoto];
+
+    // CRITICAL FIX: Set BOTH global AND local scope!
+    window.photos = [fakePhoto];  // Global scope
+    photos = [fakePhoto];          // Local scope (fixes variable scope bug!)
 
     // Call displayPhotos() to properly render preview
     if (typeof displayPhotos === 'function') {
