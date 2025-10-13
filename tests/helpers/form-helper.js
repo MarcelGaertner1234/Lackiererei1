@@ -148,27 +148,35 @@ async function fillPartnerRequestForm(page, data = {}) {
 
   const formData = { ...defaults, ...data };
 
-  // Kundendaten
-  await page.fill('#partnerName', formData.partnerName);
-  await page.fill('#partnerEmail', formData.partnerEmail);
-  await page.fill('#partnerTelefon', formData.partnerTelefon);
+  // Partner-Session via LocalStorage setzen (statt Formular-Felder)
+  // Partner-Portal lädt Partner-Daten aus LocalStorage, nicht aus Input-Feldern!
+  await page.evaluate((partnerData) => {
+    localStorage.setItem('partner', JSON.stringify({
+      id: 'test-partner-' + Date.now(),
+      name: partnerData.partnerName,
+      email: partnerData.partnerEmail,
+      telefon: partnerData.partnerTelefon,
+      adresse: 'Teststraße 123, 12345 Teststadt'
+    }));
+  }, formData);
 
-  // Fahrzeugdaten
+  // Seite reloaden damit Partner-Daten geladen werden
+  await page.reload();
+  await page.waitForTimeout(500); // Kurz warten bis Partner-Name angezeigt wird
+
+  // Fahrzeugdaten (Partner-Portal hat andere Felder als Annahme-Seite!)
   await page.fill('#kennzeichen', formData.kennzeichen);
-  await page.fill('#marke', formData.marke);
+  await page.selectOption('#marke', formData.marke); // SELECT, nicht fill!
   await page.fill('#modell', formData.modell);
-  await page.fill('#baujahrVon', formData.baujahrVon);
-  await page.fill('#baujahrBis', formData.baujahrBis);
+  await page.fill('#baujahr', formData.baujahrVon); // NUR baujahr, nicht baujahrVon/Bis!
   await page.fill('#kilometerstand', formData.kilometerstand);
-  await page.fill('#farbnummer', formData.farbnummer);
-  await page.fill('#farbname', formData.farbname);
 
-  // Schadensbeschreibung
-  await page.fill('textarea[name="schadenBeschreibung"]', formData.schadenBeschreibung);
+  // Schadensbeschreibung (Step 4 im Wizard)
+  await page.fill('#schadenBeschreibung', formData.schadenBeschreibung); // ID statt name-Attribut!
 
-  // Anliefertermin
-  await page.fill('#anliefertermin', formData.anliefertermin);
-  await page.selectOption('#dringlichkeit', formData.dringlichkeit);
+  // HINWEIS: Partner-Portal ist ein Wizard mit 9 Steps!
+  // Tests müssen nextStep() aufrufen um durch die Steps zu navigieren.
+  // Anliefertermin wird via Radio-Buttons gewählt, nicht Input-Feld.
 }
 
 /**
