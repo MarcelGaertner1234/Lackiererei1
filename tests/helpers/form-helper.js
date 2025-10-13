@@ -157,29 +157,61 @@ async function fillPartnerRequestForm(page, data = {}) {
 
   // Reload page to load partner data
   await page.reload();
-  await page.waitForTimeout(1000); // Wait for Firebase ready + partner name display
+
+  // FIX #2: Wait for Firebase initialization + Partner display + Termin loading
+  console.log('⏳ Waiting for Firebase + Partner + Termine...');
+
+  // Wait for Firebase ready
+  await page.waitForFunction(() => {
+    return window.firebaseInitialized === true;
+  }, { timeout: 10000 });
+
+  // Wait for Partner name to display (not "Partner Portal")
+  await page.waitForFunction(() => {
+    const partnerName = document.getElementById('partnerName');
+    return partnerName && partnerName.textContent !== 'Partner Portal';
+  }, { timeout: 10000 });
+
+  // Wait for Termin grid to finish loading (important for Step 7!)
+  await page.waitForFunction(() => {
+    const terminGrid = document.getElementById('terminGrid');
+    return terminGrid && !terminGrid.innerHTML.includes('Lade verfügbare Termine');
+  }, { timeout: 15000 });
+
+  console.log('✅ Firebase ready, Partner loaded, Termine loaded');
 
   // ============================================================
   // STEP 1: Schadensfotos (REQUIRED: min. 1 photo)
   // ============================================================
   console.log('📸 Step 1: Uploading test photo...');
 
-  // Upload fake photo via JavaScript (bypasses file input)
+  // FIX #1: Upload fake photo AND call displayPhotos() + updateNextButtonState()
   await page.evaluate(() => {
     const fakePhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     window.photos = [fakePhoto];
 
-    // Trigger preview display
-    const preview = document.getElementById('photoPreview');
-    if (preview) {
-      const div = document.createElement('div');
-      div.className = 'photo-preview-item';
-      div.innerHTML = `<img src="${fakePhoto}" alt="Test Photo">`;
-      preview.appendChild(div);
+    // Call displayPhotos() to properly render preview
+    if (typeof displayPhotos === 'function') {
+      displayPhotos();
+    }
+
+    // Enable "Weiter" button by calling updateNextButtonState()
+    if (typeof updateNextButtonState === 'function') {
+      updateNextButtonState();
     }
   });
 
+  console.log('✅ Photo uploaded, displayPhotos() + updateNextButtonState() called');
+
   await page.waitForTimeout(300);
+
+  // FIX #3: Explicit wait for button to be enabled
+  await page.waitForFunction(() => {
+    const btn = document.getElementById('btnNext');
+    return btn && !btn.disabled;
+  }, { timeout: 5000 });
+
+  console.log('✅ "Weiter" button is enabled, clicking...');
 
   // Click "Weiter" to Step 2
   await page.click('button:has-text("Weiter")');

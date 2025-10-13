@@ -11,7 +11,7 @@ module.exports = defineConfig({
   testDir: './tests',
 
   /* Maximale Zeit die ein Test laufen darf */
-  timeout: 60 * 1000, // 60 Sekunden (reduced from 180s)
+  timeout: 90 * 1000, // 90 Sekunden (buffer for Firebase + Firestore)
 
   /* Expect Timeout für Assertions */
   expect: {
