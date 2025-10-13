@@ -2298,21 +2298,17 @@
             const grund = prompt('Grund für Stornierung (optional):') || 'Keine Angabe';
 
             try {
-                // 1. Anfrage auf "storniert" setzen
-                await db.collection('partnerAnfragen').doc(anfrageId).update({
-                    status: 'storniert',
-                    storniertAm: new Date().toISOString(),
-                    storniertVon: partner?.email || partner?.name || partner?.id || 'Unbekannt',
-                    stornierungsGrund: grund
-                });
+                console.log('🔍 CASCADE DELETE: Suche Fahrzeug für Atomic Transaction...');
 
-                // 2. CASCADE DELETE - Zugehöriges Fahrzeug aus Kanban löschen (3-STUFIGE SUCHE)
+                // SCHRITT 1: Fahrzeug suchen (READ-ONLY vor Transaction)
                 const kennzeichen = anfrage.kennzeichen || anfrage.auftragsnummer;
-                if (kennzeichen) {
-                    console.log('🔍 CASCADE DELETE: Suche Fahrzeug mit Kennzeichen:', kennzeichen);
+                let fahrzeugSnapshot = null;
+                let fahrzeugId = null;
+                let fahrzeugData = null;
 
+                if (kennzeichen) {
                     // VERSUCH 1: Mit quelle-Filter (Standard-Fall)
-                    let fahrzeugSnapshot = await db.collection('fahrzeuge')
+                    fahrzeugSnapshot = await db.collection('fahrzeuge')
                         .where('kennzeichen', '==', kennzeichen.toUpperCase())
                         .where('quelle', '==', 'Partner-Portal')
                         .limit(1)
@@ -2342,63 +2338,111 @@
                         console.log(`   📊 VERSUCH 3 (original case): ${fahrzeugSnapshot.size} Treffer`);
                     }
 
-                    // Fahrzeug gefunden → Löschen
                     if (!fahrzeugSnapshot.empty) {
-                        const fahrzeugId = fahrzeugSnapshot.docs[0].id;
-                        const fahrzeugData = fahrzeugSnapshot.docs[0].data();
-                        console.log('🗑️ Lösche Fahrzeug aus Kanban:', fahrzeugId);
+                        fahrzeugId = fahrzeugSnapshot.docs[0].id;
+                        fahrzeugData = fahrzeugSnapshot.docs[0].data();
+                        console.log('✅ Fahrzeug gefunden:', fahrzeugId);
                         console.log('   📄 Fahrzeug-Daten:', {
                             kennzeichen: fahrzeugData.kennzeichen,
                             quelle: fahrzeugData.quelle,
                             serviceTyp: fahrzeugData.serviceTyp
                         });
-
-                        // Fahrzeug komplett löschen (inkl. Subcollections)
-                        await deleteFahrzeugCompletely(fahrzeugId);
-
-                        console.log('✅ CASCADE DELETE ERFOLG: Fahrzeug erfolgreich gelöscht aus Kanban');
-
-                        // 🐛 DEBUG LOG: Erfolgreiche Deletion
-                        addDebugLog({
-                            anfrageId: anfrage.id,
-                            kennzeichen: kennzeichen,
-                            fahrzeugId: fahrzeugId,
-                            success: true,
-                            details: `Fahrzeug erfolgreich gelöscht. Quelle: ${fahrzeugData.quelle}, Service: ${fahrzeugData.serviceTyp}`
-                        });
                     } else {
-                        // FEHLER: Fahrzeug nicht gefunden trotz 3 Versuchen
-                        console.warn('❌ CASCADE DELETE FAILED: Fahrzeug nicht gefunden nach 3 Suchversuchen!');
-                        console.warn('   📊 Suchkriterien:', {
-                            kennzeichen: kennzeichen,
-                            kennzeichenUpper: kennzeichen.toUpperCase(),
-                            anfrageId: anfrage.id,
-                            auftragsnummer: anfrage.auftragsnummer
-                        });
-                        console.warn('   💡 Mögliche Ursachen:');
-                        console.warn('      1. Fahrzeug wurde noch nicht in fahrzeuge Collection angelegt');
-                        console.warn('      2. Kennzeichen-Mismatch (Leerzeichen, Bindestriche)');
-                        console.warn('      3. Fahrzeug wurde bereits manuell gelöscht');
-
-                        // 🐛 DEBUG LOG: Fehlgeschlagene Deletion
-                        addDebugLog({
-                            anfrageId: anfrage.id,
-                            kennzeichen: kennzeichen,
-                            fahrzeugId: null,
-                            success: false,
-                            details: `Fahrzeug nicht gefunden trotz 3 Suchversuchen. Gesucht: ${kennzeichen.toUpperCase()} (Partner-Portal + ohne quelle + original case)`
-                        });
-
-                        // Optional: User-Warnung (deaktiviert für bessere UX)
-                        // alert('⚠️ WARNUNG: Fahrzeug konnte nicht aus Werkstatt-Kanban entfernt werden!\n\nBitte prüfen Sie die Übersicht und löschen Sie es ggf. manuell.');
+                        console.warn('⚠️ Kein Fahrzeug gefunden - Stornierung wird trotzdem fortgesetzt (nur partnerAnfragen Update)');
                     }
+                }
+
+                // SCHRITT 2: ATOMIC BATCH TRANSACTION (⚡ KRITISCH!)
+                console.log('🔥 Starte Atomic Batch Transaction...');
+                const batch = db.batch();
+
+                // Operation 1: partnerAnfragen UPDATE
+                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                batch.update(anfrageRef, {
+                    status: 'storniert',
+                    storniertAm: new Date().toISOString(),
+                    storniertVon: partner?.email || partner?.name || partner?.id || 'Unbekannt',
+                    stornierungsGrund: grund
+                });
+                console.log('   📝 Batch Operation 1: partnerAnfragen.update()');
+
+                // Operation 2-N: fahrzeuge DELETE + Subcollections (falls gefunden)
+                if (fahrzeugId) {
+                    // Fotos Subcollection löschen (fahrzeuge/{id}/fotos/*)
+                    const fotosSnapshot = await db.collection('fahrzeuge')
+                        .doc(fahrzeugId)
+                        .collection('fotos')
+                        .get();
+
+                    fotosSnapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    console.log(`   📸 Batch Operation 2-${1 + fotosSnapshot.docs.length}: ${fotosSnapshot.docs.length} Foto-Dokumente markiert`);
+
+                    // Hauptdokument löschen (fahrzeuge/{id})
+                    const fahrzeugRef = db.collection('fahrzeuge').doc(fahrzeugId);
+                    batch.delete(fahrzeugRef);
+                    console.log(`   🗑️ Batch Operation ${2 + fotosSnapshot.docs.length}: fahrzeuge.delete()`);
+
+                    console.log(`   📊 Gesamt ${2 + fotosSnapshot.docs.length} Batch-Operationen vorbereitet`);
+                } else {
+                    console.log('   ℹ️ Keine Fahrzeug-Operationen (Fahrzeug nicht gefunden)');
+                }
+
+                // COMMIT: Entweder ALLE Operationen erfolgreich, oder KEINE!
+                await batch.commit();
+                console.log('✅ ATOMIC BATCH COMMIT ERFOLG: Alle Operationen erfolgreich!');
+
+                // Debug-Logs
+                if (fahrzeugId) {
+                    addDebugLog({
+                        anfrageId: anfrage.id,
+                        kennzeichen: kennzeichen,
+                        fahrzeugId: fahrzeugId,
+                        success: true,
+                        details: `ATOMIC DELETE: Anfrage + Fahrzeug + ${fahrzeugSnapshot ? fahrzeugSnapshot.docs[0].data().fotos?.length || 0 : 0} Fotos`
+                    });
+                } else {
+                    addDebugLog({
+                        anfrageId: anfrage.id,
+                        kennzeichen: kennzeichen || 'k.A.',
+                        fahrzeugId: null,
+                        success: true,
+                        details: 'Nur Anfrage storniert (Fahrzeug nicht gefunden - evtl. noch nicht erstellt)'
+                    });
                 }
 
                 alert('✅ Anfrage erfolgreich storniert und aus Kanban entfernt.');
                 // ✅ REMOVED: await loadAnfragen() - Realtime listener updates UI automatically
             } catch (error) {
-                console.error('❌ Fehler beim Stornieren:', error);
-                alert('❌ Fehler beim Stornieren der Anfrage.\\n\\nBitte versuchen Sie es erneut.');
+                console.error('❌ BATCH TRANSACTION FEHLGESCHLAGEN:', error);
+                console.error('   Error Code:', error.code);
+                console.error('   Error Message:', error.message);
+
+                // User-freundliche Fehlermeldung
+                let errorMsg = 'Stornierung fehlgeschlagen!\n\n';
+                if (error.code === 'permission-denied') {
+                    errorMsg += '❌ PROBLEM: Keine Berechtigung zum Schreiben!\n\n';
+                    errorMsg += 'Lösung: Firebase Console → Firestore → Rules prüfen';
+                } else if (error.code === 'unavailable') {
+                    errorMsg += '❌ PROBLEM: Keine Verbindung zu Firebase!\n\n';
+                    errorMsg += 'Lösung: Internetverbindung prüfen';
+                } else {
+                    errorMsg += `Fehler: ${error.message}\n\n`;
+                    errorMsg += 'Die Anfrage wurde NICHT storniert (Atomic Rollback).\n';
+                    errorMsg += 'Bitte versuchen Sie es erneut.';
+                }
+
+                alert(`❌ FEHLER\n\n${errorMsg}`);
+
+                // Debug-Log für Fehler
+                addDebugLog({
+                    anfrageId: anfrage.id,
+                    kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || 'k.A.',
+                    fahrzeugId: null,
+                    success: false,
+                    details: `ATOMIC BATCH FAILED: ${error.message}`
+                });
             }
         }
 
@@ -2665,42 +2709,64 @@
                 delete dataForFirestore.photos; // ← KRITISCH: Fotos sind bereits in Subcollection gespeichert!
                 console.log('✅ photos-Array entfernt (Hybrid-Storage aktiv)');
 
-                // 4.3 BATCH-TRANSACTION (OHNE FOTOS)
-                const batch = db.batch();
-
-                // Update partnerAnfragen
+                // 4.3 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
+                // WICHTIG: Transaction statt Batch für automatische Retry + Status-Re-Check!
                 const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
-                batch.update(anfrageRef, updateData);
-
-                // Create fahrzeuge document (OHNE photos-Array)
                 const fahrzeugRef = db.collection('fahrzeuge').doc(dataForFirestore.id);
-                batch.set(fahrzeugRef, dataForFirestore);
 
-                // Commit both operations atomically (mit Error Handling)
+                console.log('🔒 Starte Transaction mit Optimistic Locking...');
+
                 try {
-                    await batch.commit();
-                    console.log('✅ Batch committed successfully!');
-                } catch (batchError) {
-                    console.error('❌ BATCH COMMIT FEHLGESCHLAGEN!', batchError);
-                    console.error('   Error Code:', batchError.code);
-                    console.error('   Error Message:', batchError.message);
-                    console.error('   Error Stack:', batchError.stack);
+                    await db.runTransaction(async (transaction) => {
+                        // SCHRITT 1: Anfrage-Dokument lesen (atomarer Read)
+                        const anfrageDoc = await transaction.get(anfrageRef);
+
+                        if (!anfrageDoc.exists) {
+                            throw new Error('Anfrage nicht gefunden!');
+                        }
+
+                        const currentStatus = anfrageDoc.data().status;
+                        console.log(`   🔍 Status-Check: "${currentStatus}"`);
+
+                        // SCHRITT 2: OPTIMISTIC LOCKING - Status MUSS noch 'kva_gesendet' sein!
+                        if (currentStatus !== 'kva_gesendet') {
+                            console.error(`❌ OPTIMISTIC LOCKING FAILED: Status ist "${currentStatus}" (nicht mehr "kva_gesendet")`);
+                            throw new Error(`Diese Anfrage wurde bereits ${currentStatus === 'beauftragt' ? 'angenommen' : 'bearbeitet'}!\n\nAktueller Status: "${currentStatus}"\n\nBitte aktualisieren Sie die Seite (F5).`);
+                        }
+
+                        console.log('   ✅ Status-Check OK: Anfrage ist noch verfügbar');
+
+                        // SCHRITT 3: Atomic Write - partnerAnfragen UPDATE + fahrzeuge CREATE
+                        transaction.update(anfrageRef, updateData);
+                        transaction.set(fahrzeugRef, dataForFirestore);
+
+                        console.log('   📝 Transaction vorbereitet: 2 Operationen (update + set)');
+                    });
+
+                    console.log('✅ Transaction committed successfully!');
+                } catch (transactionError) {
+                    console.error('❌ TRANSACTION FEHLGESCHLAGEN!', transactionError);
+                    console.error('   Error Message:', transactionError.message);
 
                     // User-freundliche Fehlermeldung
-                    let errorMsg = 'Firestore Batch Commit fehlgeschlagen!\n\n';
-                    if (batchError.code === 'permission-denied') {
+                    let errorMsg = 'Anfrage-Annahme fehlgeschlagen!\n\n';
+
+                    if (transactionError.message.includes('bereits')) {
+                        // Optimistic Locking Fehler (Doppel-Annahme)
+                        errorMsg = transactionError.message; // Use original message (already user-friendly)
+                    } else if (transactionError.code === 'permission-denied') {
                         errorMsg += '❌ PROBLEM: Keine Berechtigung zum Schreiben!\n\n';
                         errorMsg += 'Lösung: Firebase Console → Firestore → Rules prüfen';
-                    } else if (batchError.code === 'unavailable') {
+                    } else if (transactionError.code === 'unavailable') {
                         errorMsg += '❌ PROBLEM: Keine Verbindung zu Firebase!\n\n';
                         errorMsg += 'Lösung: Internetverbindung prüfen';
                     } else {
-                        errorMsg += `Fehler: ${batchError.message}\n\n`;
+                        errorMsg += `Fehler: ${transactionError.message}\n\n`;
                         errorMsg += 'Bitte Screenshot der Console senden (F12)';
                     }
 
-                    alert(`❌ FIREBASE FEHLER\n\n${errorMsg}`);
-                    throw batchError; // Re-throw to stop execution
+                    alert(`❌ FEHLER\n\n${errorMsg}`);
+                    throw transactionError; // Re-throw to stop execution
                 }
 
                 // 5.1 VERIFIKATION: Prüfen ob Fahrzeug in Firestore existiert (NEU!)
@@ -2818,13 +2884,19 @@
                 throw new Error(error);
             }
 
-            // VALIDIERUNG 2: serviceTyp muss gültig sein (MIT FALLBACK!)
+            // VALIDIERUNG 2: serviceTyp muss gültig sein (STRIKT - kein Fallback!)
             const gueltigeServiceTypen = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev', 'versicherung'];
             let serviceTyp = anfrage.serviceTyp;
 
             if (!serviceTyp || !gueltigeServiceTypen.includes(serviceTyp)) {
-                console.warn(`⚠️ Ungültiger serviceTyp: "${serviceTyp}" → Fallback zu "lackier"`);
-                serviceTyp = 'lackier'; // Default-Wert statt Error
+                const error = `Ungültiger oder fehlender serviceTyp: "${serviceTyp}".\n\nErlaubte Werte: ${gueltigeServiceTypen.join(', ')}`;
+                console.error('❌', error);
+                console.error('   📋 Anfrage-Daten:', {
+                    id: anfrage.id,
+                    kennzeichen: anfrage.kennzeichen,
+                    serviceTyp: anfrage.serviceTyp
+                });
+                throw new Error(error);
             }
 
             console.log('✅ ServiceTyp validiert:', serviceTyp);
@@ -2868,7 +2940,8 @@
                 zeit: heute.toLocaleTimeString('de-DE'),
 
                 // Fahrzeugdaten (aus anfrage ODER serviceData.fahrzeugdaten)
-                kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer || '',
+                // WICHTIG: Kennzeichen IMMER in Großbuchstaben für konsistente Suche!
+                kennzeichen: (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase(),
                 kundenname: anfrage.partnerName || 'Partner',
                 marke: anfrage.marke || anfrage.serviceData?.fahrzeugdaten?.marke || '',
                 modell: anfrage.modell || anfrage.serviceData?.fahrzeugdaten?.modell || '',
