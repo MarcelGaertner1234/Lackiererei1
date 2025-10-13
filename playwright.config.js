@@ -11,17 +11,17 @@ module.exports = defineConfig({
   testDir: './tests',
 
   /* Maximale Zeit die ein Test laufen darf */
-  timeout: 180 * 1000, // 3 Minuten für Firebase-Tests
+  timeout: 60 * 1000, // 60 Sekunden (reduced from 180s)
 
   /* Expect Timeout für Assertions */
   expect: {
-    timeout: 30000 // 30 Sekunden für Firebase-Operations
+    timeout: 15000 // 15 Sekunden (reduced from 30s)
   },
 
-  /* Bei Fehler: Kein automatisches Retry (für saubere Fehler-Analyse) */
+  /* Bei Fehler: Nur 1 Retry statt 2 */
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: process.env.CI ? 1 : 0, // 1 retry instead of 2
 
   /* Reporter: HTML + Console */
   reporter: [

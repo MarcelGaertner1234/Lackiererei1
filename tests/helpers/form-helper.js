@@ -123,7 +123,7 @@ async function drawTestSignature(page, canvasSelector = '#signaturePad') {
 }
 
 /**
- * Füllt Partner-Anfrage Formular
+ * Füllt Partner-Anfrage Formular mit vollständiger 9-Step Wizard Navigation
  * @param {import('@playwright/test').Page} page
  * @param {Object} data
  */
@@ -135,21 +135,16 @@ async function fillPartnerRequestForm(page, data = {}) {
     kennzeichen: 'HD-TEST 999',
     marke: 'BMW',
     modell: '3er G20',
-    baujahrVon: '2020',
-    baujahrBis: '2020',
+    baujahr: '2020', // Single field!
     kilometerstand: '50000',
-    farbnummer: 'A96',
-    farbname: 'Mineralweiß Metallic',
-    lackart: 'metallic',
+    vin: 'WVWZZZ1JZXW123456', // Optional: 17 chars
     schadenBeschreibung: 'Test-Schaden für automatisierten Test',
-    anliefertermin: getFutureDate(5),
-    dringlichkeit: 'normal'
+    anliefertermin: getFutureDate(5) // Will be ignored - auto-selected by wizard
   };
 
   const formData = { ...defaults, ...data };
 
-  // Partner-Session via LocalStorage setzen (statt Formular-Felder)
-  // Partner-Portal lädt Partner-Daten aus LocalStorage, nicht aus Input-Feldern!
+  // Partner-Session via LocalStorage setzen
   await page.evaluate((partnerData) => {
     localStorage.setItem('partner', JSON.stringify({
       id: 'test-partner-' + Date.now(),
@@ -160,23 +155,107 @@ async function fillPartnerRequestForm(page, data = {}) {
     }));
   }, formData);
 
-  // Seite reloaden damit Partner-Daten geladen werden
+  // Reload page to load partner data
   await page.reload();
-  await page.waitForTimeout(500); // Kurz warten bis Partner-Name angezeigt wird
+  await page.waitForTimeout(1000); // Wait for Firebase ready + partner name display
 
-  // Fahrzeugdaten (Partner-Portal hat andere Felder als Annahme-Seite!)
+  // ============================================================
+  // STEP 1: Schadensfotos (REQUIRED: min. 1 photo)
+  // ============================================================
+  console.log('📸 Step 1: Uploading test photo...');
+
+  // Upload fake photo via JavaScript (bypasses file input)
+  await page.evaluate(() => {
+    const fakePhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    window.photos = [fakePhoto];
+
+    // Trigger preview display
+    const preview = document.getElementById('photoPreview');
+    if (preview) {
+      const div = document.createElement('div');
+      div.className = 'photo-preview-item';
+      div.innerHTML = `<img src="${fakePhoto}" alt="Test Photo">`;
+      preview.appendChild(div);
+    }
+  });
+
+  await page.waitForTimeout(300);
+
+  // Click "Weiter" to Step 2
+  await page.click('button:has-text("Weiter")');
+  await page.waitForTimeout(500);
+  console.log('✅ Step 1 → Step 2');
+
+  // ============================================================
+  // STEP 2: Fahrzeug-Referenz + Fahrzeugdaten
+  // ============================================================
+  console.log('🚗 Step 2: Filling vehicle data...');
+
   await page.fill('#kennzeichen', formData.kennzeichen);
-  await page.selectOption('#marke', formData.marke); // SELECT, nicht fill!
+  await page.selectOption('#marke', formData.marke); // SELECT dropdown!
   await page.fill('#modell', formData.modell);
-  await page.fill('#baujahr', formData.baujahrVon); // NUR baujahr, nicht baujahrVon/Bis!
-  await page.fill('#kilometerstand', formData.kilometerstand);
+  await page.fill('#baujahr', formData.baujahr.toString());
 
-  // Schadensbeschreibung (Step 4 im Wizard)
-  await page.fill('#schadenBeschreibung', formData.schadenBeschreibung); // ID statt name-Attribut!
+  if (formData.kilometerstand) {
+    await page.fill('#kilometerstand', formData.kilometerstand.toString());
+  }
 
-  // HINWEIS: Partner-Portal ist ein Wizard mit 9 Steps!
-  // Tests müssen nextStep() aufrufen um durch die Steps zu navigieren.
-  // Anliefertermin wird via Radio-Buttons gewählt, nicht Input-Feld.
+  await page.waitForTimeout(300);
+
+  // Click "Weiter" to Step 3
+  await page.click('button:has-text("Weiter")');
+  await page.waitForTimeout(500);
+  console.log('✅ Step 2 → Step 3');
+
+  // ============================================================
+  // STEP 3: Fahrzeugidentifikation (VIN or Fahrzeugschein-Foto)
+  // ============================================================
+  console.log('🔑 Step 3: Filling VIN...');
+
+  // Fill VIN (17 chars, uppercase)
+  if (formData.vin) {
+    await page.fill('#vin', formData.vin.toUpperCase());
+  }
+
+  await page.waitForTimeout(300);
+
+  // Click "Weiter" to Step 4
+  await page.click('button:has-text("Weiter")');
+  await page.waitForTimeout(500);
+  console.log('✅ Step 3 → Step 4');
+
+  // ============================================================
+  // STEP 4: Schadensbeschreibung
+  // ============================================================
+  console.log('📝 Step 4: Filling damage description...');
+
+  await page.fill('#schadenBeschreibung', formData.schadenBeschreibung);
+
+  await page.waitForTimeout(300);
+
+  // Click "Weiter" to Step 5
+  await page.click('button:has-text("Weiter")');
+  await page.waitForTimeout(500);
+  console.log('✅ Step 4 → Step 5');
+
+  // ============================================================
+  // STEP 5-8: Karosserie, Ersatzteile, Termin, Lieferung
+  // All have defaults selected, just click through!
+  // ============================================================
+  console.log('⚡ Steps 5-8: Using defaults, clicking through...');
+
+  for (let step = 5; step <= 8; step++) {
+    await page.click('button:has-text("Weiter")');
+    await page.waitForTimeout(500);
+    console.log(`✅ Step ${step} → Step ${step + 1}`);
+  }
+
+  // ============================================================
+  // STEP 9: Zusammenfassung (Summary)
+  // Button text changes to "Anfrage senden"
+  // ============================================================
+  console.log('✅ Step 9: Ready to submit!');
+  console.log('📋 Form filled completely through 9-step wizard');
 }
 
 /**
