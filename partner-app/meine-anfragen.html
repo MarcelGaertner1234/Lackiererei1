@@ -1862,13 +1862,132 @@
         /**
          * Lädt Fahrzeug-Daten für alle Anfragen (für Live-Produktionsfortschritt)
          * Verknüpft anfrage.fahrzeug mit dem entsprechenden Fahrzeug aus der fahrzeuge Collection
+         *
+         * OPTIMIERUNG: Batch Query statt N+1 Queries!
+         * - Vorher: 50 Anfragen = 50 separate Queries
+         * - Nachher: 50 Anfragen = max 5 Batch Queries (10x schneller!)
          */
         async function loadFahrzeugeForAnfragen(anfragen) {
             console.log('🚗 loadFahrzeugeForAnfragen() gestartet für', anfragen.length, 'Anfragen');
 
+            // SCHRITT 1: Sammle alle eindeutigen Kennzeichen und Auftragsnummern
+            const kennzeichenSet = new Set();
+            const auftragsnummernSet = new Set();
+
+            anfragen.forEach(anfrage => {
+                if (anfrage.kennzeichen) {
+                    kennzeichenSet.add(anfrage.kennzeichen.toUpperCase());
+                } else if (anfrage.auftragsnummer) {
+                    auftragsnummernSet.add(anfrage.auftragsnummer);
+                }
+            });
+
+            const kennzeichen = Array.from(kennzeichenSet);
+            const auftragsnummern = Array.from(auftragsnummernSet);
+
+            console.log(`📊 Batch Query: ${kennzeichen.length} Kennzeichen + ${auftragsnummern.length} Auftragsnummern`);
+
+            // SCHRITT 2: Batch Queries mit Firestore .in() Operator (max 10 pro Query)
+            const fahrzeugMap = new Map(); // kennzeichen/auftragsnummer → fahrzeug
+
+            // Helper: Teile Array in Chunks (max 10 wegen Firestore .in() Limit)
+            const chunkArray = (arr, size) => {
+                const chunks = [];
+                for (let i = 0; i < arr.length; i += size) {
+                    chunks.push(arr.slice(i, i + size));
+                }
+                return chunks;
+            };
+
+            try {
+                // Batch Query 1: Kennzeichen
+                if (kennzeichen.length > 0) {
+                    const kennzeichenBatches = chunkArray(kennzeichen, 10);
+                    let totalLoaded = 0;
+
+                    for (const batch of kennzeichenBatches) {
+                        const snapshot = await db.collection('fahrzeuge')
+                            .where('kennzeichen', 'in', batch)
+                            .get();
+
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            fahrzeugMap.set(data.kennzeichen, {
+                                id: doc.id,
+                                ...data
+                            });
+                        });
+
+                        totalLoaded += snapshot.size;
+                    }
+
+                    console.log(`✅ Batch Query (Kennzeichen): ${totalLoaded} Fahrzeuge geladen in ${kennzeichenBatches.length} Queries`);
+                }
+
+                // Batch Query 2: Auftragsnummern (Fallback)
+                if (auftragsnummern.length > 0) {
+                    const auftragsnummernBatches = chunkArray(auftragsnummern, 10);
+                    let totalLoaded = 0;
+
+                    for (const batch of auftragsnummernBatches) {
+                        const snapshot = await db.collection('fahrzeuge')
+                            .where('auftragsnummer', 'in', batch)
+                            .get();
+
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            fahrzeugMap.set(data.auftragsnummer, {
+                                id: doc.id,
+                                ...data
+                            });
+                        });
+
+                        totalLoaded += snapshot.size;
+                    }
+
+                    console.log(`✅ Batch Query (Auftragsnummer): ${totalLoaded} Fahrzeuge geladen in ${auftragsnummernBatches.length} Queries`);
+                }
+            } catch (error) {
+                console.error('❌ Fehler bei Batch Query:', error);
+                // Fallback auf alte Implementierung
+                console.warn('⚠️ Fallback auf sequentielle Queries...');
+                return await loadFahrzeugeForAnfragenFallback(anfragen);
+            }
+
+            // SCHRITT 3: Verknüpfe Fahrzeuge mit Anfragen (O(1) Lookup via Map!)
+            let verknuepft = 0;
+            let nichtGefunden = 0;
+
+            anfragen.forEach(anfrage => {
+                let fahrzeug = null;
+
+                if (anfrage.kennzeichen) {
+                    fahrzeug = fahrzeugMap.get(anfrage.kennzeichen.toUpperCase());
+                } else if (anfrage.auftragsnummer) {
+                    fahrzeug = fahrzeugMap.get(anfrage.auftragsnummer);
+                }
+
+                if (fahrzeug) {
+                    anfrage.fahrzeug = fahrzeug;
+                    verknuepft++;
+                    console.log(`✅ Fahrzeug verknüpft: ${anfrage.kennzeichen || anfrage.auftragsnummer} → prozessStatus: ${anfrage.fahrzeug.prozessStatus}`);
+                } else {
+                    nichtGefunden++;
+                    console.log(`ℹ️ Kein Fahrzeug gefunden für: ${anfrage.kennzeichen || anfrage.auftragsnummer}`);
+                }
+            });
+
+            console.log(`✅ Fahrzeug-Verknüpfung abgeschlossen: ${verknuepft} verknüpft, ${nichtGefunden} nicht gefunden`);
+        }
+
+        /**
+         * Fallback: Alte sequentielle Implementierung falls Batch Query fehlschlägt
+         */
+        async function loadFahrzeugeForAnfragenFallback(anfragen) {
+            console.log('🔄 Fallback: Sequentielle Queries für', anfragen.length, 'Anfragen');
+
             const promises = anfragen.map(async (anfrage) => {
                 try {
-                    // Nur laden wenn Kennzeichen vorhanden
                     if (anfrage.kennzeichen) {
                         const snapshot = await db.collection('fahrzeuge')
                             .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
@@ -1881,12 +2000,8 @@
                                 id: fahrzeugDoc.id,
                                 ...fahrzeugDoc.data()
                             };
-                            console.log(`✅ Fahrzeug verknüpft: ${anfrage.kennzeichen} → prozessStatus: ${anfrage.fahrzeug.prozessStatus}`);
-                        } else {
-                            console.log(`ℹ️ Kein Fahrzeug gefunden für: ${anfrage.kennzeichen}`);
                         }
                     } else if (anfrage.auftragsnummer) {
-                        // Fallback: Suche per Auftragsnummer
                         const snapshot = await db.collection('fahrzeuge')
                             .where('auftragsnummer', '==', anfrage.auftragsnummer)
                             .limit(1)
@@ -1898,7 +2013,6 @@
                                 id: fahrzeugDoc.id,
                                 ...fahrzeugDoc.data()
                             };
-                            console.log(`✅ Fahrzeug verknüpft: ${anfrage.auftragsnummer} → prozessStatus: ${anfrage.fahrzeug.prozessStatus}`);
                         }
                     }
                 } catch (error) {
@@ -1907,7 +2021,7 @@
             });
 
             await Promise.all(promises);
-            console.log('✅ Fahrzeug-Verknüpfung abgeschlossen');
+            console.log('✅ Fallback-Verknüpfung abgeschlossen');
         }
 
         async function loadUnreadCounts() {
