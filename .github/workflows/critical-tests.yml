@@ -16,6 +16,12 @@ on:
       - 'tests/**'
   workflow_dispatch: # Manual trigger
 
+# Permissions für GITHUB_TOKEN
+permissions:
+  contents: read
+  issues: write  # Für automatische Issue-Erstellung bei Failure
+  checks: write  # Für Test-Status Reports
+
 jobs:
   test-critical-pipelines:
     name: E2E Tests - Critical Pipelines
@@ -52,17 +58,42 @@ jobs:
 
       - name: Start Firebase Emulators
         run: |
-          firebase emulators:start --only firestore,storage --project demo-test &
-          echo "Waiting for emulators to start..."
-          sleep 10
-          curl -f http://localhost:8080 || echo "Firestore emulator not ready yet"
-          sleep 5
+          echo "🔥 Starting Firebase Emulators..."
+          firebase emulators:start --only firestore,storage --project demo-test > firebase-emulator.log 2>&1 &
+          EMULATOR_PID=$!
+          echo "Emulator PID: $EMULATOR_PID"
+
+          echo "⏳ Waiting for emulators to start..."
+          sleep 15
+
+          echo "🔍 Checking Firestore emulator..."
+          for i in {1..10}; do
+            if curl -f http://localhost:8080 2>/dev/null; then
+              echo "✅ Firestore emulator is ready!"
+              break
+            fi
+            echo "Attempt $i/10: Firestore not ready yet..."
+            sleep 2
+          done
+
+          echo "🔍 Checking Storage emulator..."
+          if curl -f http://localhost:9199 2>/dev/null; then
+            echo "✅ Storage emulator is ready!"
+          else
+            echo "⚠️ Storage emulator might not be ready"
+          fi
 
       - name: Configure Firebase for Tests
         run: |
-          echo "Firebase Emulators running on:"
+          echo "📋 Firebase Emulators Status:"
           echo "  Firestore: http://localhost:8080"
           echo "  Storage: http://localhost:9199"
+          echo ""
+          echo "📂 Test directories:"
+          ls -la tests/ | head -20
+          echo ""
+          echo "📦 Installed packages:"
+          npm list @playwright/test playwright 2>/dev/null || echo "Packages check failed"
 
       - name: Run Smoke Tests
         run: npx playwright test tests/00-smoke-test.spec.js --project=${{ matrix.browser }}
@@ -80,19 +111,21 @@ jobs:
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && hashFiles('playwright-report/**') != ''
         with:
           name: playwright-report-${{ matrix.browser }}
           path: playwright-report/
           retention-days: 30
+          if-no-files-found: warn
 
       - name: Upload Test Artifacts (Screenshots/Videos)
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && hashFiles('test-results/**') != ''
         with:
           name: test-results-${{ matrix.browser }}
           path: test-results/
           retention-days: 7
+          if-no-files-found: warn
 
       - name: Stop Firebase Emulators
         if: always()
@@ -140,31 +173,39 @@ jobs:
     steps:
       - name: Create Issue on Failure
         uses: actions/github-script@v7
+        continue-on-error: true  # Verhindert dass Workflow fehlschlägt wenn Issue-Creation fehlschlägt
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: '🔴 Critical Pipeline Tests Failed',
-              body: `
-                ## Critical E2E Tests haben fehlgeschlagen
+            try {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🔴 Critical Pipeline Tests Failed',
+                body: `
+                  ## Critical E2E Tests haben fehlgeschlagen
 
-                **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                  **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-                **Branch:** \`${{ github.ref_name }}\`
-                **Commit:** \`${{ github.sha }}\`
+                  **Branch:** \`${{ github.ref_name }}\`
+                  **Commit:** \`${{ github.sha }}\`
 
-                ### Betroffene Test-Suites:
-                - Transaction Failure Tests (Orphaned Photos Prevention)
-                - CASCADE DELETE Tests (AFTER-DELETE CHECK)
+                  ### Betroffene Test-Suites:
+                  - Transaction Failure Tests (Orphaned Photos Prevention)
+                  - CASCADE DELETE Tests (AFTER-DELETE CHECK)
 
-                ### Nächste Schritte:
-                1. Prüfe Test-Report in Workflow Artifacts
-                2. Prüfe Screenshots/Videos der fehlgeschlagenen Tests
-                3. Überprüfe ob Firebase Emulators korrekt gestartet wurden
-                4. Validiere dass Pipeline-Fixes korrekt implementiert sind
+                  ### Nächste Schritte:
+                  1. Prüfe Test-Report in Workflow Artifacts
+                  2. Prüfe Screenshots/Videos der fehlgeschlagenen Tests
+                  3. Überprüfe ob Firebase Emulators korrekt gestartet wurden
+                  4. Validiere dass Pipeline-Fixes korrekt implementiert sind
 
-                **Automatisch erstellt von GitHub Actions**
-              `,
-              labels: ['bug', 'tests', 'critical']
-            })
+                  **Automatisch erstellt von GitHub Actions**
+                `,
+                labels: ['bug', 'tests', 'critical']
+              });
+              console.log('✅ Issue erfolgreich erstellt');
+            } catch (error) {
+              console.log('⚠️ Issue-Erstellung fehlgeschlagen:', error.message);
+              console.log('Tests sind fehlgeschlagen, aber Issue konnte nicht erstellt werden.');
+            }
