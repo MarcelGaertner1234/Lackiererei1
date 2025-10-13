@@ -2481,8 +2481,11 @@
                 console.log('   📝 Batch Operation 1: partnerAnfragen.update()');
 
                 // Operation 2-N: fahrzeuge DELETE + Subcollections (falls gefunden)
+                let fotosCount = 0;
                 if (fahrzeugId) {
                     // Fotos Subcollection löschen (fahrzeuge/{id}/fotos/*)
+                    // HINWEIS: Race Condition theoretisch möglich (neue Fotos zwischen Query und Commit)
+                    // Wird durch AFTER-DELETE CHECK bereinigt (siehe Schritt 2.1)
                     const fotosSnapshot = await db.collection('fahrzeuge')
                         .doc(fahrzeugId)
                         .collection('fotos')
@@ -2491,14 +2494,15 @@
                     fotosSnapshot.docs.forEach(doc => {
                         batch.delete(doc.ref);
                     });
-                    console.log(`   📸 Batch Operation 2-${1 + fotosSnapshot.docs.length}: ${fotosSnapshot.docs.length} Foto-Dokumente markiert`);
+                    fotosCount = fotosSnapshot.docs.length;
+                    console.log(`   📸 Batch Operation 2-${1 + fotosCount}: ${fotosCount} Foto-Dokumente markiert`);
 
                     // Hauptdokument löschen (fahrzeuge/{id})
                     const fahrzeugRef = db.collection('fahrzeuge').doc(fahrzeugId);
                     batch.delete(fahrzeugRef);
-                    console.log(`   🗑️ Batch Operation ${2 + fotosSnapshot.docs.length}: fahrzeuge.delete()`);
+                    console.log(`   🗑️ Batch Operation ${2 + fotosCount}: fahrzeuge.delete()`);
 
-                    console.log(`   📊 Gesamt ${2 + fotosSnapshot.docs.length} Batch-Operationen vorbereitet`);
+                    console.log(`   📊 Gesamt ${2 + fotosCount} Batch-Operationen vorbereitet`);
                 } else {
                     console.log('   ℹ️ Keine Fahrzeug-Operationen (Fahrzeug nicht gefunden)');
                 }
@@ -2506,6 +2510,33 @@
                 // COMMIT: Entweder ALLE Operationen erfolgreich, oder KEINE!
                 await batch.commit();
                 console.log('✅ ATOMIC BATCH COMMIT ERFOLG: Alle Operationen erfolgreich!');
+
+                // SCHRITT 2.1: AFTER-DELETE CHECK - Bereinige verwaiste Fotos (Race Condition Cleanup)
+                // Falls neue Fotos NACH der Query hinzugefügt wurden, löschen wir diese jetzt
+                if (fahrzeugId) {
+                    try {
+                        console.log('🔍 AFTER-DELETE CHECK: Prüfe auf verwaiste Fotos...');
+                        const remainingFotosSnapshot = await db.collection('fahrzeuge')
+                            .doc(fahrzeugId)
+                            .collection('fotos')
+                            .get();
+
+                        if (!remainingFotosSnapshot.empty) {
+                            console.warn(`⚠️ ${remainingFotosSnapshot.size} verwaiste Foto(s) gefunden! Bereinige...`);
+                            const cleanupBatch = db.batch();
+                            remainingFotosSnapshot.docs.forEach(doc => {
+                                cleanupBatch.delete(doc.ref);
+                            });
+                            await cleanupBatch.commit();
+                            console.log(`✅ ${remainingFotosSnapshot.size} verwaiste Foto(s) bereinigt`);
+                        } else {
+                            console.log('✅ Keine verwaisten Fotos gefunden');
+                        }
+                    } catch (cleanupError) {
+                        console.error('❌ AFTER-DELETE CHECK Fehler:', cleanupError);
+                        // Nicht kritisch - verwaiste Fotos werden beim nächsten Cleanup entfernt
+                    }
+                }
 
                 // Debug-Logs
                 if (fahrzeugId) {
@@ -2799,31 +2830,15 @@
                     geplantesAbnahmeDatum: fahrzeugData.geplantesAbnahmeDatum
                 }, null, 2));
 
-                // 4.1 FOTOS SEPARAT SPEICHERN (wie annahme.html - Hybrid-Storage)
-                console.log('📸 Speichere Fotos in Firestore Subcollection...');
-                const schadenfotos = anfrage.schadenfotos || anfrage.photos || [];
-                if (schadenfotos.length > 0) {
-                    try {
-                        await firebaseApp.savePhotosToFirestore(fahrzeugData.id, schadenfotos, 'vorher');
-                        console.log(`✅ ${schadenfotos.length} Fotos in Firestore gespeichert (fahrzeuge/${fahrzeugData.id}/fotos/vorher)`);
-                    } catch (e) {
-                        console.error('❌ Fehler beim Speichern der Fotos in Firestore:', e);
-                        // Fallback zu LocalStorage
-                        console.log('⚠️ Fallback: Speichere Fotos in LocalStorage...');
-                        firebaseApp.savePhotosLocal(fahrzeugData.id, schadenfotos, 'vorher');
-                        console.log('✅ Fotos in LocalStorage gespeichert (Fallback)');
-                    }
-                } else {
-                    console.log('ℹ️ Keine Fotos vorhanden - Foto-Speicherung wird übersprungen');
-                }
-
-                // 4.2 FOTOS AUS FAHRZEUG-DATEN ENTFERNEN (KRITISCH!)
+                // 4.1 FOTOS AUS FAHRZEUG-DATEN ENTFERNEN (HYBRID-STORAGE)
+                // Fotos werden NACH der Transaction in Subcollection gespeichert (siehe Schritt 5.2)
                 console.log('🔧 Entferne Fotos aus Fahrzeug-Daten vor Firestore-Speicherung...');
+                const schadenfotos = anfrage.schadenfotos || anfrage.photos || []; // Fotos zwischenspeichern
                 const dataForFirestore = {...fahrzeugData};
-                delete dataForFirestore.photos; // ← KRITISCH: Fotos sind bereits in Subcollection gespeichert!
-                console.log('✅ photos-Array entfernt (Hybrid-Storage aktiv)');
+                delete dataForFirestore.photos; // ← KRITISCH: Fotos werden separat gespeichert!
+                console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
 
-                // 4.3 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
+                // 4.2 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
                 // WICHTIG: Transaction statt Batch für automatische Retry + Status-Re-Check!
                 const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
                 const fahrzeugRef = db.collection('fahrzeuge').doc(dataForFirestore.id);
@@ -2904,6 +2919,43 @@
                     quelle: verifyDoc.data()?.quelle,
                     anfrageId: verifyDoc.data()?.anfrageId
                 });
+
+                // 5.2 FOTOS SEPARAT SPEICHERN (NACH Transaction - verhindert Orphaned Photos!)
+                // WICHTIG: Fotos werden erst NACH erfolgreicher Transaction gespeichert
+                // Falls Transaction fehlschlägt → Keine Fotos gespeichert (kein Datenbank-Müll)
+                console.log('📸 Speichere Fotos in Firestore Subcollection (NACH Transaction)...');
+                if (schadenfotos.length > 0) {
+                    try {
+                        await firebaseApp.savePhotosToFirestore(fahrzeugData.id, schadenfotos, 'vorher');
+                        console.log(`✅ ${schadenfotos.length} Fotos in Firestore gespeichert (fahrzeuge/${fahrzeugData.id}/fotos/vorher)`);
+                    } catch (photoError) {
+                        console.error('❌ Fehler beim Speichern der Fotos in Firestore:', photoError);
+                        console.warn('⚠️ WARNUNG: Fahrzeug wurde OHNE Fotos erstellt!');
+
+                        // Optional: Fahrzeug mit Flag "fotosFehlgeschlagen" markieren
+                        try {
+                            await db.collection('fahrzeuge').doc(fahrzeugData.id).update({
+                                fotosFehlgeschlagen: true,
+                                fotosFehlerMeldung: photoError.message,
+                                fotosAnzahl: schadenfotos.length
+                            });
+                            console.log('ℹ️ Fahrzeug mit fotosFehlgeschlagen-Flag markiert');
+                        } catch (flagError) {
+                            console.error('❌ Konnte Flag nicht setzen:', flagError);
+                        }
+
+                        // Fallback zu LocalStorage (DEPRECATED, nur als Backup)
+                        console.log('⚠️ Fallback: Speichere Fotos in LocalStorage (DEPRECATED)...');
+                        try {
+                            firebaseApp.savePhotosLocal(fahrzeugData.id, schadenfotos, 'vorher');
+                            console.log('✅ Fotos in LocalStorage gespeichert (Fallback)');
+                        } catch (localError) {
+                            console.error('❌ Auch LocalStorage Fallback fehlgeschlagen:', localError);
+                        }
+                    }
+                } else {
+                    console.log('ℹ️ Keine Fotos vorhanden - Foto-Speicherung wird übersprungen');
+                }
 
                 // 6. Kalender-Eintrag erstellen (DEAKTIVIERT - nicht benötigt)
                 // HINWEIS: kanban.html nutzt Realtime Listener auf 'fahrzeuge' Collection
