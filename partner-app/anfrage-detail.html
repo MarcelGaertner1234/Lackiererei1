@@ -493,7 +493,10 @@
                     <h1 id="title">Anfrage-Details</h1>
                     <div id="subtitle" style="color: #666; font-size: 14px; margin-top: 5px;"></div>
                 </div>
-                <a href="meine-anfragen.html" class="btn btn-secondary">← Zurück</a>
+                <div style="display: flex; gap: 10px;">
+                    <button id="btnAnnehmen" class="btn" style="background: #4caf50; color: white; display: none;" onclick="handleKVAAnnehmen()">✅ KVA annehmen</button>
+                    <a href="meine-anfragen.html" class="btn btn-secondary">← Zurück</a>
+                </div>
             </div>
 
             <div id="details"></div>
@@ -749,6 +752,12 @@
 
             document.getElementById('title').innerHTML = `${anfrage.kennzeichen || anfrage.auftragsnummer || 'Anfrage'} ${badge}`;
             document.getElementById('subtitle').innerHTML = `${anfrage.partnerName} • ${status}`;
+
+            // Button-Visibility: Nur bei Status 'kva_gesendet' anzeigen
+            const btnAnnehmen = document.getElementById('btnAnnehmen');
+            if (btnAnnehmen) {
+                btnAnnehmen.style.display = anfrage.status === 'kva_gesendet' ? 'inline-block' : 'none';
+            }
 
             const detailsContainer = document.getElementById('details');
             detailsContainer.innerHTML = renderServiceDetails(serviceTyp);
@@ -1584,6 +1593,78 @@
 
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
+        }
+
+        // ========================================================================
+        // KVA ANNEHMEN HANDLER (Run #27 Fix)
+        // ========================================================================
+        async function handleKVAAnnehmen() {
+            // Validierung 1: Status muss 'kva_gesendet' sein
+            if (anfrage.status !== 'kva_gesendet') {
+                alert('Diese Anfrage kann nicht angenommen werden.\n\nNur Anfragen mit Status "Angebot erstellt" können angenommen werden.');
+                return;
+            }
+
+            // Validierung 2: anliefertermin muss vorhanden sein
+            if (!anfrage.anliefertermin) {
+                alert('⚠️ Kein Anliefertermin vorhanden.\n\nDie Anfrage kann nicht angenommen werden, da kein Anliefertermin festgelegt ist.');
+                return;
+            }
+
+            // Validierung 3: Datums-Validierung (anliefertermin muss in der Zukunft liegen)
+            const heute = new Date();
+            heute.setHours(0, 0, 0, 0);
+            const anlieferDate = new Date(anfrage.anliefertermin);
+            anlieferDate.setHours(0, 0, 0, 0);
+
+            if (anlieferDate < heute) {
+                alert('⚠️ Ungültiger Anliefertermin.\n\nDer Anliefertermin liegt in der Vergangenheit. Bitte kontaktieren Sie die Werkstatt.');
+                return;
+            }
+
+            // Bestätigung
+            const serviceLabels = {
+                'lackier': '🎨 Lackier-Service',
+                'reifen': '🚗 Reifen-Service',
+                'pflege': '✨ Fahrzeugpflege',
+                'mechanik': '🔧 Mechanik',
+                'tuev': '✅ TÜV/AU',
+                'versicherung': '🛡️ Versicherung'
+            };
+            const serviceLabel = serviceLabels[anfrage.serviceTyp] || 'Service';
+
+            const bestaetigung = confirm(
+                'Möchten Sie dieses Angebot annehmen?\n\n' +
+                `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\n` +
+                `Service: ${serviceLabel}\n` +
+                `Anliefertermin: ${new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')}\n` +
+                `Preis: ${anfrage.kva?.gesamt ? anfrage.kva.gesamt.toFixed(2) + ' €' : 'k.A.'}`
+            );
+
+            if (!bestaetigung) {
+                return;
+            }
+
+            try {
+                // Status auf "beauftragt" ändern
+                const updateData = {
+                    status: 'beauftragt',
+                    statusText: 'Beauftragt',
+                    angenommenAm: Date.now()
+                };
+
+                await db.collection('partnerAnfragen').doc(anfrage.id).update(updateData);
+
+                // Success Feedback
+                alert('✅ Angebot erfolgreich angenommen!\n\nSie werden zur Übersicht weitergeleitet.');
+
+                // Redirect to Kanban board
+                window.location.href = 'meine-anfragen.html';
+
+            } catch (error) {
+                console.error('❌ Fehler beim Annehmen des Angebots:', error);
+                alert('⚠️ Fehler beim Annehmen des Angebots.\n\n' + error.message);
+            }
         }
     </script>
 </body>
