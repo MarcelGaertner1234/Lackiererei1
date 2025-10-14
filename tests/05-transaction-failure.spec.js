@@ -156,10 +156,20 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
-    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
-    console.log('⏳ Waiting 5s for Firestore + onSnapshot...');
-    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
-    console.log('✅ Ready, navigating...');
+    // CRITICAL FIX RUN #31: Verify Firestore status BEFORE opening page
+    console.log('⏳ Waiting 5s for Firestore commit + indexing...');
+    await page.waitForTimeout(5000);
+
+    // Verify status is correct in Firestore
+    const firestoreStatus = await page.evaluate(async (id) => {
+      const db = window.firebaseApp.db();
+      const doc = await db.collection('partnerAnfragen').doc(id).get();
+      return doc.exists ? doc.data().status : null;
+    }, anfrageId);
+
+    console.log('🔍 Firestore Status BEFORE navigation:', firestoreStatus);
+    expect(firestoreStatus).toBe('kva_gesendet'); // MUST be correct!
+    console.log('✅ Status verified: kva_gesendet');
 
     // Test: Simuliere gleichzeitige Annahme von 2 Partnern
 
@@ -178,7 +188,17 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       throw new Error(`Partner-Anfrage not found in Firestore: ${errorMsg}`);
     }
 
-    // Partner B öffnet GLEICHE Detail-Seite in neuem Tab
+    // CRITICAL FIX RUN #31: Wait for button to be visible on Partner A BEFORE opening Partner B
+    page.on('dialog', dialog => dialog.accept());
+
+    console.log('⏳ Partner A: Waiting for "KVA annehmen" button to become visible...');
+    await page.waitForSelector('button:has-text("KVA annehmen")', {
+      state: 'visible',
+      timeout: 30000  // 30 seconds to wait for button
+    });
+    console.log('✅ Partner A: Button visible!');
+
+    // NOW open Partner B page (for simultaneous test)
     const partnerB = await context.newPage();
     const consoleBMonitor = setupConsoleMonitoring(partnerB);
     await partnerB.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
@@ -195,16 +215,8 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       throw new Error(`Partner B: Anfrage not found in Firestore: ${errorMsgB}`);
     }
 
-    // Partner A nimmt KVA an (ERSTE Annahme sollte ERFOLGEN)
-    page.on('dialog', dialog => dialog.accept());
-
-    // CRITICAL FIX RUN #30: Increased timeout to wait for onSnapshot re-render
-    console.log('⏳ Waiting for "KVA annehmen" button to become visible...');
-    await page.waitForSelector('button:has-text("KVA annehmen")', {
-      state: 'visible',
-      timeout: 30000  // 30 seconds to wait for onSnapshot cycle
-    });
-    console.log('✅ Button visible, clicking...');
+    // Partner A klickt Button (button is already visible from above check)
+    console.log('⏳ Partner A: Clicking button...');
 
     await page.click('button:has-text("KVA annehmen")');
 
