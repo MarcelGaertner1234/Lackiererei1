@@ -139,12 +139,14 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Test: Simuliere gleichzeitige Annahme von 2 Partnern
 
     // Partner A öffnet Detail-Seite
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await waitForFirebaseReady(page);
 
     // Partner B öffnet GLEICHE Detail-Seite in neuem Tab
     const partnerB = await context.newPage();
     const consoleBMonitor = setupConsoleMonitoring(partnerB);
+    await setPartnerSession(partnerB, { partnerName: testPartnerName });
     await partnerB.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await waitForFirebaseReady(partnerB);
 
@@ -238,6 +240,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     }, anfrageId);
 
     // Test: Provoziere Transaction Failure durch Status-Änderung VOR Annahme
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await waitForFirebaseReady(page);
 
@@ -340,6 +343,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // KVA annehmen (Transaction sollte ERFOLGEN, Foto-Upload FEHLSCHLAGEN)
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await waitForFirebaseReady(page);
 
@@ -408,6 +412,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // KVA annehmen
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await waitForFirebaseReady(page);
 
