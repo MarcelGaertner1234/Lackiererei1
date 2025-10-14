@@ -32,6 +32,29 @@ let firebaseApp;
 let db;
 let storage;
 
+// CRITICAL FIX: Define initFirebase() IMMEDIATELY to prevent race condition
+// Problem: anfrage-detail.html DOMContentLoaded may fire BEFORE firebase-config DOMContentLoaded!
+// Solution: Define initFirebase() globally before any DOMContentLoaded listeners run
+window.initFirebase = async function() {
+  // If Firebase already initialized, return immediately
+  if (window.firebaseInitialized) {
+    console.log('✅ initFirebase() called (already initialized)');
+    return Promise.resolve();
+  }
+
+  // Otherwise, wait for firebaseReady event
+  console.log('⏳ initFirebase() waiting for Firebase initialization...');
+  await new Promise(resolve => {
+    if (window.firebaseInitialized) {
+      resolve();
+    } else {
+      window.addEventListener('firebaseReady', resolve, { once: true });
+    }
+  });
+  console.log('✅ initFirebase() resolved - Firebase ready');
+  return Promise.resolve();
+};
+
 // Wait for DOM and all scripts to load before initializing Firebase
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🔄 DOMContentLoaded event fired - starting Firebase initialization...');
@@ -128,13 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
             callback(fahrzeuge);
           });
       }
-    };
-
-    // Global initFirebase() function for compatibility with anfrage.html and other pages
-    window.initFirebase = async function() {
-      // Already initialized above, just return resolved promise
-      console.log('✅ initFirebase() called (already initialized)');
-      return Promise.resolve();
     };
 
     // CRITICAL: Expose db and storage as GLOBAL variables (not just functions!)
