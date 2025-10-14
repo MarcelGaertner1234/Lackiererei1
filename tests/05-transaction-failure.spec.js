@@ -107,6 +107,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
+    await page.waitForTimeout(2000); // Wait for Firestore write to complete
 
     // Hole Anfrage-ID
     const anfrageId = await page.evaluate(async (kz) => {
@@ -139,16 +140,16 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Test: Simuliere gleichzeitige Annahme von 2 Partnern
 
     // Partner A öffnet Detail-Seite
-    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
-    await waitForFirebaseReady(page);
+    await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
+    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
 
     // Partner B öffnet GLEICHE Detail-Seite in neuem Tab
     const partnerB = await context.newPage();
     const consoleBMonitor = setupConsoleMonitoring(partnerB);
-    await setPartnerSession(partnerB, { partnerName: testPartnerName });
     await partnerB.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
-    await waitForFirebaseReady(partnerB);
+    await partnerB.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
+    await partnerB.waitForSelector('#content', { state: 'visible', timeout: 15000 });
 
     // Partner A nimmt KVA an (ERSTE Annahme sollte ERFOLGEN)
     page.on('dialog', dialog => dialog.accept());
@@ -214,6 +215,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
+    await page.waitForTimeout(2000); // Wait for Firestore write to complete
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -240,9 +242,9 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     }, anfrageId);
 
     // Test: Provoziere Transaction Failure durch Status-Änderung VOR Annahme
-    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
-    await waitForFirebaseReady(page);
+    await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
+    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
 
     // Ändere Status zu 'beauftragt' (macht Transaction fehlschlagen)
     await page.evaluate(async (id) => {
@@ -311,6 +313,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
+    await page.waitForTimeout(2000); // Wait for Firestore write to complete
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -343,9 +346,9 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // KVA annehmen (Transaction sollte ERFOLGEN, Foto-Upload FEHLSCHLAGEN)
-    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
-    await waitForFirebaseReady(page);
+    await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
+    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
 
     page.on('dialog', dialog => dialog.accept());
     await page.click('button:has-text("KVA annehmen")');
@@ -379,6 +382,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
+    await page.waitForTimeout(2000); // Wait for Firestore write to complete
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -412,9 +416,9 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // KVA annehmen
-    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
-    await waitForFirebaseReady(page);
+    await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
+    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
 
     page.on('dialog', dialog => dialog.accept());
     await page.click('button:has-text("KVA annehmen")');
