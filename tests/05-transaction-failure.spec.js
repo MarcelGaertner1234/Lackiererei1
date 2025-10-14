@@ -115,6 +115,16 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     console.log('✅ Button "Anfrage senden" is enabled, clicking...');
     await page.click('button:has-text("Anfrage senden")');
+
+    // NEW: Wait for submitAnfrage() to execute (success message OR navigation to detail page)
+    console.log('⏳ Waiting for submitAnfrage() to complete...');
+    await page.waitForFunction(() => {
+      const successMsg = document.querySelector('#successMessage.show');
+      const errorMsg = document.querySelector('#error');
+      return successMsg || errorMsg || window.location.href.includes('anfrage-detail');
+    }, { timeout: 10000 });
+    console.log('✅ Submit completed');
+
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
@@ -243,12 +253,24 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // CRITICAL FIX: Wait for button to be enabled and ready to click
+    console.log('⏳ Waiting for button "Anfrage senden" to be enabled...');
     await page.waitForFunction(() => {
       const btn = document.getElementById('btnNext');
       return btn && !btn.disabled && btn.textContent.includes('Anfrage senden');
     }, { timeout: 5000 });
 
+    console.log('✅ Button "Anfrage senden" is enabled, clicking...');
     await page.click('button:has-text("Anfrage senden")');
+
+    // NEW: Wait for submitAnfrage() to execute (success message OR navigation to detail page)
+    console.log('⏳ Waiting for submitAnfrage() to complete...');
+    await page.waitForFunction(() => {
+      const successMsg = document.querySelector('#successMessage.show');
+      const errorMsg = document.querySelector('#error');
+      return successMsg || errorMsg || window.location.href.includes('anfrage-detail');
+    }, { timeout: 10000 });
+    console.log('✅ Submit completed');
+
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
@@ -358,12 +380,24 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // CRITICAL FIX: Wait for button to be enabled and ready to click
+    console.log('⏳ Waiting for button "Anfrage senden" to be enabled...');
     await page.waitForFunction(() => {
       const btn = document.getElementById('btnNext');
       return btn && !btn.disabled && btn.textContent.includes('Anfrage senden');
     }, { timeout: 5000 });
 
+    console.log('✅ Button "Anfrage senden" is enabled, clicking...');
     await page.click('button:has-text("Anfrage senden")');
+
+    // NEW: Wait for submitAnfrage() to execute (success message OR navigation to detail page)
+    console.log('⏳ Waiting for submitAnfrage() to complete...');
+    await page.waitForFunction(() => {
+      const successMsg = document.querySelector('#successMessage.show');
+      const errorMsg = document.querySelector('#error');
+      return successMsg || errorMsg || window.location.href.includes('anfrage-detail');
+    }, { timeout: 10000 });
+    console.log('✅ Submit completed');
+
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
@@ -444,12 +478,24 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // CRITICAL FIX: Wait for button to be enabled and ready to click
+    console.log('⏳ Waiting for button "Anfrage senden" to be enabled...');
     await page.waitForFunction(() => {
       const btn = document.getElementById('btnNext');
       return btn && !btn.disabled && btn.textContent.includes('Anfrage senden');
     }, { timeout: 5000 });
 
+    console.log('✅ Button "Anfrage senden" is enabled, clicking...');
     await page.click('button:has-text("Anfrage senden")');
+
+    // NEW: Wait for submitAnfrage() to execute (success message OR navigation to detail page)
+    console.log('⏳ Waiting for submitAnfrage() to complete...');
+    await page.waitForFunction(() => {
+      const successMsg = document.querySelector('#successMessage.show');
+      const errorMsg = document.querySelector('#error');
+      return successMsg || errorMsg || window.location.href.includes('anfrage-detail');
+    }, { timeout: 10000 });
+    console.log('✅ Submit completed');
+
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
