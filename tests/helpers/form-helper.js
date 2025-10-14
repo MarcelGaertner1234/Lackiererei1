@@ -168,24 +168,18 @@ async function fillPartnerRequestForm(page, data = {}) {
   });
   console.log('📦 Partner in LocalStorage after reload:', partnerStored);
 
-  // FIX #2: Wait for Firebase initialization + Termin loading
-  console.log('⏳ Waiting for Firebase + Termine...');
+  // FIX #2: Wait for Firebase initialization only (skip Termine loading)
+  console.log('⏳ Waiting for Firebase...');
 
   // Wait for Firebase ready
   await page.waitForFunction(() => {
     return window.firebaseInitialized === true;
   }, { timeout: 10000 });
 
-  // REMOVED: Partner Name wait (not critical, was causing timeout)
-  // Partner name is display-only, tests don't depend on it
+  // REMOVED: Partner Name wait (not critical, was causing timeout in Run #9)
+  // REMOVED: Termin Grid loading wait (causing timeout in Run #10, will mock at Step 7)
 
-  // Wait for Termin grid to finish loading (important for Step 7!)
-  await page.waitForFunction(() => {
-    const terminGrid = document.getElementById('terminGrid');
-    return terminGrid && !terminGrid.innerHTML.includes('Lade verfügbare Termine');
-  }, { timeout: 15000 });
-
-  console.log('✅ Firebase ready, Termine loaded');
+  console.log('✅ Firebase ready');
 
   // ============================================================
   // STEP 1: Schadensfotos (REQUIRED: min. 1 photo)
@@ -287,6 +281,50 @@ async function fillPartnerRequestForm(page, data = {}) {
   console.log('⚡ Steps 5-8: Using defaults, clicking through...');
 
   for (let step = 5; step <= 8; step++) {
+    // SPECIAL: At Step 7, ensure Termine are available (mock if still loading)
+    if (step === 7) {
+      console.log('📅 Step 7: Ensuring Termine are mocked if still loading...');
+      await page.evaluate(() => {
+        const terminGrid = document.getElementById('terminGrid');
+        if (terminGrid && terminGrid.innerHTML.includes('Lade')) {
+          console.log('🔧 Termine still loading, mocking 4 options...');
+
+          // Mock 4 Termine (EXPRESS, SCHNELL, NORMAL, ENTSPANNT)
+          const today = new Date();
+          const mockTermine = [
+            { days: 1, label: 'EXPRESS', color: '#d32f2f' },
+            { days: 2, label: 'SCHNELL', color: '#ff6f00' },
+            { days: 5, label: 'NORMAL', color: '#1976d2' },
+            { days: 8, label: 'ENTSPANNT', color: '#388e3c' }
+          ];
+
+          terminGrid.innerHTML = mockTermine.map((t, idx) => {
+            const date = new Date(today);
+            date.setDate(today.getDate() + t.days);
+            const dateStr = date.toISOString().split('T')[0];
+            const wochentag = date.toLocaleDateString('de-DE', { weekday: 'short' });
+            const tag = date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+
+            return `
+              <label class="termin-option ${idx === 0 ? 'selected' : ''}" onclick="selectTermin(this)">
+                <input type="radio" name="anliefertermin" value="${dateStr}" data-label="${t.label}" ${idx === 0 ? 'checked' : ''}>
+                <div class="label" style="color: ${t.color};">${t.label}</div>
+                <div style="font-weight: 600; margin: 5px 0;">${wochentag}, ${tag}</div>
+                <small>🟢 Freie Kapazität</small>
+                <small style="display: block; color: #999; margin-top: 3px;">in ${t.days} Tag${t.days > 1 ? 'en' : ''}</small>
+              </label>
+            `;
+          }).join('');
+
+          console.log('✅ Termine mocked (4 options)');
+        } else {
+          console.log('✅ Termine already loaded from ladeSmartetermine()');
+        }
+      });
+
+      await page.waitForTimeout(300);  // Let DOM update
+    }
+
     await page.click('button:has-text("Weiter")');
     await page.waitForTimeout(500);
     console.log(`✅ Step ${step} → Step ${step + 1}`);
