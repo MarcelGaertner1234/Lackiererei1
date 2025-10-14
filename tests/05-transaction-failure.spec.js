@@ -105,6 +105,15 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       modell: '3er G20',
       anliefertermin: '2025-10-20'
     });
+
+    // CRITICAL FIX: Wait for button to be enabled and ready to click
+    console.log('⏳ Waiting for button "Anfrage senden" to be enabled...');
+    await page.waitForFunction(() => {
+      const btn = document.getElementById('btnNext');
+      return btn && !btn.disabled && btn.textContent.includes('Anfrage senden');
+    }, { timeout: 5000 });
+
+    console.log('✅ Button "Anfrage senden" is enabled, clicking...');
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
@@ -233,6 +242,12 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       window.testPhotoData = [fakePhotoData];
     });
 
+    // CRITICAL FIX: Wait for button to be enabled and ready to click
+    await page.waitForFunction(() => {
+      const btn = document.getElementById('btnNext');
+      return btn && !btn.disabled && btn.textContent.includes('Anfrage senden');
+    }, { timeout: 5000 });
+
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
@@ -341,6 +356,13 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await fillPartnerRequestForm(page, {
       kennzeichen: testKennzeichen
     });
+
+    // CRITICAL FIX: Wait for button to be enabled and ready to click
+    await page.waitForFunction(() => {
+      const btn = document.getElementById('btnNext');
+      return btn && !btn.disabled && btn.textContent.includes('Anfrage senden');
+    }, { timeout: 5000 });
+
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
@@ -420,6 +442,13 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await fillPartnerRequestForm(page, {
       kennzeichen: testKennzeichen
     });
+
+    // CRITICAL FIX: Wait for button to be enabled and ready to click
+    await page.waitForFunction(() => {
+      const btn = document.getElementById('btnNext');
+      return btn && !btn.disabled && btn.textContent.includes('Anfrage senden');
+    }, { timeout: 5000 });
+
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
     await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
