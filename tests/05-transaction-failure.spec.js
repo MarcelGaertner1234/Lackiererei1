@@ -129,11 +129,20 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await waitForSuccessMessage(page);
 
     // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    // CRITICAL FIX RUN #34: Add page URL logging for context verification
     console.log('🔍 Test 5.1: Finding Partner-Anfrage with Retry-Logic...');
+    console.log(`  Current Page URL: ${page.url()}`);
+
     const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
       maxAttempts: 10,
       retryDelay: 1000
     });
+
+    // CRITICAL FIX RUN #34: Screenshot on failure
+    if (!anfrageId) {
+      await page.screenshot({ path: 'test-results/test-5.1-anfrage-not-found.png', fullPage: true });
+      console.log('📸 Screenshot saved: test-5.1-anfrage-not-found.png');
+    }
 
     expect(anfrageId).toBeTruthy();
 
@@ -297,11 +306,20 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await waitForSuccessMessage(page);
 
     // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    // CRITICAL FIX RUN #34: Add page URL logging for context verification
     console.log('🔍 Test 5.2: Finding Partner-Anfrage with Retry-Logic...');
+    console.log(`  Current Page URL: ${page.url()}`);
+
     const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
       maxAttempts: 10,
       retryDelay: 1000
     });
+
+    // CRITICAL FIX RUN #34: Screenshot on failure
+    if (!anfrageId) {
+      await page.screenshot({ path: 'test-results/test-5.2-anfrage-not-found.png', fullPage: true });
+      console.log('📸 Screenshot saved: test-5.2-anfrage-not-found.png');
+    }
 
     // Simuliere KVA mit Fotos
     await page.evaluate(async (id) => {
@@ -429,11 +447,20 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await waitForSuccessMessage(page);
 
     // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    // CRITICAL FIX RUN #34: Add page URL logging for context verification
     console.log('🔍 Test 5.3: Finding Partner-Anfrage with Retry-Logic...');
+    console.log(`  Current Page URL: ${page.url()}`);
+
     const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
       maxAttempts: 10,
       retryDelay: 1000
     });
+
+    // CRITICAL FIX RUN #34: Screenshot on failure
+    if (!anfrageId) {
+      await page.screenshot({ path: 'test-results/test-5.3-anfrage-not-found.png', fullPage: true });
+      console.log('📸 Screenshot saved: test-5.3-anfrage-not-found.png');
+    }
 
     // Simuliere KVA mit KAPUTTEN Foto-Daten (provoziert Upload-Fehler)
     await page.evaluate(async (id) => {
@@ -533,11 +560,20 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await waitForSuccessMessage(page);
 
     // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    // CRITICAL FIX RUN #34: Add page URL logging for context verification
     console.log('🔍 Test 5.4: Finding Partner-Anfrage with Retry-Logic...');
+    console.log(`  Current Page URL: ${page.url()}`);
+
     const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
       maxAttempts: 10,
       retryDelay: 1000
     });
+
+    // CRITICAL FIX RUN #34: Screenshot on failure
+    if (!anfrageId) {
+      await page.screenshot({ path: 'test-results/test-5.4-anfrage-not-found.png', fullPage: true });
+      console.log('📸 Screenshot saved: test-5.4-anfrage-not-found.png');
+    }
 
     // Simuliere KVA mit Fotos
     const testPhotoBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';

@@ -154,41 +154,56 @@ async function findPartnerAnfrageWithRetry(page, kennzeichen, options = {}) {
   const maxAttempts = options.maxAttempts || 10;
   const retryDelay = options.retryDelay || 1000;
 
-  return await page.evaluate(async ({ kz, max, delay }) => {
-    // CRITICAL FIX RUN #33: Verify Firebase is available
-    console.log('🔍 RUN #33: Checking Firebase availability...');
-    console.log('  window.firebaseApp:', typeof window.firebaseApp);
-    console.log('  window.firebaseApp.db:', typeof window.firebaseApp?.db);
-    console.log('  window.firebaseInitialized:', window.firebaseInitialized);
+  // CRITICAL FIX RUN #34: Log BEFORE page.evaluate to confirm function is called
+  const pageUrl = page.url();
+  console.log(`🔍 RUN #34: findPartnerAnfrageWithRetry called for "${kennzeichen}"`);
+  console.log(`  Page URL: ${pageUrl}`);
+  console.log(`  maxAttempts: ${maxAttempts}, retryDelay: ${retryDelay}ms`);
 
-    if (!window.firebaseApp || typeof window.firebaseApp.db !== 'function') {
-      console.error('❌ CRITICAL: window.firebaseApp.db() not available!');
-      console.error('  This means firebase-config.template.js did not initialize correctly.');
-      console.error('  Tests CANNOT proceed without Firebase access.');
-      return null;
-    }
+  try {
+    return await page.evaluate(async ({ kz, max, delay }) => {
+      // CRITICAL FIX RUN #33: Verify Firebase is available
+      console.log('🔍 RUN #33: Checking Firebase availability...');
+      console.log('  window.firebaseApp:', typeof window.firebaseApp);
+      console.log('  window.firebaseApp.db:', typeof window.firebaseApp?.db);
+      console.log('  window.firebaseInitialized:', window.firebaseInitialized);
 
-    const db = window.firebaseApp.db();
-    console.log('✅ Firebase DB ready, starting retry loop...');
-
-    for (let i = 0; i < max; i++) {
-      const snapshot = await db.collection('partnerAnfragen')
-        .where('kennzeichen', '==', kz)
-        .limit(1)
-        .get();
-
-      if (!snapshot.empty) {
-        console.log(`✅ Anfrage found after ${i + 1} attempt(s) (${(i + 1) * delay}ms)`);
-        return snapshot.docs[0].id;
+      if (!window.firebaseApp || typeof window.firebaseApp.db !== 'function') {
+        console.error('❌ CRITICAL: window.firebaseApp.db() not available!');
+        console.error('  This means firebase-config.template.js did not initialize correctly.');
+        console.error('  Tests CANNOT proceed without Firebase access.');
+        return null;
       }
 
-      console.log(`⏳ Attempt ${i + 1}/${max}: Waiting for Firestore index... (${delay}ms)`);
-      await new Promise(r => setTimeout(r, delay));
-    }
+      const db = window.firebaseApp.db();
+      console.log('✅ Firebase DB ready, starting retry loop...');
 
-    console.error(`❌ Anfrage not found after ${max} attempts (${max * delay}ms total)`);
+      for (let i = 0; i < max; i++) {
+        const snapshot = await db.collection('partnerAnfragen')
+          .where('kennzeichen', '==', kz)
+          .limit(1)
+          .get();
+
+        if (!snapshot.empty) {
+          console.log(`✅ Anfrage found after ${i + 1} attempt(s) (${(i + 1) * delay}ms)`);
+          return snapshot.docs[0].id;
+        }
+
+        console.log(`⏳ Attempt ${i + 1}/${max}: Waiting for Firestore index... (${delay}ms)`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+
+      console.error(`❌ Anfrage not found after ${max} attempts (${max * delay}ms total)`);
+      return null;
+    }, { kz: kennzeichen, max: maxAttempts, delay: retryDelay });
+  } catch (error) {
+    // CRITICAL FIX RUN #34: Catch page.evaluate() exceptions
+    console.error('❌ RUN #34: page.evaluate() threw exception!');
+    console.error('  Error Message:', error.message);
+    console.error('  Error Stack:', error.stack);
+    console.error('  This means the code inside page.evaluate() crashed.');
     return null;
-  }, { kz: kennzeichen, max: maxAttempts, delay: retryDelay });
+  }
 }
 
 module.exports = {
