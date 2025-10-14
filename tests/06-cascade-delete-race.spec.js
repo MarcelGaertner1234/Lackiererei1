@@ -22,6 +22,7 @@ const {
   setupConsoleMonitoring
 } = require('./helpers/firebase-helper');
 const {
+  setPartnerSession,
   fillPartnerRequestForm,
   waitForSuccessMessage
 } = require('./helpers/form-helper');
@@ -90,11 +91,11 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle vollständigen Partner-Flow
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen,
       marke: 'Audi',
       modell: 'A4 B9'
@@ -191,11 +192,11 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Anfrage → KVA → Annahme mit Fotos
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
     await page.click('button:has-text("Anfrage senden")');
@@ -307,11 +308,11 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Fahrzeug mit Fotos
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
     await page.click('button:has-text("Anfrage senden")');
@@ -433,11 +434,11 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle und storniere Anfrage
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
     await page.click('button:has-text("Anfrage senden")');
@@ -520,13 +521,13 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
   test('6.5 Normalisiertes Kennzeichen bei 3-tier CASCADE DELETE', async ({ page }) => {
     // Setup: Erstelle Anfrage mit lowercase Kennzeichen
+    const lowercaseKennzeichen = 'hd-cas-001'; // lowercase!
+
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
-    const lowercaseKennzeichen = 'hd-cas-001'; // lowercase!
-
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: lowercaseKennzeichen // lowercase input
     });
     await page.click('button:has-text("Anfrage senden")');

@@ -17,6 +17,7 @@ const {
   setupConsoleMonitoring
 } = require('./helpers/firebase-helper');
 const {
+  setPartnerSession,
   fillPartnerRequestForm,
   waitForSuccessMessage
 } = require('./helpers/form-helper');
@@ -108,11 +109,11 @@ test.describe('FLOW 2: Partner-Annahme (B2B)', () => {
 
   test('2.2 Werkstatt erstellt KVA für Partner-Anfrage', async ({ page }) => {
     // Setup: Erstelle Anfrage
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
     await page.click('button:has-text("Anfrage senden")');
@@ -170,11 +171,11 @@ test.describe('FLOW 2: Partner-Annahme (B2B)', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Anfrage + KVA
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen,
       anliefertermin: '2025-10-20'
     });

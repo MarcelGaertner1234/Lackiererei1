@@ -22,6 +22,7 @@ const {
   setupConsoleMonitoring
 } = require('./helpers/firebase-helper');
 const {
+  setPartnerSession,
   fillPartnerRequestForm,
   waitForSuccessMessage
 } = require('./helpers/form-helper');
@@ -94,11 +95,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Anfrage mit KVA
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen,
       marke: 'BMW',
       modell: '3er G20',
@@ -194,11 +195,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Anfrage mit KVA UND Fotos
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
 
@@ -298,11 +299,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Anfrage mit KVA
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
     await page.click('button:has-text("Anfrage senden")');
@@ -365,11 +366,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
   test('5.4 LocalStorage Fallback bei Foto-Upload Fehler', async ({ page }) => {
     // Setup: Erstelle Anfrage mit KVA und Fotos
+    await setPartnerSession(page, { partnerName: testPartnerName });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     await fillPartnerRequestForm(page, {
-      partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
     await page.click('button:has-text("Anfrage senden")');

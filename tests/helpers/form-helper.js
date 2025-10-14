@@ -123,7 +123,36 @@ async function drawTestSignature(page, canvasSelector = '#signaturePad') {
 }
 
 /**
+ * Setzt Partner-Session in LocalStorage VOR page.goto()
+ * WICHTIG: Muss VOR page.goto('/partner-app/anfrage.html') aufgerufen werden!
+ * @param {import('@playwright/test').Page} page
+ * @param {Object} data
+ */
+async function setPartnerSession(page, data = {}) {
+  const defaults = {
+    partnerName: 'Test Partner GmbH',
+    partnerEmail: 'test@partner.de',
+    partnerTelefon: '+49 123 456789'
+  };
+
+  const partnerData = { ...defaults, ...data };
+
+  await page.evaluate((partnerInfo) => {
+    const partnerObj = {
+      id: 'test-partner-' + Date.now(),
+      name: partnerInfo.partnerName,
+      email: partnerInfo.partnerEmail,
+      telefon: partnerInfo.partnerTelefon,
+      adresse: 'Teststraße 123, 12345 Teststadt'
+    };
+    localStorage.setItem('partner', JSON.stringify(partnerObj));
+    console.log('🔧 Partner-Session set in LocalStorage BEFORE goto():', partnerObj.name);
+  }, partnerData);
+}
+
+/**
  * Füllt Partner-Anfrage Formular mit vollständiger 9-Step Wizard Navigation
+ * WICHTIG: setPartnerSession() MUSS vorher aufgerufen worden sein!
  * @param {import('@playwright/test').Page} page
  * @param {Object} data
  */
@@ -143,26 +172,6 @@ async function fillPartnerRequestForm(page, data = {}) {
   };
 
   const formData = { ...defaults, ...data };
-
-  // Set Partner-Session via LocalStorage (no reload needed - persists automatically)
-  await page.evaluate((partnerData) => {
-    const partnerObj = {
-      id: 'test-partner-' + Date.now(),
-      name: partnerData.partnerName,
-      email: partnerData.partnerEmail,
-      telefon: partnerData.partnerTelefon,
-      adresse: 'Teststraße 123, 12345 Teststadt'
-    };
-    localStorage.setItem('partner', JSON.stringify(partnerObj));
-    console.log('🔧 Partner-Session set in LocalStorage:', partnerObj.name);
-
-    // Update Partner Name display immediately (no reload needed!)
-    const partnerNameEl = document.getElementById('partnerName');
-    if (partnerNameEl) {
-      partnerNameEl.textContent = partnerObj.name;
-      console.log('✅ Partner Name updated in DOM:', partnerNameEl.textContent);
-    }
-  }, formData);
 
   // Wait for Firebase ready
   console.log('⏳ Waiting for Firebase initialization...');
@@ -358,6 +367,7 @@ module.exports = {
   fillVehicleIntakeForm,
   uploadTestPhoto,
   drawTestSignature,
+  setPartnerSession,
   fillPartnerRequestForm,
   getFutureDate,
   waitForSuccessMessage
