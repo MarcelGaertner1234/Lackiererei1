@@ -318,11 +318,6 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
-    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
-    console.log('⏳ Test 5.2: Waiting 5s for Firestore + onSnapshot...');
-    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
-    console.log('✅ Ready, navigating...');
-
     // Test: Provoziere Transaction Failure durch Status-Änderung VOR Annahme
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
@@ -453,11 +448,6 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
-    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
-    console.log('⏳ Test 5.3: Waiting 5s for Firestore + onSnapshot...');
-    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
-    console.log('✅ Ready, continuing...');
-
     // Override savePhotosToFirestore um Fehler zu provozieren
     await page.evaluate(() => {
       const originalSave = window.firebaseApp.savePhotosToFirestore;
@@ -563,11 +553,6 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
         }
       });
     }, { id: anfrageId, photo: testPhotoBase64 });
-
-    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
-    console.log('⏳ Test 5.4: Waiting 5s for Firestore + onSnapshot...');
-    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
-    console.log('✅ Ready, continuing...');
 
     // Override Firestore savePhotosToFirestore um Fehler zu simulieren
     await page.evaluate(() => {

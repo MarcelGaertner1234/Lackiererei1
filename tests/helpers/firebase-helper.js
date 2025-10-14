@@ -155,7 +155,21 @@ async function findPartnerAnfrageWithRetry(page, kennzeichen, options = {}) {
   const retryDelay = options.retryDelay || 1000;
 
   return await page.evaluate(async ({ kz, max, delay }) => {
+    // CRITICAL FIX RUN #33: Verify Firebase is available
+    console.log('🔍 RUN #33: Checking Firebase availability...');
+    console.log('  window.firebaseApp:', typeof window.firebaseApp);
+    console.log('  window.firebaseApp.db:', typeof window.firebaseApp?.db);
+    console.log('  window.firebaseInitialized:', window.firebaseInitialized);
+
+    if (!window.firebaseApp || typeof window.firebaseApp.db !== 'function') {
+      console.error('❌ CRITICAL: window.firebaseApp.db() not available!');
+      console.error('  This means firebase-config.template.js did not initialize correctly.');
+      console.error('  Tests CANNOT proceed without Firebase access.');
+      return null;
+    }
+
     const db = window.firebaseApp.db();
+    console.log('✅ Firebase DB ready, starting retry loop...');
 
     for (let i = 0; i < max; i++) {
       const snapshot = await db.collection('partnerAnfragen')
