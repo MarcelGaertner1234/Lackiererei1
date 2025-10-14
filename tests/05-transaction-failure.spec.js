@@ -19,7 +19,8 @@ const {
   checkVehicleExists,
   getVehicleData,
   deleteVehicle,
-  setupConsoleMonitoring
+  setupConsoleMonitoring,
+  findPartnerAnfrageWithRetry
 } = require('./helpers/firebase-helper');
 const {
   setPartnerSession,
@@ -126,17 +127,13 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     console.log('✅ Submit completed');
 
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
-    // Hole Anfrage-ID
-    const anfrageId = await page.evaluate(async (kz) => {
-      const db = window.firebaseApp.db();
-      const snapshot = await db.collection('partnerAnfragen')
-        .where('kennzeichen', '==', kz)
-        .limit(1)
-        .get();
-      return snapshot.empty ? null : snapshot.docs[0].id;
-    }, testKennzeichen);
+    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    console.log('🔍 Test 5.1: Finding Partner-Anfrage with Retry-Logic...');
+    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
+      maxAttempts: 10,
+      retryDelay: 1000
+    });
 
     expect(anfrageId).toBeTruthy();
 
@@ -298,16 +295,13 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     console.log('✅ Submit completed');
 
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
-    const anfrageId = await page.evaluate(async (kz) => {
-      const db = window.firebaseApp.db();
-      const snapshot = await db.collection('partnerAnfragen')
-        .where('kennzeichen', '==', kz)
-        .limit(1)
-        .get();
-      return snapshot.empty ? null : snapshot.docs[0].id;
-    }, testKennzeichen);
+    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    console.log('🔍 Test 5.2: Finding Partner-Anfrage with Retry-Logic...');
+    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
+      maxAttempts: 10,
+      retryDelay: 1000
+    });
 
     // Simuliere KVA mit Fotos
     await page.evaluate(async (id) => {
@@ -438,16 +432,13 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     console.log('✅ Submit completed');
 
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
-    const anfrageId = await page.evaluate(async (kz) => {
-      const db = window.firebaseApp.db();
-      const snapshot = await db.collection('partnerAnfragen')
-        .where('kennzeichen', '==', kz)
-        .limit(1)
-        .get();
-      return snapshot.empty ? null : snapshot.docs[0].id;
-    }, testKennzeichen);
+    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    console.log('🔍 Test 5.3: Finding Partner-Anfrage with Retry-Logic...');
+    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
+      maxAttempts: 10,
+      retryDelay: 1000
+    });
 
     // Simuliere KVA mit KAPUTTEN Foto-Daten (provoziert Upload-Fehler)
     await page.evaluate(async (id) => {
@@ -550,16 +541,13 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     console.log('✅ Submit completed');
 
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
-    const anfrageId = await page.evaluate(async (kz) => {
-      const db = window.firebaseApp.db();
-      const snapshot = await db.collection('partnerAnfragen')
-        .where('kennzeichen', '==', kz)
-        .limit(1)
-        .get();
-      return snapshot.empty ? null : snapshot.docs[0].id;
-    }, testKennzeichen);
+    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
+    console.log('🔍 Test 5.4: Finding Partner-Anfrage with Retry-Logic...');
+    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
+      maxAttempts: 10,
+      retryDelay: 1000
+    });
 
     // Simuliere KVA mit Fotos
     const testPhotoBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';

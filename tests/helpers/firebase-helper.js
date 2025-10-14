@@ -133,6 +133,50 @@ function setupConsoleMonitoring(page) {
   };
 }
 
+/**
+ * CRITICAL FIX RUN #32: Findet Partner-Anfrage mit Retry-Logic
+ *
+ * Problem: Firebase Emulator braucht Zeit zum Indexieren nach Write
+ * - Write committed ✅
+ * - Index updated ❌ (kann 1-10 Sekunden dauern)
+ * - Query findet nichts → null
+ *
+ * Solution: Retry-Loop wartet bis Index fertig
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen
+ * @param {Object} options
+ * @param {number} options.maxAttempts - Max retry attempts (default: 10)
+ * @param {number} options.retryDelay - Delay between retries in ms (default: 1000)
+ * @returns {Promise<string|null>} Anfrage-ID or null if not found
+ */
+async function findPartnerAnfrageWithRetry(page, kennzeichen, options = {}) {
+  const maxAttempts = options.maxAttempts || 10;
+  const retryDelay = options.retryDelay || 1000;
+
+  return await page.evaluate(async ({ kz, max, delay }) => {
+    const db = window.firebaseApp.db();
+
+    for (let i = 0; i < max; i++) {
+      const snapshot = await db.collection('partnerAnfragen')
+        .where('kennzeichen', '==', kz)
+        .limit(1)
+        .get();
+
+      if (!snapshot.empty) {
+        console.log(`✅ Anfrage found after ${i + 1} attempt(s) (${(i + 1) * delay}ms)`);
+        return snapshot.docs[0].id;
+      }
+
+      console.log(`⏳ Attempt ${i + 1}/${max}: Waiting for Firestore index... (${delay}ms)`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+
+    console.error(`❌ Anfrage not found after ${max} attempts (${max * delay}ms total)`);
+    return null;
+  }, { kz: kennzeichen, max: maxAttempts, delay: retryDelay });
+}
+
 module.exports = {
   waitForFirebaseReady,
   checkVehicleExists,
@@ -142,5 +186,6 @@ module.exports = {
   deleteVehicle,
   deleteCustomer,
   waitForRealtimeUpdate,
-  setupConsoleMonitoring
+  setupConsoleMonitoring,
+  findPartnerAnfrageWithRetry
 };
