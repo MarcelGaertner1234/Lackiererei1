@@ -132,6 +132,19 @@ window.firebaseApp = {
   }
 };
 
+// Global initFirebase() function for compatibility with anfrage.html and other pages
+window.initFirebase = async function() {
+  // Already initialized above, just return resolved promise
+  console.log('✅ initFirebase() called (already initialized)');
+  return Promise.resolve();
+};
+
+// CRITICAL: Expose db and storage as GLOBAL variables (not just functions!)
+// anfrage.html expects global `db` variable (Lines 348, 574, 649)
+window.db = db;
+window.storage = storage;
+
+console.log('✅ Global db and storage variables exposed');
 console.log('✅ Firebase Config Template loaded successfully');
 console.log('  Project ID: ' + firebaseConfig.projectId);
 console.log('  Emulator Mode: ' + useEmulator);
