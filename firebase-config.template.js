@@ -88,12 +88,24 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         console.warn('⚠️ Storage Emulator connection:', e.message);
       }
+
+      // CRITICAL FIX: Expose db and storage IMMEDIATELY (not 50 lines later!)
+      // Problem: initFirebase() returns BEFORE window.db is set (Lines 100-104 vs 158)
+      // Solution: Set window.db RIGHT AFTER creation
+      window.db = db;
+      window.storage = storage;
+      console.log('✅ IMMEDIATE: window.db and window.storage exposed');
     } else {
       // Use real Firebase (Production/Staging)
       db = firebaseApp.firestore();
       storage = firebaseApp.storage();
       console.log('✅ Firestore connected (Production)');
       console.log('✅ Storage connected (Production)');
+
+      // CRITICAL FIX: Expose db and storage IMMEDIATELY
+      window.db = db;
+      window.storage = storage;
+      console.log('✅ IMMEDIATE: window.db and window.storage exposed');
     }
 
     // Mark as initialized
@@ -153,12 +165,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    // CRITICAL: Expose db and storage as GLOBAL variables (not just functions!)
-    // anfrage.html expects global `db` variable (Lines 348, 574, 649)
-    window.db = db;
-    window.storage = storage;
-
-    console.log('✅ Global db and storage variables exposed');
+    // NOTE: window.db and window.storage already exposed immediately after creation (Lines 95-97 + 106-108)
+    // This ensures loadAnfrage() can access db right after initFirebase() resolves
+    console.log('✅ Global db and storage variables confirmed available');
     console.log('✅ Firebase Config Template loaded successfully');
     console.log('  Project ID: ' + firebaseConfig.projectId);
     console.log('  Emulator Mode: ' + useEmulator);
