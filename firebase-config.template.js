@@ -178,3 +178,8 @@ document.addEventListener('DOMContentLoaded', () => {
     throw error;
   }
 });
+
+// WORKFLOW TRIGGER: This comment was added to trigger GitHub Actions Run #25
+// The previous commits (RUN_24_VALIDATION.md, MONITORING_RUN_25.md) did not
+// trigger the workflow because they were not in the trigger paths.
+// Date: 2025-10-14 22:45
