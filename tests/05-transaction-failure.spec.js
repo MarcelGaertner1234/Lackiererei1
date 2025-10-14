@@ -156,6 +156,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
+    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
+    console.log('⏳ Waiting for Firestore to commit KVA status update...');
+    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
+    console.log('✅ Firestore ready, navigating to detail page...');
+
     // Test: Simuliere gleichzeitige Annahme von 2 Partnern
 
     // Partner A öffnet Detail-Seite
@@ -307,6 +312,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
+    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
+    console.log('⏳ Test 5.2: Waiting for Firestore to commit KVA status update...');
+    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
+    console.log('✅ Firestore ready, navigating to detail page...');
+
     // Test: Provoziere Transaction Failure durch Status-Änderung VOR Annahme
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
@@ -440,6 +450,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
+    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
+    console.log('⏳ Test 5.3: Waiting for Firestore to commit KVA status update...');
+    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
+    console.log('✅ Firestore ready, continuing with test...');
+
     // Override savePhotosToFirestore um Fehler zu provozieren
     await page.evaluate(() => {
       const originalSave = window.firebaseApp.savePhotosToFirestore;
@@ -548,6 +563,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
         }
       });
     }, { id: anfrageId, photo: testPhotoBase64 });
+
+    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
+    console.log('⏳ Test 5.4: Waiting for Firestore to commit KVA status update...');
+    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
+    console.log('✅ Firestore ready, continuing with test...');
 
     // Override Firestore savePhotosToFirestore um Fehler zu simulieren
     await page.evaluate(() => {
