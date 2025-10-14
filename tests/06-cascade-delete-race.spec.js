@@ -99,7 +99,7 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       marke: 'Audi',
       modell: 'A4 B9'
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {
@@ -198,7 +198,7 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {
@@ -314,7 +314,7 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {
@@ -440,7 +440,7 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {
@@ -529,7 +529,7 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerName: testPartnerName,
       kennzeichen: lowercaseKennzeichen // lowercase input
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {

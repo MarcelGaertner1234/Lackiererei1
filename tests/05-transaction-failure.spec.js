@@ -104,7 +104,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       modell: '3er G20',
       anliefertermin: '2025-10-20'
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     // Hole Anfrage-ID
@@ -209,7 +209,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       window.testPhotoData = [fakePhotoData];
     });
 
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {
@@ -305,7 +305,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {
@@ -372,7 +372,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       partnerName: testPartnerName,
       kennzeichen: testKennzeichen
     });
-    await page.click('button:has-text("Anfrage absenden")');
+    await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
 
     const anfrageId = await page.evaluate(async (kz) => {
