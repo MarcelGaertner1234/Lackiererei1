@@ -156,10 +156,10 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
-    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
-    console.log('⏳ Waiting for Firestore to commit KVA status update...');
-    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
-    console.log('✅ Firestore ready, navigating to detail page...');
+    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
+    console.log('⏳ Waiting 5s for Firestore + onSnapshot...');
+    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
+    console.log('✅ Ready, navigating...');
 
     // Test: Simuliere gleichzeitige Annahme von 2 Partnern
 
@@ -198,11 +198,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Partner A nimmt KVA an (ERSTE Annahme sollte ERFOLGEN)
     page.on('dialog', dialog => dialog.accept());
 
-    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    // CRITICAL FIX RUN #30: Increased timeout to wait for onSnapshot re-render
     console.log('⏳ Waiting for "KVA annehmen" button to become visible...');
     await page.waitForSelector('button:has-text("KVA annehmen")', {
       state: 'visible',
-      timeout: 10000
+      timeout: 30000  // 30 seconds to wait for onSnapshot cycle
     });
     console.log('✅ Button visible, clicking...');
 
@@ -312,10 +312,10 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
-    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
-    console.log('⏳ Test 5.2: Waiting for Firestore to commit KVA status update...');
-    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
-    console.log('✅ Firestore ready, navigating to detail page...');
+    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
+    console.log('⏳ Test 5.2: Waiting 5s for Firestore + onSnapshot...');
+    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
+    console.log('✅ Ready, navigating...');
 
     // Test: Provoziere Transaction Failure durch Status-Änderung VOR Annahme
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
@@ -349,11 +349,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       dialog.accept();
     });
 
-    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    // CRITICAL FIX RUN #30: Increased timeout to wait for onSnapshot re-render
     console.log('⏳ Test 5.2: Waiting for "KVA annehmen" button to become visible...');
     await page.waitForSelector('button:has-text("KVA annehmen")', {
       state: 'visible',
-      timeout: 10000
+      timeout: 30000  // 30 seconds to wait for onSnapshot cycle
     });
     console.log('✅ Button visible, clicking...');
 
@@ -450,10 +450,10 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
-    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
-    console.log('⏳ Test 5.3: Waiting for Firestore to commit KVA status update...');
-    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
-    console.log('✅ Firestore ready, continuing with test...');
+    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
+    console.log('⏳ Test 5.3: Waiting 5s for Firestore + onSnapshot...');
+    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
+    console.log('✅ Ready, continuing...');
 
     // Override savePhotosToFirestore um Fehler zu provozieren
     await page.evaluate(() => {
@@ -480,11 +480,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     page.on('dialog', dialog => dialog.accept());
 
-    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    // CRITICAL FIX RUN #30: Increased timeout to wait for onSnapshot re-render
     console.log('⏳ Test 5.3: Waiting for "KVA annehmen" button to become visible...');
     await page.waitForSelector('button:has-text("KVA annehmen")', {
       state: 'visible',
-      timeout: 10000
+      timeout: 30000  // 30 seconds to wait for onSnapshot cycle
     });
     console.log('✅ Button visible, clicking...');
 
@@ -564,10 +564,10 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, { id: anfrageId, photo: testPhotoBase64 });
 
-    // CRITICAL FIX RUN #29: Wait for Firestore to commit + index KVA status update
-    console.log('⏳ Test 5.4: Waiting for Firestore to commit KVA status update...');
-    await page.waitForTimeout(2000);  // 2 seconds for Firebase Emulator
-    console.log('✅ Firestore ready, continuing with test...');
+    // CRITICAL FIX RUN #30: Increased wait time for Firestore + onSnapshot
+    console.log('⏳ Test 5.4: Waiting 5s for Firestore + onSnapshot...');
+    await page.waitForTimeout(5000);  // 5 seconds for Firebase Emulator + onSnapshot first trigger
+    console.log('✅ Ready, continuing...');
 
     // Override Firestore savePhotosToFirestore um Fehler zu simulieren
     await page.evaluate(() => {
@@ -593,11 +593,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     page.on('dialog', dialog => dialog.accept());
 
-    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    // CRITICAL FIX RUN #30: Increased timeout to wait for onSnapshot re-render
     console.log('⏳ Test 5.4: Waiting for "KVA annehmen" button to become visible...');
     await page.waitForSelector('button:has-text("KVA annehmen")', {
       state: 'visible',
-      timeout: 10000
+      timeout: 30000  // 30 seconds to wait for onSnapshot cycle
     });
     console.log('✅ Button visible, clicking...');
 
