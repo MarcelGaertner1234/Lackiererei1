@@ -144,7 +144,7 @@ async function fillPartnerRequestForm(page, data = {}) {
 
   const formData = { ...defaults, ...data };
 
-  // DEBUG: Partner-Session via LocalStorage setzen
+  // Set Partner-Session via LocalStorage (no reload needed - persists automatically)
   await page.evaluate((partnerData) => {
     const partnerObj = {
       id: 'test-partner-' + Date.now(),
@@ -154,31 +154,21 @@ async function fillPartnerRequestForm(page, data = {}) {
       adresse: 'Teststraße 123, 12345 Teststadt'
     };
     localStorage.setItem('partner', JSON.stringify(partnerObj));
-    console.log('🔧 LocalStorage SET:', localStorage.getItem('partner'));
+    console.log('🔧 Partner-Session set in LocalStorage:', partnerObj.name);
+
+    // Update Partner Name display immediately (no reload needed!)
+    const partnerNameEl = document.getElementById('partnerName');
+    if (partnerNameEl) {
+      partnerNameEl.textContent = partnerObj.name;
+      console.log('✅ Partner Name updated in DOM:', partnerNameEl.textContent);
+    }
   }, formData);
 
-  console.log('🔄 Reloading page to trigger DOMContentLoaded + checkLogin()...');
-  await page.reload();
-
-  // DEBUG: Verify LocalStorage persisted after reload
-  const partnerStored = await page.evaluate(() => {
-    const stored = localStorage.getItem('partner');
-    console.log('✅ LocalStorage AFTER reload:', stored);
-    return stored;
-  });
-  console.log('📦 Partner in LocalStorage after reload:', partnerStored);
-
-  // FIX #2: Wait for Firebase initialization only (skip Termine loading)
-  console.log('⏳ Waiting for Firebase...');
-
   // Wait for Firebase ready
+  console.log('⏳ Waiting for Firebase initialization...');
   await page.waitForFunction(() => {
     return window.firebaseInitialized === true;
   }, { timeout: 10000 });
-
-  // REMOVED: Partner Name wait (not critical, was causing timeout in Run #9)
-  // REMOVED: Termin Grid loading wait (causing timeout in Run #10, will mock at Step 7)
-
   console.log('✅ Firebase ready');
 
   // ============================================================
