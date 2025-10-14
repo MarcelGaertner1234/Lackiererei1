@@ -128,20 +128,71 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     await waitForSuccessMessage(page);
 
-    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
-    // CRITICAL FIX RUN #34: Add page URL logging for context verification
-    console.log('🔍 Test 5.1: Finding Partner-Anfrage with Retry-Logic...');
+    // CRITICAL FIX RUN #35: Simple Direct Query (bypass helper wrapper)
+    // HYPOTHESIS: page.evaluate() was crashing before diagnostic logs executed
+    // SOLUTION: Simplified retry-logic directly in test with explicit logging
+    console.log('🔍 RUN #35: Test 5.1 - Starting SIMPLIFIED query for kennzeichen:', testKennzeichen);
     console.log(`  Current Page URL: ${page.url()}`);
 
-    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
-      maxAttempts: 10,
-      retryDelay: 1000
-    });
+    let anfrageId = null;
+    const maxAttempts = 10;
+    const retryDelay = 1000;
 
-    // CRITICAL FIX RUN #34: Screenshot on failure
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`⏳ RUN #35: Attempt ${attempt}/${maxAttempts} - Querying Firestore...`);
+
+      anfrageId = await page.evaluate(async (kz) => {
+        console.log(`  🔍 Browser Context: Querying for kennzeichen="${kz}"`);
+        console.log(`  Firebase Available:`, typeof window.firebaseApp);
+        console.log(`  db() Available:`, typeof window.firebaseApp?.db);
+
+        if (!window.firebaseApp || !window.firebaseApp.db) {
+          console.error('  ❌ window.firebaseApp.db NOT available!');
+          return null;
+        }
+
+        const db = window.firebaseApp.db();
+        console.log(`  ✅ Firebase DB ready, querying partnerAnfragen...`);
+
+        try {
+          const snapshot = await db.collection('partnerAnfragen')
+            .where('kennzeichen', '==', kz)
+            .limit(1)
+            .get();
+
+          console.log(`  Query complete: empty=${snapshot.empty}, size=${snapshot.size}`);
+
+          if (!snapshot.empty) {
+            const docId = snapshot.docs[0].id;
+            console.log(`  ✅ Found! Document ID: ${docId}`);
+            return docId;
+          } else {
+            console.log(`  ⚠️ No document found matching kennzeichen="${kz}"`);
+            return null;
+          }
+        } catch (error) {
+          console.error(`  ❌ Query ERROR:`, error.message);
+          return null;
+        }
+      }, testKennzeichen);
+
+      if (anfrageId) {
+        console.log(`✅ RUN #35: Found anfrage ID after ${attempt} attempt(s): ${anfrageId}`);
+        break;
+      }
+
+      if (attempt < maxAttempts) {
+        console.log(`  ⏱️ Waiting ${retryDelay}ms before retry...`);
+        await page.waitForTimeout(retryDelay);
+      }
+    }
+
+    // Screenshot on failure
     if (!anfrageId) {
-      await page.screenshot({ path: 'test-results/test-5.1-anfrage-not-found.png', fullPage: true });
-      console.log('📸 Screenshot saved: test-5.1-anfrage-not-found.png');
+      const screenshotPath = 'test-results/test-5.1-anfrage-not-found-run35.png';
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 RUN #35: Screenshot saved: ${screenshotPath}`);
+      console.log(`❌ RUN #35: Failed to find anfrage after ${maxAttempts} attempts`);
     }
 
     expect(anfrageId).toBeTruthy();
@@ -305,20 +356,62 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     await waitForSuccessMessage(page);
 
-    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
-    // CRITICAL FIX RUN #34: Add page URL logging for context verification
-    console.log('🔍 Test 5.2: Finding Partner-Anfrage with Retry-Logic...');
+    // CRITICAL FIX RUN #35: Simple Direct Query (same as Test 5.1)
+    console.log('🔍 RUN #35: Test 5.2 - Starting SIMPLIFIED query for kennzeichen:', testKennzeichen);
     console.log(`  Current Page URL: ${page.url()}`);
 
-    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
-      maxAttempts: 10,
-      retryDelay: 1000
-    });
+    let anfrageId = null;
+    const maxAttempts = 10;
+    const retryDelay = 1000;
 
-    // CRITICAL FIX RUN #34: Screenshot on failure
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`⏳ RUN #35: Attempt ${attempt}/${maxAttempts} - Querying Firestore...`);
+
+      anfrageId = await page.evaluate(async (kz) => {
+        console.log(`  🔍 Browser Context: Querying for kennzeichen="${kz}"`);
+        if (!window.firebaseApp || !window.firebaseApp.db) {
+          console.error('  ❌ window.firebaseApp.db NOT available!');
+          return null;
+        }
+
+        const db = window.firebaseApp.db();
+        try {
+          const snapshot = await db.collection('partnerAnfragen')
+            .where('kennzeichen', '==', kz)
+            .limit(1)
+            .get();
+
+          console.log(`  Query complete: empty=${snapshot.empty}, size=${snapshot.size}`);
+          if (!snapshot.empty) {
+            const docId = snapshot.docs[0].id;
+            console.log(`  ✅ Found! Document ID: ${docId}`);
+            return docId;
+          } else {
+            console.log(`  ⚠️ No document found`);
+            return null;
+          }
+        } catch (error) {
+          console.error(`  ❌ Query ERROR:`, error.message);
+          return null;
+        }
+      }, testKennzeichen);
+
+      if (anfrageId) {
+        console.log(`✅ RUN #35: Found anfrage ID after ${attempt} attempt(s): ${anfrageId}`);
+        break;
+      }
+
+      if (attempt < maxAttempts) {
+        console.log(`  ⏱️ Waiting ${retryDelay}ms before retry...`);
+        await page.waitForTimeout(retryDelay);
+      }
+    }
+
     if (!anfrageId) {
-      await page.screenshot({ path: 'test-results/test-5.2-anfrage-not-found.png', fullPage: true });
-      console.log('📸 Screenshot saved: test-5.2-anfrage-not-found.png');
+      const screenshotPath = 'test-results/test-5.2-anfrage-not-found-run35.png';
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 RUN #35: Screenshot saved: ${screenshotPath}`);
+      console.log(`❌ RUN #35: Failed to find anfrage after ${maxAttempts} attempts`);
     }
 
     // Simuliere KVA mit Fotos
@@ -446,20 +539,62 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     await waitForSuccessMessage(page);
 
-    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
-    // CRITICAL FIX RUN #34: Add page URL logging for context verification
-    console.log('🔍 Test 5.3: Finding Partner-Anfrage with Retry-Logic...');
+    // CRITICAL FIX RUN #35: Simple Direct Query (same as Test 5.1)
+    console.log('🔍 RUN #35: Test 5.3 - Starting SIMPLIFIED query for kennzeichen:', testKennzeichen);
     console.log(`  Current Page URL: ${page.url()}`);
 
-    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
-      maxAttempts: 10,
-      retryDelay: 1000
-    });
+    let anfrageId = null;
+    const maxAttempts = 10;
+    const retryDelay = 1000;
 
-    // CRITICAL FIX RUN #34: Screenshot on failure
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`⏳ RUN #35: Attempt ${attempt}/${maxAttempts} - Querying Firestore...`);
+
+      anfrageId = await page.evaluate(async (kz) => {
+        console.log(`  🔍 Browser Context: Querying for kennzeichen="${kz}"`);
+        if (!window.firebaseApp || !window.firebaseApp.db) {
+          console.error('  ❌ window.firebaseApp.db NOT available!');
+          return null;
+        }
+
+        const db = window.firebaseApp.db();
+        try {
+          const snapshot = await db.collection('partnerAnfragen')
+            .where('kennzeichen', '==', kz)
+            .limit(1)
+            .get();
+
+          console.log(`  Query complete: empty=${snapshot.empty}, size=${snapshot.size}`);
+          if (!snapshot.empty) {
+            const docId = snapshot.docs[0].id;
+            console.log(`  ✅ Found! Document ID: ${docId}`);
+            return docId;
+          } else {
+            console.log(`  ⚠️ No document found`);
+            return null;
+          }
+        } catch (error) {
+          console.error(`  ❌ Query ERROR:`, error.message);
+          return null;
+        }
+      }, testKennzeichen);
+
+      if (anfrageId) {
+        console.log(`✅ RUN #35: Found anfrage ID after ${attempt} attempt(s): ${anfrageId}`);
+        break;
+      }
+
+      if (attempt < maxAttempts) {
+        console.log(`  ⏱️ Waiting ${retryDelay}ms before retry...`);
+        await page.waitForTimeout(retryDelay);
+      }
+    }
+
     if (!anfrageId) {
-      await page.screenshot({ path: 'test-results/test-5.3-anfrage-not-found.png', fullPage: true });
-      console.log('📸 Screenshot saved: test-5.3-anfrage-not-found.png');
+      const screenshotPath = 'test-results/test-5.3-anfrage-not-found-run35.png';
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 RUN #35: Screenshot saved: ${screenshotPath}`);
+      console.log(`❌ RUN #35: Failed to find anfrage after ${maxAttempts} attempts`);
     }
 
     // Simuliere KVA mit KAPUTTEN Foto-Daten (provoziert Upload-Fehler)
@@ -559,20 +694,62 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     await waitForSuccessMessage(page);
 
-    // CRITICAL FIX RUN #32: Use Retry-Logic to wait for Firestore Index
-    // CRITICAL FIX RUN #34: Add page URL logging for context verification
-    console.log('🔍 Test 5.4: Finding Partner-Anfrage with Retry-Logic...');
+    // CRITICAL FIX RUN #35: Simple Direct Query (same as Test 5.1)
+    console.log('🔍 RUN #35: Test 5.4 - Starting SIMPLIFIED query for kennzeichen:', testKennzeichen);
     console.log(`  Current Page URL: ${page.url()}`);
 
-    const anfrageId = await findPartnerAnfrageWithRetry(page, testKennzeichen, {
-      maxAttempts: 10,
-      retryDelay: 1000
-    });
+    let anfrageId = null;
+    const maxAttempts = 10;
+    const retryDelay = 1000;
 
-    // CRITICAL FIX RUN #34: Screenshot on failure
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`⏳ RUN #35: Attempt ${attempt}/${maxAttempts} - Querying Firestore...`);
+
+      anfrageId = await page.evaluate(async (kz) => {
+        console.log(`  🔍 Browser Context: Querying for kennzeichen="${kz}"`);
+        if (!window.firebaseApp || !window.firebaseApp.db) {
+          console.error('  ❌ window.firebaseApp.db NOT available!');
+          return null;
+        }
+
+        const db = window.firebaseApp.db();
+        try {
+          const snapshot = await db.collection('partnerAnfragen')
+            .where('kennzeichen', '==', kz)
+            .limit(1)
+            .get();
+
+          console.log(`  Query complete: empty=${snapshot.empty}, size=${snapshot.size}`);
+          if (!snapshot.empty) {
+            const docId = snapshot.docs[0].id;
+            console.log(`  ✅ Found! Document ID: ${docId}`);
+            return docId;
+          } else {
+            console.log(`  ⚠️ No document found`);
+            return null;
+          }
+        } catch (error) {
+          console.error(`  ❌ Query ERROR:`, error.message);
+          return null;
+        }
+      }, testKennzeichen);
+
+      if (anfrageId) {
+        console.log(`✅ RUN #35: Found anfrage ID after ${attempt} attempt(s): ${anfrageId}`);
+        break;
+      }
+
+      if (attempt < maxAttempts) {
+        console.log(`  ⏱️ Waiting ${retryDelay}ms before retry...`);
+        await page.waitForTimeout(retryDelay);
+      }
+    }
+
     if (!anfrageId) {
-      await page.screenshot({ path: 'test-results/test-5.4-anfrage-not-found.png', fullPage: true });
-      console.log('📸 Screenshot saved: test-5.4-anfrage-not-found.png');
+      const screenshotPath = 'test-results/test-5.4-anfrage-not-found-run35.png';
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`📸 RUN #35: Screenshot saved: ${screenshotPath}`);
+      console.log(`❌ RUN #35: Failed to find anfrage after ${maxAttempts} attempts`);
     }
 
     // Simuliere KVA mit Fotos
