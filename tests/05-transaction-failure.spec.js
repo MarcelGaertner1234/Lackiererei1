@@ -107,7 +107,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(2000); // Wait for Firestore write to complete
+    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
     // Hole Anfrage-ID
     const anfrageId = await page.evaluate(async (kz) => {
@@ -142,14 +142,34 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Partner A öffnet Detail-Seite
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
-    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
+
+    // Wait for either #content OR #error to be visible (fail fast if document not found)
+    const pageState = await Promise.race([
+      page.waitForSelector('#content', { state: 'visible', timeout: 15000 }).then(() => 'content'),
+      page.waitForSelector('#error', { state: 'visible', timeout: 15000 }).then(() => 'error')
+    ]);
+
+    if (pageState === 'error') {
+      const errorMsg = await page.textContent('#error');
+      throw new Error(`Partner-Anfrage not found in Firestore: ${errorMsg}`);
+    }
 
     // Partner B öffnet GLEICHE Detail-Seite in neuem Tab
     const partnerB = await context.newPage();
     const consoleBMonitor = setupConsoleMonitoring(partnerB);
     await partnerB.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await partnerB.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
-    await partnerB.waitForSelector('#content', { state: 'visible', timeout: 15000 });
+
+    // Wait for either #content OR #error to be visible
+    const pageStateB = await Promise.race([
+      partnerB.waitForSelector('#content', { state: 'visible', timeout: 15000 }).then(() => 'content'),
+      partnerB.waitForSelector('#error', { state: 'visible', timeout: 15000 }).then(() => 'error')
+    ]);
+
+    if (pageStateB === 'error') {
+      const errorMsgB = await partnerB.textContent('#error');
+      throw new Error(`Partner B: Anfrage not found in Firestore: ${errorMsgB}`);
+    }
 
     // Partner A nimmt KVA an (ERSTE Annahme sollte ERFOLGEN)
     page.on('dialog', dialog => dialog.accept());
@@ -215,7 +235,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(2000); // Wait for Firestore write to complete
+    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -244,7 +264,17 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Test: Provoziere Transaction Failure durch Status-Änderung VOR Annahme
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
-    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
+
+    // Wait for either #content OR #error to be visible
+    const pageState2 = await Promise.race([
+      page.waitForSelector('#content', { state: 'visible', timeout: 15000 }).then(() => 'content'),
+      page.waitForSelector('#error', { state: 'visible', timeout: 15000 }).then(() => 'error')
+    ]);
+
+    if (pageState2 === 'error') {
+      const errorMsg = await page.textContent('#error');
+      throw new Error(`Test 5.2: Anfrage not found in Firestore: ${errorMsg}`);
+    }
 
     // Ändere Status zu 'beauftragt' (macht Transaction fehlschlagen)
     await page.evaluate(async (id) => {
@@ -313,7 +343,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(2000); // Wait for Firestore write to complete
+    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -348,7 +378,17 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // KVA annehmen (Transaction sollte ERFOLGEN, Foto-Upload FEHLSCHLAGEN)
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
-    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
+
+    // Wait for either #content OR #error to be visible
+    const pageState3 = await Promise.race([
+      page.waitForSelector('#content', { state: 'visible', timeout: 15000 }).then(() => 'content'),
+      page.waitForSelector('#error', { state: 'visible', timeout: 15000 }).then(() => 'error')
+    ]);
+
+    if (pageState3 === 'error') {
+      const errorMsg = await page.textContent('#error');
+      throw new Error(`Test 5.3: Anfrage not found in Firestore: ${errorMsg}`);
+    }
 
     page.on('dialog', dialog => dialog.accept());
     await page.click('button:has-text("KVA annehmen")');
@@ -382,7 +422,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
-    await page.waitForTimeout(2000); // Wait for Firestore write to complete
+    await page.waitForTimeout(4000); // Wait for Firestore write + indexing (Firebase Emulator needs more time)
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -418,7 +458,17 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // KVA annehmen
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
-    await page.waitForSelector('#content', { state: 'visible', timeout: 15000 });
+
+    // Wait for either #content OR #error to be visible
+    const pageState4 = await Promise.race([
+      page.waitForSelector('#content', { state: 'visible', timeout: 15000 }).then(() => 'content'),
+      page.waitForSelector('#error', { state: 'visible', timeout: 15000 }).then(() => 'error')
+    ]);
+
+    if (pageState4 === 'error') {
+      const errorMsg = await page.textContent('#error');
+      throw new Error(`Test 5.4: Anfrage not found in Firestore: ${errorMsg}`);
+    }
 
     page.on('dialog', dialog => dialog.accept());
     await page.click('button:has-text("KVA annehmen")');
