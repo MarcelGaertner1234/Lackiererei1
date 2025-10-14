@@ -192,6 +192,15 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     // Partner A nimmt KVA an (ERSTE Annahme sollte ERFOLGEN)
     page.on('dialog', dialog => dialog.accept());
+
+    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    console.log('⏳ Waiting for "KVA annehmen" button to become visible...');
+    await page.waitForSelector('button:has-text("KVA annehmen")', {
+      state: 'visible',
+      timeout: 10000
+    });
+    console.log('✅ Button visible, clicking...');
+
     await page.click('button:has-text("KVA annehmen")');
 
     // Warte kurz bis Transaction processed
@@ -330,6 +339,14 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       dialog.accept();
     });
 
+    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    console.log('⏳ Test 5.2: Waiting for "KVA annehmen" button to become visible...');
+    await page.waitForSelector('button:has-text("KVA annehmen")', {
+      state: 'visible',
+      timeout: 10000
+    });
+    console.log('✅ Button visible, clicking...');
+
     await page.click('button:has-text("KVA annehmen")');
     await page.waitForTimeout(2000);
 
@@ -447,6 +464,15 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     }
 
     page.on('dialog', dialog => dialog.accept());
+
+    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    console.log('⏳ Test 5.3: Waiting for "KVA annehmen" button to become visible...');
+    await page.waitForSelector('button:has-text("KVA annehmen")', {
+      state: 'visible',
+      timeout: 10000
+    });
+    console.log('✅ Button visible, clicking...');
+
     await page.click('button:has-text("KVA annehmen")');
     await page.waitForTimeout(3000);
 
@@ -546,6 +572,15 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     }
 
     page.on('dialog', dialog => dialog.accept());
+
+    // CRITICAL FIX RUN #28: Wait for button to become visible (renderAnfrage() must complete)
+    console.log('⏳ Test 5.4: Waiting for "KVA annehmen" button to become visible...');
+    await page.waitForSelector('button:has-text("KVA annehmen")', {
+      state: 'visible',
+      timeout: 10000
+    });
+    console.log('✅ Button visible, clicking...');
+
     await page.click('button:has-text("KVA annehmen")');
     await page.waitForTimeout(3000);
 
