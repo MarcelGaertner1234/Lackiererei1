@@ -32,9 +32,128 @@ let firebaseApp;
 let db;
 let storage;
 
-// CRITICAL FIX: Define initFirebase() IMMEDIATELY to prevent race condition
+// CRITICAL FIX RUN #16: Define window.firebaseApp IMMEDIATELY to prevent race condition
 // Problem: anfrage-detail.html DOMContentLoaded may fire BEFORE firebase-config DOMContentLoaded!
-// Solution: Define initFirebase() globally before any DOMContentLoaded listeners run
+// Solution: Define window.firebaseApp object structure immediately (before any DOMContentLoaded)
+// The actual Firebase instances (firebaseApp, db, storage) will be set when initialized
+window.firebaseApp = {
+  app: null,
+  db: () => db,
+  storage: () => storage,
+
+  // Helper Functions (same as real firebase-config.js)
+  getAllFahrzeuge: async function() {
+    const snapshot = await db.collection('fahrzeuge').get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  getAllKunden: async function() {
+    const snapshot = await db.collection('kunden').get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  },
+
+  deleteFahrzeug: async function(id) {
+    await db.collection('fahrzeuge').doc(id).delete();
+  },
+
+  deleteKunde: async function(id) {
+    await db.collection('kunden').doc(id).delete();
+  },
+
+  savePhotosToFirestore: async function(fahrzeugId, photos, type = 'vorher') {
+    const photosRef = db.collection('fahrzeuge')
+      .doc(String(fahrzeugId))
+      .collection('fotos')
+      .doc(type);
+
+    await photosRef.set({
+      photos: photos,
+      count: photos.length,
+      lastUpdated: Date.now()
+    });
+  },
+
+  listenToFahrzeuge: function(callback) {
+    return db.collection('fahrzeuge')
+      .onSnapshot(snapshot => {
+        const fahrzeuge = [];
+        snapshot.forEach(doc => {
+          fahrzeuge.push({ id: doc.id, ...doc.data() });
+        });
+        callback(fahrzeuge);
+      });
+  },
+
+  // CRITICAL FIX RUN #15: Add registriereKundenbesuch function
+  // This function is called by partner-app/anfrage-detail.html Line 1801
+  registriereKundenbesuch: async function(kundeData) {
+    try {
+      // Backward compatibility: Accept string or object
+      const kundenname = typeof kundeData === 'string' ? kundeData : kundeData.name;
+
+      if (!kundenname) {
+        console.error('❌ Kein Kundenname angegeben!');
+        return null;
+      }
+
+      // Check if customer exists
+      const snapshot = await db.collection('kunden')
+        .where('name', '==', kundenname)
+        .limit(1)
+        .get();
+
+      if (!snapshot.empty) {
+        // Update existing customer
+        const doc = snapshot.docs[0];
+        const kundeId = doc.id;
+        const existingData = doc.data();
+        const updates = {
+          anzahlBesuche: (existingData.anzahlBesuche || 0) + 1,
+          letzterBesuch: new Date().toISOString()
+        };
+
+        // Update with new data if provided
+        if (typeof kundeData === 'object') {
+          if (kundeData.email && !existingData.email) updates.email = kundeData.email;
+          if (kundeData.telefon && !existingData.telefon) updates.telefon = kundeData.telefon;
+          if (kundeData.partnerId && !existingData.partnerId) updates.partnerId = kundeData.partnerId;
+          if (kundeData.notizen) {
+            updates.notizen = (existingData.notizen || '') + '\n' + kundeData.notizen;
+          }
+        }
+
+        await db.collection('kunden').doc(kundeId).update(updates);
+        console.log(`✅ Besuch registriert für: ${kundenname} (${updates.anzahlBesuche}. Besuch)`);
+        return kundeId;
+      } else {
+        // Create new customer
+        const neuerKunde = {
+          id: 'kunde_' + Date.now(),
+          name: kundenname,
+          telefon: typeof kundeData === 'object' ? (kundeData.telefon || '') : '',
+          email: typeof kundeData === 'object' ? (kundeData.email || '') : '',
+          partnerId: typeof kundeData === 'object' ? (kundeData.partnerId || '') : '',
+          notizen: typeof kundeData === 'object' ? (kundeData.notizen || '') : '',
+          erstbesuch: new Date().toISOString(),
+          letzterBesuch: new Date().toISOString(),
+          anzahlBesuche: 1
+        };
+
+        await db.collection('kunden').doc(neuerKunde.id).set(neuerKunde);
+        console.log(`✅ Neuer Kunde erstellt: ${kundenname} (ID: ${neuerKunde.id})`);
+        console.log(`   📧 Email: ${neuerKunde.email || 'N/A'}`);
+        console.log(`   📞 Telefon: ${neuerKunde.telefon || 'N/A'}`);
+        return neuerKunde.id;
+      }
+    } catch (error) {
+      console.error('❌ Fehler beim Registrieren des Besuchs:', error);
+      console.error('   Details:', error.message);
+      return null;
+    }
+  }
+};
+
+// Define initFirebase() helper for compatibility
 window.initFirebase = async function() {
   // If Firebase already initialized, return immediately
   if (window.firebaseInitialized) {
@@ -108,6 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('✅ IMMEDIATE: window.db and window.storage exposed');
     }
 
+    // Update window.firebaseApp.app with initialized instance
+    window.firebaseApp.app = firebaseApp;
+
     // Mark as initialized
     window.firebaseInitialized = true;
     console.log('✅ Firebase fully initialized');
@@ -115,127 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Dispatch custom event for tests
     window.dispatchEvent(new Event('firebaseReady'));
 
-    // Export für Tests
-    window.firebaseApp = {
-      app: firebaseApp,
-      db: () => db,
-      storage: () => storage,
-
-      // Helper Functions (same as real firebase-config.js)
-      getAllFahrzeuge: async function() {
-        const snapshot = await db.collection('fahrzeuge').get();
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      },
-
-      getAllKunden: async function() {
-        const snapshot = await db.collection('kunden').get();
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      },
-
-      deleteFahrzeug: async function(id) {
-        await db.collection('fahrzeuge').doc(id).delete();
-      },
-
-      deleteKunde: async function(id) {
-        await db.collection('kunden').doc(id).delete();
-      },
-
-      savePhotosToFirestore: async function(fahrzeugId, photos, type = 'vorher') {
-        const photosRef = db.collection('fahrzeuge')
-          .doc(String(fahrzeugId))
-          .collection('fotos')
-          .doc(type);
-
-        await photosRef.set({
-          photos: photos,
-          count: photos.length,
-          lastUpdated: Date.now()
-        });
-      },
-
-      listenToFahrzeuge: function(callback) {
-        return db.collection('fahrzeuge')
-          .onSnapshot(snapshot => {
-            const fahrzeuge = [];
-            snapshot.forEach(doc => {
-              fahrzeuge.push({ id: doc.id, ...doc.data() });
-            });
-            callback(fahrzeuge);
-          });
-      },
-
-      // CRITICAL FIX RUN #15: Add registriereKundenbesuch function
-      // This function is called by partner-app/anfrage-detail.html Line 1801
-      // Missing this function causes: "firebaseApp.registriereKundenbesuch is not a function"
-      registriereKundenbesuch: async function(kundeData) {
-        try {
-          // Backward compatibility: Accept string or object
-          const kundenname = typeof kundeData === 'string' ? kundeData : kundeData.name;
-
-          if (!kundenname) {
-            console.error('❌ Kein Kundenname angegeben!');
-            return null;
-          }
-
-          // Check if customer exists
-          const snapshot = await db.collection('kunden')
-            .where('name', '==', kundenname)
-            .limit(1)
-            .get();
-
-          if (!snapshot.empty) {
-            // Update existing customer
-            const doc = snapshot.docs[0];
-            const kundeId = doc.id;
-            const existingData = doc.data();
-            const updates = {
-              anzahlBesuche: (existingData.anzahlBesuche || 0) + 1,
-              letzterBesuch: new Date().toISOString()
-            };
-
-            // Update with new data if provided
-            if (typeof kundeData === 'object') {
-              if (kundeData.email && !existingData.email) updates.email = kundeData.email;
-              if (kundeData.telefon && !existingData.telefon) updates.telefon = kundeData.telefon;
-              if (kundeData.partnerId && !existingData.partnerId) updates.partnerId = kundeData.partnerId;
-              if (kundeData.notizen) {
-                updates.notizen = (existingData.notizen || '') + '\n' + kundeData.notizen;
-              }
-            }
-
-            await db.collection('kunden').doc(kundeId).update(updates);
-            console.log(`✅ Besuch registriert für: ${kundenname} (${updates.anzahlBesuche}. Besuch)`);
-            return kundeId;
-          } else {
-            // Create new customer
-            const neuerKunde = {
-              id: 'kunde_' + Date.now(),
-              name: kundenname,
-              telefon: typeof kundeData === 'object' ? (kundeData.telefon || '') : '',
-              email: typeof kundeData === 'object' ? (kundeData.email || '') : '',
-              partnerId: typeof kundeData === 'object' ? (kundeData.partnerId || '') : '',
-              notizen: typeof kundeData === 'object' ? (kundeData.notizen || '') : '',
-              erstbesuch: new Date().toISOString(),
-              letzterBesuch: new Date().toISOString(),
-              anzahlBesuche: 1
-            };
-
-            await db.collection('kunden').doc(neuerKunde.id).set(neuerKunde);
-            console.log(`✅ Neuer Kunde erstellt: ${kundenname} (ID: ${neuerKunde.id})`);
-            console.log(`   📧 Email: ${neuerKunde.email || 'N/A'}`);
-            console.log(`   📞 Telefon: ${neuerKunde.telefon || 'N/A'}`);
-            return neuerKunde.id;
-          }
-        } catch (error) {
-          console.error('❌ Fehler beim Registrieren des Besuchs:', error);
-          console.error('   Details:', error.message);
-          return null;
-        }
-      }
-    };
-
     // NOTE: window.db and window.storage already exposed immediately after creation (Lines 95-97 + 106-108)
-    // This ensures loadAnfrage() can access db right after initFirebase() resolves
+    // NOTE: window.firebaseApp object structure defined at Line 39 (BEFORE DOMContentLoaded)
+    // This ensures loadAnfrage() can access firebaseApp functions right after script loads
     console.log('✅ Global db and storage variables confirmed available');
     console.log('✅ Firebase Config Template loaded successfully');
     console.log('  Project ID: ' + firebaseConfig.projectId);
