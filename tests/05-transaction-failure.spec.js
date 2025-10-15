@@ -100,11 +100,19 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
+    // CRITICAL FIX RUN #40: Use dynamic date (tomorrow) to prevent validation failure
+    // Problem: Fixed date "2025-10-20" becomes past when test runs later → Date validation fails
+    // Solution: Calculate tomorrow's date dynamically
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const anliefertermin = tomorrow.toISOString().split('T')[0]; // Format: "YYYY-MM-DD"
+    console.log(`📅 Test 5.1: Using dynamic anliefertermin: ${anliefertermin}`);
+
     await fillPartnerRequestForm(page, {
       kennzeichen: testKennzeichen,
       marke: 'BMW',
       modell: '3er G20',
-      anliefertermin: '2025-10-20'
+      anliefertermin: anliefertermin
     });
 
     // CRITICAL FIX: Wait for button to be enabled and ready to click

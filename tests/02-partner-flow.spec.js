@@ -175,9 +175,15 @@ test.describe('FLOW 2: Partner-Annahme (B2B)', () => {
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
+    // CRITICAL FIX RUN #40: Use dynamic date (tomorrow) to prevent validation failure
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const anliefertermin = tomorrow.toISOString().split('T')[0];
+    console.log(`📅 Test 2.3: Using dynamic anliefertermin: ${anliefertermin}`);
+
     await fillPartnerRequestForm(page, {
       kennzeichen: testKennzeichen,
-      anliefertermin: '2025-10-20'
+      anliefertermin: anliefertermin
     });
     await page.click('button:has-text("Anfrage senden")');
     await waitForSuccessMessage(page);
@@ -242,7 +248,7 @@ test.describe('FLOW 2: Partner-Annahme (B2B)', () => {
     expect(vehicleData.kundenname).toBe(testPartnerName);
     expect(vehicleData.prozessStatus).toBe('terminiert'); // NICHT 'angenommen'!
     expect(vehicleData.vereinbarterPreis).toBe('1280');
-    expect(vehicleData.geplantesAbnahmeDatum).toBe('2025-10-20');
+    expect(vehicleData.geplantesAbnahmeDatum).toBe(anliefertermin); // Dynamic date from above
 
     // Prüfe Console Logs
     expect(consoleMonitor.hasErrors()).toBeFalsy();
