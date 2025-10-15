@@ -257,3 +257,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // The previous commits (RUN_24_VALIDATION.md, MONITORING_RUN_25.md) did not
 // trigger the workflow because they were not in the trigger paths.
 // Date: 2025-10-14 22:45
+
+// WORKFLOW TRIGGER: This comment was added to trigger GitHub Actions Run #27
+// RUN #27: Deleted local firebase-config.js to fix file structure conflict
+// The local file had different window.firebaseApp structure (function reference vs arrow function)
+// Only firebase-config.template.js remains as single source of truth
+// Date: 2025-10-16 00:19
