@@ -32,35 +32,35 @@ let firebaseApp;
 let db;
 let storage;
 
-// CRITICAL FIX RUN #16: Define window.firebaseApp IMMEDIATELY to prevent race condition
-// Problem: anfrage-detail.html DOMContentLoaded may fire BEFORE firebase-config DOMContentLoaded!
-// Solution: Define window.firebaseApp object structure immediately (before any DOMContentLoaded)
-// The actual Firebase instances (firebaseApp, db, storage) will be set when initialized
+// CRITICAL FIX RUN #17: Define window.firebaseApp IMMEDIATELY with Arrow Functions (Closure)
+// Problem (Run #16): Functions used `db` at DEFINITION time → db was undefined
+// Solution: Arrow Functions evaluate `db` at EXECUTION time (closure over outer scope)
+// The actual Firebase instances (firebaseApp, db, storage) will be set in DOMContentLoaded
 window.firebaseApp = {
   app: null,
   db: () => db,
   storage: () => storage,
 
-  // Helper Functions (same as real firebase-config.js)
-  getAllFahrzeuge: async function() {
+  // Helper Functions - CHANGED TO ARROW FUNCTIONS for closure access to `db`
+  getAllFahrzeuge: async () => {
     const snapshot = await db.collection('fahrzeuge').get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   },
 
-  getAllKunden: async function() {
+  getAllKunden: async () => {
     const snapshot = await db.collection('kunden').get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   },
 
-  deleteFahrzeug: async function(id) {
+  deleteFahrzeug: async (id) => {
     await db.collection('fahrzeuge').doc(id).delete();
   },
 
-  deleteKunde: async function(id) {
+  deleteKunde: async (id) => {
     await db.collection('kunden').doc(id).delete();
   },
 
-  savePhotosToFirestore: async function(fahrzeugId, photos, type = 'vorher') {
+  savePhotosToFirestore: async (fahrzeugId, photos, type = 'vorher') => {
     const photosRef = db.collection('fahrzeuge')
       .doc(String(fahrzeugId))
       .collection('fotos')
@@ -73,7 +73,7 @@ window.firebaseApp = {
     });
   },
 
-  listenToFahrzeuge: function(callback) {
+  listenToFahrzeuge: (callback) => {
     return db.collection('fahrzeuge')
       .onSnapshot(snapshot => {
         const fahrzeuge = [];
@@ -85,8 +85,9 @@ window.firebaseApp = {
   },
 
   // CRITICAL FIX RUN #15: Add registriereKundenbesuch function
+  // CRITICAL FIX RUN #17: Convert to arrow function for closure access
   // This function is called by partner-app/anfrage-detail.html Line 1801
-  registriereKundenbesuch: async function(kundeData) {
+  registriereKundenbesuch: async (kundeData) => {
     try {
       // Backward compatibility: Accept string or object
       const kundenname = typeof kundeData === 'string' ? kundeData : kundeData.name;
