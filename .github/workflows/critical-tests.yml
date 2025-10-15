@@ -97,24 +97,91 @@ jobs:
           echo "📦 Installed packages:"
           npm list @playwright/test playwright 2>/dev/null || echo "Packages check failed"
 
+      - name: Debug - Show Environment
+        run: |
+          echo "📍 RUN #18 DEBUG: Working Directory and File Locations"
+          echo "  PWD: $(pwd)"
+          echo "  HOME: $HOME"
+          echo "  GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo ""
+          echo "📁 Root directory contents:"
+          ls -lh | grep firebase
+          echo ""
+          echo "🔍 Checking if firebase-config files exist:"
+          [ -f "firebase-config.template.js" ] && echo "  ✅ firebase-config.template.js exists" || echo "  ❌ firebase-config.template.js NOT FOUND"
+          [ -f "firebase-config.js" ] && echo "  ✅ firebase-config.js exists (old version)" || echo "  ⚠️ firebase-config.js does not exist"
+
       - name: Setup Firebase Config for CI
         run: |
-          echo "🔧 Setting up Firebase Config for CI/CD..."
+          echo "🔧 RUN #18: Setting up Firebase Config for CI/CD..."
           echo "  Source: firebase-config.template.js"
           echo "  Target: firebase-config.js"
+          echo "  Working Directory: $(pwd)"
 
           if [ -f "firebase-config.template.js" ]; then
-            cp firebase-config.template.js firebase-config.js
-            echo "✅ firebase-config.js created from template"
+            echo "✅ Template file found"
+
+            # Show template file info
+            echo "📋 Template file details:"
+            ls -lh firebase-config.template.js
+            echo ""
+
+            # Copy with verbose output
+            echo "📝 Copying template..."
+            cp -v firebase-config.template.js firebase-config.js
+
+            echo "✅ Copy completed"
             ls -lh firebase-config.js
           else
             echo "❌ ERROR: firebase-config.template.js not found!"
+            echo "📁 Current directory: $(pwd)"
+            echo "📁 Files in directory:"
+            ls -la
             exit 1
           fi
 
+      - name: Verify Firebase Config After Copy
+        run: |
+          echo "🔍 RUN #18: Verifying Firebase Config..."
+          echo "  File: firebase-config.js"
           echo ""
-          echo "🔍 Verifying Firebase Config..."
-          head -10 firebase-config.js
+
+          # Check file exists
+          if [ ! -f "firebase-config.js" ]; then
+            echo "❌ ERROR: firebase-config.js does not exist after copy!"
+            exit 1
+          fi
+
+          # Show first 50 lines
+          echo "📄 First 50 lines of firebase-config.js:"
+          head -50 firebase-config.js
+          echo ""
+
+          # Check for critical function
+          echo "🔍 Checking for registriereKundenbesuch function..."
+          if grep -q "registriereKundenbesuch" firebase-config.js; then
+            echo "✅ SUCCESS: registriereKundenbesuch FOUND in firebase-config.js"
+            echo ""
+            echo "📍 Function location:"
+            grep -n "registriereKundenbesuch" firebase-config.js | head -3
+          else
+            echo "❌ CRITICAL ERROR: registriereKundenbesuch NOT FOUND in firebase-config.js!"
+            echo "❌ This explains why tests are failing!"
+            echo ""
+            echo "📄 File content:"
+            cat firebase-config.js
+            exit 1
+          fi
+
+          # Check for Arrow Functions (Run #17 fix)
+          echo ""
+          echo "🔍 Checking for Arrow Function syntax..."
+          if grep -q "registriereKundenbesuch: async (kundeData) =>" firebase-config.js; then
+            echo "✅ Arrow Function syntax confirmed (Run #17 fix present)"
+          else
+            echo "⚠️ WARNING: Arrow Function syntax not found - using old function syntax"
+            grep "registriereKundenbesuch" firebase-config.js | head -1
+          fi
 
       - name: Run Smoke Tests
         run: npx playwright test tests/00-smoke-test.spec.js --project=${{ matrix.browser }}
@@ -129,6 +196,30 @@ jobs:
         run: npx playwright test tests/06-cascade-delete-race.spec.js --project=${{ matrix.browser }}
         env:
           FIREBASE_EMULATOR: true
+
+      - name: Post-Test Verification
+        if: always()
+        run: |
+          echo "🔍 RUN #18: Post-Test Verification..."
+          echo "  Checking if firebase-config.js was modified during test run..."
+          echo ""
+
+          # Check file still exists
+          if [ -f "firebase-config.js" ]; then
+            echo "✅ firebase-config.js still exists"
+            ls -lh firebase-config.js
+            echo ""
+
+            # Check function still present
+            if grep -q "registriereKundenbesuch" firebase-config.js; then
+              echo "✅ registriereKundenbesuch still present after tests"
+            else
+              echo "❌ WARNING: registriereKundenbesuch disappeared after tests!"
+              echo "This could indicate file was overwritten during test run"
+            fi
+          else
+            echo "❌ ERROR: firebase-config.js was deleted during test run!"
+          fi
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
