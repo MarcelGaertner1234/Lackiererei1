@@ -257,9 +257,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       throw new Error(`Partner-Anfrage not found in Firestore: ${errorMsg}`);
     }
 
-    // CRITICAL FIX RUN #31: Wait for button to be visible on Partner A BEFORE opening Partner B
-    page.on('dialog', dialog => dialog.accept());
-
+    // CRITICAL FIX RUN #39: Wait for button to be visible on Partner A BEFORE opening Partner B
     console.log('⏳ Partner A: Waiting for "KVA annehmen" button to become visible...');
     await page.waitForSelector('button:has-text("KVA annehmen")', {
       state: 'visible',
@@ -287,7 +285,15 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Partner A klickt Button (button is already visible from above check)
     console.log('⏳ Partner A: Clicking button...');
 
-    await page.click('button:has-text("KVA annehmen")');
+    // CRITICAL FIX RUN #39: Explicit dialog handling for Partner A (no global handler)
+    const dialogPromiseA = page.waitForEvent('dialog');
+    const clickPromiseA = page.click('button:has-text("KVA annehmen")');
+
+    const dialogA = await dialogPromiseA;
+    console.log('✅ Partner A: Dialog appeared:', dialogA.message());
+    await dialogA.accept();
+    await clickPromiseA;
+    console.log('✅ Partner A: Dialog accepted, button clicked');
 
     // CRITICAL FIX RUN #37: Wait for vehicle creation instead of fixed timeout
     console.log('⏳ Waiting for vehicle creation after Partner A click...');
@@ -317,18 +323,22 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     }
 
     // Partner B versucht GLEICHZEITIG anzunehmen (sollte FEHLSCHLAGEN)
-    partnerB.on('dialog', dialog => dialog.accept());
-
-    // Erwarte Error Toast oder Alert
+    // CRITICAL FIX RUN #39: Single dialog handler with conditional logic (no duplicates!)
     let errorDetected = false;
     partnerB.on('dialog', dialog => {
+      console.log('⚠️ Partner B: Dialog appeared:', dialog.message());
+
       if (dialog.message().includes('bereits bearbeitet') ||
           dialog.message().includes('Optimistic Locking')) {
         errorDetected = true;
+        console.log('✅ Partner B: Optimistic Locking error detected!');
       }
+
       dialog.accept();
+      console.log('✅ Partner B: Dialog accepted');
     });
 
+    console.log('⏳ Partner B: Clicking button (expecting Optimistic Locking error)...');
     await partnerB.click('button:has-text("KVA annehmen")');
     await partnerB.waitForTimeout(2000);
 
@@ -638,6 +648,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     }
 
     // Simuliere KVA mit KAPUTTEN Foto-Daten (provoziert Upload-Fehler)
+    console.log('⏳ Test 5.3: Updating KVA status in Firestore...');
     await page.evaluate(async (id) => {
       const db = window.firebaseApp.db();
       await db.collection('partnerAnfragen').doc(id).update({
@@ -649,16 +660,10 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
         }
       });
     }, anfrageId);
+    console.log('✅ KVA status updated');
 
-    // Override savePhotosToFirestore um Fehler zu provozieren
-    await page.evaluate(() => {
-      const originalSave = window.firebaseApp.savePhotosToFirestore;
-      window.firebaseApp.savePhotosToFirestore = async function() {
-        throw new Error('SIMULATED FOTO UPLOAD FEHLER');
-      };
-    });
-
-    // KVA annehmen (Transaction sollte ERFOLGEN, Foto-Upload FEHLSCHLAGEN)
+    // CRITICAL FIX RUN #39: Navigate FIRST, then install mock (correct window context!)
+    console.log('⏳ Test 5.3: Navigating to detail page...');
     await page.goto(`/partner-app/anfrage-detail.html?id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
 
@@ -672,8 +677,25 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       const errorMsg = await page.textContent('#error');
       throw new Error(`Test 5.3: Anfrage not found in Firestore: ${errorMsg}`);
     }
+    console.log('✅ Detail page loaded');
 
-    page.on('dialog', dialog => dialog.accept());
+    // CRITICAL FIX RUN #39: Install mock AFTER navigation (same context as button click!)
+    console.log('⏳ Test 5.3: Installing savePhotosToFirestore mock...');
+    await page.evaluate(() => {
+      console.log('  📝 Mocking savePhotosToFirestore to throw error...');
+      window.firebaseApp.savePhotosToFirestore = async function() {
+        console.log('  ❌ MOCK: savePhotosToFirestore called → throwing error!');
+        throw new Error('SIMULATED FOTO UPLOAD FEHLER');
+      };
+      console.log('  ✅ Mock installed successfully');
+    });
+    console.log('✅ Mock installed in correct window context');
+
+    // Setup dialog handler
+    page.on('dialog', dialog => {
+      console.log('📄 Test 5.3: Dialog appeared:', dialog.message());
+      dialog.accept();
+    });
 
     // CRITICAL FIX RUN #30: Increased timeout to wait for onSnapshot re-render
     console.log('⏳ Test 5.3: Waiting for "KVA annehmen" button to become visible...');
@@ -681,7 +703,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       state: 'visible',
       timeout: 30000  // 30 seconds to wait for onSnapshot cycle
     });
-    console.log('✅ Button visible, clicking...');
+    console.log('✅ Button visible, clicking (mock should trigger)...');
 
     await page.click('button:has-text("KVA annehmen")');
     await page.waitForTimeout(3000);
