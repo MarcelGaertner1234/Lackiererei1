@@ -213,20 +213,32 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       });
     }, anfrageId);
 
-    // CRITICAL FIX RUN #31: Verify Firestore status BEFORE opening page
-    console.log('⏳ Waiting 5s for Firestore commit + indexing...');
-    await page.waitForTimeout(5000);
+    // CRITICAL FIX RUN #36: Verify status with Retry-Loop (Firebase Emulator can be slow)
+    console.log('⏳ Verifying Firestore status with retry-loop...');
 
-    // Verify status is correct in Firestore
-    const firestoreStatus = await page.evaluate(async (id) => {
-      const db = window.firebaseApp.db();
-      const doc = await db.collection('partnerAnfragen').doc(id).get();
-      return doc.exists ? doc.data().status : null;
-    }, anfrageId);
+    let firestoreStatus = null;
+    const maxStatusAttempts = 10;
+    const statusRetryDelay = 1000;
 
-    console.log('🔍 Firestore Status BEFORE navigation:', firestoreStatus);
+    for (let i = 0; i < maxStatusAttempts; i++) {
+      firestoreStatus = await page.evaluate(async (id) => {
+        const db = window.firebaseApp.db();
+        const doc = await db.collection('partnerAnfragen').doc(id).get();
+        return doc.exists ? doc.data().status : null;
+      }, anfrageId);
+
+      if (firestoreStatus === 'kva_gesendet') {
+        console.log(`✅ Status verified after ${i + 1} attempt(s): kva_gesendet`);
+        break;
+      }
+
+      console.log(`⏳ Attempt ${i + 1}/${maxStatusAttempts}: Status is "${firestoreStatus}", waiting ${statusRetryDelay}ms...`);
+      await page.waitForTimeout(statusRetryDelay);
+    }
+
+    console.log('🔍 Firestore Status AFTER retry-loop:', firestoreStatus);
     expect(firestoreStatus).toBe('kva_gesendet'); // MUST be correct!
-    console.log('✅ Status verified: kva_gesendet');
+    console.log('✅ Status verification complete!');
 
     // Test: Simuliere gleichzeitige Annahme von 2 Partnern
 
