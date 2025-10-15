@@ -64,7 +64,22 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+
+        /* RUN #24 RADICAL FIX: Aggressive cache clearing via Chromium launch args */
+        /* Query parameters (?v=RUN23) FAILED - browser still cached old file */
+        /* Solution: Disable ALL caching mechanisms at browser level */
+        launchOptions: {
+          args: [
+            '--disable-cache',                    // Disable HTTP cache
+            '--disable-application-cache',        // Disable application cache
+            '--disable-offline-load-stale-cache', // Don't load stale cache when offline
+            '--disk-cache-size=0',                // Set disk cache size to 0
+            '--media-cache-size=0',               // Set media cache size to 0
+          ],
+        },
+      },
     },
 
     {
