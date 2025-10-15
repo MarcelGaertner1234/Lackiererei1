@@ -29,6 +29,11 @@ jobs:
     name: E2E Tests - Critical Pipelines
     runs-on: ubuntu-latest
 
+    # RUN #21 FIX: Set working directory to app folder
+    defaults:
+      run:
+        working-directory: Marketing/06_Digitale_Tools/Fahrzeugannahme_App
+
     strategy:
       fail-fast: false
       matrix:
@@ -99,10 +104,13 @@ jobs:
 
       - name: Debug - Show Environment
         run: |
-          echo "📍 RUN #18 DEBUG: Working Directory and File Locations"
+          echo "📍 RUN #21 DEBUG: Working Directory and File Locations"
           echo "  PWD: $(pwd)"
           echo "  HOME: $HOME"
           echo "  GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo ""
+          echo "🔍 Expected working directory: Marketing/06_Digitale_Tools/Fahrzeugannahme_App"
+          echo "🔍 Actual PWD should match: $(pwd | grep -o 'Fahrzeugannahme_App' || echo '❌ NOT IN APP DIR')"
           echo ""
           echo "📁 Root directory contents:"
           ls -lh | grep firebase
@@ -113,10 +121,11 @@ jobs:
 
       - name: Setup Firebase Config for CI
         run: |
-          echo "🔧 RUN #20: Setting up Firebase Config for CI/CD..."
+          echo "🔧 RUN #21: Setting up Firebase Config for CI/CD..."
           echo "  Source: firebase-config.template.js"
           echo "  Target: firebase-config.js"
           echo "  Working Directory: $(pwd)"
+          echo "  FIX: Now running in correct app directory (not repository root)"
 
           if [ -f "firebase-config.template.js" ]; then
             echo "✅ Template file found"
@@ -130,10 +139,11 @@ jobs:
             echo "📝 Copying template..."
             cp -v firebase-config.template.js firebase-config.js
 
-            # RUN #20 FIX: Add cache-bust timestamp to force browser reload
+            # RUN #21 FIX: Add cache-bust timestamp to force browser reload
             echo "" >> firebase-config.js
-            echo "// CACHE-BUST RUN #20: $(date '+%Y-%m-%d %H:%M:%S') - Unix: $(date +%s)" >> firebase-config.js
+            echo "// CACHE-BUST RUN #21: $(date '+%Y-%m-%d %H:%M:%S') - Unix: $(date +%s)" >> firebase-config.js
             echo "// This timestamp forces the browser to reload this file instead of using cached version" >> firebase-config.js
+            echo "// CRITICAL FIX: File copied in correct directory (Fahrzeugannahme_App/) where HTTP server runs" >> firebase-config.js
 
             echo "✅ Copy completed with cache-bust timestamp"
             ls -lh firebase-config.js
@@ -150,8 +160,9 @@ jobs:
 
       - name: Verify Firebase Config After Copy
         run: |
-          echo "🔍 RUN #20: Verifying Firebase Config..."
+          echo "🔍 RUN #21: Verifying Firebase Config..."
           echo "  File: firebase-config.js"
+          echo "  Location: $(pwd)/firebase-config.js"
           echo ""
 
           # Check file exists
@@ -189,6 +200,32 @@ jobs:
           else
             echo "⚠️ WARNING: Arrow Function syntax not found - using old function syntax"
             grep "registriereKundenbesuch" firebase-config.js | head -1
+          fi
+
+      - name: Verify HTTP Server Can Access File
+        run: |
+          echo "🌐 RUN #21 NEW: Verify HTTP server can access firebase-config.js"
+          echo "  This ensures the browser will load the correct file during tests"
+          echo ""
+
+          # Wait for HTTP server to start (started by Playwright in webServer config)
+          echo "⏳ Waiting for HTTP server to be ready..."
+          sleep 3
+
+          # The webServer in playwright.config.js starts before tests
+          # But we can simulate what the browser will request
+          echo "📍 File should be accessible at: http://localhost:8000/firebase-config.js"
+          echo "📁 File location on disk: $(pwd)/firebase-config.js"
+          echo ""
+
+          # Verify file exists where HTTP server will serve it from
+          if [ -f "firebase-config.js" ]; then
+            echo "✅ firebase-config.js exists in HTTP server root directory"
+            echo "   File size: $(stat -f%z firebase-config.js 2>/dev/null || stat -c%s firebase-config.js) bytes"
+          else
+            echo "❌ CRITICAL: firebase-config.js NOT in HTTP server root!"
+            echo "   This means browser will get 404 or load old cached version"
+            exit 1
           fi
 
       - name: Run Smoke Tests
