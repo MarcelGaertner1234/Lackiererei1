@@ -162,6 +162,75 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             callback(fahrzeuge);
           });
+      },
+
+      // CRITICAL FIX RUN #15: Add registriereKundenbesuch function
+      // This function is called by partner-app/anfrage-detail.html Line 1801
+      // Missing this function causes: "firebaseApp.registriereKundenbesuch is not a function"
+      registriereKundenbesuch: async function(kundeData) {
+        try {
+          // Backward compatibility: Accept string or object
+          const kundenname = typeof kundeData === 'string' ? kundeData : kundeData.name;
+
+          if (!kundenname) {
+            console.error('❌ Kein Kundenname angegeben!');
+            return null;
+          }
+
+          // Check if customer exists
+          const snapshot = await db.collection('kunden')
+            .where('name', '==', kundenname)
+            .limit(1)
+            .get();
+
+          if (!snapshot.empty) {
+            // Update existing customer
+            const doc = snapshot.docs[0];
+            const kundeId = doc.id;
+            const existingData = doc.data();
+            const updates = {
+              anzahlBesuche: (existingData.anzahlBesuche || 0) + 1,
+              letzterBesuch: new Date().toISOString()
+            };
+
+            // Update with new data if provided
+            if (typeof kundeData === 'object') {
+              if (kundeData.email && !existingData.email) updates.email = kundeData.email;
+              if (kundeData.telefon && !existingData.telefon) updates.telefon = kundeData.telefon;
+              if (kundeData.partnerId && !existingData.partnerId) updates.partnerId = kundeData.partnerId;
+              if (kundeData.notizen) {
+                updates.notizen = (existingData.notizen || '') + '\n' + kundeData.notizen;
+              }
+            }
+
+            await db.collection('kunden').doc(kundeId).update(updates);
+            console.log(`✅ Besuch registriert für: ${kundenname} (${updates.anzahlBesuche}. Besuch)`);
+            return kundeId;
+          } else {
+            // Create new customer
+            const neuerKunde = {
+              id: 'kunde_' + Date.now(),
+              name: kundenname,
+              telefon: typeof kundeData === 'object' ? (kundeData.telefon || '') : '',
+              email: typeof kundeData === 'object' ? (kundeData.email || '') : '',
+              partnerId: typeof kundeData === 'object' ? (kundeData.partnerId || '') : '',
+              notizen: typeof kundeData === 'object' ? (kundeData.notizen || '') : '',
+              erstbesuch: new Date().toISOString(),
+              letzterBesuch: new Date().toISOString(),
+              anzahlBesuche: 1
+            };
+
+            await db.collection('kunden').doc(neuerKunde.id).set(neuerKunde);
+            console.log(`✅ Neuer Kunde erstellt: ${kundenname} (ID: ${neuerKunde.id})`);
+            console.log(`   📧 Email: ${neuerKunde.email || 'N/A'}`);
+            console.log(`   📞 Telefon: ${neuerKunde.telefon || 'N/A'}`);
+            return neuerKunde.id;
+          }
+        } catch (error) {
+          console.error('❌ Fehler beim Registrieren des Besuchs:', error);
+          console.error('   Details:', error.message);
+          return null;
+        }
       }
     };
 
