@@ -494,7 +494,7 @@
                     <div id="subtitle" style="color: #666; font-size: 14px; margin-top: 5px;"></div>
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <button id="btnAnnehmen" class="btn" style="background: #4caf50; color: white; display: none;" onclick="handleKVAAnnehmen()">✅ KVA annehmen</button>
+                    <button id="btnAnnehmen" class="btn" style="background: #4caf50; color: white; display: none;" onclick="annehmenKVA(anfrage.id, event)">✅ KVA annehmen</button>
                     <a href="meine-anfragen.html" class="btn btn-secondary">← Zurück</a>
                 </div>
             </div>
@@ -1607,48 +1607,170 @@
         }
 
         // ========================================================================
-        // KVA ANNEHMEN HANDLER (Run #27 Fix)
+        // KVA ANNEHMEN HANDLER - FULL VERSION (FIX #38)
+        // Same as meine-anfragen.html annehmenKVA() but adapted for detail page
         // ========================================================================
-        async function handleKVAAnnehmen() {
-            // Validierung 1: Status muss 'kva_gesendet' sein
-            if (anfrage.status !== 'kva_gesendet') {
-                alert('Diese Anfrage kann nicht angenommen werden.\n\nNur Anfragen mit Status "Angebot erstellt" können angenommen werden.');
-                return;
+
+        function getServiceLabel(serviceTyp) {
+            const labels = {
+                lackier: 'Lackier',
+                reifen: 'Reifen',
+                pflege: 'Pflege',
+                mechanik: 'Mechanik',
+                tuev: 'TÜV/AU',
+                versicherung: 'Versicherung'
+            };
+            return labels[serviceTyp] || 'Service';
+        }
+
+        async function prepareFahrzeugData(anfrage, abholtermin) {
+            console.log('🔍 prepareFahrzeugData() gestartet');
+            console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
+            console.log('📋 Anfrage kennzeichen:', anfrage.kennzeichen);
+            console.log('📋 Anfrage anliefertermin:', anfrage.anliefertermin);
+
+            // VALIDIERUNG 1: Kennzeichen/Auftragsnummer erforderlich
+            if (!anfrage.kennzeichen && !anfrage.auftragsnummer) {
+                const error = 'Kennzeichen oder Auftragsnummer erforderlich';
+                console.error('❌', error);
+                throw new Error(error);
             }
 
-            // Validierung 2: anliefertermin muss vorhanden sein
+            // VALIDIERUNG 2: serviceTyp muss gültig sein (STRIKT - kein Fallback!)
+            const gueltigeServiceTypen = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev', 'versicherung'];
+            let serviceTyp = anfrage.serviceTyp;
+
+            if (!serviceTyp || !gueltigeServiceTypen.includes(serviceTyp)) {
+                const error = `Ungültiger oder fehlender serviceTyp: "${serviceTyp}".\n\nErlaubte Werte: ${gueltigeServiceTypen.join(', ')}`;
+                console.error('❌', error);
+                throw new Error(error);
+            }
+
+            console.log('✅ ServiceTyp validiert:', serviceTyp);
+
+            // VALIDIERUNG 3: anliefertermin muss vorhanden sein
             if (!anfrage.anliefertermin) {
-                alert('⚠️ Kein Anliefertermin vorhanden.\n\nDie Anfrage kann nicht angenommen werden, da kein Anliefertermin festgelegt ist.');
+                const error = 'Anliefertermin ist erforderlich';
+                console.error('❌', error);
+                throw new Error(error);
+            }
+
+            // VALIDIERUNG 4: Datumsformat normalisieren zu YYYY-MM-DD
+            let anliefertermin = anfrage.anliefertermin;
+            if (anliefertermin.includes('.')) {
+                const parts = anliefertermin.split('.');
+                if (parts.length === 3) {
+                    anliefertermin = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    console.log(`📅 Datum normalisiert: ${anfrage.anliefertermin} → ${anliefertermin}`);
+                }
+            } else if (anliefertermin.includes('/')) {
+                const parts = anliefertermin.split('/');
+                if (parts.length === 3) {
+                    anliefertermin = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+                    console.log(`📅 Datum normalisiert: ${anfrage.anliefertermin} → ${anliefertermin}`);
+                }
+            }
+            console.log('✅ Anliefertermin validiert:', anliefertermin);
+
+            // EINDEUTIGE ID: Timestamp-basiert
+            const timestamp = Date.now();
+            const fahrzeugId = 'fzg_' + timestamp;
+            const heute = new Date();
+
+            // Fahrzeug-Objekt erstellen
+            const fahrzeugData = {
+                id: fahrzeugId,
+                datum: heute.toLocaleDateString('de-DE'),
+                zeit: heute.toLocaleTimeString('de-DE'),
+                kennzeichen: (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase(),
+                kundenname: anfrage.partnerName || 'Partner',
+                marke: anfrage.marke || anfrage.serviceData?.fahrzeugdaten?.marke || '',
+                modell: anfrage.modell || anfrage.serviceData?.fahrzeugdaten?.modell || '',
+                baujahrVon: anfrage.baujahrVon || anfrage.baujahr || anfrage.serviceData?.fahrzeugdaten?.baujahr || '',
+                baujahrBis: anfrage.baujahrBis || anfrage.baujahr || anfrage.serviceData?.fahrzeugdaten?.baujahr || '',
+                kmstand: anfrage.kmstand || anfrage.kilometerstand || anfrage.serviceData?.fahrzeugdaten?.kilometerstand || '',
+                vin: anfrage.vin || anfrage.serviceData?.fahrzeugdaten?.vin || '',
+                ...(serviceTyp === 'lackier' && {
+                    farbname: anfrage.farbname || '',
+                    farbnummer: anfrage.farbnummer || '',
+                    lackart: anfrage.lackart || 'Metallic',
+                    farbvariante: anfrage.farbvariante || ''
+                }),
+                serviceTyp: serviceTyp,
+                status: 'angenommen',
+                prozessStatus: 'terminiert',
+                serviceData: anfrage.serviceData || {},
+                geplantesAbnahmeDatum: anfrage.kva?.termine?.ende || anliefertermin,
+                geplantesStartDatum: anfrage.kva?.termine?.start || null,
+                abholzeit: anfrage.kva?.termine?.abholzeit || null,
+                fahrzeugAbholung: anfrage.abholserviceGewuenscht ? 'ja' : 'nein',
+                abholadresse: anfrage.abholadresse || '',
+                abholdatum: anfrage.kva?.termine?.start || abholtermin || '',
+                abholnotiz: anfrage.abholnotiz || '',
+                vereinbarterPreis: anfrage.kva?.gesamt || anfrage.kva?.gesamtpreis || null,
+                notizen: anfrage.schadenBeschreibung || anfrage.beschreibung || anfrage.serviceData?.info || anfrage.anmerkungen || '',
+                partnerId: anfrage.partnerId || '',
+                partnerName: anfrage.partnerName || '',
+                partnerEmail: anfrage.partnerEmail || '',
+                anfrageId: anfrage.id,
+                photos: [],
+                signature: null,
+                prozessTimestamps: {
+                    terminiert: timestamp
+                },
+                statusHistory: [
+                    {
+                        status: 'terminiert',
+                        timestamp: timestamp,
+                        foto: null,
+                        notiz: 'Partner-Anfrage akzeptiert und terminiert'
+                    }
+                ],
+                lastModified: timestamp,
+                quelle: 'Partner-Portal'  // FIX #38: Add source tracking
+            };
+
+            console.log('📋 Fahrzeug-Daten erstellt:', fahrzeugData);
+            return fahrzeugData;
+        }
+
+        async function annehmenKVA(anfrageId, event) {
+            event?.stopPropagation();
+
+            if (!anfrage) {
+                alert('Anfrage nicht gefunden.');
                 return;
             }
 
-            // Validierung 3: Datums-Validierung (anliefertermin muss in der Zukunft liegen)
+            // Nur "kva_gesendet" kann angenommen werden
+            if (anfrage.status !== 'kva_gesendet') {
+                alert('Diese Anfrage kann nicht angenommen werden.\\n\\nNur Anfragen mit Status "Angebot erstellt" können angenommen werden.');
+                return;
+            }
+
+            // Prüfen ob anliefertermin vorhanden
+            if (!anfrage.anliefertermin) {
+                alert('⚠️ Kein Anliefertermin vorhanden.\\n\\nDie Anfrage kann nicht angenommen werden, da kein Anliefertermin festgelegt ist.');
+                return;
+            }
+
+            // Datums-Validierung: anliefertermin muss in der Zukunft liegen
             const heute = new Date();
             heute.setHours(0, 0, 0, 0);
             const anlieferDate = new Date(anfrage.anliefertermin);
             anlieferDate.setHours(0, 0, 0, 0);
 
             if (anlieferDate < heute) {
-                alert('⚠️ Ungültiger Anliefertermin.\n\nDer Anliefertermin liegt in der Vergangenheit. Bitte kontaktieren Sie die Werkstatt.');
+                alert('⚠️ Ungültiger Anliefertermin.\\n\\nDer Anliefertermin liegt in der Vergangenheit. Bitte kontaktieren Sie die Werkstatt.');
                 return;
             }
 
             // Bestätigung
-            const serviceLabels = {
-                'lackier': '🎨 Lackier-Service',
-                'reifen': '🚗 Reifen-Service',
-                'pflege': '✨ Fahrzeugpflege',
-                'mechanik': '🔧 Mechanik',
-                'tuev': '✅ TÜV/AU',
-                'versicherung': '🛡️ Versicherung'
-            };
-            const serviceLabel = serviceLabels[anfrage.serviceTyp] || 'Service';
-
             const bestaetigung = confirm(
-                'Möchten Sie dieses Angebot annehmen?\n\n' +
-                `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\n` +
-                `Service: ${serviceLabel}\n` +
-                `Anliefertermin: ${new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')}\n` +
+                'Möchten Sie dieses Angebot annehmen?\\n\\n' +
+                `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
+                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                `Anliefertermin: ${new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')}\\n` +
                 `Preis: ${anfrage.kva?.gesamt ? anfrage.kva.gesamt.toFixed(2) + ' €' : 'k.A.'}`
             );
 
@@ -1657,24 +1779,148 @@
             }
 
             try {
-                // Status auf "beauftragt" ändern
+                // 1. Status auf "beauftragt" ändern
                 const updateData = {
                     status: 'beauftragt',
                     statusText: 'Beauftragt',
-                    angenommenAm: Date.now()
+                    beauftragtAm: new Date().toISOString(),
+                    beauftragtVon: anfrage.partnerEmail || anfrage.partnerName || 'Partner'
                 };
 
-                await db.collection('partnerAnfragen').doc(anfrage.id).update(updateData);
+                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen
+                let abholtermin = null;
+                if (anfrage.abholserviceGewuenscht) {
+                    const abholDate = new Date(anlieferDate);
+                    abholDate.setDate(anlieferDate.getDate() - 1);
+                    abholtermin = abholDate.toISOString().split('T')[0];
+                    updateData.abholtermin = abholtermin;
+                }
 
-                // Success Feedback
-                alert('✅ Angebot erfolgreich angenommen!\n\nSie werden zur Übersicht weitergeleitet.');
+                // 3. Kunden registrieren
+                console.log('👤 Registriere Kunden...');
+                const kundeId = await firebaseApp.registriereKundenbesuch({
+                    name: anfrage.partnerName || 'Partner',
+                    email: anfrage.partnerEmail || '',
+                    telefon: anfrage.partnerTelefon || anfrage.telefon || '',
+                    partnerId: anfrage.partnerId || '',
+                    notizen: `Partner-Anfrage ${anfrage.id} - Service: ${getServiceLabel(anfrage.serviceTyp)}`
+                });
+                if (kundeId) {
+                    console.log('✅ Kunde registriert:', kundeId);
+                } else {
+                    console.error('❌ FEHLER: Kunde wurde NICHT erstellt!');
+                }
 
-                // Redirect to Kanban board
-                window.location.href = 'meine-anfragen.html';
+                // 4. Fahrzeug-Daten vorbereiten
+                console.log('📋 Erstelle Fahrzeug-Dokument aus Partner-Anfrage...');
+                const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin);
+                if (kundeId) {
+                    fahrzeugData.kundenId = kundeId;
+                }
+
+                // 5. FOTOS entfernen (werden separat gespeichert)
+                const schadenfotos = anfrage.schadenfotos || anfrage.photos || anfrage.fotos || [];
+                const dataForFirestore = {...fahrzeugData};
+                delete dataForFirestore.photos;
+                console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
+
+                // 6. FIRESTORE TRANSACTION (Optimistic Locking)
+                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                const fahrzeugRef = db.collection('fahrzeuge').doc(dataForFirestore.id);
+
+                console.log('🔒 Starte Transaction mit Optimistic Locking...');
+
+                try {
+                    await db.runTransaction(async (transaction) => {
+                        const anfrageDoc = await transaction.get(anfrageRef);
+
+                        if (!anfrageDoc.exists) {
+                            throw new Error('Anfrage nicht gefunden!');
+                        }
+
+                        const currentStatus = anfrageDoc.data().status;
+                        console.log(`   🔍 Status-Check: "${currentStatus}"`);
+
+                        if (currentStatus !== 'kva_gesendet') {
+                            console.error(`❌ OPTIMISTIC LOCKING FAILED: Status ist "${currentStatus}"`);
+                            throw new Error(`Diese Anfrage wurde bereits ${currentStatus === 'beauftragt' ? 'angenommen' : 'bearbeitet'}!\\n\\nBitte aktualisieren Sie die Seite (F5).`);
+                        }
+
+                        console.log('   ✅ Status-Check OK: Anfrage ist noch verfügbar');
+
+                        transaction.update(anfrageRef, updateData);
+                        transaction.set(fahrzeugRef, dataForFirestore);
+
+                        console.log('   📝 Transaction vorbereitet: 2 Operationen (update + set)');
+                    });
+
+                    console.log('✅ Transaction committed successfully!');
+                } catch (transactionError) {
+                    console.error('❌ TRANSACTION FEHLGESCHLAGEN!', transactionError);
+                    let errorMsg = 'Anfrage-Annahme fehlgeschlagen!\\n\\n';
+
+                    if (transactionError.message.includes('bereits')) {
+                        errorMsg = transactionError.message;
+                    } else {
+                        errorMsg += `Fehler: ${transactionError.message}`;
+                    }
+
+                    alert(`❌ FEHLER\\n\\n${errorMsg}`);
+                    throw transactionError;
+                }
+
+                // 7. VERIFIKATION
+                console.log('🔍 Verifiziere Firestore-Speicherung...');
+                const verifyDoc = await db.collection('fahrzeuge').doc(fahrzeugData.id).get();
+                if (!verifyDoc.exists) {
+                    throw new Error('❌ KRITISCHER FEHLER: Fahrzeug wurde NICHT in Firestore gespeichert!');
+                }
+                console.log('✅ Fahrzeug in Firestore verifiziert:', verifyDoc.id);
+
+                // 8. FOTOS SEPARAT SPEICHERN (NACH Transaction)
+                console.log('📸 Speichere Fotos in Firestore Subcollection...');
+                if (schadenfotos.length > 0) {
+                    try {
+                        await firebaseApp.savePhotosToFirestore(fahrzeugData.id, schadenfotos, 'vorher');
+                        console.log(`✅ ${schadenfotos.length} Fotos in Firestore gespeichert`);
+                    } catch (photoError) {
+                        console.error('❌ Fehler beim Speichern der Fotos:', photoError);
+                        console.warn('⚠️ WARNUNG: Fahrzeug wurde OHNE Fotos erstellt!');
+
+                        // Fahrzeug mit Flag markieren
+                        try {
+                            await db.collection('fahrzeuge').doc(fahrzeugData.id).update({
+                                fotosFehlgeschlagen: true,
+                                fotosFehlerMeldung: photoError.message,
+                                fotosAnzahl: schadenfotos.length
+                            });
+                            console.log('ℹ️ Fahrzeug mit fotosFehlgeschlagen-Flag markiert');
+                        } catch (flagError) {
+                            console.error('❌ Konnte Flag nicht setzen:', flagError);
+                        }
+
+                        // LocalStorage Fallback
+                        try {
+                            firebaseApp.savePhotosLocal(fahrzeugData.id, schadenfotos, 'vorher');
+                            console.log('✅ Fotos in LocalStorage gespeichert (Fallback)');
+                        } catch (localError) {
+                            console.error('❌ LocalStorage Fallback fehlgeschlagen:', localError);
+                        }
+                    }
+                } else {
+                    console.log('ℹ️ Keine Fotos vorhanden');
+                }
+
+                console.log('✅ Fahrzeug erfolgreich erstellt:', fahrzeugData.id);
+
+                alert(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`);
+
+                // FIX #38: Stay on detail page, reload to show updated status
+                await loadAnfrage();  // Reload current anfrage to show updated status
 
             } catch (error) {
-                console.error('❌ Fehler beim Annehmen des Angebots:', error);
-                alert('⚠️ Fehler beim Annehmen des Angebots.\n\n' + error.message);
+                console.error('❌ Fehler beim Annehmen:', error);
+                alert(`❌ Fehler beim Annehmen der Anfrage.\\n\\nDetails: ${error.message}`);
             }
         }
     </script>
