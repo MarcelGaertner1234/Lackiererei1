@@ -53,6 +53,11 @@ module.exports = defineConfig({
 
     /* Permissions für Kamera/Mikrofon (für Foto-Upload) */
     permissions: ['camera', 'microphone'],
+
+    /* RUN #20 FIX: Clear browser cache to prevent loading stale firebase-config.js */
+    /* This ensures the browser always loads the fresh firebase-config.js copied from template */
+    storageState: undefined, // No persistent storage state between tests
+    serviceWorkers: 'block',  // Block service workers to prevent caching
   },
 
   /* Test-Projekte für verschiedene Browser */
