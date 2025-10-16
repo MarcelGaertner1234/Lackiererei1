@@ -111,11 +111,11 @@ module.exports = defineConfig({
   ],
 
   /* Web Server starten vor Tests */
-  /* RUN #38 CRITICAL FIX: Use custom HTTP server with cache-busting headers */
-  /* Problem: python3 -m http.server doesn't send Cache-Control headers */
-  /* Solution: Custom server forces browser to reload files every time */
+  /* RUN #39 FIX: Use http-server npm package with cache disabled */
+  /* Problem (RUN #38): Custom Python server failed to start (Exit code: 1) */
+  /* Solution: Use battle-tested http-server with -c-1 flag (disables caching) */
   webServer: {
-    command: 'python3 .github/workflows/test-server.py 8000',
+    command: 'npx http-server -p 8000 -c-1 --silent',
     url: 'http://localhost:8000',
     reuseExistingServer: !process.env.CI,
     stdout: 'ignore',
