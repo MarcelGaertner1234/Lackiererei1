@@ -16,8 +16,8 @@ test.describe('RUN #37: Firebase Config Diagnostics', () => {
   test('Verify firebaseApp structure and registriereKundenbesuch function', async ({ page }) => {
     console.log('🔍 RUN #37: Starting Firebase Config diagnostic test...');
 
-    // Navigate to partner app with cache-busting
-    await page.goto('/partner-app/anfrage.html?v=RUN37');
+    // RUN #38: Navigate to partner app (no cache parameter needed - server forces reload)
+    await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
     console.log('✅ Firebase initialized, inspecting structure...');

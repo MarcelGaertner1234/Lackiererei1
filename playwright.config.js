@@ -111,8 +111,11 @@ module.exports = defineConfig({
   ],
 
   /* Web Server starten vor Tests */
+  /* RUN #38 CRITICAL FIX: Use custom HTTP server with cache-busting headers */
+  /* Problem: python3 -m http.server doesn't send Cache-Control headers */
+  /* Solution: Custom server forces browser to reload files every time */
   webServer: {
-    command: 'python3 -m http.server 8000',
+    command: 'python3 .github/workflows/test-server.py 8000',
     url: 'http://localhost:8000',
     reuseExistingServer: !process.env.CI,
     stdout: 'ignore',
