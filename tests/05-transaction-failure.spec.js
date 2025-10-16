@@ -251,7 +251,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Test: Simuliere gleichzeitige Annahme von 2 Partnern
 
     // Partner A öffnet Detail-Seite
-    await page.goto(`/partner-app/anfrage-detail.html?v=RUN36&id=${anfrageId}`);
+    await page.goto(`/partner-app/anfrage-detail.html?v=RUN37&id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
 
     // Wait for either #content OR #error to be visible (fail fast if document not found)
@@ -276,7 +276,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // NOW open Partner B page (for simultaneous test)
     const partnerB = await context.newPage();
     const consoleBMonitor = setupConsoleMonitoring(partnerB);
-    await partnerB.goto(`/partner-app/anfrage-detail.html?v=RUN36&id=${anfrageId}`);
+    await partnerB.goto(`/partner-app/anfrage-detail.html?v=RUN37&id=${anfrageId}`);
     await partnerB.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
 
     // Wait for either #content OR #error to be visible
@@ -488,7 +488,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     }, anfrageId);
 
     // Test: Provoziere Transaction Failure durch Status-Änderung VOR Annahme
-    await page.goto(`/partner-app/anfrage-detail.html?v=RUN36&id=${anfrageId}`);
+    await page.goto(`/partner-app/anfrage-detail.html?v=RUN37&id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
 
     // Wait for either #content OR #error to be visible
@@ -672,7 +672,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     // CRITICAL FIX RUN #39: Navigate FIRST, then install mock (correct window context!)
     console.log('⏳ Test 5.3: Navigating to detail page...');
-    await page.goto(`/partner-app/anfrage-detail.html?v=RUN36&id=${anfrageId}`);
+    await page.goto(`/partner-app/anfrage-detail.html?v=RUN37&id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
 
     // Wait for either #content OR #error to be visible
@@ -849,7 +849,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     });
 
     // KVA annehmen
-    await page.goto(`/partner-app/anfrage-detail.html?v=RUN36&id=${anfrageId}`);
+    await page.goto(`/partner-app/anfrage-detail.html?v=RUN37&id=${anfrageId}`);
     await page.waitForTimeout(500); // Wait for DOMContentLoaded + Firebase init
 
     // Wait for either #content OR #error to be visible
