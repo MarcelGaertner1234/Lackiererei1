@@ -16,8 +16,10 @@ test.describe('RUN #37: Firebase Config Diagnostics', () => {
   test('Verify firebaseApp structure and registriereKundenbesuch function', async ({ page }) => {
     console.log('🔍 RUN #37: Starting Firebase Config diagnostic test...');
 
-    // RUN #38: Navigate to partner app (no cache parameter needed - server forces reload)
-    await page.goto('/partner-app/anfrage.html');
+    // RUN #40 FIX: Navigate to meine-anfragen.html (has Firebase!)
+    // Problem: anfrage.html does NOT load Firebase → timeout
+    // Solution: Use meine-anfragen.html which loads firebase-config-RUN24.js
+    await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
     console.log('✅ Firebase initialized, inspecting structure...');
