@@ -12,12 +12,47 @@
  * Location: europe-west3 (Frankfurt) - DSGVO-konform
  */
 
-// PRODUCTION Mode - NO Emulator
-const useEmulator = false;
+// CRITICAL FIX RUN #46: Auto-detect CI/Test Environment
+// Problem (RUN #45): useEmulator hardcoded to false → Playwright tests hit production → quota exhausted
+// Solution: Detect environment and auto-enable emulators for tests
+//
+// Detection Logic:
+// 1. CI Environment (GitHub Actions): process.env.CI === 'true'
+// 2. Playwright Tests: navigator.webdriver === true
+// 3. Localhost Development: window.location.hostname === 'localhost'
+//
+// Production (GitHub Pages): All checks false → useEmulator = false
 
-console.log('🔥 Firebase Config Loading...');
-console.log('  Environment: PRODUCTION (GitHub Pages)');
-console.log('  Use Emulator: NO');
+const isNodeEnvironment = typeof process !== 'undefined' && process.versions && process.versions.node;
+const isBrowserEnvironment = typeof window !== 'undefined';
+
+let useEmulator = false;
+
+if (isNodeEnvironment) {
+  // Node.js environment (should not happen in browser, but check anyway)
+  useEmulator = process.env.CI === 'true' || process.env.USE_EMULATOR === 'true';
+  console.log('🔥 Firebase Config Loading (Node.js)...');
+  console.log('  CI Environment:', process.env.CI);
+  console.log('  USE_EMULATOR:', process.env.USE_EMULATOR);
+} else if (isBrowserEnvironment) {
+  // Browser environment (normal case)
+  const isPlaywrightTest = navigator.webdriver === true;
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isEmulatorPort = window.location.port === '8000'; // Playwright http-server port
+
+  useEmulator = isPlaywrightTest || (isLocalhost && isEmulatorPort);
+
+  console.log('🔥 Firebase Config Loading (Browser)...');
+  console.log('  Environment Detection:');
+  console.log('    - Playwright Test (navigator.webdriver):', isPlaywrightTest);
+  console.log('    - Localhost:', isLocalhost);
+  console.log('    - Emulator Port (8000):', isEmulatorPort);
+  console.log('    - Current Hostname:', window.location.hostname);
+  console.log('    - Current Port:', window.location.port);
+}
+
+console.log('  ✅ Use Emulator:', useEmulator);
+console.log('  ✅ Target:', useEmulator ? 'EMULATORS (localhost:8080/9199)' : 'PRODUCTION Firebase (europe-west3)');
 
 // ✅ Firebase Credentials aus Git History wiederhergestellt (RUN #45)
 const firebaseConfig = {

@@ -1,8 +1,37 @@
 # Testing Guide - Critical Pipeline E2E Tests
 
-**Version:** 1.0
-**Datum:** 13. Oktober 2025
+**Version:** 2.0 (RUN #46 Update)
+**Datum:** 17. Oktober 2025
 **Für:** Fahrzeugannahme App Critical Pipeline Tests
+
+---
+
+## 🆕 WICHTIG: RUN #46 Quota-Problem Fix
+
+### Problem (vor RUN #46):
+- Playwright E2E-Tests griffen auf **Production Firebase** zu
+- `firebase-config.js` hatte hardcoded `useEmulator = false`
+- Jeder CI/CD-Lauf verbrauchte **500-1000 Firestore-Operationen** vom Production-Quota
+- Nach 20-40 Test-Runs: Firebase Daily Quota überschritten → Datenbank für 24h gesperrt
+
+### Lösung (RUN #46):
+✅ **Automatische Emulator-Erkennung** in `firebase-config.js`:
+  - Erkennt `navigator.webdriver` (Playwright Tests)
+  - Erkennt `localhost:8000` (Emulator-Port)
+  - Aktiviert automatisch `useEmulator = true` bei Tests
+  - Production-App (GitHub Pages) nutzt weiterhin echte Firebase
+
+✅ **GitHub Actions CI/CD Fix**:
+  - Workflow setzt explizit `USE_EMULATOR=true` und `CI=true`
+  - Alle Tests laufen gegen Firebase Emulators (localhost:8080/9199)
+  - **0 Production-Quota-Verbrauch** durch Tests!
+
+✅ **Quota Monitoring**:
+  - Neue Seite: `monitor-firebase-quota.html`
+  - Überwacht täglichen Quota-Verbrauch durch echte Nutzer
+  - Link in index.html verfügbar
+
+**Ergebnis:** Tests können jetzt unbegrenzt oft laufen ohne Production zu beeinträchtigen! 🎉
 
 ---
 
@@ -10,9 +39,9 @@
 
 Dieses Dokument beschreibt alle Möglichkeiten, die Critical Pipeline E2E Tests auszuführen:
 
-1. **CI/CD (GitHub Actions)** - Automatisch bei Push/PR ✅ EMPFOHLEN
+1. **CI/CD (GitHub Actions)** - Automatisch bei Push/PR ✅ EMPFOHLEN (nutzt Emulators seit RUN #46)
 2. **Lokal mit Firebase Emulators** - Für schnelle Iteration (benötigt Java 21+)
-3. **Lokal gegen echtes Firebase** - Für vollständige Integration Tests
+3. **Lokal gegen echtes Firebase** - Für vollständige Integration Tests (⚠️ NICHT empfohlen)
 
 ---
 
