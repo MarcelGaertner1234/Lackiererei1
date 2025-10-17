@@ -162,13 +162,15 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(vehicleExists).toBe(true);
 
     // Test: Storniere Anfrage
-    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.1)`);
+    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.1)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
-    console.log('✅ RUN #55: Firebase ready after navigation');
+    console.log('✅ RUN #58: Firebase ready after navigation');
 
-    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
-    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
+    // RUN #58: Wait for realtime listener + renderKanban() to complete
+    // The listener fires async and calls loadFahrzeugeForAnfragen() which takes time
+    console.log('⏳ RUN #58: Waiting for realtime listener to render cards...');
+    await page.waitForTimeout(3000); // Give time for onSnapshot + loadFahrzeugeForAnfragen + renderKanban
 
     // RUN #55: Count ALL cards in DOM for diagnostic
     const cardCount = await page.evaluate(() => {
@@ -176,7 +178,7 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       console.log('🔍 DOM Cards:', Array.from(allCards).map(c => c.className));
       return allCards.length;
     });
-    console.log(`🔍 RUN #55: Found ${cardCount} cards total in DOM`);
+    console.log(`🔍 RUN #58: Found ${cardCount} cards total in DOM`);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo = await page.evaluate(async (kz) => {
@@ -345,13 +347,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(fotosCountBefore).toBe(2); // vorher + nachher = 2 docs
 
     // Test: Storniere Anfrage (sollte CASCADE DELETE triggern)
-    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.2)`);
+    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.2)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
-    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.2)');
+    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.2)');
 
-    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
-    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
+    // RUN #58: Wait for realtime listener + renderKanban() to complete
+    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.2)...');
+    await page.waitForTimeout(3000);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo2 = await page.evaluate(async (kz) => {
@@ -486,13 +489,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     // Test: Simuliere Race Condition
     // Wir fügen ein NEUES Foto hinzu WÄHREND der Stornierung läuft
 
-    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.3)`);
+    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.3)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
-    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.3)');
+    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.3)');
 
-    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
-    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
+    // RUN #58: Wait for realtime listener + renderKanban() to complete
+    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.3)...');
+    await page.waitForTimeout(3000);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo3 = await page.evaluate(async (kz) => {
@@ -662,13 +666,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(cardVisible).toBe(true); // Fahrzeug sollte sichtbar sein
 
     // Test: Storniere Anfrage
-    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.4)`);
+    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.4)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
-    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.4)');
+    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.4)');
 
-    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
-    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
+    // RUN #58: Wait for realtime listener + renderKanban() to complete
+    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.4)...');
+    await page.waitForTimeout(3000);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo4 = await page.evaluate(async (kz) => {
@@ -800,13 +805,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
 
     // Test: Storniere mit 3-tier CASCADE DELETE
-    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.5)`);
+    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.5)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
-    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.5)');
+    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.5)');
 
-    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
-    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
+    // RUN #58: Wait for realtime listener + renderKanban() to complete
+    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.5)...');
+    await page.waitForTimeout(3000);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo5 = await page.evaluate(async (kz) => {
