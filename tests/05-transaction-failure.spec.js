@@ -290,16 +290,23 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       throw new Error(`Partner B: Anfrage not found in Firestore: ${errorMsgB}`);
     }
 
-    // CRITICAL FIX RUN #44: Deactivate Live-Updates for Partner B
-    // Problem: Live-Update listener receives status change from Partner A too fast
+    // CRITICAL FIX RUN #50: Deactivate BOTH Live-Update listeners for Partner B
+    // Problem: Live-Update listeners receive status change from Partner A too fast
     // When Partner A accepts → status becomes 'beauftragt' → button gets hidden (display: none)
     // Partner B tries to click → button invisible → timeout after 90s
-    // Solution: Disable Live-Updates so Partner B still sees button with old status
+    // Solution: Disable BOTH Live-Updates (anfrage + fahrzeug) so Partner B still sees button with old status
     await partnerB.evaluate(() => {
+      // Deaktiviere Anfrage-Listener
       if (window.unsubscribe) {
         window.unsubscribe();
-        console.log('🔕 Partner B: Live-Updates deaktiviert (Test-Modus für Race Condition)');
+        console.log('🔕 Partner B: Live-Updates (Anfrage) deaktiviert');
       }
+      // Deaktiviere Fahrzeug-Listener
+      if (window.unsubscribeFahrzeug) {
+        window.unsubscribeFahrzeug();
+        console.log('🔕 Partner B: Live-Updates (Fahrzeug) deaktiviert');
+      }
+      console.log('✅ Partner B: Alle Live-Updates deaktiviert (Test-Modus für Race Condition)');
     });
 
     // Partner A klickt Button (button is already visible from above check)
