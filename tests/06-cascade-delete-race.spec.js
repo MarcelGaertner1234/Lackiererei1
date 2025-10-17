@@ -155,8 +155,38 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
-    // Finde Anfrage und storniere
+    // RUN #52: Diagnostic logging BEFORE anfrage-card check
+    const debugInfo = await page.evaluate(async (kz) => {
+      const partner = JSON.parse(localStorage.getItem('partner') || '{}');
+      const db = window.firebaseApp.db();
+      const snapshot = await db.collection('partnerAnfragen')
+        .where('partnerId', '==', partner.id)
+        .get();
+      return {
+        partnerIdInSession: partner.id,
+        anfrageCount: snapshot.size,
+        anfragen: snapshot.docs.map(d => ({
+          id: d.id,
+          kennzeichen: d.data().kennzeichen,
+          partnerId: d.data().partnerId,
+          status: d.data().status
+        }))
+      };
+    }, testKennzeichen);
+    console.log('🔍 RUN #52 DEBUG - Partner Session & Firestore State:', debugInfo);
+
+    // RUN #52: Retry-loop for Firestore indexing delays
     const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    for (let i = 0; i < 10; i++) {
+      const visible = await anfrageCard.isVisible().catch(() => false);
+      if (visible) {
+        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        break;
+      }
+      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
+      await page.waitForTimeout(1000);
+    }
+
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
     await anfrageCard.click();
 
@@ -280,7 +310,38 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
+    // RUN #52: Diagnostic logging BEFORE anfrage-card check
+    const debugInfo2 = await page.evaluate(async (kz) => {
+      const partner = JSON.parse(localStorage.getItem('partner') || '{}');
+      const db = window.firebaseApp.db();
+      const snapshot = await db.collection('partnerAnfragen')
+        .where('partnerId', '==', partner.id)
+        .get();
+      return {
+        partnerIdInSession: partner.id,
+        anfrageCount: snapshot.size,
+        anfragen: snapshot.docs.map(d => ({
+          id: d.id,
+          kennzeichen: d.data().kennzeichen,
+          partnerId: d.data().partnerId,
+          status: d.data().status
+        }))
+      };
+    }, testKennzeichen);
+    console.log('🔍 RUN #52 DEBUG (Test 6.2):', debugInfo2);
+
+    // RUN #52: Retry-loop for Firestore indexing delays
     const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    for (let i = 0; i < 10; i++) {
+      const visible = await anfrageCard.isVisible().catch(() => false);
+      if (visible) {
+        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        break;
+      }
+      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
+      await page.waitForTimeout(1000);
+    }
+
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
     await anfrageCard.click();
 
@@ -370,7 +431,38 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
+    // RUN #52: Diagnostic logging BEFORE anfrage-card check
+    const debugInfo3 = await page.evaluate(async (kz) => {
+      const partner = JSON.parse(localStorage.getItem('partner') || '{}');
+      const db = window.firebaseApp.db();
+      const snapshot = await db.collection('partnerAnfragen')
+        .where('partnerId', '==', partner.id)
+        .get();
+      return {
+        partnerIdInSession: partner.id,
+        anfrageCount: snapshot.size,
+        anfragen: snapshot.docs.map(d => ({
+          id: d.id,
+          kennzeichen: d.data().kennzeichen,
+          partnerId: d.data().partnerId,
+          status: d.data().status
+        }))
+      };
+    }, testKennzeichen);
+    console.log('🔍 RUN #52 DEBUG (Test 6.3):', debugInfo3);
+
+    // RUN #52: Retry-loop for Firestore indexing delays
     const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    for (let i = 0; i < 10; i++) {
+      const visible = await anfrageCard.isVisible().catch(() => false);
+      if (visible) {
+        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        break;
+      }
+      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
+      await page.waitForTimeout(1000);
+    }
+
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
     await anfrageCard.click();
 
@@ -495,7 +587,38 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
+    // RUN #52: Diagnostic logging BEFORE anfrage-card check
+    const debugInfo4 = await page.evaluate(async (kz) => {
+      const partner = JSON.parse(localStorage.getItem('partner') || '{}');
+      const db = window.firebaseApp.db();
+      const snapshot = await db.collection('partnerAnfragen')
+        .where('partnerId', '==', partner.id)
+        .get();
+      return {
+        partnerIdInSession: partner.id,
+        anfrageCount: snapshot.size,
+        anfragen: snapshot.docs.map(d => ({
+          id: d.id,
+          kennzeichen: d.data().kennzeichen,
+          partnerId: d.data().partnerId,
+          status: d.data().status
+        }))
+      };
+    }, testKennzeichen);
+    console.log('🔍 RUN #52 DEBUG (Test 6.4):', debugInfo4);
+
+    // RUN #52: Retry-loop for Firestore indexing delays
     const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    for (let i = 0; i < 10; i++) {
+      const visible = await anfrageCard.isVisible().catch(() => false);
+      if (visible) {
+        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        break;
+      }
+      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
+      await page.waitForTimeout(1000);
+    }
+
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
     await anfrageCard.click();
 
@@ -579,7 +702,38 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
+    // RUN #52: Diagnostic logging BEFORE anfrage-card check
+    const debugInfo5 = await page.evaluate(async (kz) => {
+      const partner = JSON.parse(localStorage.getItem('partner') || '{}');
+      const db = window.firebaseApp.db();
+      const snapshot = await db.collection('partnerAnfragen')
+        .where('partnerId', '==', partner.id)
+        .get();
+      return {
+        partnerIdInSession: partner.id,
+        anfrageCount: snapshot.size,
+        anfragen: snapshot.docs.map(d => ({
+          id: d.id,
+          kennzeichen: d.data().kennzeichen,
+          partnerId: d.data().partnerId,
+          status: d.data().status
+        }))
+      };
+    }, testKennzeichen);
+    console.log('🔍 RUN #52 DEBUG (Test 6.5):', debugInfo5);
+
+    // RUN #52: Retry-loop for Firestore indexing delays
     const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    for (let i = 0; i < 10; i++) {
+      const visible = await anfrageCard.isVisible().catch(() => false);
+      if (visible) {
+        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        break;
+      }
+      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
+      await page.waitForTimeout(1000);
+    }
+
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
     await anfrageCard.click();
 

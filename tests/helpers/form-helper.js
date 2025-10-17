@@ -139,7 +139,7 @@ async function setPartnerSession(page, data = {}) {
 
   await page.evaluate((partnerInfo) => {
     const partnerObj = {
-      id: 'test-partner-' + Date.now(),
+      id: 'test-partner-e2e-cascade', // RUN #52: Static ID for CASCADE DELETE tests (prevents partnerId mismatch)
       name: partnerInfo.partnerName,
       email: partnerInfo.partnerEmail,
       telefon: partnerInfo.partnerTelefon,
