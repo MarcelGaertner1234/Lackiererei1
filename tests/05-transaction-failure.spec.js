@@ -380,8 +380,21 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
 
     expect(vehicleCount).toBe(1); // NUR EINS, nicht 2!
 
-    // Prüfe dass Fahrzeug korrekte Daten hat
-    const vehicleData = await getVehicleData(page, testKennzeichen);
+    // RUN #53: Add retry-loop for getVehicleData (Race Condition - Firestore Emulator delay)
+    let vehicleData = null;
+    const maxVehicleAttempts = 10;
+
+    for (let i = 0; i < maxVehicleAttempts; i++) {
+      vehicleData = await getVehicleData(page, testKennzeichen);
+      if (vehicleData && vehicleData.kennzeichen) {
+        console.log(`✅ RUN #53: Vehicle data found after ${i + 1} attempt(s)`);
+        break;
+      }
+      console.log(`⏳ RUN #53: Attempt ${i + 1}/${maxVehicleAttempts} - Vehicle data not ready, waiting...`);
+      await page.waitForTimeout(1000);
+    }
+
+    expect(vehicleData).toBeTruthy(); // Ensure we have data
     expect(vehicleData.kennzeichen).toBe(testKennzeichen);
     expect(vehicleData.vereinbarterPreis).toBe(1500); // RUN #51: Fixed type (Number, not String)
 

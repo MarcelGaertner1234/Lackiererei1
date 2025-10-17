@@ -126,27 +126,28 @@ async function drawTestSignature(page, canvasSelector = '#signaturePad') {
  * Setzt Partner-Session in LocalStorage VOR page.goto()
  * WICHTIG: Muss VOR page.goto('/partner-app/anfrage.html') aufgerufen werden!
  * @param {import('@playwright/test').Page} page
- * @param {Object} data
+ * @param {Object} data - { partnerName, partnerEmail, partnerTelefon, partnerId }
  */
 async function setPartnerSession(page, data = {}) {
   const defaults = {
     partnerName: 'Test Partner GmbH',
     partnerEmail: 'test@partner.de',
-    partnerTelefon: '+49 123 456789'
+    partnerTelefon: '+49 123 456789',
+    partnerId: 'test-partner-' + Date.now() // RUN #53: Fallback - dynamic ID for tests without explicit ID
   };
 
   const partnerData = { ...defaults, ...data };
 
   await page.evaluate((partnerInfo) => {
     const partnerObj = {
-      id: 'test-partner-e2e-cascade', // RUN #52: Static ID for CASCADE DELETE tests (prevents partnerId mismatch)
+      id: partnerInfo.partnerId, // RUN #53: Use provided partnerId or fallback to dynamic ID (Test-Isolation!)
       name: partnerInfo.partnerName,
       email: partnerInfo.partnerEmail,
       telefon: partnerInfo.partnerTelefon,
       adresse: 'Teststraße 123, 12345 Teststadt'
     };
     localStorage.setItem('partner', JSON.stringify(partnerObj));
-    console.log('🔧 Partner-Session set in LocalStorage BEFORE goto():', partnerObj.name);
+    console.log('🔧 Partner-Session set in LocalStorage with ID:', partnerObj.id);
   }, partnerData);
 }
 

@@ -91,7 +91,10 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle vollständigen Partner-Flow
-    await setPartnerSession(page, { partnerName: testPartnerName });
+    await setPartnerSession(page, {
+      partnerName: testPartnerName,
+      partnerId: 'test-partner-cascade-6.1' // RUN #53: Unique ID for test isolation
+    });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
@@ -222,7 +225,10 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Anfrage → KVA → Annahme mit Fotos
-    await setPartnerSession(page, { partnerName: testPartnerName });
+    await setPartnerSession(page, {
+      partnerName: testPartnerName,
+      partnerId: 'test-partner-cascade-6.2' // RUN #53: Unique ID for test isolation
+    });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
@@ -369,7 +375,10 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle Fahrzeug mit Fotos
-    await setPartnerSession(page, { partnerName: testPartnerName });
+    await setPartnerSession(page, {
+      partnerName: testPartnerName,
+      partnerId: 'test-partner-cascade-6.3' // RUN #53: Unique ID for test isolation
+    });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
@@ -526,7 +535,10 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
     // Setup: Erstelle und storniere Anfrage
-    await setPartnerSession(page, { partnerName: testPartnerName });
+    await setPartnerSession(page, {
+      partnerName: testPartnerName,
+      partnerId: 'test-partner-cascade-6.4' // RUN #53: Unique ID for test isolation
+    });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
@@ -646,7 +658,10 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     // Setup: Erstelle Anfrage mit lowercase Kennzeichen
     const lowercaseKennzeichen = 'hd-cas-001'; // lowercase!
 
-    await setPartnerSession(page, { partnerName: testPartnerName });
+    await setPartnerSession(page, {
+      partnerName: testPartnerName,
+      partnerId: 'test-partner-cascade-6.5' // RUN #53: Unique ID for test isolation
+    });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
