@@ -383,7 +383,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Prüfe dass Fahrzeug korrekte Daten hat
     const vehicleData = await getVehicleData(page, testKennzeichen);
     expect(vehicleData.kennzeichen).toBe(testKennzeichen);
-    expect(vehicleData.vereinbarterPreis).toBe('1500');
+    expect(vehicleData.vereinbarterPreis).toBe(1500); // RUN #51: Fixed type (Number, not String)
 
     // Cleanup
     await partnerB.close();
