@@ -103,8 +103,13 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       marke: 'Audi',
       modell: 'A4 B9'
     });
+    console.log('✅ RUN #55: fillPartnerRequestForm() completed');
+
     await page.click('button:has-text("Anfrage senden")');
+    console.log('⏳ RUN #55: Clicked "Anfrage senden", waiting for success message...');
+
     await waitForSuccessMessage(page);
+    console.log('✅ RUN #55: Success message received');
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -155,8 +160,27 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(vehicleExists).toBe(true);
 
     // Test: Storniere Anfrage
+    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.1)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
+    console.log('✅ RUN #55: Firebase ready after navigation');
+
+    // RUN #55: Wait for realtime listener to populate UI
+    console.log('⏳ RUN #55: Waiting for realtime listener to render cards...');
+    await page.waitForFunction(() => {
+      const beauftragtColumn = document.getElementById('column-beauftragt');
+      return beauftragtColumn && beauftragtColumn.children.length > 0;
+    }, { timeout: 15000 }).catch(() => {
+      console.log('⚠️ RUN #55: Timeout waiting for cards - checking manually...');
+    });
+
+    // RUN #55: Count ALL cards in DOM for diagnostic
+    const cardCount = await page.evaluate(() => {
+      const allCards = document.querySelectorAll('[class*="anfrage"]');
+      console.log('🔍 DOM Cards:', Array.from(allCards).map(c => c.className));
+      return allCards.length;
+    });
+    console.log(`🔍 RUN #55: Found ${cardCount} cards total in DOM`);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo = await page.evaluate(async (kz) => {
@@ -180,15 +204,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
     // RUN #52: Retry-loop for Firestore indexing delays
     // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    // RUN #55: Increased from 10 to 20 attempts, 1500ms intervals
     const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
-    for (let i = 0; i < 10; i++) {
+    console.log(`🔍 RUN #55: Searching for anfrage-card with kennzeichen: "${testKennzeichen}"`);
+    for (let i = 0; i < 20; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
-        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        console.log(`✅ RUN #55: Anfrage-card found after ${i + 1} attempt(s)`);
         break;
       }
-      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
-      await page.waitForTimeout(1000);
+      console.log(`⏳ RUN #55: Attempt ${i + 1}/20 - Waiting for anfrage-card...`);
+      await page.waitForTimeout(1500);
     }
 
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
@@ -236,8 +262,13 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await fillPartnerRequestForm(page, {
       kennzeichen: testKennzeichen
     });
+    console.log('✅ RUN #55: fillPartnerRequestForm() completed (Test 6.2)');
+
     await page.click('button:has-text("Anfrage senden")');
+    console.log('⏳ RUN #55: Clicked "Anfrage senden", waiting for success message...');
+
     await waitForSuccessMessage(page);
+    console.log('✅ RUN #55: Success message received (Test 6.2)');
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -314,8 +345,19 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(fotosCountBefore).toBe(2); // vorher + nachher = 2 docs
 
     // Test: Storniere Anfrage (sollte CASCADE DELETE triggern)
+    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.2)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
+    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.2)');
+
+    // RUN #55: Wait for realtime listener
+    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.2)...');
+    await page.waitForFunction(() => {
+      const beauftragtColumn = document.getElementById('column-beauftragt');
+      return beauftragtColumn && beauftragtColumn.children.length > 0;
+    }, { timeout: 15000 }).catch(() => {
+      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.2)');
+    });
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo2 = await page.evaluate(async (kz) => {
@@ -339,15 +381,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
     // RUN #52: Retry-loop for Firestore indexing delays
     // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    // RUN #55: Increased to 20 attempts, 1500ms intervals
     const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
-    for (let i = 0; i < 10; i++) {
+    console.log(`🔍 RUN #55: Searching for anfrage-card (Test 6.2)`);
+    for (let i = 0; i < 20; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
-        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        console.log(`✅ RUN #55: Anfrage-card found after ${i + 1} attempt(s) (Test 6.2)`);
         break;
       }
-      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
-      await page.waitForTimeout(1000);
+      console.log(`⏳ RUN #55: Attempt ${i + 1}/20 (Test 6.2)`);
+      await page.waitForTimeout(1500);
     }
 
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
@@ -387,8 +431,13 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await fillPartnerRequestForm(page, {
       kennzeichen: testKennzeichen
     });
+    console.log('✅ RUN #55: fillPartnerRequestForm() completed (Test 6.3)');
+
     await page.click('button:has-text("Anfrage senden")');
+    console.log('⏳ RUN #55: Clicked "Anfrage senden", waiting for success message...');
+
     await waitForSuccessMessage(page);
+    console.log('✅ RUN #55: Success message received (Test 6.3)');
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -439,8 +488,19 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     // Test: Simuliere Race Condition
     // Wir fügen ein NEUES Foto hinzu WÄHREND der Stornierung läuft
 
+    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.3)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
+    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.3)');
+
+    // RUN #55: Wait for realtime listener
+    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.3)...');
+    await page.waitForFunction(() => {
+      const beauftragtColumn = document.getElementById('column-beauftragt');
+      return beauftragtColumn && beauftragtColumn.children.length > 0;
+    }, { timeout: 15000 }).catch(() => {
+      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.3)');
+    });
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo3 = await page.evaluate(async (kz) => {
@@ -464,15 +524,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
     // RUN #52: Retry-loop for Firestore indexing delays
     // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    // RUN #55: Increased to 20 attempts, 1500ms intervals
     const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
-    for (let i = 0; i < 10; i++) {
+    console.log(`🔍 RUN #55: Searching for anfrage-card (Test 6.3)`);
+    for (let i = 0; i < 20; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
-        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        console.log(`✅ RUN #55: Anfrage-card found after ${i + 1} attempt(s) (Test 6.3)`);
         break;
       }
-      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
-      await page.waitForTimeout(1000);
+      console.log(`⏳ RUN #55: Attempt ${i + 1}/20 (Test 6.3)`);
+      await page.waitForTimeout(1500);
     }
 
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
@@ -548,8 +610,13 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await fillPartnerRequestForm(page, {
       kennzeichen: testKennzeichen
     });
+    console.log('✅ RUN #55: fillPartnerRequestForm() completed (Test 6.4)');
+
     await page.click('button:has-text("Anfrage senden")');
+    console.log('⏳ RUN #55: Clicked "Anfrage senden", waiting for success message...');
+
     await waitForSuccessMessage(page);
+    console.log('✅ RUN #55: Success message received (Test 6.4)');
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -599,8 +666,19 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(cardVisible).toBe(true); // Fahrzeug sollte sichtbar sein
 
     // Test: Storniere Anfrage
+    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.4)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
+    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.4)');
+
+    // RUN #55: Wait for realtime listener
+    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.4)...');
+    await page.waitForFunction(() => {
+      const beauftragtColumn = document.getElementById('column-beauftragt');
+      return beauftragtColumn && beauftragtColumn.children.length > 0;
+    }, { timeout: 15000 }).catch(() => {
+      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.4)');
+    });
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo4 = await page.evaluate(async (kz) => {
@@ -624,15 +702,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
     // RUN #52: Retry-loop for Firestore indexing delays
     // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    // RUN #55: Increased to 20 attempts, 1500ms intervals
     const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
-    for (let i = 0; i < 10; i++) {
+    console.log(`🔍 RUN #55: Searching for anfrage-card (Test 6.4)`);
+    for (let i = 0; i < 20; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
-        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        console.log(`✅ RUN #55: Anfrage-card found after ${i + 1} attempt(s) (Test 6.4)`);
         break;
       }
-      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
-      await page.waitForTimeout(1000);
+      console.log(`⏳ RUN #55: Attempt ${i + 1}/20 (Test 6.4)`);
+      await page.waitForTimeout(1500);
     }
 
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
@@ -672,8 +752,13 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await fillPartnerRequestForm(page, {
       kennzeichen: lowercaseKennzeichen // lowercase input
     });
+    console.log('✅ RUN #55: fillPartnerRequestForm() completed (Test 6.5)');
+
     await page.click('button:has-text("Anfrage senden")');
+    console.log('⏳ RUN #55: Clicked "Anfrage senden", waiting for success message...');
+
     await waitForSuccessMessage(page);
+    console.log('✅ RUN #55: Success message received (Test 6.5)');
 
     const anfrageId = await page.evaluate(async (kz) => {
       const db = window.firebaseApp.db();
@@ -718,8 +803,19 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
 
     // Test: Storniere mit 3-tier CASCADE DELETE
+    console.log(`🔍 RUN #55: Navigating to /meine-anfragen.html (Test 6.5)`);
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
+    console.log('✅ RUN #55: Firebase ready after navigation (Test 6.5)');
+
+    // RUN #55: Wait for realtime listener
+    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.5)...');
+    await page.waitForFunction(() => {
+      const beauftragtColumn = document.getElementById('column-beauftragt');
+      return beauftragtColumn && beauftragtColumn.children.length > 0;
+    }, { timeout: 15000 }).catch(() => {
+      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.5)');
+    });
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo5 = await page.evaluate(async (kz) => {
@@ -743,15 +839,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
     // RUN #52: Retry-loop for Firestore indexing delays
     // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    // RUN #55: Increased to 20 attempts, 1500ms intervals
     const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
-    for (let i = 0; i < 10; i++) {
+    console.log(`🔍 RUN #55: Searching for anfrage-card (Test 6.5)`);
+    for (let i = 0; i < 20; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
-        console.log(`✅ RUN #52: Anfrage-card found after ${i + 1} attempts`);
+        console.log(`✅ RUN #55: Anfrage-card found after ${i + 1} attempt(s) (Test 6.5)`);
         break;
       }
-      console.log(`⏳ RUN #52: Attempt ${i + 1}/10 - Waiting for anfrage-card...`);
-      await page.waitForTimeout(1000);
+      console.log(`⏳ RUN #55: Attempt ${i + 1}/20 (Test 6.5)`);
+      await page.waitForTimeout(1500);
     }
 
     await expect(anfrageCard).toBeVisible({ timeout: 10000 });
