@@ -179,7 +179,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     console.log('🔍 RUN #52 DEBUG - Partner Session & Firestore State:', debugInfo);
 
     // RUN #52: Retry-loop for Firestore indexing delays
-    const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
     for (let i = 0; i < 10; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
@@ -337,7 +338,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     console.log('🔍 RUN #52 DEBUG (Test 6.2):', debugInfo2);
 
     // RUN #52: Retry-loop for Firestore indexing delays
-    const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
     for (let i = 0; i < 10; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
@@ -461,7 +463,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     console.log('🔍 RUN #52 DEBUG (Test 6.3):', debugInfo3);
 
     // RUN #52: Retry-loop for Firestore indexing delays
-    const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
     for (let i = 0; i < 10; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
@@ -620,7 +623,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     console.log('🔍 RUN #52 DEBUG (Test 6.4):', debugInfo4);
 
     // RUN #52: Retry-loop for Firestore indexing delays
-    const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
     for (let i = 0; i < 10; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
@@ -738,7 +742,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     console.log('🔍 RUN #52 DEBUG (Test 6.5):', debugInfo5);
 
     // RUN #52: Retry-loop for Firestore indexing delays
-    const anfrageCard = page.locator(`.anfrage-card:has-text("${testKennzeichen}")`);
+    // RUN #54: Fixed CSS selector (.anfrage-card → .anfrage-card-compact)
+    const anfrageCard = page.locator(`.anfrage-card-compact:has-text("${testKennzeichen}")`);
     for (let i = 0; i < 10; i++) {
       const visible = await anfrageCard.isVisible().catch(() => false);
       if (visible) {
