@@ -165,14 +165,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await waitForFirebaseReady(page);
     console.log('✅ RUN #55: Firebase ready after navigation');
 
-    // RUN #55: Wait for realtime listener to populate UI
-    console.log('⏳ RUN #55: Waiting for realtime listener to render cards...');
-    await page.waitForFunction(() => {
-      const beauftragtColumn = document.getElementById('column-beauftragt');
-      return beauftragtColumn && beauftragtColumn.children.length > 0;
-    }, { timeout: 15000 }).catch(() => {
-      console.log('⚠️ RUN #55: Timeout waiting for cards - checking manually...');
-    });
+    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
+    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
 
     // RUN #55: Count ALL cards in DOM for diagnostic
     const cardCount = await page.evaluate(() => {
@@ -350,14 +344,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await waitForFirebaseReady(page);
     console.log('✅ RUN #55: Firebase ready after navigation (Test 6.2)');
 
-    // RUN #55: Wait for realtime listener
-    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.2)...');
-    await page.waitForFunction(() => {
-      const beauftragtColumn = document.getElementById('column-beauftragt');
-      return beauftragtColumn && beauftragtColumn.children.length > 0;
-    }, { timeout: 15000 }).catch(() => {
-      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.2)');
-    });
+    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
+    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo2 = await page.evaluate(async (kz) => {
@@ -493,14 +481,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await waitForFirebaseReady(page);
     console.log('✅ RUN #55: Firebase ready after navigation (Test 6.3)');
 
-    // RUN #55: Wait for realtime listener
-    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.3)...');
-    await page.waitForFunction(() => {
-      const beauftragtColumn = document.getElementById('column-beauftragt');
-      return beauftragtColumn && beauftragtColumn.children.length > 0;
-    }, { timeout: 15000 }).catch(() => {
-      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.3)');
-    });
+    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
+    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo3 = await page.evaluate(async (kz) => {
@@ -671,14 +653,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await waitForFirebaseReady(page);
     console.log('✅ RUN #55: Firebase ready after navigation (Test 6.4)');
 
-    // RUN #55: Wait for realtime listener
-    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.4)...');
-    await page.waitForFunction(() => {
-      const beauftragtColumn = document.getElementById('column-beauftragt');
-      return beauftragtColumn && beauftragtColumn.children.length > 0;
-    }, { timeout: 15000 }).catch(() => {
-      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.4)');
-    });
+    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
+    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo4 = await page.evaluate(async (kz) => {
@@ -808,14 +784,8 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await waitForFirebaseReady(page);
     console.log('✅ RUN #55: Firebase ready after navigation (Test 6.5)');
 
-    // RUN #55: Wait for realtime listener
-    console.log('⏳ RUN #55: Waiting for realtime listener (Test 6.5)...');
-    await page.waitForFunction(() => {
-      const beauftragtColumn = document.getElementById('column-beauftragt');
-      return beauftragtColumn && beauftragtColumn.children.length > 0;
-    }, { timeout: 15000 }).catch(() => {
-      console.log('⚠️ RUN #55: Timeout waiting for cards (Test 6.5)');
-    });
+    // RUN #56: Removed aggressive waitForFunction() that caused browser crash
+    // Rely on retry loop below (20 attempts × 1500ms = 30s total)
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo5 = await page.evaluate(async (kz) => {
