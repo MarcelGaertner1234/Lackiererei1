@@ -91,16 +91,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
   test('6.1 CRITICAL: Atomic Batch Transaction bei Stornierung', async ({ page }) => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
-    // RUN #57: Direct Firestore write instead of UI form submission
-    // Setup: Create Partner Session + Anfrage directly in Firestore
+    // RUN #63: Setup Partner Session (LocalStorage only)
     await setPartnerSession(page, {
       partnerName: testPartnerName,
-      partnerId: 'test-partner-cascade-6.1' // RUN #53: Unique ID for test isolation
+      partnerId: 'test-partner-cascade-6.1'
     });
-    await page.goto('/partner-app/anfrage.html');
+
+    // RUN #63: Navigate DIRECTLY to meine-anfragen.html (skip anfrage.html!)
+    await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
-    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    // RUN #63: Create Partner in Firestore AFTER Firebase initialized
     await createPartnerInFirestore(page, {
       partnerId: 'test-partner-cascade-6.1',
       partnerName: testPartnerName,
@@ -108,12 +109,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerTelefon: '+49 123 456789'
     });
 
-    // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
-    const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
-      const db = window.firebaseApp.db();
-      const reqId = 'req_' + Date.now();
+    // RUN #63: Create anfrage ID BEFORE page.evaluate
+    const anfrageId = 'req_' + Date.now() + '_test-6.1';
 
-      await db.collection('partnerAnfragen').doc(reqId).set({
+    // RUN #63: Create anfrage directly via Firestore (AFTER Partner exists!)
+    await page.evaluate(async ({ id, kz, partnerId, partnerName }) => {
+      const db = window.firebaseApp.db();
+
+      await db.collection('partnerAnfragen').doc(id).set({
         kennzeichen: kz,
         partnerId: partnerId,
         partnerName: partnerName,
@@ -123,9 +126,9 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
         createdAt: Date.now()
       });
 
-      console.log('✅ RUN #57: Anfrage created directly in Firestore:', reqId);
-      return reqId;
+      console.log('✅ RUN #63: Anfrage created directly in Firestore (Test 6.1):', id);
     }, {
+      id: anfrageId,
       kz: testKennzeichen,
       partnerId: 'test-partner-cascade-6.1',
       partnerName: testPartnerName
