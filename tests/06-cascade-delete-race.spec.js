@@ -23,6 +23,7 @@ const {
 } = require('./helpers/firebase-helper');
 const {
   setPartnerSession,
+  createPartnerInFirestore,
   fillPartnerRequestForm,
   waitForSuccessMessage
 } = require('./helpers/form-helper');
@@ -98,6 +99,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
+
+    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    await createPartnerInFirestore(page, {
+      partnerId: 'test-partner-cascade-6.1',
+      partnerName: testPartnerName,
+      partnerEmail: 'test@partner.de',
+      partnerTelefon: '+49 123 456789'
+    });
 
     // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
     const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
@@ -274,6 +283,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
+
+    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    await createPartnerInFirestore(page, {
+      partnerId: 'test-partner-cascade-6.2',
+      partnerName: testPartnerName,
+      partnerEmail: 'test@partner.de',
+      partnerTelefon: '+49 123 456789'
+    });
 
     // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
     const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
@@ -460,6 +477,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
+
+    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    await createPartnerInFirestore(page, {
+      partnerId: 'test-partner-cascade-6.3',
+      partnerName: testPartnerName,
+      partnerEmail: 'test@partner.de',
+      partnerTelefon: '+49 123 456789'
+    });
 
     // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
     const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
@@ -657,6 +682,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
 
+    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    await createPartnerInFirestore(page, {
+      partnerId: 'test-partner-cascade-6.4',
+      partnerName: testPartnerName,
+      partnerEmail: 'test@partner.de',
+      partnerTelefon: '+49 123 456789'
+    });
+
     // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
     const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
       const db = window.firebaseApp.db();
@@ -815,6 +848,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     });
     await page.goto('/partner-app/anfrage.html');
     await waitForFirebaseReady(page);
+
+    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    await createPartnerInFirestore(page, {
+      partnerId: 'test-partner-cascade-6.5',
+      partnerName: testPartnerName,
+      partnerEmail: 'test@partner.de',
+      partnerTelefon: '+49 123 456789'
+    });
 
     // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly with NORMALIZED kennzeichen
     const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {

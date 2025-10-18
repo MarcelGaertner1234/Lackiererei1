@@ -172,6 +172,42 @@ async function setPartnerSession(page, data = {}) {
 }
 
 /**
+ * Erstellt Partner-Dokument in Firestore (NACH Firebase initialisiert ist!)
+ * WICHTIG: Muss NACH page.goto() + waitForFirebaseReady() aufgerufen werden!
+ * @param {import('@playwright/test').Page} page
+ * @param {Object} data - { partnerId, partnerName, partnerEmail, partnerTelefon }
+ */
+async function createPartnerInFirestore(page, data = {}) {
+  const defaults = {
+    partnerName: 'Test Partner GmbH',
+    partnerEmail: 'test@partner.de',
+    partnerTelefon: '+49 123 456789',
+    partnerId: 'test-partner-' + Date.now()
+  };
+
+  const partnerData = { ...defaults, ...data };
+
+  await page.evaluate(async (partnerInfo) => {
+    if (!window.firebaseApp || !window.firebaseApp.db) {
+      console.error('❌ RUN #61: window.firebaseApp nicht verfügbar - Firebase muss initialisiert sein!');
+      throw new Error('Firebase not initialized - call waitForFirebaseReady() first!');
+    }
+
+    const db = window.firebaseApp.db();
+    await db.collection('partner').doc(partnerInfo.partnerId).set({
+      name: partnerInfo.partnerName,
+      email: partnerInfo.partnerEmail,
+      telefon: partnerInfo.partnerTelefon,
+      adresse: 'Teststraße 123, 12345 Teststadt',
+      createdAt: Date.now(),
+      rabattKonditionen: null,
+      konditionenGeprueft: false
+    });
+    console.log('✅ RUN #61: Partner-Dokument in Firestore erstellt:', partnerInfo.partnerId);
+  }, partnerData);
+}
+
+/**
  * Füllt Partner-Anfrage Formular mit vollständiger 9-Step Wizard Navigation
  * WICHTIG: setPartnerSession() MUSS vorher aufgerufen worden sein!
  * @param {import('@playwright/test').Page} page
@@ -389,6 +425,7 @@ module.exports = {
   uploadTestPhoto,
   drawTestSignature,
   setPartnerSession,
+  createPartnerInFirestore,
   fillPartnerRequestForm,
   getFutureDate,
   waitForSuccessMessage
