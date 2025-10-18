@@ -174,95 +174,110 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
     console.log('✅ RUN #64: [3/4] Anfrage verification PASSED');
 
-    // RUN #65: Simuliere KVA erstellt und angenommen (Fahrzeug erstellt)
-    console.log('🔧 RUN #64: [4/4] Creating vehicle and updating anfrage...');
+    // RUN #66: Simuliere KVA erstellt und angenommen (Fahrzeug erstellt)
+    console.log('🔧 RUN #66: [4/6] Creating vehicle and updating anfrage...');
+    let fahrzeugId;
+
     try {
-      const fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
+      fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
         const db = window.firebaseApp.db();
 
-        // RUN #65: Update Anfrage zu beauftragt (.set with merge:true instead of .update)
-        await db.collection('partnerAnfragen').doc(id).set({
-          status: 'beauftragt',
-          kva: {
-            gesamtpreis: 1800,
-            positionen: [{ beschreibung: 'Lackierung', menge: 1, einzelpreis: 1800 }]
-          }
-        }, { merge: true }); // ← merge:true = partial update, works even if doc doesn't exist
-
-        // Erstelle Fahrzeug
-        const fahrzeugId = 'fzg_' + Date.now();
-        await db.collection('fahrzeuge').doc(fahrzeugId).set({
-          kennzeichen: kz,
-          kundenname: partner,
-          quelle: 'Partner-Portal',
-          prozessStatus: 'terminiert',
-          vereinbarterPreis: '1800',
-          createdAt: Date.now()
-        });
-
-        // RUN #65: VERIFY vehicle was written to Firestore!
-        const vehicleDoc = await db.collection('fahrzeuge').doc(fahrzeugId).get();
-        if (!vehicleDoc.exists) {
-          throw new Error(`RUN #65: Vehicle ${fahrzeugId} NOT written to Firestore!`);
+        // RUN #66: Step 1 - Update Anfrage zu beauftragt (with error handling)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            status: 'beauftragt',
+            kva: {
+              gesamtpreis: 1800,
+              positionen: [{ beschreibung: 'Lackierung', menge: 1, einzelpreis: 1800 }]
+            }
+          }, { merge: true });
+          console.log('✅ RUN #66: Anfrage updated to beauftragt');
+        } catch (error) {
+          console.error('❌ RUN #66: Anfrage .set() FAILED:', error.message);
+          throw error;
         }
-        console.log('✅ RUN #65: Vehicle verified in Firestore:', fahrzeugId);
 
-        // RUN #65: Speichere Fahrzeug-ID in Anfrage (.set with merge:true)
-        await db.collection('partnerAnfragen').doc(id).set({
-          fahrzeugId: fahrzeugId
-        }, { merge: true });
+        // RUN #66: Step 2 - Create Fahrzeug (with error handling)
+        const fahrzeugId = 'fzg_' + Date.now();
+        try {
+          await db.collection('fahrzeuge').doc(fahrzeugId).set({
+            kennzeichen: kz,
+            kundenname: partner,
+            quelle: 'Partner-Portal',
+            prozessStatus: 'terminiert',
+            vereinbarterPreis: '1800',
+            createdAt: Date.now()
+          });
+          console.log('✅ RUN #66: Vehicle written to Firestore:', fahrzeugId);
+        } catch (error) {
+          console.error('❌ RUN #66: Vehicle .set() FAILED:', error.message);
+          throw error;
+        }
 
-        console.log('✅ RUN #65: Anfrage updated with fahrzeugId:', id);
+        // RUN #66: Step 3 - Link Fahrzeug-ID to Anfrage (with error handling)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            fahrzeugId: fahrzeugId
+          }, { merge: true });
+          console.log('✅ RUN #66: Anfrage updated with fahrzeugId:', id);
+        } catch (error) {
+          console.error('❌ RUN #66: Anfrage fahrzeugId link FAILED:', error.message);
+          throw error;
+        }
 
-        return fahrzeugId; // ← Return for external verification
+        return fahrzeugId;
       }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
 
-      console.log('✅ RUN #64: [4/4] Vehicle creation SUCCESS');
+      console.log('✅ RUN #66: [4/6] Vehicle creation SUCCESS');
       console.log('   Vehicle ID:', fahrzeugId);
     } catch (error) {
-      console.error('❌ RUN #64: [4/4] Vehicle creation FAILED:', error.message);
+      console.error('❌ RUN #66: [4/6] Vehicle creation FAILED:', error.message);
       throw error;
     }
 
-    // RUN #65: Wait for Firestore Emulator to commit writes
-    console.log('⏳ RUN #65: Waiting 1 second for Firestore commit...');
-    await page.waitForTimeout(1000);
-    console.log('✅ RUN #65: Firestore commit wait complete');
+    // RUN #66: Verify vehicle exists in Firestore (OUTSIDE page.evaluate for safety)
+    console.log('🔧 RUN #66: [5/6] Verifying vehicle exists in Firestore...');
+    try {
+      const vehicleData = await page.evaluate(async (fzgId) => {
+        const db = window.firebaseApp.db();
+        const doc = await db.collection('fahrzeuge').doc(fzgId).get();
 
-    // Verify: Fahrzeug existiert
+        if (!doc.exists) {
+          return null;
+        }
+
+        return {
+          id: doc.id,
+          exists: true,
+          data: doc.data()
+        };
+      }, fahrzeugId);
+
+      if (!vehicleData || !vehicleData.exists) {
+        throw new Error(`RUN #66: Vehicle ${fahrzeugId} NOT found in Firestore!`);
+      }
+
+      console.log('✅ RUN #66: [5/6] Vehicle verification SUCCESS');
+      console.log('   Vehicle data:', {
+        id: vehicleData.id,
+        kennzeichen: vehicleData.data.kennzeichen,
+        kundenname: vehicleData.data.kundenname
+      });
+    } catch (error) {
+      console.error('❌ RUN #66: [5/6] Vehicle verification FAILED:', error.message);
+      throw error;
+    }
+
+    // RUN #66: Navigate to liste.html to verify vehicle appears in UI
+    console.log('🔧 RUN #66: [6/6] Verifying vehicle appears in UI...');
     await page.goto('/liste.html');
     await waitForFirebaseReady(page);
 
-    console.log('🔍 RUN #65: Checking if vehicle exists in /liste.html...');
-
-    // RUN #65: Query Firestore directly FIRST (to see if problem is DB or UI)
-    const vehicleInFirestore = await page.evaluate(async (kz) => {
-      const db = window.firebaseApp.db();
-      const snapshot = await db.collection('fahrzeuge')
-        .where('kennzeichen', '==', kz)
-        .get();
-
-      console.log('🔍 RUN #65: Firestore vehicle query:', {
-        kennzeichen: kz,
-        found: snapshot.size,
-        docs: snapshot.docs.map(d => ({
-          id: d.id,
-          kennzeichen: d.data().kennzeichen,
-          kundenname: d.data().kundenname,
-          prozessStatus: d.data().prozessStatus
-        }))
-      });
-
-      return snapshot.size > 0;
-    }, testKennzeichen);
-
-    console.log('🔍 RUN #65: Vehicle in Firestore:', vehicleInFirestore);
-
-    // THEN check UI
     let vehicleExists = await checkVehicleExists(page, testKennzeichen);
-    console.log('🔍 RUN #65: Vehicle in UI (checkVehicleExists):', vehicleExists);
+    console.log('🔍 RUN #66: Vehicle in UI (checkVehicleExists):', vehicleExists);
 
     expect(vehicleExists).toBe(true);
+    console.log('✅ RUN #66: [6/6] Vehicle verification in UI PASSED');
 
     // Test: Storniere Anfrage
     console.log(`🔍 RUN #59: [1/6] Test 6.1 - About to navigate to /meine-anfragen.html`);
