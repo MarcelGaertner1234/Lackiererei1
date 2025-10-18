@@ -162,15 +162,32 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(vehicleExists).toBe(true);
 
     // Test: Storniere Anfrage
-    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.1)`);
-    await page.goto('/partner-app/meine-anfragen.html');
-    await waitForFirebaseReady(page);
-    console.log('✅ RUN #58: Firebase ready after navigation');
+    console.log(`🔍 RUN #59: [1/6] Test 6.1 - About to navigate to /meine-anfragen.html`);
+    console.log(`   Current URL: ${page.url()}`);
+    console.log(`   Timestamp: ${Date.now()}`);
 
-    // RUN #58: Wait for realtime listener + renderKanban() to complete
-    // The listener fires async and calls loadFahrzeugeForAnfragen() which takes time
-    console.log('⏳ RUN #58: Waiting for realtime listener to render cards...');
-    await page.waitForTimeout(3000); // Give time for onSnapshot + loadFahrzeugeForAnfragen + renderKanban
+    console.log(`⏳ RUN #59: [2/6] Calling page.goto()...`);
+    await page.goto('/partner-app/meine-anfragen.html');
+    console.log(`✅ RUN #59: [3/6] page.goto() completed successfully`);
+    console.log(`   New URL: ${page.url()}`);
+
+    console.log(`⏳ RUN #59: [4/6] Calling waitForFirebaseReady()...`);
+    await waitForFirebaseReady(page);
+    console.log(`✅ RUN #59: [5/6] waitForFirebaseReady() completed`);
+
+    // Log page state BEFORE waitForTimeout
+    const pageState = await page.evaluate(() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      firebaseInitialized: window.firebaseInitialized,
+      hasFirebaseApp: !!window.firebaseApp,
+      partnerId: JSON.parse(localStorage.getItem('partner') || '{}').id
+    }));
+    console.log(`📊 RUN #59: Page state BEFORE waitForTimeout:`, pageState);
+
+    console.log(`⏳ RUN #59: [6/6] Starting 3-second wait for realtime listener...`);
+    await page.waitForTimeout(3000);
+    console.log(`✅ RUN #59: 3-second wait completed successfully`)
 
     // RUN #55: Count ALL cards in DOM for diagnostic
     const cardCount = await page.evaluate(() => {
@@ -347,14 +364,32 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(fotosCountBefore).toBe(2); // vorher + nachher = 2 docs
 
     // Test: Storniere Anfrage (sollte CASCADE DELETE triggern)
-    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.2)`);
-    await page.goto('/partner-app/meine-anfragen.html');
-    await waitForFirebaseReady(page);
-    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.2)');
+    console.log(`🔍 RUN #59: [1/6] Test 6.2 - About to navigate to /meine-anfragen.html`);
+    console.log(`   Current URL: ${page.url()}`);
+    console.log(`   Timestamp: ${Date.now()}`);
 
-    // RUN #58: Wait for realtime listener + renderKanban() to complete
-    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.2)...');
+    console.log(`⏳ RUN #59: [2/6] Calling page.goto()...`);
+    await page.goto('/partner-app/meine-anfragen.html');
+    console.log(`✅ RUN #59: [3/6] page.goto() completed successfully (Test 6.2)`);
+    console.log(`   New URL: ${page.url()}`);
+
+    console.log(`⏳ RUN #59: [4/6] Calling waitForFirebaseReady()...`);
+    await waitForFirebaseReady(page);
+    console.log(`✅ RUN #59: [5/6] waitForFirebaseReady() completed (Test 6.2)`);
+
+    // Log page state BEFORE waitForTimeout
+    const pageState2 = await page.evaluate(() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      firebaseInitialized: window.firebaseInitialized,
+      hasFirebaseApp: !!window.firebaseApp,
+      partnerId: JSON.parse(localStorage.getItem('partner') || '{}').id
+    }));
+    console.log(`📊 RUN #59: Page state BEFORE waitForTimeout (Test 6.2):`, pageState2);
+
+    console.log(`⏳ RUN #59: [6/6] Starting 3-second wait (Test 6.2)...`);
     await page.waitForTimeout(3000);
+    console.log(`✅ RUN #59: 3-second wait completed successfully (Test 6.2)`);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo2 = await page.evaluate(async (kz) => {
@@ -489,14 +524,32 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     // Test: Simuliere Race Condition
     // Wir fügen ein NEUES Foto hinzu WÄHREND der Stornierung läuft
 
-    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.3)`);
-    await page.goto('/partner-app/meine-anfragen.html');
-    await waitForFirebaseReady(page);
-    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.3)');
+    console.log(`🔍 RUN #59: [1/6] Test 6.3 - About to navigate to /meine-anfragen.html`);
+    console.log(`   Current URL: ${page.url()}`);
+    console.log(`   Timestamp: ${Date.now()}`);
 
-    // RUN #58: Wait for realtime listener + renderKanban() to complete
-    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.3)...');
+    console.log(`⏳ RUN #59: [2/6] Calling page.goto()...`);
+    await page.goto('/partner-app/meine-anfragen.html');
+    console.log(`✅ RUN #59: [3/6] page.goto() completed successfully (Test 6.3)`);
+    console.log(`   New URL: ${page.url()}`);
+
+    console.log(`⏳ RUN #59: [4/6] Calling waitForFirebaseReady()...`);
+    await waitForFirebaseReady(page);
+    console.log(`✅ RUN #59: [5/6] waitForFirebaseReady() completed (Test 6.3)`);
+
+    // Log page state BEFORE waitForTimeout
+    const pageState3 = await page.evaluate(() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      firebaseInitialized: window.firebaseInitialized,
+      hasFirebaseApp: !!window.firebaseApp,
+      partnerId: JSON.parse(localStorage.getItem('partner') || '{}').id
+    }));
+    console.log(`📊 RUN #59: Page state BEFORE waitForTimeout (Test 6.3):`, pageState3);
+
+    console.log(`⏳ RUN #59: [6/6] Starting 3-second wait (Test 6.3)...`);
     await page.waitForTimeout(3000);
+    console.log(`✅ RUN #59: 3-second wait completed successfully (Test 6.3)`);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo3 = await page.evaluate(async (kz) => {
@@ -666,14 +719,32 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     expect(cardVisible).toBe(true); // Fahrzeug sollte sichtbar sein
 
     // Test: Storniere Anfrage
-    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.4)`);
-    await page.goto('/partner-app/meine-anfragen.html');
-    await waitForFirebaseReady(page);
-    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.4)');
+    console.log(`🔍 RUN #59: [1/6] Test 6.4 - About to navigate to /meine-anfragen.html`);
+    console.log(`   Current URL: ${page.url()}`);
+    console.log(`   Timestamp: ${Date.now()}`);
 
-    // RUN #58: Wait for realtime listener + renderKanban() to complete
-    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.4)...');
+    console.log(`⏳ RUN #59: [2/6] Calling page.goto()...`);
+    await page.goto('/partner-app/meine-anfragen.html');
+    console.log(`✅ RUN #59: [3/6] page.goto() completed successfully (Test 6.4)`);
+    console.log(`   New URL: ${page.url()}`);
+
+    console.log(`⏳ RUN #59: [4/6] Calling waitForFirebaseReady()...`);
+    await waitForFirebaseReady(page);
+    console.log(`✅ RUN #59: [5/6] waitForFirebaseReady() completed (Test 6.4)`);
+
+    // Log page state BEFORE waitForTimeout
+    const pageState4 = await page.evaluate(() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      firebaseInitialized: window.firebaseInitialized,
+      hasFirebaseApp: !!window.firebaseApp,
+      partnerId: JSON.parse(localStorage.getItem('partner') || '{}').id
+    }));
+    console.log(`📊 RUN #59: Page state BEFORE waitForTimeout (Test 6.4):`, pageState4);
+
+    console.log(`⏳ RUN #59: [6/6] Starting 3-second wait (Test 6.4)...`);
     await page.waitForTimeout(3000);
+    console.log(`✅ RUN #59: 3-second wait completed successfully (Test 6.4)`);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo4 = await page.evaluate(async (kz) => {
@@ -805,14 +876,32 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
 
     // Test: Storniere mit 3-tier CASCADE DELETE
-    console.log(`🔍 RUN #58: Navigating to /meine-anfragen.html (Test 6.5)`);
-    await page.goto('/partner-app/meine-anfragen.html');
-    await waitForFirebaseReady(page);
-    console.log('✅ RUN #58: Firebase ready after navigation (Test 6.5)');
+    console.log(`🔍 RUN #59: [1/6] Test 6.5 - About to navigate to /meine-anfragen.html`);
+    console.log(`   Current URL: ${page.url()}`);
+    console.log(`   Timestamp: ${Date.now()}`);
 
-    // RUN #58: Wait for realtime listener + renderKanban() to complete
-    console.log('⏳ RUN #58: Waiting for realtime listener to render cards (Test 6.5)...');
+    console.log(`⏳ RUN #59: [2/6] Calling page.goto()...`);
+    await page.goto('/partner-app/meine-anfragen.html');
+    console.log(`✅ RUN #59: [3/6] page.goto() completed successfully (Test 6.5)`);
+    console.log(`   New URL: ${page.url()}`);
+
+    console.log(`⏳ RUN #59: [4/6] Calling waitForFirebaseReady()...`);
+    await waitForFirebaseReady(page);
+    console.log(`✅ RUN #59: [5/6] waitForFirebaseReady() completed (Test 6.5)`);
+
+    // Log page state BEFORE waitForTimeout
+    const pageState5 = await page.evaluate(() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      firebaseInitialized: window.firebaseInitialized,
+      hasFirebaseApp: !!window.firebaseApp,
+      partnerId: JSON.parse(localStorage.getItem('partner') || '{}').id
+    }));
+    console.log(`📊 RUN #59: Page state BEFORE waitForTimeout (Test 6.5):`, pageState5);
+
+    console.log(`⏳ RUN #59: [6/6] Starting 3-second wait (Test 6.5)...`);
     await page.waitForTimeout(3000);
+    console.log(`✅ RUN #59: 3-second wait completed successfully (Test 6.5)`);
 
     // RUN #52: Diagnostic logging BEFORE anfrage-card check
     const debugInfo5 = await page.evaluate(async (kz) => {
