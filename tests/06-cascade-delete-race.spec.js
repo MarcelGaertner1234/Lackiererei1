@@ -101,70 +101,118 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
-    // RUN #63: Create Partner in Firestore AFTER Firebase initialized
-    await createPartnerInFirestore(page, {
-      partnerId: 'test-partner-cascade-6.1',
-      partnerName: testPartnerName,
-      partnerEmail: 'test@partner.de',
-      partnerTelefon: '+49 123 456789'
-    });
+    // RUN #64: Create Partner in Firestore AFTER Firebase initialized
+    console.log('🔧 RUN #64: [1/4] Calling createPartnerInFirestore()...');
+    try {
+      await createPartnerInFirestore(page, {
+        partnerId: 'test-partner-cascade-6.1',
+        partnerName: testPartnerName,
+        partnerEmail: 'test@partner.de',
+        partnerTelefon: '+49 123 456789'
+      });
+      console.log('✅ RUN #64: [1/4] createPartnerInFirestore() SUCCESS');
+    } catch (error) {
+      console.error('❌ RUN #64: [1/4] createPartnerInFirestore() FAILED:', error.message);
+      throw error; // Fail test explicitly
+    }
 
-    // RUN #63: Create anfrage ID BEFORE page.evaluate
+    // RUN #64: Create anfrage ID BEFORE page.evaluate
     const anfrageId = 'req_' + Date.now() + '_test-6.1';
 
-    // RUN #63: Create anfrage directly via Firestore (AFTER Partner exists!)
-    await page.evaluate(async ({ id, kz, partnerId, partnerName }) => {
-      const db = window.firebaseApp.db();
+    // RUN #64: Create anfrage directly via Firestore (AFTER Partner exists!)
+    console.log('🔧 RUN #64: [2/4] Creating anfrage with .set()...');
+    console.log('   Anfrage ID:', anfrageId);
 
-      await db.collection('partnerAnfragen').doc(id).set({
-        kennzeichen: kz,
-        partnerId: partnerId,
-        partnerName: partnerName,
-        status: 'neu',
-        marke: 'Audi',
-        modell: 'A4 B9',
-        createdAt: Date.now()
+    try {
+      await page.evaluate(async ({ id, kz, partnerId, partnerName }) => {
+        const db = window.firebaseApp.db();
+
+        await db.collection('partnerAnfragen').doc(id).set({
+          kennzeichen: kz,
+          partnerId: partnerId,
+          partnerName: partnerName,
+          status: 'neu',
+          marke: 'Audi',
+          modell: 'A4 B9',
+          createdAt: Date.now()
+        });
+
+        console.log('✅ RUN #64: Anfrage created directly in Firestore (Test 6.1):', id);
+      }, {
+        id: anfrageId,
+        kz: testKennzeichen,
+        partnerId: 'test-partner-cascade-6.1',
+        partnerName: testPartnerName
       });
 
-      console.log('✅ RUN #63: Anfrage created directly in Firestore (Test 6.1):', id);
-    }, {
-      id: anfrageId,
-      kz: testKennzeichen,
-      partnerId: 'test-partner-cascade-6.1',
-      partnerName: testPartnerName
-    });
+      console.log('✅ RUN #64: [2/4] Anfrage .set() SUCCESS');
+    } catch (error) {
+      console.error('❌ RUN #64: [2/4] Anfrage .set() FAILED:', error.message);
+      throw error;
+    }
 
     expect(anfrageId).toBeTruthy();
 
-    // Simuliere KVA erstellt und angenommen (Fahrzeug erstellt)
-    await page.evaluate(async ({ id, kz, partner }) => {
+    // RUN #64: Verify anfrage exists BEFORE proceeding
+    console.log('🔧 RUN #64: [3/4] Verifying anfrage exists in Firestore...');
+    const anfrageExists = await page.evaluate(async (id) => {
       const db = window.firebaseApp.db();
-
-      // Update Anfrage zu beauftragt
-      await db.collection('partnerAnfragen').doc(id).update({
-        status: 'beauftragt',
-        kva: {
-          gesamtpreis: 1800,
-          positionen: [{ beschreibung: 'Lackierung', menge: 1, einzelpreis: 1800 }]
-        }
+      const doc = await db.collection('partnerAnfragen').doc(id).get();
+      console.log('🔍 RUN #64: Anfrage exists check:', {
+        id,
+        exists: doc.exists,
+        data: doc.exists ? doc.data() : null
       });
+      return doc.exists;
+    }, anfrageId);
 
-      // Erstelle Fahrzeug
-      const fahrzeugId = 'fzg_' + Date.now();
-      await db.collection('fahrzeuge').doc(fahrzeugId).set({
-        kennzeichen: kz,
-        kundenname: partner,
-        quelle: 'Partner-Portal',
-        prozessStatus: 'terminiert',
-        vereinbarterPreis: '1800',
-        createdAt: Date.now()
-      });
+    console.log('🔍 RUN #64: [3/4] Anfrage exists in Firestore:', anfrageExists);
 
-      // Speichere Fahrzeug-ID in Anfrage
-      await db.collection('partnerAnfragen').doc(id).update({
-        fahrzeugId: fahrzeugId
-      });
-    }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+    if (!anfrageExists) {
+      throw new Error(`RUN #64: Anfrage ${anfrageId} was NOT created in Firestore!`);
+    }
+
+    console.log('✅ RUN #64: [3/4] Anfrage verification PASSED');
+
+    // RUN #64: Simuliere KVA erstellt und angenommen (Fahrzeug erstellt)
+    console.log('🔧 RUN #64: [4/4] Creating vehicle and updating anfrage...');
+    try {
+      await page.evaluate(async ({ id, kz, partner }) => {
+        const db = window.firebaseApp.db();
+
+        // RUN #64: Update Anfrage zu beauftragt (.set with merge:true instead of .update)
+        await db.collection('partnerAnfragen').doc(id).set({
+          status: 'beauftragt',
+          kva: {
+            gesamtpreis: 1800,
+            positionen: [{ beschreibung: 'Lackierung', menge: 1, einzelpreis: 1800 }]
+          }
+        }, { merge: true }); // ← merge:true = partial update, works even if doc doesn't exist
+
+        // Erstelle Fahrzeug
+        const fahrzeugId = 'fzg_' + Date.now();
+        await db.collection('fahrzeuge').doc(fahrzeugId).set({
+          kennzeichen: kz,
+          kundenname: partner,
+          quelle: 'Partner-Portal',
+          prozessStatus: 'terminiert',
+          vereinbarterPreis: '1800',
+          createdAt: Date.now()
+        });
+
+        // RUN #64: Speichere Fahrzeug-ID in Anfrage (.set with merge:true)
+        await db.collection('partnerAnfragen').doc(id).set({
+          fahrzeugId: fahrzeugId
+        }, { merge: true });
+
+        console.log('✅ RUN #64: Vehicle created and anfrage updated:', fahrzeugId);
+      }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+
+      console.log('✅ RUN #64: [4/4] Vehicle creation SUCCESS');
+    } catch (error) {
+      console.error('❌ RUN #64: [4/4] Vehicle creation FAILED:', error.message);
+      throw error;
+    }
 
     // Verify: Fahrzeug existiert
     await page.goto('/liste.html');
