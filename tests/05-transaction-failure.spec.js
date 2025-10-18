@@ -265,13 +265,19 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       throw new Error(`Partner-Anfrage not found in Firestore: ${errorMsg}`);
     }
 
-    // RUN #69: Robust Button Visibility Check - fixes flaky "element is not visible" error
-    console.log('⏳ RUN #69: Partner A - Waiting for "KVA annehmen" button...');
+    // RUN #70: Fix querySelector - :has-text() is Playwright-specific, not browser CSS
+    console.log('⏳ RUN #70: Partner A - Waiting for "KVA annehmen" button...');
 
-    // RUN #69: Comprehensive visibility check (display, visibility, opacity, dimensions)
+    // RUN #70: Use Array.from() + find() instead of querySelector with :has-text()
     await page.waitForFunction(() => {
-      const button = document.querySelector('button:has-text("KVA annehmen")');
-      if (!button) return false;
+      // Standard JavaScript - works in browser context
+      const buttons = Array.from(document.querySelectorAll('button'));
+      const button = buttons.find(btn => btn.textContent.includes('KVA annehmen'));
+
+      if (!button) {
+        console.log('🔍 RUN #70: Button not found');
+        return false;
+      }
 
       const style = window.getComputedStyle(button);
       const rect = button.getBoundingClientRect();
@@ -284,11 +290,11 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
         rect.height > 0
       );
 
-      console.log(`🔍 RUN #69: Button check - exists: ${!!button}, visible: ${isVisible}`);
+      console.log(`🔍 RUN #70: Button exists: true, visible: ${isVisible}`);
       return isVisible;
     }, { timeout: 15000, polling: 500 });
 
-    console.log('✅ RUN #69: Partner A - Button is visible and ready!');
+    console.log('✅ RUN #70: Partner A - Button is visible and ready!');
 
     // NOW open Partner B page (for simultaneous test)
     const partnerB = await context.newPage();
@@ -765,11 +771,46 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     await page.click('button:has-text("KVA annehmen")');
     await page.waitForTimeout(3000);
 
+    // RUN #70: Debug - Check if vehicle was actually created BEFORE navigation
+    console.log('🔧 RUN #70: [Test 5.3] Checking if vehicle was created...');
+
+    const debugVehicle = await page.evaluate(async (kz) => {
+      const db = window.firebaseApp.db();
+      const fahrzeuge = await db.collection('fahrzeuge').get();
+
+      console.log(`🔍 RUN #70: Total vehicles in Firestore: ${fahrzeuge.size}`);
+
+      const matchingVehicles = fahrzeuge.docs.filter(doc =>
+        doc.data().kennzeichen === kz
+      );
+
+      console.log(`🔍 RUN #70: Matching vehicles for "${kz}": ${matchingVehicles.length}`);
+
+      return {
+        totalCount: fahrzeuge.size,
+        matchingCount: matchingVehicles.length,
+        allKennzeichen: fahrzeuge.docs.map(d => d.data().kennzeichen),
+        matchingDetails: matchingVehicles.map(d => ({
+          id: d.id,
+          kennzeichen: d.data().kennzeichen,
+          fotosFehlgeschlagen: d.data().fotosFehlgeschlagen
+        }))
+      };
+    }, testKennzeichen);
+
+    console.log('🔧 RUN #70: [Test 5.3] Vehicle Debug Info:');
+    console.log('   Total vehicles:', debugVehicle.totalCount);
+    console.log('   Matching vehicles:', debugVehicle.matchingCount);
+    console.log('   All kennzeichen:', JSON.stringify(debugVehicle.allKennzeichen));
+    console.log('   Matching details:', JSON.stringify(debugVehicle.matchingDetails, null, 2));
+
     // KRITISCH: Fahrzeug sollte existieren (Transaction erfolgreich)
     await page.goto('/liste.html');
     await waitForFirebaseReady(page);
 
     const vehicleExists = await checkVehicleExists(page, testKennzeichen);
+    console.log('🔧 RUN #70: [Test 5.3] checkVehicleExists result:', vehicleExists);
+
     expect(vehicleExists).toBe(true); // Fahrzeug SOLLTE existieren
 
     // KRITISCH: fotosFehlgeschlagen Flag sollte gesetzt sein
