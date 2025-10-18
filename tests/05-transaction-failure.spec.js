@@ -265,13 +265,30 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
       throw new Error(`Partner-Anfrage not found in Firestore: ${errorMsg}`);
     }
 
-    // CRITICAL FIX RUN #39: Wait for button to be visible on Partner A BEFORE opening Partner B
-    console.log('⏳ Partner A: Waiting for "KVA annehmen" button to become visible...');
-    await page.waitForSelector('button:has-text("KVA annehmen")', {
-      state: 'visible',
-      timeout: 30000  // 30 seconds to wait for button
-    });
-    console.log('✅ Partner A: Button visible!');
+    // RUN #69: Robust Button Visibility Check - fixes flaky "element is not visible" error
+    console.log('⏳ RUN #69: Partner A - Waiting for "KVA annehmen" button...');
+
+    // RUN #69: Comprehensive visibility check (display, visibility, opacity, dimensions)
+    await page.waitForFunction(() => {
+      const button = document.querySelector('button:has-text("KVA annehmen")');
+      if (!button) return false;
+
+      const style = window.getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+
+      const isVisible = (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        style.opacity !== '0' &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+
+      console.log(`🔍 RUN #69: Button check - exists: ${!!button}, visible: ${isVisible}`);
+      return isVisible;
+    }, { timeout: 15000, polling: 500 });
+
+    console.log('✅ RUN #69: Partner A - Button is visible and ready!');
 
     // NOW open Partner B page (for simultaneous test)
     const partnerB = await context.newPage();

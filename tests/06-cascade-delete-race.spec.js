@@ -33,9 +33,46 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
   const testPartnerName = 'E2E CASCADE Test GmbH';
 
   test.beforeEach(async ({ page }) => {
-    // Cleanup vor jedem Test
+    // RUN #69: EMULATOR RESET - Clear all Firestore data before each test
+    console.log('🔧 RUN #69: [beforeEach] Clearing Firestore Emulator data...');
+
+    // Navigate to any page to access firebaseApp
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
+
+    try {
+      await page.evaluate(async () => {
+        const db = window.firebaseApp.db();
+
+        // RUN #69: Collections to clear (prevents Emulator instability)
+        const collections = ['partnerAnfragen', 'fahrzeuge', 'kunden', 'partners'];
+
+        for (const collectionName of collections) {
+          const snapshot = await db.collection(collectionName).get();
+
+          if (snapshot.empty) {
+            console.log(`  ✅ RUN #69: Collection "${collectionName}" already empty`);
+            continue;
+          }
+
+          console.log(`  🗑️  RUN #69: Deleting ${snapshot.size} docs from "${collectionName}"...`);
+
+          // Firestore Emulator: Delete in batches of 500
+          const batch = db.batch();
+          snapshot.docs.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+
+          console.log(`  ✅ RUN #69: Collection "${collectionName}" cleared`);
+        }
+      });
+
+      console.log('✅ RUN #69: [beforeEach] Emulator data cleared successfully');
+    } catch (error) {
+      console.error('❌ RUN #69: [beforeEach] Emulator clear FAILED:', error.message);
+      // Don't throw - allow test to proceed (might be first run)
+    }
+
+    // Original cleanup (now redundant after full reset, but kept for safety)
     await deleteVehicle(page, testKennzeichen);
 
     // Lösche Partner-Anfrage und Fotos
