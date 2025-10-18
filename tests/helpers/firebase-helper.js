@@ -9,9 +9,42 @@
  * @param {import('@playwright/test').Page} page
  */
 async function waitForFirebaseReady(page) {
-  await page.waitForFunction(() => {
-    return window.firebaseApp && window.firebaseApp.db && window.firebaseInitialized === true;
-  }, { timeout: 15000 });
+  console.log('🔧 RUN #68: waitForFirebaseReady() START');
+
+  try {
+    await page.waitForFunction(() => {
+      const state = {
+        hasApp: !!window.firebaseApp,
+        hasDb: !!(window.firebaseApp && window.firebaseApp.db),
+        isInit: window.firebaseInitialized
+      };
+
+      if (!window.firebaseInitialized) {
+        console.log('⏳ RUN #68: Polling...', JSON.stringify(state));
+      }
+
+      return window.firebaseApp && window.firebaseApp.db && window.firebaseInitialized === true;
+    }, {
+      timeout: 20000, // RUN #68: Increased from 15s to 20s
+      polling: 500    // RUN #68: Check every 500ms
+    });
+
+    console.log('✅ RUN #68: waitForFirebaseReady() SUCCESS');
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      firebaseApp: !!window.firebaseApp,
+      db: !!(window.firebaseApp && window.firebaseApp.db),
+      initialized: window.firebaseInitialized,
+      dbType: typeof window.db,
+      storageType: typeof window.storage
+    }));
+
+    console.error('❌ RUN #68: waitForFirebaseReady() TIMEOUT');
+    console.error('   Diagnostics:', JSON.stringify(diagnostics, null, 2));
+    throw error;
+  }
 }
 
 /**

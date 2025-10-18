@@ -200,22 +200,43 @@ window.firebaseApp = {
 
 // Define initFirebase() helper for compatibility
 window.initFirebase = async function() {
+  console.log('🔧 RUN #68: [1/3] initFirebase() called');
+  console.log('   window.firebaseInitialized:', window.firebaseInitialized);
+
   // If Firebase already initialized, return immediately
   if (window.firebaseInitialized) {
-    console.log('✅ initFirebase() called (already initialized)');
+    console.log('✅ RUN #68: [1/3] Already initialized, skipping');
     return Promise.resolve();
   }
 
-  // Otherwise, wait for firebaseReady event
-  console.log('⏳ initFirebase() waiting for Firebase initialization...');
-  await new Promise(resolve => {
-    if (window.firebaseInitialized) {
-      resolve();
-    } else {
-      window.addEventListener('firebaseReady', resolve, { once: true });
+  // RUN #68: Polling with timeout instead of event listener (more reliable)
+  const maxWaitTime = 10000; // 10 seconds
+  const checkInterval = 200; // Check every 200ms
+  const startTime = Date.now();
+
+  console.log('⏳ RUN #68: [2/3] Waiting for Firebase initialization...');
+  console.log('   Max wait time: 10s, polling every 200ms');
+
+  while (!window.firebaseInitialized) {
+    if (Date.now() - startTime > maxWaitTime) {
+      console.error('❌ RUN #68: [2/3] Timeout after 10 seconds!');
+      console.error('   Diagnostics:');
+      console.error('     window.firebaseApp:', !!window.firebaseApp);
+      console.error('     window.db:', !!window.db);
+      console.error('     window.storage:', !!window.storage);
+      throw new Error('RUN #68: Firebase initialization timeout');
     }
-  });
-  console.log('✅ initFirebase() resolved - Firebase ready');
+
+    const elapsed = Date.now() - startTime;
+    if (elapsed % 1000 < checkInterval) {
+      console.log(`⏳ RUN #68: Polling... (${Math.floor(elapsed / 1000)}s elapsed)`);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
+  }
+
+  console.log('✅ RUN #68: [3/3] Firebase initialized successfully');
+  console.log('   Time taken:', (Date.now() - startTime) + 'ms');
   return Promise.resolve();
 };
 
