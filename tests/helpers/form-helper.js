@@ -138,7 +138,7 @@ async function setPartnerSession(page, data = {}) {
 
   const partnerData = { ...defaults, ...data };
 
-  await page.evaluate((partnerInfo) => {
+  await page.evaluate(async (partnerInfo) => {
     const partnerObj = {
       id: partnerInfo.partnerId, // RUN #53: Use provided partnerId or fallback to dynamic ID (Test-Isolation!)
       name: partnerInfo.partnerName,
@@ -146,6 +146,26 @@ async function setPartnerSession(page, data = {}) {
       telefon: partnerInfo.partnerTelefon,
       adresse: 'Teststraße 123, 12345 Teststadt'
     };
+
+    // RUN #60: KRITISCH - Partner AUCH in Firestore erstellen!
+    // checkLogin() in meine-anfragen.html macht db.collection('partner').doc(partner.id).get()
+    // Wenn das Dokument nicht existiert → möglicher Redirect/Crash!
+    if (window.firebaseApp && window.firebaseApp.db) {
+      const db = window.firebaseApp.db();
+      await db.collection('partner').doc(partnerObj.id).set({
+        name: partnerObj.name,
+        email: partnerObj.email,
+        telefon: partnerObj.telefon,
+        adresse: partnerObj.adresse,
+        createdAt: Date.now(),
+        // Optional: Rabatt-Konditionen für Tests
+        rabattKonditionen: null,
+        konditionenGeprueft: false
+      });
+      console.log('✅ RUN #60: Partner-Dokument in Firestore erstellt:', partnerObj.id);
+    }
+
+    // LocalStorage setzen (wie vorher)
     localStorage.setItem('partner', JSON.stringify(partnerObj));
     console.log('🔧 Partner-Session set in LocalStorage with ID:', partnerObj.id);
   }, partnerData);
