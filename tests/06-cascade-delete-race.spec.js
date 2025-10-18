@@ -278,16 +278,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
   test('6.2 CRITICAL: CASCADE DELETE löscht Fotos Subcollection', async ({ page }) => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
-    // RUN #57: Direct Firestore write instead of UI form submission
-    // Setup: Create Partner Session + Anfrage directly in Firestore
+    // RUN #63b: Setup Partner Session (LocalStorage only)
     await setPartnerSession(page, {
       partnerName: testPartnerName,
-      partnerId: 'test-partner-cascade-6.2' // RUN #53: Unique ID for test isolation
+      partnerId: 'test-partner-cascade-6.2'
     });
-    await page.goto('/partner-app/anfrage.html');
+
+    // RUN #63b: Navigate DIRECTLY to meine-anfragen.html (skip anfrage.html!)
+    await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
-    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    // RUN #63b: Create Partner in Firestore AFTER Firebase initialized
     await createPartnerInFirestore(page, {
       partnerId: 'test-partner-cascade-6.2',
       partnerName: testPartnerName,
@@ -295,12 +296,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerTelefon: '+49 123 456789'
     });
 
-    // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
-    const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
-      const db = window.firebaseApp.db();
-      const reqId = 'req_' + Date.now();
+    // RUN #63b: Create anfrage ID BEFORE page.evaluate
+    const anfrageId = 'req_' + Date.now() + '_test-6.2';
 
-      await db.collection('partnerAnfragen').doc(reqId).set({
+    // RUN #63b: Create anfrage directly via Firestore (AFTER Partner exists!)
+    await page.evaluate(async ({ id, kz, partnerId, partnerName }) => {
+      const db = window.firebaseApp.db();
+
+      await db.collection('partnerAnfragen').doc(id).set({
         kennzeichen: kz,
         partnerId: partnerId,
         partnerName: partnerName,
@@ -310,9 +313,9 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
         createdAt: Date.now()
       });
 
-      console.log('✅ RUN #57: Anfrage created directly in Firestore (Test 6.2):', reqId);
-      return reqId;
+      console.log('✅ RUN #63b: Anfrage created directly in Firestore (Test 6.2):', id);
     }, {
+      id: anfrageId,
       kz: testKennzeichen,
       partnerId: 'test-partner-cascade-6.2',
       partnerName: testPartnerName
@@ -472,16 +475,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
   test('6.3 CRITICAL: AFTER-DELETE CHECK bereinigt Race Condition Fotos', async ({ page }) => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
-    // RUN #57: Direct Firestore write instead of UI form submission
-    // Setup: Create Partner Session + Anfrage directly in Firestore
+    // RUN #63b: Setup Partner Session (LocalStorage only)
     await setPartnerSession(page, {
       partnerName: testPartnerName,
-      partnerId: 'test-partner-cascade-6.3' // RUN #53: Unique ID for test isolation
+      partnerId: 'test-partner-cascade-6.3'
     });
-    await page.goto('/partner-app/anfrage.html');
+
+    // RUN #63b: Navigate DIRECTLY to meine-anfragen.html (skip anfrage.html!)
+    await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
-    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    // RUN #63b: Create Partner in Firestore AFTER Firebase initialized
     await createPartnerInFirestore(page, {
       partnerId: 'test-partner-cascade-6.3',
       partnerName: testPartnerName,
@@ -489,12 +493,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerTelefon: '+49 123 456789'
     });
 
-    // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
-    const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
-      const db = window.firebaseApp.db();
-      const reqId = 'req_' + Date.now();
+    // RUN #63b: Create anfrage ID BEFORE page.evaluate
+    const anfrageId = 'req_' + Date.now() + '_test-6.3';
 
-      await db.collection('partnerAnfragen').doc(reqId).set({
+    // RUN #63b: Create anfrage directly via Firestore (AFTER Partner exists!)
+    await page.evaluate(async ({ id, kz, partnerId, partnerName }) => {
+      const db = window.firebaseApp.db();
+
+      await db.collection('partnerAnfragen').doc(id).set({
         kennzeichen: kz,
         partnerId: partnerId,
         partnerName: partnerName,
@@ -504,9 +510,9 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
         createdAt: Date.now()
       });
 
-      console.log('✅ RUN #57: Anfrage created directly in Firestore (Test 6.3):', reqId);
-      return reqId;
+      console.log('✅ RUN #63b: Anfrage created directly in Firestore (Test 6.3):', id);
     }, {
+      id: anfrageId,
       kz: testKennzeichen,
       partnerId: 'test-partner-cascade-6.3',
       partnerName: testPartnerName
@@ -676,16 +682,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
   test('6.4 Cross-Check Filter verhindert stornierte Anfragen in Kanban', async ({ page }) => {
     const consoleMonitor = setupConsoleMonitoring(page);
 
-    // RUN #57: Direct Firestore write instead of UI form submission
-    // Setup: Create Partner Session + Anfrage directly in Firestore
+    // RUN #63b: Setup Partner Session (LocalStorage only)
     await setPartnerSession(page, {
       partnerName: testPartnerName,
-      partnerId: 'test-partner-cascade-6.4' // RUN #53: Unique ID for test isolation
+      partnerId: 'test-partner-cascade-6.4'
     });
-    await page.goto('/partner-app/anfrage.html');
+
+    // RUN #63b: Navigate DIRECTLY to meine-anfragen.html (skip anfrage.html!)
+    await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
-    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    // RUN #63b: Create Partner in Firestore AFTER Firebase initialized
     await createPartnerInFirestore(page, {
       partnerId: 'test-partner-cascade-6.4',
       partnerName: testPartnerName,
@@ -693,12 +700,14 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerTelefon: '+49 123 456789'
     });
 
-    // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly via Firestore
-    const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
-      const db = window.firebaseApp.db();
-      const reqId = 'req_' + Date.now();
+    // RUN #63b: Create anfrage ID BEFORE page.evaluate
+    const anfrageId = 'req_' + Date.now() + '_test-6.4';
 
-      await db.collection('partnerAnfragen').doc(reqId).set({
+    // RUN #63b: Create anfrage directly via Firestore (AFTER Partner exists!)
+    await page.evaluate(async ({ id, kz, partnerId, partnerName }) => {
+      const db = window.firebaseApp.db();
+
+      await db.collection('partnerAnfragen').doc(id).set({
         kennzeichen: kz,
         partnerId: partnerId,
         partnerName: partnerName,
@@ -708,9 +717,9 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
         createdAt: Date.now()
       });
 
-      console.log('✅ RUN #57: Anfrage created directly in Firestore (Test 6.4):', reqId);
-      return reqId;
+      console.log('✅ RUN #63b: Anfrage created directly in Firestore (Test 6.4):', id);
     }, {
+      id: anfrageId,
       kz: testKennzeichen,
       partnerId: 'test-partner-cascade-6.4',
       partnerName: testPartnerName
@@ -841,18 +850,20 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
   });
 
   test('6.5 Normalisiertes Kennzeichen bei 3-tier CASCADE DELETE', async ({ page }) => {
-    // RUN #57: Direct Firestore write instead of UI form submission
-    // Test normalization: Input lowercase, store UPPERCASE
+    // RUN #63b: Test normalization: Input lowercase, store UPPERCASE
     const lowercaseKennzeichen = 'hd-cas-001'; // lowercase input!
 
+    // RUN #63b: Setup Partner Session (LocalStorage only)
     await setPartnerSession(page, {
       partnerName: testPartnerName,
-      partnerId: 'test-partner-cascade-6.5' // RUN #53: Unique ID for test isolation
+      partnerId: 'test-partner-cascade-6.5'
     });
-    await page.goto('/partner-app/anfrage.html');
+
+    // RUN #63b: Navigate DIRECTLY to meine-anfragen.html (skip anfrage.html!)
+    await page.goto('/partner-app/meine-anfragen.html');
     await waitForFirebaseReady(page);
 
-    // RUN #61: Create Partner in Firestore AFTER Firebase initialized
+    // RUN #63b: Create Partner in Firestore AFTER Firebase initialized
     await createPartnerInFirestore(page, {
       partnerId: 'test-partner-cascade-6.5',
       partnerName: testPartnerName,
@@ -860,15 +871,17 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerTelefon: '+49 123 456789'
     });
 
-    // RUN #57: Bypass fillPartnerRequestForm() - create anfrage directly with NORMALIZED kennzeichen
-    const anfrageId = await page.evaluate(async ({ kz, partnerId, partnerName }) => {
+    // RUN #63b: Create anfrage ID BEFORE page.evaluate
+    const anfrageId = 'req_' + Date.now() + '_test-6.5';
+
+    // RUN #63b: Create anfrage directly with NORMALIZED kennzeichen
+    await page.evaluate(async ({ id, kz, partnerId, partnerName }) => {
       const db = window.firebaseApp.db();
-      const reqId = 'req_' + Date.now();
 
       // Normalize kennzeichen to UPPERCASE (simulating app behavior)
       const normalizedKZ = kz.toUpperCase();
 
-      await db.collection('partnerAnfragen').doc(reqId).set({
+      await db.collection('partnerAnfragen').doc(id).set({
         kennzeichen: normalizedKZ, // Store as UPPERCASE
         partnerId: partnerId,
         partnerName: partnerName,
@@ -878,9 +891,9 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
         createdAt: Date.now()
       });
 
-      console.log('✅ RUN #57: Anfrage created (Test 6.5) with normalized KZ:', normalizedKZ);
-      return reqId;
+      console.log('✅ RUN #63b: Anfrage created (Test 6.5) with normalized KZ:', normalizedKZ);
     }, {
+      id: anfrageId,
       kz: lowercaseKennzeichen, // Pass lowercase, will be normalized
       partnerId: 'test-partner-cascade-6.5',
       partnerName: testPartnerName
