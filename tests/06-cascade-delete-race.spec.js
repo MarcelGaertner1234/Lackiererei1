@@ -427,56 +427,97 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerName: testPartnerName
     });
 
-    // Erstelle Fahrzeug mit Fotos Subcollection
-    const fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
-      const db = window.firebaseApp.db();
+    // RUN #67a: Erstelle Fahrzeug mit Fotos Subcollection (defensive programming)
+    console.log('🔧 RUN #67a: [Test 6.2] Creating vehicle with fotos subcollection...');
+    let fahrzeugId;
 
-      // Update Anfrage
-      await db.collection('partnerAnfragen').doc(id).update({
-        status: 'beauftragt',
-        kva: { gesamtpreis: 1500, positionen: [] }
-      });
+    try {
+      fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
+        const db = window.firebaseApp.db();
 
-      // Erstelle Fahrzeug
-      const fzgId = 'fzg_' + Date.now();
-      await db.collection('fahrzeuge').doc(fzgId).set({
-        kennzeichen: kz,
-        kundenname: partner,
-        quelle: 'Partner-Portal',
-        prozessStatus: 'terminiert',
-        createdAt: Date.now()
-      });
+        // RUN #67a: Step 1 - Update Anfrage zu beauftragt (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            status: 'beauftragt',
+            kva: { gesamtpreis: 1500, positionen: [] }
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.2] Anfrage updated to beauftragt');
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.2] Anfrage .set() FAILED:', error.message);
+          throw error;
+        }
 
-      // Erstelle Fotos Subcollection
-      const fakePhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        // RUN #67a: Step 2 - Create Fahrzeug
+        const fzgId = 'fzg_' + Date.now();
+        try {
+          await db.collection('fahrzeuge').doc(fzgId).set({
+            kennzeichen: kz,
+            kundenname: partner,
+            quelle: 'Partner-Portal',
+            prozessStatus: 'terminiert',
+            createdAt: Date.now()
+          });
+          console.log('✅ RUN #67a: [Test 6.2] Vehicle written to Firestore:', fzgId);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.2] Vehicle .set() FAILED:', error.message);
+          throw error;
+        }
 
-      await db.collection('fahrzeuge')
-        .doc(fzgId)
-        .collection('fotos')
-        .doc('vorher')
-        .set({
-          photos: [fakePhoto, fakePhoto],
-          count: 2,
-          lastUpdated: Date.now()
-        });
+        // RUN #67a: Step 3 - Create Fotos Subcollection
+        const fakePhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-      await db.collection('fahrzeuge')
-        .doc(fzgId)
-        .collection('fotos')
-        .doc('nachher')
-        .set({
-          photos: [fakePhoto],
-          count: 1,
-          lastUpdated: Date.now()
-        });
+        try {
+          await db.collection('fahrzeuge')
+            .doc(fzgId)
+            .collection('fotos')
+            .doc('vorher')
+            .set({
+              photos: [fakePhoto, fakePhoto],
+              count: 2,
+              lastUpdated: Date.now()
+            });
+          console.log('✅ RUN #67a: [Test 6.2] Foto "vorher" created');
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.2] Foto "vorher" FAILED:', error.message);
+          throw error;
+        }
 
-      // Speichere Fahrzeug-ID in Anfrage
-      await db.collection('partnerAnfragen').doc(id).update({
-        fahrzeugId: fzgId
-      });
+        try {
+          await db.collection('fahrzeuge')
+            .doc(fzgId)
+            .collection('fotos')
+            .doc('nachher')
+            .set({
+              photos: [fakePhoto],
+              count: 1,
+              lastUpdated: Date.now()
+            });
+          console.log('✅ RUN #67a: [Test 6.2] Foto "nachher" created');
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.2] Foto "nachher" FAILED:', error.message);
+          throw error;
+        }
 
-      return fzgId;
-    }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+        // RUN #67a: Step 4 - Link Fahrzeug-ID to Anfrage (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            fahrzeugId: fzgId
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.2] Anfrage updated with fahrzeugId:', id);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.2] Anfrage fahrzeugId link FAILED:', error.message);
+          throw error;
+        }
+
+        return fzgId;
+      }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+
+      console.log('✅ RUN #67a: [Test 6.2] Vehicle creation SUCCESS');
+      console.log('   Vehicle ID:', fahrzeugId);
+    } catch (error) {
+      console.error('❌ RUN #67a: [Test 6.2] Vehicle creation FAILED:', error.message);
+      throw error;
+    }
 
     expect(fahrzeugId).toBeTruthy();
 
@@ -624,42 +665,80 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerName: testPartnerName
     });
 
-    // Erstelle Fahrzeug mit Fotos
-    const fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
-      const db = window.firebaseApp.db();
+    // RUN #67a: Erstelle Fahrzeug mit Fotos (defensive programming)
+    console.log('🔧 RUN #67a: [Test 6.3] Creating vehicle with fotos...');
+    let fahrzeugId;
 
-      await db.collection('partnerAnfragen').doc(id).update({
-        status: 'beauftragt',
-        kva: { gesamtpreis: 1500, positionen: [] }
-      });
+    try {
+      fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
+        const db = window.firebaseApp.db();
 
-      const fzgId = 'fzg_' + Date.now();
-      await db.collection('fahrzeuge').doc(fzgId).set({
-        kennzeichen: kz,
-        kundenname: partner,
-        quelle: 'Partner-Portal',
-        createdAt: Date.now()
-      });
+        // RUN #67a: Step 1 - Update Anfrage zu beauftragt (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            status: 'beauftragt',
+            kva: { gesamtpreis: 1500, positionen: [] }
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.3] Anfrage updated to beauftragt');
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.3] Anfrage .set() FAILED:', error.message);
+          throw error;
+        }
 
-      // Fotos
-      const fakePhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        // RUN #67a: Step 2 - Create Fahrzeug
+        const fzgId = 'fzg_' + Date.now();
+        try {
+          await db.collection('fahrzeuge').doc(fzgId).set({
+            kennzeichen: kz,
+            kundenname: partner,
+            quelle: 'Partner-Portal',
+            createdAt: Date.now()
+          });
+          console.log('✅ RUN #67a: [Test 6.3] Vehicle written to Firestore:', fzgId);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.3] Vehicle .set() FAILED:', error.message);
+          throw error;
+        }
 
-      await db.collection('fahrzeuge')
-        .doc(fzgId)
-        .collection('fotos')
-        .doc('vorher')
-        .set({
-          photos: [fakePhoto],
-          count: 1,
-          lastUpdated: Date.now()
-        });
+        // RUN #67a: Step 3 - Create Fotos Subcollection
+        const fakePhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-      await db.collection('partnerAnfragen').doc(id).update({
-        fahrzeugId: fzgId
-      });
+        try {
+          await db.collection('fahrzeuge')
+            .doc(fzgId)
+            .collection('fotos')
+            .doc('vorher')
+            .set({
+              photos: [fakePhoto],
+              count: 1,
+              lastUpdated: Date.now()
+            });
+          console.log('✅ RUN #67a: [Test 6.3] Foto "vorher" created');
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.3] Foto "vorher" FAILED:', error.message);
+          throw error;
+        }
 
-      return fzgId;
-    }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+        // RUN #67a: Step 4 - Link Fahrzeug-ID to Anfrage (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            fahrzeugId: fzgId
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.3] Anfrage updated with fahrzeugId:', id);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.3] Anfrage fahrzeugId link FAILED:', error.message);
+          throw error;
+        }
+
+        return fzgId;
+      }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+
+      console.log('✅ RUN #67a: [Test 6.3] Vehicle creation SUCCESS');
+      console.log('   Vehicle ID:', fahrzeugId);
+    } catch (error) {
+      console.error('❌ RUN #67a: [Test 6.3] Vehicle creation FAILED:', error.message);
+      throw error;
+    }
 
     // Test: Simuliere Race Condition
     // Wir fügen ein NEUES Foto hinzu WÄHREND der Stornierung läuft
@@ -831,31 +910,63 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
       partnerName: testPartnerName
     });
 
-    // Simuliere beauftragt + Fahrzeug erstellt
-    const fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
-      const db = window.firebaseApp.db();
+    // RUN #67a: Simuliere beauftragt + Fahrzeug erstellt (defensive programming)
+    console.log('🔧 RUN #67a: [Test 6.4] Creating vehicle for Kanban test...');
+    let fahrzeugId;
 
-      await db.collection('partnerAnfragen').doc(id).update({
-        status: 'beauftragt',
-        kva: { gesamtpreis: 1500, positionen: [] }
-      });
+    try {
+      fahrzeugId = await page.evaluate(async ({ id, kz, partner }) => {
+        const db = window.firebaseApp.db();
 
-      const fzgId = 'fzg_' + Date.now();
-      await db.collection('fahrzeuge').doc(fzgId).set({
-        kennzeichen: kz,
-        kundenname: partner,
-        quelle: 'Partner-Portal',
-        prozessStatus: 'terminiert',
-        serviceTyp: 'lackier',
-        createdAt: Date.now()
-      });
+        // RUN #67a: Step 1 - Update Anfrage zu beauftragt (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            status: 'beauftragt',
+            kva: { gesamtpreis: 1500, positionen: [] }
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.4] Anfrage updated to beauftragt');
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.4] Anfrage .set() FAILED:', error.message);
+          throw error;
+        }
 
-      await db.collection('partnerAnfragen').doc(id).update({
-        fahrzeugId: fzgId
-      });
+        // RUN #67a: Step 2 - Create Fahrzeug
+        const fzgId = 'fzg_' + Date.now();
+        try {
+          await db.collection('fahrzeuge').doc(fzgId).set({
+            kennzeichen: kz,
+            kundenname: partner,
+            quelle: 'Partner-Portal',
+            prozessStatus: 'terminiert',
+            serviceTyp: 'lackier',
+            createdAt: Date.now()
+          });
+          console.log('✅ RUN #67a: [Test 6.4] Vehicle written to Firestore:', fzgId);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.4] Vehicle .set() FAILED:', error.message);
+          throw error;
+        }
 
-      return fzgId;
-    }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+        // RUN #67a: Step 3 - Link Fahrzeug-ID to Anfrage (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            fahrzeugId: fzgId
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.4] Anfrage updated with fahrzeugId:', id);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.4] Anfrage fahrzeugId link FAILED:', error.message);
+          throw error;
+        }
+
+        return fzgId;
+      }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+
+      console.log('✅ RUN #67a: [Test 6.4] Vehicle creation SUCCESS');
+      console.log('   Vehicle ID:', fahrzeugId);
+    } catch (error) {
+      console.error('❌ RUN #67a: [Test 6.4] Vehicle creation FAILED:', error.message);
+      throw error;
+    }
 
     // Verify: Fahrzeug erscheint in Kanban BEVOR Stornierung
     await page.goto('/kanban.html');
@@ -1016,27 +1127,57 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
 
     expect(normalizedKZ).toBe(testKennzeichen); // Sollte HD-CAS-001 sein (uppercase)
 
-    // Simuliere Fahrzeug erstellt
-    await page.evaluate(async ({ id, kz, partner }) => {
-      const db = window.firebaseApp.db();
+    // RUN #67a: Simuliere Fahrzeug erstellt (defensive programming)
+    console.log('🔧 RUN #67a: [Test 6.5] Creating vehicle for normalization test...');
 
-      await db.collection('partnerAnfragen').doc(id).update({
-        status: 'beauftragt',
-        kva: { gesamtpreis: 1500, positionen: [] }
-      });
+    try {
+      await page.evaluate(async ({ id, kz, partner }) => {
+        const db = window.firebaseApp.db();
 
-      const fzgId = 'fzg_' + Date.now();
-      await db.collection('fahrzeuge').doc(fzgId).set({
-        kennzeichen: kz, // normalized UPPERCASE
-        kundenname: partner,
-        quelle: 'Partner-Portal',
-        createdAt: Date.now()
-      });
+        // RUN #67a: Step 1 - Update Anfrage zu beauftragt (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            status: 'beauftragt',
+            kva: { gesamtpreis: 1500, positionen: [] }
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.5] Anfrage updated to beauftragt');
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.5] Anfrage .set() FAILED:', error.message);
+          throw error;
+        }
 
-      await db.collection('partnerAnfragen').doc(id).update({
-        fahrzeugId: fzgId
-      });
-    }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+        // RUN #67a: Step 2 - Create Fahrzeug (with normalized kennzeichen)
+        const fzgId = 'fzg_' + Date.now();
+        try {
+          await db.collection('fahrzeuge').doc(fzgId).set({
+            kennzeichen: kz, // normalized UPPERCASE
+            kundenname: partner,
+            quelle: 'Partner-Portal',
+            createdAt: Date.now()
+          });
+          console.log('✅ RUN #67a: [Test 6.5] Vehicle written to Firestore:', fzgId);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.5] Vehicle .set() FAILED:', error.message);
+          throw error;
+        }
+
+        // RUN #67a: Step 3 - Link Fahrzeug-ID to Anfrage (.set with merge:true)
+        try {
+          await db.collection('partnerAnfragen').doc(id).set({
+            fahrzeugId: fzgId
+          }, { merge: true });
+          console.log('✅ RUN #67a: [Test 6.5] Anfrage updated with fahrzeugId:', id);
+        } catch (error) {
+          console.error('❌ RUN #67a: [Test 6.5] Anfrage fahrzeugId link FAILED:', error.message);
+          throw error;
+        }
+      }, { id: anfrageId, kz: testKennzeichen, partner: testPartnerName });
+
+      console.log('✅ RUN #67a: [Test 6.5] Vehicle creation SUCCESS');
+    } catch (error) {
+      console.error('❌ RUN #67a: [Test 6.5] Vehicle creation FAILED:', error.message);
+      throw error;
+    }
 
     // Test: Storniere mit 3-tier CASCADE DELETE
     console.log(`🔍 RUN #59: [1/6] Test 6.5 - About to navigate to /meine-anfragen.html`);
