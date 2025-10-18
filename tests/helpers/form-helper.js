@@ -188,22 +188,60 @@ async function createPartnerInFirestore(page, data = {}) {
   const partnerData = { ...defaults, ...data };
 
   await page.evaluate(async (partnerInfo) => {
-    if (!window.firebaseApp || !window.firebaseApp.db) {
-      console.error('❌ RUN #61: window.firebaseApp nicht verfügbar - Firebase muss initialisiert sein!');
-      throw new Error('Firebase not initialized - call waitForFirebaseReady() first!');
+    console.log('🔧 RUN #62: [1/5] createPartnerInFirestore() called');
+    console.log('   Partner ID:', partnerInfo.partnerId);
+    console.log('   Partner Name:', partnerInfo.partnerName);
+
+    // Check 1: window.firebaseApp exists
+    if (!window.firebaseApp) {
+      console.error('❌ RUN #62: [ERROR] window.firebaseApp is undefined!');
+      console.log('   Available firebase globals:', Object.keys(window).filter(k => k.toLowerCase().includes('firebase')));
+      console.log('   window.firebaseInitialized:', window.firebaseInitialized);
+      throw new Error('RUN #62: window.firebaseApp not available');
+    }
+    console.log('✅ RUN #62: [2/5] window.firebaseApp exists');
+
+    // Check 2: window.firebaseApp.db is a function
+    if (!window.firebaseApp.db || typeof window.firebaseApp.db !== 'function') {
+      console.error('❌ RUN #62: [ERROR] window.firebaseApp.db is not a function!');
+      console.log('   typeof db:', typeof window.firebaseApp.db);
+      console.log('   firebaseApp keys:', Object.keys(window.firebaseApp));
+      throw new Error('RUN #62: window.firebaseApp.db() not available');
+    }
+    console.log('✅ RUN #62: [3/5] window.firebaseApp.db is a function');
+
+    // Get db instance
+    let db;
+    try {
+      db = window.firebaseApp.db();
+      console.log('✅ RUN #62: [4/5] db() called successfully');
+      console.log('   db type:', typeof db);
+      console.log('   db.collection available:', typeof db.collection === 'function');
+    } catch (error) {
+      console.error('❌ RUN #62: [ERROR] Failed to call db():', error.message);
+      throw error;
     }
 
-    const db = window.firebaseApp.db();
-    await db.collection('partner').doc(partnerInfo.partnerId).set({
-      name: partnerInfo.partnerName,
-      email: partnerInfo.partnerEmail,
-      telefon: partnerInfo.partnerTelefon,
-      adresse: 'Teststraße 123, 12345 Teststadt',
-      createdAt: Date.now(),
-      rabattKonditionen: null,
-      konditionenGeprueft: false
-    });
-    console.log('✅ RUN #61: Partner-Dokument in Firestore erstellt:', partnerInfo.partnerId);
+    // Firestore Write
+    try {
+      await db.collection('partner').doc(partnerInfo.partnerId).set({
+        name: partnerInfo.partnerName,
+        email: partnerInfo.partnerEmail,
+        telefon: partnerInfo.partnerTelefon,
+        adresse: 'Teststraße 123, 12345 Teststadt',
+        createdAt: Date.now(),
+        rabattKonditionen: null,
+        konditionenGeprueft: false
+      });
+
+      console.log('✅ RUN #62: [5/5] Partner-Dokument in Firestore erstellt:', partnerInfo.partnerId);
+    } catch (error) {
+      console.error('❌ RUN #62: [ERROR] Firestore Write fehlgeschlagen!');
+      console.error('   Error message:', error.message);
+      console.error('   Error code:', error.code);
+      console.error('   Error name:', error.name);
+      throw error; // Re-throw to fail test explicitly
+    }
   }, partnerData);
 }
 
