@@ -1277,21 +1277,40 @@
             `;
 
             steps.forEach((step, index) => {
-                const isCompleted = index < currentStepIndex;
-                const isActive = index === currentStepIndex;
-                const statusClass = isCompleted ? 'completed' : isActive ? 'active' : '';
-
                 // 🔧 FIX: Reverse-Mapping für historyEntry.find()
                 // Problem: Kanban speichert "lackierung", Partner Portal sucht "in_arbeit"
                 // Lösung: Mappe Partner-Status zurück zu möglichen Kanban-Status
                 const possibleKanbanStatuses = getKanbanStatusesForPartnerStatus(step.status, serviceTyp);
                 const historyEntry = statusHistory.find(h => possibleKanbanStatuses.includes(h.status));
 
+                // 🔧 FIX: Status-Klassen basiert auf statusHistory, nicht auf Index!
+                // Problem: Fahrzeug kann von "neu" direkt zu "fertig" springen (Schritte übersprungen)
+                // Alte Logik: isCompleted = index < currentStepIndex → Markiert alle Schritte vor "fertig" als completed!
+                // Neue Logik: isCompleted = Step existiert in statusHistory → Nur durchlaufene Schritte!
+
+                const wasExecuted = historyEntry !== undefined;  // Wurde dieser Schritt durchlaufen?
+                const isCurrent = index === currentStepIndex;    // Ist das der aktuelle Status?
+
+                // Step ist "completed" wenn er in statusHistory existiert UND nicht der aktuelle ist
+                const isCompleted = wasExecuted && !isCurrent;
+
+                // Step ist "active" wenn er der aktuelle Status ist
+                const isActive = isCurrent;
+
+                const statusClass = isCompleted ? 'completed' : isActive ? 'active' : '';
+
                 // 🔍 DEBUG: Log historyEntry to see if foto exists
                 console.log(`🔍 DEBUG Status-Übersicht Step "${step.status}":`, {
+                    index: index,
+                    currentStepIndex: currentStepIndex,
                     partnerStatus: step.status,
                     possibleKanbanStatuses: possibleKanbanStatuses,
                     hasHistoryEntry: !!historyEntry,
+                    wasExecuted: wasExecuted,
+                    isCurrent: isCurrent,
+                    isCompleted: isCompleted,
+                    isActive: isActive,
+                    statusClass: statusClass,
                     hasFoto: historyEntry?.foto ? true : false,
                     fotoURL: historyEntry?.foto || 'KEINE',
                     timestamp: historyEntry?.timestamp || 'keine',
