@@ -289,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('  Storage: localhost:9199');
 
       db = firebaseApp.firestore();
-      storage = firebaseApp.storage();
+      storage = firebase.storage();  // ✅ FIX: Use firebase.storage() instead of firebaseApp.storage()
 
       // Connect Firestore to Emulator
       try {
@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       // Use real Firebase (Production/Staging)
       db = firebaseApp.firestore();
-      storage = firebaseApp.storage();
+      storage = firebase.storage();  // ✅ FIX: Use firebase.storage() instead of firebaseApp.storage()
       console.log('✅ Firestore connected (Production)');
       console.log('✅ Storage connected (Production)');
 
