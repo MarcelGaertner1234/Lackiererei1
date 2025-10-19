@@ -495,6 +495,7 @@
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button id="btnAnnehmen" class="btn" style="background: #4caf50; color: white; display: none;" onclick="annehmenKVA(anfrage.id, event)">✅ KVA annehmen</button>
+                    <button id="btnStornieren" class="btn" style="background: #f44336; color: white; display: none;" onclick="stornierenAnfrage(anfrage.id, event)">❌ Anfrage stornieren</button>
                     <a href="meine-anfragen.html" class="btn btn-secondary">← Zurück</a>
                 </div>
             </div>
@@ -772,6 +773,12 @@
             const btnAnnehmen = document.getElementById('btnAnnehmen');
             if (btnAnnehmen) {
                 btnAnnehmen.style.display = anfrage.status === 'kva_gesendet' ? 'inline-block' : 'none';
+            }
+
+            // Stornieren-Button: Nur bei Status 'beauftragt' anzeigen
+            const btnStornieren = document.getElementById('btnStornieren');
+            if (btnStornieren) {
+                btnStornieren.style.display = anfrage.status === 'beauftragt' ? 'inline-block' : 'none';
             }
 
             const detailsContainer = document.getElementById('details');
@@ -1944,6 +1951,143 @@
             } catch (error) {
                 console.error('❌ Fehler beim Annehmen:', error);
                 alert(`❌ Fehler beim Annehmen der Anfrage.\\n\\nDetails: ${error.message}`);
+            }
+        }
+
+        async function stornierenAnfrage(anfrageId, event) {
+            event?.stopPropagation();
+
+            if (!anfrage) {
+                alert('Anfrage nicht gefunden.');
+                return;
+            }
+
+            // Nur "beauftragt" kann storniert werden
+            if (anfrage.status !== 'beauftragt') {
+                alert('Diese Anfrage kann nicht mehr storniert werden.\\n\\nNur Anfragen im Status "Beauftragt" können storniert werden.');
+                return;
+            }
+
+            // Bestätigung
+            const bestaetigung = confirm(
+                'Möchten Sie diese Anfrage wirklich stornieren?\\n\\n' +
+                `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
+                `Service: ${anfrage.serviceTyp}\\n` +
+                `Status: ${anfrage.status}`
+            );
+
+            if (!bestaetigung) {
+                return;
+            }
+
+            // Optional: Storno-Grund erfragen
+            const grund = prompt('Grund für Stornierung (optional):') || 'Keine Angabe';
+
+            try {
+                console.log('🔍 CASCADE DELETE: Suche Fahrzeug für Atomic Transaction...');
+
+                // SCHRITT 1: Fahrzeug suchen (READ-ONLY vor Transaction)
+                const kennzeichen = anfrage.kennzeichen || anfrage.auftragsnummer;
+                let fahrzeugSnapshot = null;
+                let fahrzeugId = null;
+
+                if (kennzeichen) {
+                    // VERSUCH 1: Mit quelle-Filter (Standard-Fall)
+                    fahrzeugSnapshot = await db.collection('fahrzeuge')
+                        .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                        .where('quelle', '==', 'Partner-Portal')
+                        .limit(1)
+                        .get();
+
+                    console.log(`   📊 VERSUCH 1 (quelle=Partner-Portal): ${fahrzeugSnapshot.size} Treffer`);
+
+                    // VERSUCH 2: Ohne quelle-Filter (Fallback, falls quelle-Field fehlt)
+                    if (fahrzeugSnapshot.empty) {
+                        console.log('   ⚠️ Kein Fahrzeug mit quelle=Partner-Portal gefunden, suche OHNE quelle-Filter...');
+                        fahrzeugSnapshot = await db.collection('fahrzeuge')
+                            .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                            .limit(1)
+                            .get();
+
+                        console.log(`   📊 VERSUCH 2 (ohne quelle): ${fahrzeugSnapshot.size} Treffer`);
+                    }
+
+                    if (!fahrzeugSnapshot.empty) {
+                        fahrzeugId = fahrzeugSnapshot.docs[0].id;
+                        console.log('✅ Fahrzeug gefunden:', fahrzeugId);
+                    } else {
+                        console.warn('⚠️ Kein Fahrzeug gefunden - Stornierung wird trotzdem fortgesetzt (nur partnerAnfragen Update)');
+                    }
+                }
+
+                // SCHRITT 2: ATOMIC BATCH TRANSACTION
+                console.log('🔥 Starte Atomic Batch Transaction...');
+                const batch = db.batch();
+
+                // Operation 1: partnerAnfragen UPDATE
+                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                batch.update(anfrageRef, {
+                    status: 'storniert',
+                    storniertAm: new Date().toISOString(),
+                    stornierungsGrund: grund
+                });
+                console.log('   📝 Batch Operation 1: partnerAnfragen.update()');
+
+                // Operation 2-N: fahrzeuge DELETE + Subcollections (falls gefunden)
+                let fotosCount = 0;
+                if (fahrzeugId) {
+                    // Fotos Subcollection löschen
+                    const fotosSnapshot = await db.collection('fahrzeuge')
+                        .doc(fahrzeugId)
+                        .collection('fotos')
+                        .get();
+
+                    fotosSnapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    fotosCount = fotosSnapshot.docs.length;
+                    console.log(`   📸 Batch Operation 2-${1 + fotosCount}: ${fotosCount} Foto-Dokumente markiert`);
+
+                    // Hauptdokument löschen
+                    const fahrzeugRef = db.collection('fahrzeuge').doc(fahrzeugId);
+                    batch.delete(fahrzeugRef);
+                    console.log(`   🗑️ Batch Operation ${2 + fotosCount}: fahrzeuge.delete()`);
+                }
+
+                // COMMIT
+                await batch.commit();
+                console.log('✅ ATOMIC BATCH COMMIT ERFOLG: Alle Operationen erfolgreich!');
+
+                // AFTER-DELETE CHECK - Bereinige verwaiste Fotos
+                if (fahrzeugId) {
+                    try {
+                        console.log('🔍 AFTER-DELETE CHECK: Prüfe auf verwaiste Fotos...');
+                        const remainingFotosSnapshot = await db.collection('fahrzeuge')
+                            .doc(fahrzeugId)
+                            .collection('fotos')
+                            .get();
+
+                        if (!remainingFotosSnapshot.empty) {
+                            console.warn(`⚠️ ${remainingFotosSnapshot.size} verwaiste Foto(s) gefunden! Bereinige...`);
+                            const cleanupBatch = db.batch();
+                            remainingFotosSnapshot.docs.forEach(doc => {
+                                cleanupBatch.delete(doc.ref);
+                            });
+                            await cleanupBatch.commit();
+                            console.log(`✅ ${remainingFotosSnapshot.size} verwaiste Foto(s) bereinigt`);
+                        } else {
+                            console.log('✅ Keine verwaisten Fotos gefunden');
+                        }
+                    } catch (cleanupError) {
+                        console.error('❌ AFTER-DELETE CHECK Fehler:', cleanupError);
+                    }
+                }
+
+                alert('✅ Anfrage erfolgreich storniert und aus Kanban entfernt.');
+                window.location.href = 'meine-anfragen.html';
+            } catch (error) {
+                console.error('❌ BATCH TRANSACTION FEHLGESCHLAGEN:', error);
+                alert(`❌ Stornierung fehlgeschlagen!\\n\\nFehler: ${error.message}\\n\\nDie Anfrage wurde NICHT storniert (Atomic Rollback).`);
             }
         }
     </script>
