@@ -79,6 +79,39 @@ window.firebaseApp = {
   db: () => db,
   storage: () => storage,
 
+  // ✅ BUG FIX #1: saveFahrzeug() function (gefunden durch Bug Hunter Workflow)
+  // Problem: annahme.html ruft firebaseApp.saveFahrzeug() auf, aber Funktion existierte nicht
+  // Impact: Fahrzeuge konnten NICHT gespeichert werden → CRITICAL BUG
+  // Fix: Funktion hinzugefügt mit Firestore .set() operation
+  saveFahrzeug: async (data) => {
+    try {
+      await db.collection('fahrzeuge').doc(data.id).set(data);
+      console.log('✅ Fahrzeug in Firestore gespeichert:', data.id);
+      return data.id;
+    } catch (error) {
+      console.error('❌ Fehler beim Speichern in Firestore:', error);
+      throw error;
+    }
+  },
+
+  // ✅ BUG FIX #2: updateFahrzeug() function (gefunden durch Bug Hunter Workflow)
+  // Problem: annahme.html ruft firebaseApp.updateFahrzeug() auf, aber Funktion existierte nicht
+  // Impact: Nachannahme (Partner-Portal Updates) konnten NICHT funktionieren → CRITICAL BUG
+  // Fix: Funktion hinzugefügt mit Firestore .update() operation
+  updateFahrzeug: async (id, updates) => {
+    try {
+      await db.collection('fahrzeuge').doc(id).update({
+        ...updates,
+        lastModified: Date.now()
+      });
+      console.log('✅ Fahrzeug aktualisiert:', id);
+      return id;
+    } catch (error) {
+      console.error('❌ Fehler beim Aktualisieren:', error);
+      throw error;
+    }
+  },
+
   // Helper Functions - CHANGED TO ARROW FUNCTIONS for closure access to `db`
   getAllFahrzeuge: async () => {
     const snapshot = await db.collection('fahrzeuge').get();
