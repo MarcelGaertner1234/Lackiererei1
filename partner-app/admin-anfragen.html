@@ -2001,6 +2001,21 @@
             // SCHRITT 4: FAHRZEUG-DATEN VORBEREITEN
             // ========================================
 
+            // KUNDE EINGEBEN (CRITICAL!)
+            const kundeName = prompt(
+                '👤 Kundenname eingeben:\n\n' +
+                `🚗 Fahrzeug: ${anfrage.marke} ${anfrage.modell} (${anfrage.kennzeichen})\n` +
+                `🏢 Partner: ${anfrage.partnerName}\n` +
+                `💶 Preis: ${vereinbarterPreis.toFixed(2)}€\n\n` +
+                `Bitte geben Sie den Namen des Endkunden ein:`,
+                ''
+            );
+
+            if (!kundeName || kundeName.trim() === '') {
+                alert('⚠️ Kundenname ist erforderlich!\n\nOhne Kunde kann das Fahrzeug nicht korrekt zugeordnet werden.');
+                return;
+            }
+
             const fahrzeugData = {
                 // Basis-Daten
                 kennzeichen: (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase(),
@@ -2011,6 +2026,14 @@
 
                 // Service-Typ
                 serviceTyp: anfrage.serviceTyp || 'lackier',
+
+                // KUNDE (CRITICAL!)
+                kundenname: kundeName.trim(),
+                // kundenId wird später gesetzt (registriereKundenbesuch)
+
+                // DATUM/ZEIT (CRITICAL für Liste & Kalender!)
+                datum: new Date().toLocaleDateString('de-DE'),
+                zeit: new Date().toLocaleTimeString('de-DE'),
 
                 // KVA-Daten (KRITISCH!)
                 vereinbarterPreis: vereinbarterPreis,
@@ -2024,6 +2047,11 @@
                 anliefertermin: anfrage.kva.termine ? anfrage.kva.termine.start : null,
                 abholtermin: anfrage.kva.termine ? anfrage.kva.termine.ende : null,
                 abholzeit: anfrage.kva.termine ? anfrage.kva.termine.abholzeit : null,
+
+                // Geplantes Abnahme-Datum für Kalender
+                geplantesAbnahmeDatum: anfrage.kva.termine?.ende
+                    ? new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE')
+                    : null,
 
                 // Schaden
                 schadenBeschreibung: anfrage.schadenBeschreibung || '',
@@ -2084,9 +2112,26 @@
 
                 console.log('✅ Partner-Anfrage aktualisiert');
 
+                // Kunde registrieren (CRITICAL!)
+                try {
+                    console.log('👤 Registriere Kunde:', kundeName);
+                    const kundeId = await firebaseApp.registriereKundenbesuch(kundeName.trim());
+                    if (kundeId) {
+                        // kundenId im Fahrzeug speichern
+                        await db.collection('fahrzeuge').doc(fahrzeugRef.id).update({
+                            kundenId: kundeId
+                        });
+                        console.log('✅ Kunde registriert, ID:', kundeId);
+                    }
+                } catch (error) {
+                    console.error('⚠️ Fehler bei Kundenregistrierung:', error);
+                    // Nicht kritisch - Fahrzeug wurde bereits erstellt
+                }
+
                 // Erfolg
                 alert(`✅ Fahrzeug erfolgreich angelegt!\n\n` +
                     `🚗 Kennzeichen: ${fahrzeugData.kennzeichen}\n` +
+                    `👤 Kunde: ${kundeName}\n` +
                     `💶 Preis: ${vereinbarterPreis.toFixed(2)}€\n` +
                     `📦 Fahrzeug-ID: ${fahrzeugRef.id}\n\n` +
                     `Das Fahrzeug ist jetzt in der Hauptapp verfügbar.`);
