@@ -1207,6 +1207,56 @@
                 return werkstattStatus;
             }
 
+            // 🔧 REVERSE-MAPPING: Partner-Status → Kanban-Status (für historyEntry.find)
+            // Problem: Kanban speichert "lackierung", Partner Portal sucht "in_arbeit"
+            // Lösung: Mappe Partner-Status zurück zu möglichen Kanban-Status
+            function getKanbanStatusesForPartnerStatus(partnerStatus, serviceTyp) {
+                const reverseMapping = {
+                    'lackier': {
+                        'in_arbeit': ['vorbereitung', 'lackierung', 'trocknung'],  // Alle "In Arbeit" Status
+                        'qualitaetskontrolle': ['qualitaetskontrolle'],
+                        'fertig': ['bereit']  // Kanban "bereit" = Partner "fertig"
+                    },
+                    'reifen': {
+                        'bestellung': ['bestellung'],
+                        'angekommen': ['angekommen'],
+                        'montage': ['montage'],
+                        'wuchten': ['wuchten'],
+                        'fertig': ['fertig']
+                    },
+                    'mechanik': {
+                        'diagnose': ['diagnose'],
+                        'angebot': ['angebot'],
+                        'beauftragt': ['beauftragt'],
+                        'reparatur': ['reparatur'],
+                        'test': ['test'],
+                        'fertig': ['fertig']
+                    },
+                    'pflege': {
+                        'termin_bestaetigt': ['termin'],  // Kanban "termin" = Partner "termin_bestaetigt"
+                        'in_arbeit': ['aufbereitung'],
+                        'qualitaetskontrolle': ['qualitaet'],  // Kanban "qualitaet" = Partner "qualitaetskontrolle"
+                        'fertig': ['fertig']
+                    },
+                    'tuev': {
+                        'termin_gebucht': ['termin_gebucht'],
+                        'in_pruefung': ['pruefung'],  // Kanban "pruefung" = Partner "in_pruefung"
+                        'fertig': ['fertig'],
+                        'abholbereit': ['abholbereit']
+                    },
+                    'versicherung': {
+                        'gutachten': ['gutachten'],
+                        'freigabe': ['freigabe'],
+                        'in_reparatur': ['reparatur'],  // Kanban "reparatur" = Partner "in_reparatur"
+                        'qualitaetskontrolle': ['qualitaet'],
+                        'fertig': ['fertig']
+                    }
+                };
+
+                // Rückgabe: Array von möglichen Kanban-Status für diesen Partner-Status
+                return reverseMapping[serviceTyp]?.[partnerStatus] || [partnerStatus];
+            }
+
             // Aktuellen Status mappen
             const mappedStatus = mapWerkstattToPartnerStatus(currentStatus, serviceTyp);
 
@@ -1231,19 +1281,22 @@
                 const isActive = index === currentStepIndex;
                 const statusClass = isCompleted ? 'completed' : isActive ? 'active' : '';
 
-                // historyEntry VORHER deklarieren (außerhalb if-Block für Scope-Zugriff)
-                const historyEntry = statusHistory.find(h => h.status === step.status);
+                // 🔧 FIX: Reverse-Mapping für historyEntry.find()
+                // Problem: Kanban speichert "lackierung", Partner Portal sucht "in_arbeit"
+                // Lösung: Mappe Partner-Status zurück zu möglichen Kanban-Status
+                const possibleKanbanStatuses = getKanbanStatusesForPartnerStatus(step.status, serviceTyp);
+                const historyEntry = statusHistory.find(h => possibleKanbanStatuses.includes(h.status));
 
                 // 🔍 DEBUG: Log historyEntry to see if foto exists
-                if (historyEntry) {
-                    console.log(`🔍 DEBUG Status-Übersicht Step "${step.status}":`, {
-                        hasHistoryEntry: !!historyEntry,
-                        hasFoto: !!historyEntry.foto,
-                        fotoURL: historyEntry.foto || 'KEINE',
-                        timestamp: historyEntry.timestamp,
-                        notiz: historyEntry.notiz || 'keine'
-                    });
-                }
+                console.log(`🔍 DEBUG Status-Übersicht Step "${step.status}":`, {
+                    partnerStatus: step.status,
+                    possibleKanbanStatuses: possibleKanbanStatuses,
+                    hasHistoryEntry: !!historyEntry,
+                    hasFoto: historyEntry?.foto ? true : false,
+                    fotoURL: historyEntry?.foto || 'KEINE',
+                    timestamp: historyEntry?.timestamp || 'keine',
+                    notiz: historyEntry?.notiz || 'keine'
+                });
 
                 // Zeitstempel finden
                 let timestamp = '';
