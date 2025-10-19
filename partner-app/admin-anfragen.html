@@ -1891,11 +1891,199 @@
 
         async function createVehicle(anfrageId) {
             const anfrage = allAnfragen.find(a => a.id === anfrageId);
-            if (!anfrage) return;
+            if (!anfrage) {
+                alert('❌ Anfrage nicht gefunden');
+                return;
+            }
 
-            if (confirm(`Fahrzeug ${anfrage.marke} ${anfrage.modell} (${anfrage.kennzeichen}) in die Hauptapp übernehmen?\n\nDies erstellt ein neues Fahrzeug in der Annahme-Liste.`)) {
-                // In realer Implementation würde hier ein Fahrzeug erstellt
-                alert('ℹ️ Diese Funktion wird mit der Hauptapp verknüpft und erstellt automatisch ein Fahrzeug in der Annahme-Liste.');
+            // ========================================
+            // SCHRITT 1: VALIDIERUNG
+            // ========================================
+
+            // 1.1: Status-Check
+            if (anfrage.status !== 'beauftragt' && anfrage.status !== 'in_arbeit') {
+                alert('⚠️ Fahrzeug kann nur bei Status "beauftragt" oder "in_arbeit" angelegt werden!\n\nAktueller Status: ' + anfrage.status);
+                return;
+            }
+
+            // 1.2: KVA-Check
+            if (!anfrage.kva) {
+                alert('❌ Kein KVA vorhanden!\n\nBitte zuerst ein KVA erstellen.');
+                return;
+            }
+
+            // 1.3: Varianten-Auswahl Check
+            if (!anfrage.kva.gewaehlteVariante && !anfrage.kva.varianten?.partner && !anfrage.kva.varianten?.original) {
+                alert('⚠️ Partner hat noch keine Variante gewählt!\n\nBitte warten bis Partner eine Variante auswählt.');
+                return;
+            }
+
+            // ========================================
+            // SCHRITT 2: PREIS ERMITTELN
+            // ========================================
+
+            let vereinbarterPreis = 0;
+            let gewaehlteVarianteData = null;
+            let variantenKey = anfrage.kva.gewaehlteVariante;
+
+            console.log('🔍 Preis-Ermittlung START');
+            console.log('   KVA-Struktur:', anfrage.kva);
+            console.log('   Gewählte Variante:', variantenKey);
+
+            // Preis aus gewählter Variante
+            if (variantenKey && anfrage.kva.varianten && anfrage.kva.varianten[variantenKey]) {
+                gewaehlteVarianteData = anfrage.kva.varianten[variantenKey];
+                vereinbarterPreis = gewaehlteVarianteData.gesamt;
+                console.log(`   ✅ Preis aus gewählter Variante "${variantenKey}":`, vereinbarterPreis);
+            }
+            // Fallback: Partner-Variante (wenn nur eine vorhanden)
+            else if (anfrage.kva.varianten && anfrage.kva.varianten.partner) {
+                gewaehlteVarianteData = anfrage.kva.varianten.partner;
+                vereinbarterPreis = gewaehlteVarianteData.gesamt;
+                variantenKey = 'partner';
+                console.log('   ✅ Fallback: Partner-Variante:', vereinbarterPreis);
+            }
+            // Fallback: Original-Variante
+            else if (anfrage.kva.varianten && anfrage.kva.varianten.original) {
+                gewaehlteVarianteData = anfrage.kva.varianten.original;
+                vereinbarterPreis = gewaehlteVarianteData.gesamt;
+                variantenKey = 'original';
+                console.log('   ✅ Fallback: Original-Variante:', vereinbarterPreis);
+            }
+            // Legacy Format
+            else if (anfrage.kva.gesamt) {
+                vereinbarterPreis = anfrage.kva.gesamt;
+                gewaehlteVarianteData = { gesamt: anfrage.kva.gesamt };
+                variantenKey = 'legacy';
+                console.log('   ✅ Legacy-Format:', vereinbarterPreis);
+            }
+
+            // Validierung
+            if (!vereinbarterPreis || vereinbarterPreis <= 0) {
+                console.error('❌ Kein gültiger Preis gefunden!');
+                alert('❌ Kein gültiger Preis gefunden!\n\nKVA-Daten:\n' + JSON.stringify(anfrage.kva, null, 2));
+                return;
+            }
+
+            // ========================================
+            // SCHRITT 3: BESTÄTIGUNG
+            // ========================================
+
+            const variantenName = variantenKey === 'partner' ? 'Partner-Ersatzteil' :
+                                 variantenKey === 'original' ? 'Originalteile' :
+                                 variantenKey === 'zubehoer' ? 'Zubehörteile' : 'Legacy';
+
+            const confirmMsg = `Fahrzeug ${anfrage.auftragsnummer || anfrage.kennzeichen} in Hauptapp übernehmen?\n\n` +
+                `🚗 Fahrzeug: ${anfrage.marke || ''} ${anfrage.modell || ''} (${anfrage.kennzeichen || anfrage.auftragsnummer})\n` +
+                `📦 Service: ${anfrage.serviceTyp || 'Lackierung'}\n` +
+                `💶 Preis: ${vereinbarterPreis.toFixed(2)}€ (${variantenName})\n` +
+                `📅 Anliefertermin: ${anfrage.kva.termine ? new Date(anfrage.kva.termine.start).toLocaleDateString('de-DE') : 'k.A.'}\n\n` +
+                `Dies erstellt ein neues Fahrzeug in der Annahme-Liste.`;
+
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            // ========================================
+            // SCHRITT 4: FAHRZEUG-DATEN VORBEREITEN
+            // ========================================
+
+            const fahrzeugData = {
+                // Basis-Daten
+                kennzeichen: (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase(),
+                marke: anfrage.marke || '',
+                modell: anfrage.modell || '',
+                farbe: anfrage.farbe || '',
+                vin: anfrage.vin || '',
+
+                // Service-Typ
+                serviceTyp: anfrage.serviceTyp || 'lackier',
+
+                // KVA-Daten (KRITISCH!)
+                vereinbarterPreis: vereinbarterPreis,
+                kvaGesamt: vereinbarterPreis,
+                kvaLack: gewaehlteVarianteData.lackkosten || 0,
+                kvaTeile: gewaehlteVarianteData.teilekosten || 0,
+                kvaArbeitszeit: gewaehlteVarianteData.arbeitszeit || 0,
+                kvaSonstiges: gewaehlteVarianteData.sonstiges || 0,
+
+                // Termine
+                anliefertermin: anfrage.kva.termine ? anfrage.kva.termine.start : null,
+                abholtermin: anfrage.kva.termine ? anfrage.kva.termine.ende : null,
+                abholzeit: anfrage.kva.termine ? anfrage.kva.termine.abholzeit : null,
+
+                // Schaden
+                schadenBeschreibung: anfrage.schadenBeschreibung || '',
+
+                // Status
+                status: 'neu',
+                prozessStatus: 'neu',
+
+                // Metadaten
+                quelle: 'Partner-Portal',
+                partnerId: anfrage.partnerId,
+                partnerName: anfrage.partnerName,
+                partnerAnfrageId: anfrageId,
+                erstelltAm: new Date().toISOString(),
+                timestamp: Date.now()
+            };
+
+            console.log('📦 Fahrzeug-Daten vorbereitet:', fahrzeugData);
+
+            // ========================================
+            // SCHRITT 5: FAHRZEUG ERSTELLEN
+            // ========================================
+
+            try {
+                console.log('🚗 Erstelle Fahrzeug aus Partner-Anfrage...');
+
+                // Fahrzeug in Firestore speichern
+                const fahrzeugRef = await db.collection('fahrzeuge').add(fahrzeugData);
+
+                console.log('✅ Fahrzeug erstellt:', fahrzeugRef.id);
+
+                // Fotos kopieren (falls vorhanden)
+                if (anfrage.fotos && anfrage.fotos.length > 0) {
+                    console.log(`📸 Kopiere ${anfrage.fotos.length} Fotos...`);
+
+                    const fotosData = {
+                        photos: anfrage.fotos,
+                        count: anfrage.fotos.length,
+                        lastUpdated: Date.now(),
+                        quelle: 'Partner-Portal'
+                    };
+
+                    await db.collection('fahrzeuge')
+                        .doc(fahrzeugRef.id)
+                        .collection('fotos')
+                        .doc('vorher')
+                        .set(fotosData);
+
+                    console.log('✅ Fotos kopiert');
+                }
+
+                // Partner-Anfrage aktualisieren
+                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    fahrzeugAngelegt: true,
+                    fahrzeugId: fahrzeugRef.id,
+                    fahrzeugAngelegtAm: new Date().toISOString()
+                });
+
+                console.log('✅ Partner-Anfrage aktualisiert');
+
+                // Erfolg
+                alert(`✅ Fahrzeug erfolgreich angelegt!\n\n` +
+                    `🚗 Kennzeichen: ${fahrzeugData.kennzeichen}\n` +
+                    `💶 Preis: ${vereinbarterPreis.toFixed(2)}€\n` +
+                    `📦 Fahrzeug-ID: ${fahrzeugRef.id}\n\n` +
+                    `Das Fahrzeug ist jetzt in der Hauptapp verfügbar.`);
+
+                // Seite neu laden
+                loadAnfragen();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Anlegen des Fahrzeugs:', error);
+                alert('❌ Fehler beim Anlegen des Fahrzeugs:\n\n' + error.message);
             }
         }
 
