@@ -1163,10 +1163,12 @@
                         'qualitaetskontrolle': 'qualitaetskontrolle'  // NEU: QK bleibt
                     },
                     'reifen': {
-                        'bestellung': 'bestellung',  // NEU: Bestellung bleibt
-                        'angekommen': 'angekommen',  // NEU: Angekommen bleibt
-                        'montage': 'montage',  // NEU: Montage bleibt
-                        'wuchten': 'wuchten',  // NEU: Wuchten bleibt
+                        'neu': 'neu',  // 🔧 FIX: Fehlte!
+                        'terminiert': 'terminiert',  // 🔧 FIX: Fehlte!
+                        'bestellung': 'bestellung',
+                        'angekommen': 'angekommen',
+                        'montage': 'montage',
+                        'wuchten': 'wuchten',
                         'fertig': 'fertig'
                     },
                     'mechanik': {
@@ -1218,6 +1220,8 @@
                         'fertig': ['bereit']  // Kanban "bereit" = Partner "fertig"
                     },
                     'reifen': {
+                        'neu': ['neu'],  // 🔧 FIX: Fehlte!
+                        'terminiert': ['terminiert'],  // 🔧 FIX: Fehlte!
                         'bestellung': ['bestellung'],
                         'angekommen': ['angekommen'],
                         'montage': ['montage'],
@@ -1262,7 +1266,47 @@
 
             // Aktuellen Schritt-Index finden (mit gemapptem Status)
             let currentStepIndex = steps.findIndex(s => s.status === mappedStatus);
-            if (currentStepIndex === -1) currentStepIndex = 0;
+
+            // 🔧 FIX: Intelligenter Fallback für unbekannte Status
+            // Problem: currentStepIndex = -1 → Fallback auf Index 0 ("Eingegangen") → FALSCH wenn Fahrzeug fertig!
+            // Lösung: Prüfe ob Status "fertig-ähnlich" ist → Fallback auf letzten Step
+            if (currentStepIndex === -1) {
+                const fertigStatuses = ['fertig', 'abgeschlossen', 'bereit', 'abholbereit'];
+                if (fertigStatuses.includes(mappedStatus) || fertigStatuses.includes(currentStatus)) {
+                    currentStepIndex = steps.length - 1;  // Letzter Step (Fertig)
+                    console.warn(`⚠️ Status "${currentStatus}" (mapped: "${mappedStatus}") nicht in Steps gefunden, Fallback auf letzten Step (Fertig)!`);
+                } else {
+                    currentStepIndex = 0;  // Erster Step (Eingegangen)
+                    console.warn(`⚠️ Status "${currentStatus}" (mapped: "${mappedStatus}") nicht in Steps gefunden, Fallback auf ersten Step (Eingegangen)!`);
+                }
+            }
+
+            // 🔧 FIX: statusHistory Fallback wenn leer
+            // Problem: statusHistory ist leer → Alle Steps erscheinen als "nicht durchlaufen"
+            // Lösung: Generiere minimale History aus currentStatus
+            if (statusHistory.length === 0 && currentStepIndex >= 0) {
+                console.warn('⚠️ statusHistory ist leer, generiere minimale History aus currentStatus');
+                // Generiere minimale History: Eingegangen (neu) + Aktueller Status
+                statusHistory = [
+                    {status: 'neu', timestamp: Date.now() - 10000},
+                    {status: currentStatus, timestamp: Date.now()}  // Original Kanban Status!
+                ];
+            }
+
+            // 🔍 DEBUG: Log Berechnung VORHER
+            console.log('🔍 DEBUG Status-Übersicht Berechnung:', {
+                serviceTyp: serviceTyp,
+                currentStatus: currentStatus,
+                mappedStatus: mappedStatus,
+                currentStepIndex: currentStepIndex,
+                stepsLength: steps.length,
+                stepStatuses: steps.map(s => s.status),
+                statusHistoryLength: statusHistory.length,
+                statusHistoryStatuses: statusHistory.map(h => h.status),
+                anfrageHasFahrzeug: !!anfrage.fahrzeug,
+                fahrzeugProzessStatus: anfrage.fahrzeug?.prozessStatus || 'KEINE',
+                anfrageStatus: anfrage.status || 'KEINE'
+            });
 
             // Fortschritt berechnen
             const progress = ((currentStepIndex) / (steps.length - 1)) * 100;
