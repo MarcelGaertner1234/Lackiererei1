@@ -1757,20 +1757,49 @@
                 abholdatum: anfrage.kva?.termine?.start || abholtermin || '',
                 abholnotiz: anfrage.abholnotiz || '',
                 vereinbarterPreis: (() => {
-                    // Preis aus KVA-Varianten extrahieren (wie in liste.html Fix)
+                    // CRITICAL FIX: Preis aus KVA-Varianten extrahieren
+                    // Priorität 1: Gewählte Variante (wenn gesetzt)
                     if (anfrage.kva?.varianten && anfrage.kva.gewaehlteVariante) {
                         return parseFloat(anfrage.kva.varianten[anfrage.kva.gewaehlteVariante]?.gesamt) || null;
-                    } else if (anfrage.kva?.varianten?.original) {
+                    }
+
+                    // Priorität 2: Bei nur 1 Variante → automatisch diese nehmen (Fix für Services ohne Auswahl)
+                    if (anfrage.kva?.varianten) {
+                        const variantKeys = Object.keys(anfrage.kva.varianten);
+                        if (variantKeys.length === 1) {
+                            const singleVariant = variantKeys[0];
+                            console.log(`🔧 AUTO-FIX prepareFahrzeugData: Nur 1 Variante → nehme "${singleVariant}"`);
+                            return parseFloat(anfrage.kva.varianten[singleVariant]?.gesamt) || null;
+                        }
+                    }
+
+                    // Priorität 3: Fallback auf 'original' Variante (Rückwärtskompatibilität)
+                    if (anfrage.kva?.varianten?.original) {
                         return parseFloat(anfrage.kva.varianten.original.gesamt) || null;
-                    } else if (anfrage.kva?.gesamt) {
+                    }
+
+                    // Priorität 4: Legacy-Felder (alte KVA-Struktur)
+                    if (anfrage.kva?.gesamt) {
                         return parseFloat(anfrage.kva.gesamt) || null;
-                    } else if (anfrage.kva?.gesamtpreis) {
+                    }
+                    if (anfrage.kva?.gesamtpreis) {
                         return parseFloat(anfrage.kva.gesamtpreis) || null;
                     }
+
                     return null;
                 })(),
                 kva: anfrage.kva,  // CRITICAL: Komplette KVA-Struktur speichern für Fallback-Preis-Extraktion in liste.html/kunden.html
-                gewaehlteVariante: anfrage.kva?.gewaehlteVariante || 'original',
+                gewaehlteVariante: (() => {
+                    // Wenn gewaehlteVariante gesetzt → nutze diese
+                    if (anfrage.kva?.gewaehlteVariante) return anfrage.kva.gewaehlteVariante;
+                    // Sonst: Bei nur 1 Variante → automatisch diese
+                    if (anfrage.kva?.varianten) {
+                        const keys = Object.keys(anfrage.kva.varianten);
+                        if (keys.length === 1) return keys[0];
+                    }
+                    // Fallback
+                    return 'original';
+                })(),
                 notizen: anfrage.schadenBeschreibung || anfrage.beschreibung || anfrage.serviceData?.info || anfrage.anmerkungen || '',
                 partnerId: anfrage.partnerId || '',
                 partnerName: anfrage.partnerName || '',
