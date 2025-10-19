@@ -1961,8 +1961,18 @@
                             valueB = b.farbnummer.toLowerCase();
                             break;
                         case 'preis':
-                            valueA = parseFloat(a.vereinbarterPreis) || 0;
-                            valueB = parseFloat(b.vereinbarterPreis) || 0;
+                            // Helper: Preis extrahieren (vereinbarterPreis oder KVA)
+                            const getPreis = (v) => {
+                                if (v.vereinbarterPreis) return parseFloat(v.vereinbarterPreis);
+                                if (v.kva?.varianten && v.kva.gewaehlteVariante) {
+                                    return parseFloat(v.kva.varianten[v.kva.gewaehlteVariante]?.gesamt) || 0;
+                                }
+                                if (v.kva?.varianten?.original) return parseFloat(v.kva.varianten.original.gesamt) || 0;
+                                if (v.kva?.gesamt) return parseFloat(v.kva.gesamt) || 0;
+                                return 0;
+                            };
+                            valueA = getPreis(a);
+                            valueB = getPreis(b);
                             break;
                         case 'kunde':
                             valueA = a.kundenname.toLowerCase();
@@ -2079,9 +2089,20 @@
                 const statusClass = `status-${prozessStatus}`;
                 const statusText = getStatusLabel(prozessStatus);
 
-                // Preis formatieren
-                const preis = vehicle.vereinbarterPreis
-                    ? `<strong style="color: #4caf50;">€ ${parseFloat(vehicle.vereinbarterPreis).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>`
+                // Preis formatieren - unterstützt vereinbarterPreis UND KVA-Varianten (Partner Portal)
+                let preisWert = 0;
+                if (vehicle.vereinbarterPreis) {
+                    preisWert = parseFloat(vehicle.vereinbarterPreis);
+                } else if (vehicle.kva?.varianten && vehicle.kva.gewaehlteVariante) {
+                    preisWert = parseFloat(vehicle.kva.varianten[vehicle.kva.gewaehlteVariante]?.gesamt) || 0;
+                } else if (vehicle.kva?.varianten?.original) {
+                    preisWert = parseFloat(vehicle.kva.varianten.original.gesamt) || 0;
+                } else if (vehicle.kva?.gesamt) {
+                    preisWert = parseFloat(vehicle.kva.gesamt) || 0;
+                }
+
+                const preis = preisWert > 0
+                    ? `<strong style="color: #4caf50;">€ ${preisWert.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>`
                     : '<span style="color: #999;">-</span>';
 
                 // Kunden-Badge anzeigen
@@ -2776,9 +2797,20 @@
                 `;
             }
 
-            // Vereinbarter Preis
-            const preisDisplay = vehicle.vereinbarterPreis
-                ? `<div style="font-size: 24px; font-weight: bold; color: #2e7d32; margin-bottom: 10px;">€ ${parseFloat(vehicle.vereinbarterPreis).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>`
+            // Vereinbarter Preis - unterstützt vereinbarterPreis UND KVA-Varianten (Partner Portal)
+            let preisDetailWert = 0;
+            if (vehicle.vereinbarterPreis) {
+                preisDetailWert = parseFloat(vehicle.vereinbarterPreis);
+            } else if (vehicle.kva?.varianten && vehicle.kva.gewaehlteVariante) {
+                preisDetailWert = parseFloat(vehicle.kva.varianten[vehicle.kva.gewaehlteVariante]?.gesamt) || 0;
+            } else if (vehicle.kva?.varianten?.original) {
+                preisDetailWert = parseFloat(vehicle.kva.varianten.original.gesamt) || 0;
+            } else if (vehicle.kva?.gesamt) {
+                preisDetailWert = parseFloat(vehicle.kva.gesamt) || 0;
+            }
+
+            const preisDisplay = preisDetailWert > 0
+                ? `<div style="font-size: 24px; font-weight: bold; color: #2e7d32; margin-bottom: 10px;">€ ${preisDetailWert.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>`
                 : '<div style="color: #999; margin-bottom: 10px;">Noch kein Preis vereinbart</div>';
 
             html += `
