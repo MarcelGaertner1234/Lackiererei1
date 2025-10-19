@@ -915,6 +915,37 @@
                 html += `
                     <div class="detail-section">
                         <h2>💶 Kostenvoranschlag</h2>
+
+                        ${Object.keys(anfrage.kva.varianten).length > 1 ? `
+                        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <div style="font-weight: 600; margin-bottom: 15px; color: #003366;">
+                                📋 Bitte wählen Sie eine Variante:
+                            </div>
+                            ${Object.entries(anfrage.kva.varianten).map(([key, variant]) => {
+                                const isChecked = gewaehlte === key;
+                                const variantLabel = key === 'original' ? '⭐ Originalteile' :
+                                                    key === 'zubehoer' ? '🔧 Zubehörteile' :
+                                                    key === 'partner' ? '🤝 Partner-Variante' : key;
+                                return `
+                                <label style="display: flex; align-items: center; padding: 15px; background: ${isChecked ? '#e3f2fd' : 'white'};
+                                       border: 2px solid ${isChecked ? '#2196f3' : '#ddd'}; border-radius: 8px; margin-bottom: 10px;
+                                       cursor: pointer; transition: all 0.3s;">
+                                    <input type="radio" name="kva_variante" value="${key}"
+                                           ${isChecked ? 'checked' : ''}
+                                           onchange="updateVariante('${anfrage.id}', '${key}')"
+                                           style="margin-right: 15px; width: 20px; height: 20px; cursor: pointer;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; font-size: 16px; margin-bottom: 5px;">${variantLabel}</div>
+                                        <div style="color: #4caf50; font-weight: 700; font-size: 20px;">
+                                            ${variant.gesamt ? variant.gesamt.toFixed(2) + ' €' : 'N/A'}
+                                        </div>
+                                    </div>
+                                </label>
+                                `;
+                            }).join('')}
+                        </div>
+                        ` : ''}
+
                         <div class="detail-grid">
                             ${anfrage.kva.termine?.start ? `
                             <div class="detail-item" style="border-left-color: #4caf50;">
@@ -1757,6 +1788,26 @@
 
             console.log('📋 Fahrzeug-Daten erstellt:', fahrzeugData);
             return fahrzeugData;
+        }
+
+        // NEUE FUNKTION: Variante im KVA auswählen (Originalteile vs Zubehörteile)
+        async function updateVariante(anfrageId, variante) {
+            try {
+                console.log(`🔄 Aktualisiere Variante für Anfrage ${anfrageId} → ${variante}`);
+
+                await db.collection('anfragen').doc(anfrageId).update({
+                    'kva.gewaehlteVariante': variante,
+                    lastModified: Date.now()
+                });
+
+                console.log(`✅ Variante erfolgreich auf "${variante}" gesetzt`);
+
+                // UI neu laden um aktualisierte Preise zu zeigen
+                location.reload();
+            } catch (error) {
+                console.error('❌ Fehler beim Aktualisieren der Variante:', error);
+                alert('Fehler beim Speichern der Auswahl. Bitte versuchen Sie es erneut.');
+            }
         }
 
         async function annehmenKVA(anfrageId, event) {
