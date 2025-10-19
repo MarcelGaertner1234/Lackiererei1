@@ -144,6 +144,30 @@ window.firebaseApp = {
     });
   },
 
+  loadAllPhotosFromFirestore: async (fahrzeugId) => {
+    try {
+      const vorherDoc = await db.collection('fahrzeuge')
+        .doc(String(fahrzeugId))
+        .collection('fotos')
+        .doc('vorher')
+        .get();
+
+      const nachherDoc = await db.collection('fahrzeuge')
+        .doc(String(fahrzeugId))
+        .collection('fotos')
+        .doc('nachher')
+        .get();
+
+      return {
+        vorher: vorherDoc.exists ? (vorherDoc.data().photos || []) : [],
+        nachher: nachherDoc.exists ? (nachherDoc.data().photos || []) : []
+      };
+    } catch (error) {
+      console.error('❌ Fehler beim Laden der Fotos:', error);
+      return { vorher: [], nachher: [] };
+    }
+  },
+
   savePhotosLocal: (fahrzeugId, photos, type = 'vorher') => {
     const key = `fahrzeug_${fahrzeugId}_fotos_${type}`;
     localStorage.setItem(key, JSON.stringify(photos));
