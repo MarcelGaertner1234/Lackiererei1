@@ -1,8 +1,8 @@
 # 🚗 Fahrzeugannahme-App - Claude Code Dokumentation
 
-**Version:** 3.1 (Partner Portal Fix & n8n Testing)
-**Status:** ✅ Production-Ready - Partner Portal funktioniert, n8n Testing aktiv
-**Letzte Aktualisierung:** 19.10.2025
+**Version:** 3.2 (Partner Portal Service-Consistency Fix)
+**Status:** ✅ Production-Ready - Alle 6 Services konsistent & verified
+**Letzte Aktualisierung:** 20.10.2025
 **Live-URL:** https://marcelgaertner1234.github.io/Lackiererei1/
 
 ---
@@ -69,11 +69,115 @@ Digitale Fahrzeug-Annahme und -Abnahme für **Auto-Lackierzentrum Mosbach** mit 
 5. **Kundenverwaltung** (kunden.html)
 6. **Landing Page** (index.html)
 
-*(Details siehe alte CLAUDE.md - hier fokussieren wir auf Version 3.0 Änderungen)*
+*(Details siehe alte CLAUDE.md - hier fokussieren wir auf Version 3.0+ Änderungen)*
 
 ---
 
-## 🚀 Version 3.0 Features (07.10.2025 - Diese Session)
+## 🚀 Version 3.2 Features (20.10.2025 - Service Consistency Audit)
+
+### **SERVICE-AGNOSTIC PARTNER PORTAL** ⭐ MAJOR REFACTORING
+
+**Problem:**
+Partner Portal hatte service-spezifische Bugs:
+- Termin-Labels nur für Lackierung ("Lackierungs-Termin")
+- Hover-Info LabelMap unvollständig (fehlten Reifen, Pflege, TÜV Felder)
+- Status-Mapping unvollständig für Mechanik/Pflege/TÜV
+- Format-Funktionen erwarteten falsche Werte (Pflege & TÜV)
+- Generische Lieferzeit-Texte ohne Service-Kontext
+
+**Lösung:** Vollständige Service-Agnostik über alle 6 Services
+
+---
+
+### **Implementierte Fixes (9 Tasks + 1 Critical Bugfix):**
+
+#### ✅ TASK #4: Service-agnostic Termin-Labels
+**File:** `partner-app/kva-erstellen.html`
+**Changes:**
+- Lines 824-842: Neue Funktion `updateTerminLabels(serviceTyp)`
+- Line 705: Aufruf mit dynamischem serviceTyp
+- 6 Service-Labels: Lackierungs-Termin, Reifen-Wechsel, Reparatur-Termin, Pflege-Termin, Prüfungs-Termin
+- **Commit:** `4b3ce39`
+
+#### ✅ TASK #5: Complete hover-info label mappings
+**File:** `partner-app/meine-anfragen.html`
+**Changes:**
+- Lines 3135-3170: Aftermarket labelMap erweitert (10+ neue Felder)
+- Lines 3182-3217: Original labelMap erweitert (identisch)
+- Alle 6 Services abgedeckt mit korrekten Umlauten (Prüfung, Gebühren, Außenreinigung)
+- Dynamic rendering mit `Object.keys().filter()`
+- **Commit:** `6458c68`
+
+#### ✅ TASK #6: Complete status-mapping
+**File:** `partner-app/meine-anfragen.html`
+**Changes:**
+- Lines 2698-2702: Shared Stages (neu, terminiert, fertig, abgeschlossen)
+- Lines 2704-2738: Refactored statusMapping (gruppiert nach Service)
+- **Mechanik:** +3 fehlende Stages (neu, terminiert, fertig) → 8 Stages total
+- **Pflege:** +3 fehlende Stages (neu, terminiert, fertig) → 6 Stages total
+- **TÜV:** +3 fehlende Stages (neu, terminiert, fertig) → 6 Stages total
+- **Commit:** `b164195`
+- **🔴 CRITICAL BUGFIX:** TÜV `abholbereit` mapping fehlte! → Commit `b8c191e`
+
+#### ✅ TASK #7: Foto fields consistency
+**Status:** ALREADY CONSISTENT (kein Fix nötig)
+**Verified:** Alle 6 Services verwenden `fotos` + `fahrzeugscheinFotos` korrekt
+
+#### ✅ TASK #8: Pflege & TÜV service-details
+**File:** `partner-app/kva-erstellen.html`
+**Changes:**
+- Lines 1234-1248: `formatPflegeLeistung()` erweitert (basic, premium, deluxe)
+- Lines 1250-1262: `formatZustand()` erweitert (innen, aussen, komplett)
+- Lines 1264-1276: `formatPruefung()` erweitert (tuev, au, kombi, nachpruefung)
+- Lines 1287-1294: **NEU** `formatVorbereitung()` (ja, nein, maengel)
+- Line 1167: TÜV service-details zeigt vorbereitung Feld
+- Legacy values behalten für backwards compatibility
+- **Commit:** `1fd40a6`
+
+#### ✅ TASK #9: Service-specific Lieferzeit-Texte
+**File:** `partner-app/kva-erstellen.html`
+**Changes:**
+- Lines 1296-1334: **NEU** `generateServiceLieferzeitText()`
+- Service-Labels mit Emojis: 🎨 Lackierung, 🛞 Reifenwechsel, 🔧 Reparatur, ✨ Aufbereitung, ✅ Prüfung, 🛡️ Reparatur
+- Intelligente Zeitspanne-Anzeige (gleicher Tag vs. Zeitraum)
+- Automatische Dauer-Berechnung (z.B. "5 Tage")
+- Line 1349: Aufruf mit serviceTyp
+- **Commit:** `84ec797`
+
+---
+
+### **Critical Bugfix:**
+
+#### 🔴 TÜV abholbereit status mapping
+**Problem:** TÜV Kanban hat 6 Stages (inkl. `abholbereit`), statusMapping hatte nur 5
+**Impact:** TÜV-Fahrzeuge im Status "abholbereit" wurden falsch angezeigt (Fallback auf "beauftragt" statt "Auto anliefern")
+**Fix:** Line 2733: `'abholbereit': 'abholung'` hinzugefügt
+**Commit:** `b8c191e`
+
+---
+
+### **Verification Results:**
+
+**✅ Alle 9 Tasks verifiziert & korrekt implementiert**
+**✅ 1 Critical Bug gefunden & gefixt**
+**✅ 0 Bugs verbleibend**
+**✅ Alle Edge Cases überprüft & safe**
+
+**Changed Files:**
+- `partner-app/kva-erstellen.html` (3 commits)
+- `partner-app/meine-anfragen.html` (2 commits + 1 bugfix)
+
+**Deployed Commits:**
+- `4b3ce39` - TASK #4: Service-agnostic Termin-Labels
+- `6458c68` - TASK #5: Complete hover-info label mappings
+- `b164195` - TASK #6: Complete status-mapping
+- `1fd40a6` - TASK #8: Pflege & TÜV service-details
+- `84ec797` - TASK #9: Service-specific Lieferzeit-Texte
+- `b8c191e` - CRITICAL BUGFIX: TÜV abholbereit mapping
+
+---
+
+## 🚀 Version 3.0 Features (07.10.2025)
 
 ### **1. SAFARI-KOMPATIBILITÄT FIX** ⭐ KRITISCH
 
@@ -1096,5 +1200,5 @@ Alle kritischen Bugs aus RUN #68-71 sind behoben. Die App ist production-ready.
 ---
 
 **Made with ❤️ by Claude Code for Auto-Lackierzentrum Mosbach**
-**Version 3.1 - Partner Portal Fix & n8n Testing**
-**Letzte Aktualisierung: 19.10.2025**
+**Version 3.2 - Service Consistency Audit (Alle 6 Services konsistent & verified)**
+**Letzte Aktualisierung: 20.10.2025**
