@@ -4091,9 +4091,9 @@
                     // Trotzdem fortfahren - Fahrzeug ohne Kunden-Verknüpfung erstellen
                 }
 
-                // 4. Fahrzeug-Daten vorbereiten (NEUE PIPELINE)
+                // 4. Fahrzeug-Daten vorbereiten (NEUE PIPELINE mit Rabatt-Berechnung!)
                 console.log('📋 Erstelle Fahrzeug-Dokument aus Partner-Anfrage...');
-                const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin);
+                const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin, alleAnfragen);
                 if (kundeId) {
                     fahrzeugData.kundenId = kundeId; // Kunde verknüpfen
                 }
@@ -4343,9 +4343,12 @@
         /**
          * Bereitet Fahrzeug-Daten für die Erstellung vor (mit Validierung)
          * aus einer akzeptierten Partner-Anfrage
+         * @param {Object} anfrage - Partner-Anfrage Objekt
+         * @param {string} abholtermin - Abhol-Termin (ISO-Date)
+         * @param {Array} allAnfragen - Alle Anfragen für Rabatt-Berechnung
          * @returns {Object} Fahrzeug-Daten bereit für Firestore
          */
-        async function prepareFahrzeugData(anfrage, abholtermin) {
+        async function prepareFahrzeugData(anfrage, abholtermin, allAnfragen) {
             console.log('🔍 prepareFahrzeugData() gestartet');
             console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
             console.log('📋 Anfrage kennzeichen:', anfrage.kennzeichen);
@@ -4453,17 +4456,40 @@
                 // abholzeit wird oben aus kva.termine.abholzeit gesetzt
                 abholnotiz: anfrage.abholnotiz || '',
 
-                // Preis & Details
-                // ✅ FIX #1: Korrektes Feld-Mapping für KVA-Preise (Varianten-System!)
-                // Problem: anfrage.kva.gesamt existiert NICHT (Preis ist in kva.varianten[...].gesamt)
-                // Fallback-Chain: gewaehlteVariante → original → aftermarket → legacy
-                vereinbarterPreis: anfrage.kva?.varianten?.[anfrage.kva.gewaehlteVariante]?.gesamt  // Prio 1: Gewählte Variante
-                                || anfrage.kva?.varianten?.original?.gesamt  // Prio 2: Original (Fallback wenn keine Auswahl)
-                                || anfrage.kva?.varianten?.zubehoer?.gesamt  // Prio 3: Aftermarket Zubehoer
-                                || anfrage.kva?.varianten?.partner?.gesamt   // Prio 4: Aftermarket Partner
-                                || anfrage.kva?.gesamt  // Prio 5: Legacy-Format (alte KVAs)
-                                || anfrage.kva?.gesamtpreis  // Prio 6: Legacy-Fallback #2
-                                || null,
+                // Preis & Details (Phase 1: Mit automatischem Rabatt!)
+                // Schritt 1: Original-Preis aus KVA extrahieren (Fallback-Chain)
+                ...await (async () => {
+                    const originalPreis = anfrage.kva?.varianten?.[anfrage.kva.gewaehlteVariante]?.gesamt  // Prio 1: Gewählte Variante
+                                       || anfrage.kva?.varianten?.original?.gesamt  // Prio 2: Original (Fallback wenn keine Auswahl)
+                                       || anfrage.kva?.varianten?.zubehoer?.gesamt  // Prio 3: Aftermarket Zubehoer
+                                       || anfrage.kva?.varianten?.partner?.gesamt   // Prio 4: Aftermarket Partner
+                                       || anfrage.kva?.gesamt  // Prio 5: Legacy-Format (alte KVAs)
+                                       || anfrage.kva?.gesamtpreis  // Prio 6: Legacy-Fallback #2
+                                       || 0;
+
+                    console.log('💶 [PREIS-PIPELINE] Original-Preis extrahiert:', originalPreis);
+
+                    // Schritt 2: Rabatt berechnen (wenn Partner-ID vorhanden & Konditionen aktiv)
+                    const preisInfo = await calculatePriceWithRabatt(
+                        originalPreis,
+                        anfrage.partnerId,
+                        allAnfragen || []  // Fallback auf leeres Array wenn allAnfragen nicht übergeben
+                    );
+
+                    console.log('💶 [PREIS-PIPELINE] Rabatt-Berechnung abgeschlossen:');
+                    console.log('   Original:', preisInfo.originalPreis, '€');
+                    console.log('   Rabatt:', preisInfo.rabattProzent, '%');
+                    console.log('   Final:', preisInfo.finalPreis, '€');
+
+                    // Schritt 3: Preis-Felder für Fahrzeug-Dokument
+                    return {
+                        vereinbarterPreis: preisInfo.finalPreis,  // ✅ Mit Rabatt!
+                        originalPreis: preisInfo.originalPreis,   // ✅ Ohne Rabatt (Transparenz)
+                        rabattAngewendet: preisInfo.rabattProzent,  // ✅ Z.B. 10
+                        rabattStufe: preisInfo.stufe?.key || null,  // ✅ Z.B. "stufe2"
+                        rabattBetrag: preisInfo.rabattBetrag || 0   // ✅ Z.B. 30.00
+                    };
+                })(),
 
                 // ✅ FIX #2: KVA-Objekt übertragen (für Fallback-Logik in kunden.html)
                 // Benefit: Kunden-Umsatz kann auf kva.varianten zugreifen + Audit Trail
@@ -4996,6 +5022,110 @@
          */
         function calculateErsparnis(umsatzMonat, rabattProzent) {
             return umsatzMonat * (rabattProzent / 100);
+        }
+
+        /**
+         * Berechnet Endpreis mit automatischem Rabatt-Abzug (Phase 1: Laufender Rabatt)
+         *
+         * @param {number} originalPreis - KVA-Preis vor Rabatt
+         * @param {string} partnerId - Partner-ID
+         * @param {Array} anfragen - Alle Anfragen für Umsatz-Berechnung
+         * @returns {Promise<Object>} { finalPreis, rabattProzent, rabattBetrag, stufe, originalPreis }
+         */
+        async function calculatePriceWithRabatt(originalPreis, partnerId, anfragen) {
+            console.log('\n💶 ========== calculatePriceWithRabatt() GESTARTET ==========');
+            console.log(`📊 Original-Preis: ${originalPreis}€`);
+            console.log(`📊 Partner-ID: ${partnerId}`);
+
+            // Validierung
+            if (!originalPreis || originalPreis <= 0) {
+                console.warn('⚠️ [RABATT] Ungültiger Preis:', originalPreis);
+                return { finalPreis: 0, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis: 0 };
+            }
+
+            if (!partnerId) {
+                console.warn('⚠️ [RABATT] Keine Partner-ID - kein Rabatt möglich');
+                return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+            }
+
+            try {
+                // 1. Lade Partner-Konditionen aus Firestore
+                const db = firebase.firestore();
+                const partnerDoc = await db.collection('partner').doc(partnerId).get();
+
+                if (!partnerDoc.exists) {
+                    console.warn('⚠️ [RABATT] Partner-Dokument nicht gefunden:', partnerId);
+                    return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+                }
+
+                const partner = partnerDoc.data();
+                const konditionen = partner.rabattKonditionen;
+
+                console.log('✅ [RABATT] Partner-Daten geladen:', partner.name || partnerId);
+                console.log('📋 [RABATT] Konditionen vorhanden:', !!konditionen);
+                console.log('📋 [RABATT] Konditionen geprüft:', !!partner.konditionenGeprueft);
+
+                // 2. Prüfe ob Rabatt-System aktiv
+                if (!konditionen || !partner.konditionenGeprueft) {
+                    console.log('ℹ️ [RABATT] Keine aktiven Konditionen - kein Rabatt');
+                    return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+                }
+
+                // 3. Berechne aktuellen Monatsumsatz (VOR diesem Auftrag)
+                const { umsatzMonat } = calculateUmsatz(anfragen, partnerId);
+                console.log(`💰 [RABATT] Monatsumsatz (vor Auftrag): ${umsatzMonat.toFixed(2)}€`);
+
+                // 4. Berechne Umsatz NACH diesem Auftrag (Projection)
+                const umsatzNachAuftrag = umsatzMonat + originalPreis;
+                console.log(`💰 [RABATT] Monatsumsatz (nach Auftrag): ${umsatzNachAuftrag.toFixed(2)}€`);
+
+                // 5. Finde höchste erreichte Stufe (basierend auf Umsatz NACH Auftrag)
+                let aktuelleStufe = null;
+                let maxAb = 0;
+
+                ['stufe1', 'stufe2', 'stufe3'].forEach(stufeKey => {
+                    const stufe = konditionen[stufeKey];
+                    if (stufe && stufe.ab <= umsatzNachAuftrag && stufe.ab > maxAb) {
+                        maxAb = stufe.ab;
+                        aktuelleStufe = { key: stufeKey, ...stufe };
+                    }
+                });
+
+                console.log('🎯 [RABATT] Gefundene Stufe:', aktuelleStufe ? aktuelleStufe.key : 'keine');
+
+                // 6. Wende Rabatt an (wenn Stufe erreicht)
+                if (aktuelleStufe) {
+                    const rabattProzent = aktuelleStufe.rabatt;
+                    const rabattBetrag = originalPreis * (rabattProzent / 100);
+                    const finalPreis = originalPreis - rabattBetrag;
+
+                    console.log('═══════════════════════════════════════');
+                    console.log(`✅ [RABATT] Stufe erreicht: ${aktuelleStufe.key}`);
+                    console.log(`💶 [RABATT] Original-Preis: ${originalPreis.toFixed(2)}€`);
+                    console.log(`📉 [RABATT] Rabatt-Prozent: ${rabattProzent}%`);
+                    console.log(`💸 [RABATT] Rabatt-Betrag: -${rabattBetrag.toFixed(2)}€`);
+                    console.log(`✨ [RABATT] Final-Preis: ${finalPreis.toFixed(2)}€`);
+                    console.log(`🎁 [RABATT] Einmal-Bonus: ${aktuelleStufe.einmalBonus}€ (Phase 2)`);
+                    console.log('═══════════════════════════════════════\n');
+
+                    return {
+                        finalPreis,
+                        rabattProzent,
+                        rabattBetrag,
+                        stufe: aktuelleStufe,
+                        originalPreis
+                    };
+                }
+
+                // 7. Keine Stufe erreicht
+                console.log('ℹ️ [RABATT] Keine Stufe erreicht - kein Rabatt');
+                return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+
+            } catch (error) {
+                console.error('❌ [RABATT] Fehler beim Berechnen:', error);
+                // Fallback: Original-Preis ohne Rabatt
+                return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+            }
         }
 
         /**
