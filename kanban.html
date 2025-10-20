@@ -1659,8 +1659,23 @@
 
                 // In Firebase/LocalStorage speichern
                 if (firebaseInitialized && firebaseApp) {
-                    await firebaseApp.updateFahrzeug(fahrzeugId, updateData);
-                    console.log('✅ Status + Timestamps in Firebase aktualisiert');
+                    // ✅ IMPROVEMENT #1: Nutze Transaction statt simples update (verhindert Race Conditions)
+                    const db = firebase.firestore();
+                    const fahrzeugRef = db.collection('fahrzeuge').doc(fahrzeugId);
+
+                    await db.runTransaction(async (transaction) => {
+                        const doc = await transaction.get(fahrzeugRef);
+
+                        if (!doc.exists) {
+                            throw new Error(`Fahrzeug ${fahrzeugId} nicht gefunden!`);
+                        }
+
+                        // Atomic Update
+                        transaction.update(fahrzeugRef, updateData);
+                        console.log('   🔒 Transaction: Status + Timestamps atomic update');
+                    });
+
+                    console.log('✅ Status + Timestamps in Firebase aktualisiert (via Transaction)');
                 } else {
                     // LocalStorage: Alle Fahrzeuge aktualisieren
                     let allStoredFahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
@@ -1852,8 +1867,23 @@
 
                 // Speichern
                 if (firebaseInitialized && firebaseApp) {
-                    await firebaseApp.updateFahrzeug(fahrzeugId, updateData);
-                    console.log('✅ Status + Foto in Firebase gespeichert');
+                    // ✅ IMPROVEMENT #1: Nutze Transaction statt simples update (verhindert Race Conditions)
+                    const db = firebase.firestore();
+                    const fahrzeugRef = db.collection('fahrzeuge').doc(fahrzeugId);
+
+                    await db.runTransaction(async (transaction) => {
+                        const doc = await transaction.get(fahrzeugRef);
+
+                        if (!doc.exists) {
+                            throw new Error(`Fahrzeug ${fahrzeugId} nicht gefunden!`);
+                        }
+
+                        // Atomic Update
+                        transaction.update(fahrzeugRef, updateData);
+                        console.log('   🔒 Transaction: Status + Foto atomic update');
+                    });
+
+                    console.log('✅ Status + Foto in Firebase gespeichert (via Transaction)');
                 } else {
                     let allStoredFahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
                     const index = allStoredFahrzeuge.findIndex(f => f.id == fahrzeugId);
