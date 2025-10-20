@@ -1734,6 +1734,16 @@
             console.log('🔄 Echtzeit-Listener aktiviert - Änderungen werden automatisch synchronisiert!');
 
             unsubscribeListener = firebaseApp.listenToFahrzeuge(function(fahrzeuge) {
+                console.log(`🔥 [LISTE] Realtime Update empfangen: ${fahrzeuge.length} Fahrzeuge`);
+
+                // 🐛 DEBUG: Zeige Service-Verteilung
+                const serviceCount = {};
+                fahrzeuge.forEach(f => {
+                    const typ = f.serviceTyp || 'undefined';
+                    serviceCount[typ] = (serviceCount[typ] || 0) + 1;
+                });
+                console.log(`📊 [LISTE] Service-Verteilung:`, serviceCount);
+
                 // KEIN automatisches Foto-Laden (Performance!)
                 // Fotos werden nur bei Detail-Ansicht geladen (Lazy Loading)
                 fahrzeuge.forEach(fahrzeug => {
@@ -1744,7 +1754,7 @@
                 allVehicles = fahrzeuge;
                 updateStats();
                 renderTable();
-                console.log('🔄 Daten automatisch aktualisiert:', fahrzeuge.length, 'Fahrzeuge');
+                console.log('✅ [LISTE] Automatisch aktualisiert:', fahrzeuge.length, 'Fahrzeuge');
                 console.log('ℹ️ Fotos werden bei Bedarf nachgeladen (Lazy Loading)');
 
                 // AUTO-OPEN: Wenn URL-Parameter "showDetails" vorhanden UND noch nicht geöffnet
@@ -1760,48 +1770,24 @@
             });
         }
 
-        // Daten laden (Realtime-Listener für Auto-Updates)
-        // ✅ BUG FIX #3: Realtime-Listener aktiviert (gefunden durch Bug Hunter Workflow)
-        // Problem: liste.html nutzte nur .getAllFahrzeuge() → one-time load
-        // Impact: Liste aktualisierte sich NICHT automatisch → HIGH PRIORITY BUG
-        // Fix: Realtime-Listener mit listenToFahrzeuge() implementiert
+        // Daten laden (DEPRECATED - Realtime-Listener wird in setupRealtimeListener() aktiviert)
+        // ❌ BUGFIX: Doppelter Listener-Call entfernt! (verursachte Konflikte)
+        // Alt: loadData() UND setupRealtimeListener() riefen beide listenToFahrzeuge() auf
+        // Neu: Nur setupRealtimeListener() nutzt Realtime-Listener
         async function loadData() {
             showFullscreenLoader('Lade Fahrzeuge...');
             try {
                 if (firebaseInitialized && firebaseApp) {
-                    // ✅ Realtime-Listener statt one-time load
-                    if (firebaseApp.listenToFahrzeuge) {
-                        console.log('🔄 Aktiviere Realtime-Listener für Liste...');
+                    // ✅ Realtime-Listener wird bereits in setupRealtimeListener() aktiviert!
+                    // ❌ REMOVED: Doppelter Listener-Call hier war der Bug!
+                    console.log('ℹ️ Realtime-Listener bereits aktiv (setupRealtimeListener)');
 
-                        firebaseApp.listenToFahrzeuge((fahrzeuge) => {
-                            console.log(`🔥 Realtime Update empfangen: ${fahrzeuge.length} Fahrzeuge`);
+                    // Loader verstecken (Realtime-Listener übernimmt)
+                    hideFullscreenLoader();
+                    return; // Exit - setupRealtimeListener() übernimmt alles!
 
-                            // Migration: Alte baujahr-Werte in baujahrVon/baujahrBis konvertieren
-                            allVehicles = fahrzeuge.map(v => {
-                                if (!v.baujahrVon && v.baujahr) {
-                                    v.baujahrVon = v.baujahr;
-                                    if (v.baujahr !== 'Älter') {
-                                        v.baujahrBis = v.baujahr;
-                                    }
-                                }
-                                // Lazy Loading: Fotos werden bei Bedarf geladen
-                                v.photos = [];
-                                v.nachherPhotos = [];
-                                return v;
-                            });
-
-                            updateStats();
-                            renderTable();
-
-                            console.log('✅ Liste automatisch aktualisiert:', allVehicles.length);
-                            console.log('ℹ️ Lazy Loading: Fotos werden bei Detail-Ansicht geladen');
-                        });
-
-                        hideFullscreenLoader();
-                        console.log('✅ Realtime-Listener aktiviert - Liste aktualisiert sich automatisch');
-                        return; // Exit - Listener übernimmt ab jetzt
-                    } else {
-                        // Fallback: One-time load wenn listenToFahrzeuge nicht verfügbar
+                    // Fallback: One-time load wenn listenToFahrzeuge nicht verfügbar
+                    if (!firebaseApp.listenToFahrzeuge) {
                         console.warn('⚠️ listenToFahrzeuge() nicht verfügbar, nutze getAllFahrzeuge()');
                         allVehicles = await firebaseApp.getAllFahrzeuge();
 
