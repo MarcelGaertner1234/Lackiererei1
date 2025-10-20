@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preis-Konsistenz Migration - Auto-Lackierzentrum Mosbach</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #003366;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #0dcaf0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        #logOutput {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+
+        .log-info { color: #0dcaf0; }
+        .log-success { color: #28a745; }
+        .log-warning { color: #ffc107; }
+        .log-error { color: #dc3545; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #003366;
+        }
+
+        .price-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-missing { background: #f8d7da; color: #721c24; }
+        .badge-found { background: #d4edda; color: #155724; }
+        .badge-partial { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💶 Preis-Konsistenz Migration</h1>
+        <p style="color: #666; margin-bottom: 30px;">Korrigiert fehlende vereinbarterPreis-Werte in Firestore</p>
+
+        <div class="warning">
+            <strong>⚠️ WICHTIG:</strong> Dieses Script korrigiert Fahrzeuge mit fehlenden Preis-Informationen.<br>
+            <strong>Problem:</strong> Fahrzeuge, die VOR dem KVA-Fix (Commit f7f4b16) erstellt wurden, haben vereinbarterPreis = NULL.<br>
+            <strong>Lösung:</strong> Automatische Preis-Extraktion aus kva.varianten oder verknüpfter partnerAnfrage.
+        </div>
+
+        <div class="info">
+            <strong>ℹ️ Was wird gemacht:</strong><br>
+            1. Alle Fahrzeuge aus Firestore laden<br>
+            2. Fahrzeuge mit vereinbarterPreis = NULL/0 identifizieren<br>
+            3. Preis aus kva.varianten oder partnerAnfrage extrahieren<br>
+            4. Änderungen in Firestore speichern (mit Transaction)
+        </div>
+
+        <div style="margin: 30px 0;">
+            <button class="btn" id="scanBtn" onclick="scanFahrzeuge()">
+                🔍 Schritt 1: Fahrzeuge scannen
+            </button>
+            <button class="btn" id="backupBtn" onclick="createBackup()" disabled style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                💾 Backup erstellen
+            </button>
+            <button class="btn btn-danger" id="migrateBtn" onclick="migrateFahrzeuge()" disabled>
+                🚀 Schritt 2: Migration starten
+            </button>
+        </div>
+
+        <div id="logOutput"></div>
+
+        <div id="resultsContainer" style="display: none;">
+            <h3 style="color: #003366; margin-top: 30px;">📊 Gefundene Probleme:</h3>
+            <table id="problemsTable">
+                <thead>
+                    <tr>
+                        <th>Kennzeichen</th>
+                        <th>Service</th>
+                        <th>Preis (aktuell)</th>
+                        <th>Preis (korrigiert)</th>
+                        <th>Quelle</th>
+                    </tr>
+                </thead>
+                <tbody id="problemsTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js?v=99ef36b"></script>
+
+    <script>
+        let firebaseInitialized = false;
+        let problemFahrzeuge = [];
+
+        function log(message, type = 'info') {
+            const output = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString('de-DE');
+            const className = `log-${type}`;
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+            console.log(message);
+        }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            log('🔄 Initialisiere Firebase...', 'info');
+
+            await initFirebase();
+            if (window.firebaseInitialized && window.firebaseApp) {
+                firebaseInitialized = true;
+                log('✅ Firebase verbunden', 'success');
+            } else {
+                log('❌ Firebase Fehler - kann nicht fortfahren!', 'error');
+            }
+        });
+
+        async function scanFahrzeuge() {
+            if (!firebaseInitialized) {
+                log('❌ Firebase nicht initialisiert!', 'error');
+                return;
+            }
+
+            document.getElementById('scanBtn').disabled = true;
+            problemFahrzeuge = [];
+
+            log('🔍 Lade alle Fahrzeuge aus Firestore...', 'info');
+
+            try {
+                const db = firebase.firestore();
+                const snapshot = await db.collection('fahrzeuge').get();
+                const alleFahrzeuge = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                log(`📊 ${alleFahrzeuge.length} Fahrzeuge geladen`, 'info');
+
+                // Nur aktive Fahrzeuge prüfen (nicht abgeschlossen)
+                const aktiveFahrzeuge = alleFahrzeuge.filter(f => f.status !== 'abgeschlossen');
+                log(`📋 ${aktiveFahrzeuge.length} aktive Fahrzeuge (ohne abgeschlossen)`, 'info');
+
+                // Prüfe jeden Fahrzeug
+                for (const fahrzeug of aktiveFahrzeuge) {
+                    const currentPrice = parseFloat(fahrzeug.vereinbarterPreis) || 0;
+
+                    // Problem: Preis fehlt oder ist 0
+                    if (currentPrice === 0) {
+                        log(`⚠️ Prüfe: ${fahrzeug.kennzeichen} (vereinbarterPreis = ${currentPrice})`, 'warning');
+
+                        // Versuche Preis zu finden
+                        const priceInfo = await findPrice(fahrzeug, db);
+
+                        if (priceInfo.price > 0) {
+                            problemFahrzeuge.push({
+                                id: fahrzeug.id,
+                                kennzeichen: fahrzeug.kennzeichen,
+                                serviceTyp: fahrzeug.serviceTyp || 'lackier',
+                                currentPrice: currentPrice,
+                                correctedPrice: priceInfo.price,
+                                source: priceInfo.source,
+                                kva: priceInfo.kva || null
+                            });
+
+                            log(`   ✅ Preis gefunden: ${priceInfo.price.toFixed(2)} € (Quelle: ${priceInfo.source})`, 'success');
+                        } else {
+                            log(`   ❌ Kein Preis gefunden für ${fahrzeug.kennzeichen}`, 'error');
+                        }
+                    }
+                }
+
+                if (problemFahrzeuge.length === 0) {
+                    log('✅ Keine Probleme gefunden! Alle Preise sind korrekt.', 'success');
+                    document.getElementById('scanBtn').disabled = false;
+                } else {
+                    log(`❌ ${problemFahrzeuge.length} Fahrzeuge mit fehlenden Preisen gefunden!`, 'error');
+                    document.getElementById('backupBtn').disabled = false;
+                    document.getElementById('migrateBtn').disabled = false;
+                    showProblemsTable();
+                }
+
+            } catch (error) {
+                log(`❌ Fehler beim Scannen: ${error.message}`, 'error');
+                document.getElementById('scanBtn').disabled = false;
+            }
+        }
+
+        // Preis-Extraktion mit Fallback-Chain (wie prepareFahrzeugData in meine-anfragen.html)
+        async function findPrice(fahrzeug, db) {
+            let price = 0;
+            let source = 'nicht gefunden';
+            let kvaObject = null;
+
+            // Prio 1: Aus kva.varianten im Fahrzeug-Dokument
+            if (fahrzeug.kva?.varianten) {
+                const gewaehlteVariante = fahrzeug.kva.gewaehlteVariante;
+
+                if (gewaehlteVariante && fahrzeug.kva.varianten[gewaehlteVariante]?.gesamt) {
+                    price = parseFloat(fahrzeug.kva.varianten[gewaehlteVariante].gesamt);
+                    source = `kva.varianten.${gewaehlteVariante}`;
+                    kvaObject = fahrzeug.kva;
+                } else if (fahrzeug.kva.varianten.original?.gesamt) {
+                    price = parseFloat(fahrzeug.kva.varianten.original.gesamt);
+                    source = 'kva.varianten.original';
+                    kvaObject = fahrzeug.kva;
+                } else if (fahrzeug.kva.varianten.zubehoer?.gesamt) {
+                    price = parseFloat(fahrzeug.kva.varianten.zubehoer.gesamt);
+                    source = 'kva.varianten.zubehoer';
+                    kvaObject = fahrzeug.kva;
+                } else if (fahrzeug.kva.varianten.partner?.gesamt) {
+                    price = parseFloat(fahrzeug.kva.varianten.partner.gesamt);
+                    source = 'kva.varianten.partner';
+                    kvaObject = fahrzeug.kva;
+                }
+            }
+
+            // Prio 2: Aus kva.gesamt (Legacy-Format)
+            if (price === 0 && fahrzeug.kva?.gesamt) {
+                price = parseFloat(fahrzeug.kva.gesamt);
+                source = 'kva.gesamt (Legacy)';
+                kvaObject = fahrzeug.kva;
+            }
+
+            // Prio 3: Aus partnerAnfrage laden (via anfrageId)
+            if (price === 0 && fahrzeug.anfrageId) {
+                log(`   🔍 Lade partnerAnfrage: ${fahrzeug.anfrageId}`, 'info');
+
+                try {
+                    const anfrageDoc = await db.collection('partnerAnfragen').doc(fahrzeug.anfrageId).get();
+
+                    if (anfrageDoc.exists) {
+                        const anfrage = anfrageDoc.data();
+
+                        // Gleiche Fallback-Chain wie oben
+                        if (anfrage.kva?.varianten) {
+                            const gewaehlteVariante = anfrage.kva.gewaehlteVariante;
+
+                            if (gewaehlteVariante && anfrage.kva.varianten[gewaehlteVariante]?.gesamt) {
+                                price = parseFloat(anfrage.kva.varianten[gewaehlteVariante].gesamt);
+                                source = `partnerAnfrage.kva.varianten.${gewaehlteVariante}`;
+                                kvaObject = anfrage.kva;
+                            } else if (anfrage.kva.varianten.original?.gesamt) {
+                                price = parseFloat(anfrage.kva.varianten.original.gesamt);
+                                source = 'partnerAnfrage.kva.varianten.original';
+                                kvaObject = anfrage.kva;
+                            } else if (anfrage.kva.varianten.zubehoer?.gesamt) {
+                                price = parseFloat(anfrage.kva.varianten.zubehoer.gesamt);
+                                source = 'partnerAnfrage.kva.varianten.zubehoer';
+                                kvaObject = anfrage.kva;
+                            } else if (anfrage.kva.varianten.partner?.gesamt) {
+                                price = parseFloat(anfrage.kva.varianten.partner.gesamt);
+                                source = 'partnerAnfrage.kva.varianten.partner';
+                                kvaObject = anfrage.kva;
+                            }
+                        }
+
+                        // Legacy-Fallback
+                        if (price === 0 && anfrage.kva?.gesamt) {
+                            price = parseFloat(anfrage.kva.gesamt);
+                            source = 'partnerAnfrage.kva.gesamt (Legacy)';
+                            kvaObject = anfrage.kva;
+                        }
+                    } else {
+                        log(`   ⚠️ partnerAnfrage ${fahrzeug.anfrageId} nicht gefunden`, 'warning');
+                    }
+                } catch (error) {
+                    log(`   ❌ Fehler beim Laden der partnerAnfrage: ${error.message}`, 'error');
+                }
+            }
+
+            return { price, source, kva: kvaObject };
+        }
+
+        function showProblemsTable() {
+            const container = document.getElementById('resultsContainer');
+            const tbody = document.getElementById('problemsTableBody');
+
+            tbody.innerHTML = '';
+            problemFahrzeuge.forEach(problem => {
+                const row = tbody.insertRow();
+                const badgeClass = problem.correctedPrice > 0 ? 'badge-found' : 'badge-missing';
+
+                row.innerHTML = `
+                    <td><strong>${problem.kennzeichen}</strong></td>
+                    <td>${problem.serviceTyp}</td>
+                    <td><span class="price-badge badge-missing">${problem.currentPrice.toFixed(2)} €</span></td>
+                    <td><span class="price-badge ${badgeClass}">${problem.correctedPrice.toFixed(2)} €</span></td>
+                    <td style="font-size: 11px; color: #666;">${problem.source}</td>
+                `;
+            });
+
+            container.style.display = 'block';
+        }
+
+        async function createBackup() {
+            if (problemFahrzeuge.length === 0) {
+                log('❌ Keine Probleme gefunden - kein Backup nötig', 'info');
+                return;
+            }
+
+            const backup = {
+                timestamp: Date.now(),
+                date: new Date().toISOString(),
+                count: problemFahrzeuge.length,
+                fahrzeuge: problemFahrzeuge.map(p => ({
+                    id: p.id,
+                    kennzeichen: p.kennzeichen,
+                    serviceTyp: p.serviceTyp,
+                    currentPrice: p.currentPrice,
+                    correctedPrice: p.correctedPrice,
+                    source: p.source
+                }))
+            };
+
+            // LocalStorage Backup (persistent)
+            const backupKey = 'price_migration_backup_' + backup.timestamp;
+            localStorage.setItem(backupKey, JSON.stringify(backup));
+
+            log('✅ Backup erstellt:', 'success');
+            log(`   Timestamp: ${backup.date}`, 'info');
+            log(`   Fahrzeuge: ${backup.count}`, 'info');
+            log(`   LocalStorage Key: ${backupKey}`, 'info');
+            log('', 'info');
+            log('ℹ️ ROLLBACK: localStorage.getItem("' + backupKey + '")', 'info');
+
+            alert(`✅ Backup erstellt!\n\nTimestamp: ${backup.date}\nFahrzeuge: ${backup.count}\n\nLocalStorage Key:\n${backupKey}`);
+        }
+
+        async function migrateFahrzeuge() {
+            if (!firebaseInitialized || problemFahrzeuge.length === 0) {
+                log('❌ Keine Migration möglich!', 'error');
+                return;
+            }
+
+            if (!confirm(`🚀 Migration starten?\n\n${problemFahrzeuge.length} Fahrzeuge werden korrigiert.\n\nFortfahren?`)) {
+                return;
+            }
+
+            document.getElementById('migrateBtn').disabled = true;
+
+            log('🚀 Starte Migration...', 'info');
+
+            // Auto-Backup BEFORE Migration
+            log('💾 Erstelle Backup vor Migration...', 'info');
+            await createBackup();
+            log('✅ Backup erstellt - Migration kann starten', 'success');
+
+            const db = firebase.firestore();
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const problem of problemFahrzeuge) {
+                try {
+                    const fahrzeugRef = db.collection('fahrzeuge').doc(problem.id);
+
+                    await db.runTransaction(async (transaction) => {
+                        const doc = await transaction.get(fahrzeugRef);
+
+                        if (!doc.exists) {
+                            throw new Error(`Fahrzeug ${problem.id} nicht gefunden!`);
+                        }
+
+                        // Atomic Update
+                        const updateData = {
+                            vereinbarterPreis: problem.correctedPrice,
+                            lastModified: Date.now(),
+                            migrationNote: `Preis korrigiert von ${problem.currentPrice.toFixed(2)} € zu ${problem.correctedPrice.toFixed(2)} € (Quelle: ${problem.source}, Migration: ${new Date().toISOString()})`
+                        };
+
+                        // Falls kva-Objekt gefunden wurde UND es im Fahrzeug noch nicht vorhanden ist
+                        if (problem.kva && !doc.data().kva) {
+                            updateData.kva = problem.kva;
+                            log(`   📦 kva-Objekt wird ebenfalls übertragen`, 'info');
+                        }
+
+                        transaction.update(fahrzeugRef, updateData);
+                    });
+
+                    log(`✅ ${problem.kennzeichen}: ${problem.currentPrice.toFixed(2)} € → ${problem.correctedPrice.toFixed(2)} € (${problem.source})`, 'success');
+                    successCount++;
+
+                } catch (error) {
+                    log(`❌ ${problem.kennzeichen}: Fehler - ${error.message}`, 'error');
+                    errorCount++;
+                }
+            }
+
+            log('', 'info');
+            log('═══════════════════════════════════════', 'info');
+            log(`✅ Migration abgeschlossen!`, 'success');
+            log(`   Erfolgreich: ${successCount}`, 'success');
+            if (errorCount > 0) {
+                log(`   Fehler: ${errorCount}`, 'error');
+            }
+            log('═══════════════════════════════════════', 'info');
+
+            // Reset
+            problemFahrzeuge = [];
+            document.getElementById('resultsContainer').style.display = 'none';
+            document.getElementById('scanBtn').disabled = false;
+        }
+    </script>
+</body>
+</html>
