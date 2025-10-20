@@ -1298,6 +1298,56 @@
             renderMiniCalendar();
         }
 
+        // ========== FIRESTORE HELPER FUNCTIONS ==========
+        // ✅ CRITICAL FIX: Helper-Funktionen für Kalender-Operationen
+        // Problem: kalender.html rief saveToFirestore() und deleteVehicle() auf, aber Funktionen existierten nicht
+        // Impact: Alle Kalender-Änderungen (Drag&Drop, Datum ändern, Löschen) wurden NICHT gespeichert
+        // Fix: Helper-Funktionen hinzugefügt, die auf firebase-config.js Funktionen mappen
+
+        async function saveToFirestore(vehicle) {
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firestore update (nutzt firebase-config.js updateFahrzeug)
+                    await firebaseApp.updateFahrzeug(vehicle.id, vehicle);
+                    console.log('✅ [KALENDER] Fahrzeug in Firestore gespeichert:', vehicle.id, vehicle.kennzeichen);
+                } else {
+                    // LocalStorage Fallback
+                    const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    const index = fahrzeuge.findIndex(f => f.id === vehicle.id);
+                    if (index !== -1) {
+                        fahrzeuge[index] = vehicle;
+                        localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
+                        console.log('ℹ️ [KALENDER] Fahrzeug in LocalStorage gespeichert:', vehicle.id);
+                    } else {
+                        console.warn('⚠️ [KALENDER] Fahrzeug nicht gefunden:', vehicle.id);
+                    }
+                }
+            } catch (error) {
+                console.error('❌ [KALENDER] Fehler beim Speichern:', error);
+                throw error;
+            }
+        }
+
+        async function deleteVehicle(id) {
+            try {
+                if (firebaseInitialized && firebaseApp) {
+                    // Firestore delete
+                    const db = firebase.firestore();
+                    await db.collection('fahrzeuge').doc(id).delete();
+                    console.log('✅ [KALENDER] Fahrzeug aus Firestore gelöscht:', id);
+                } else {
+                    // LocalStorage Fallback
+                    const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
+                    const filtered = fahrzeuge.filter(f => f.id !== id);
+                    localStorage.setItem('fahrzeuge', JSON.stringify(filtered));
+                    console.log('ℹ️ [KALENDER] Fahrzeug aus LocalStorage gelöscht:', id);
+                }
+            } catch (error) {
+                console.error('❌ [KALENDER] Fehler beim Löschen:', error);
+                throw error;
+            }
+        }
+
         // Filter Toggle
         function toggleFilter(filterType) {
             if (filterType === 'all') {
