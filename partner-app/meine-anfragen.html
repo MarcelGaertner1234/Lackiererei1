@@ -4026,6 +4026,20 @@
                 return;
             }
 
+            // ✅ CRITICAL FIX: Button disablen um Doppel-Klicks zu verhindern!
+            // Problem: User klickt schnell zweimal → Beide Transactions starten → Fahrzeug wird DOPPELT erstellt
+            // Lösung: Button sofort nach Bestätigung disablen
+            const button = event?.target;
+            let originalButtonText = '';
+            if (button) {
+                originalButtonText = button.textContent;
+                button.disabled = true;
+                button.textContent = '⏳ Wird beauftragt...';
+                console.log('🔒 Button disabled - verhindert Doppel-Klicks');
+            } else {
+                console.warn('⚠️ Button nicht gefunden (event.target fehlt) - Doppel-Klick-Schutz funktioniert nicht!');
+            }
+
             try {
                 // 1. Status auf "beauftragt" ändern
                 const updateData = {
@@ -4225,10 +4239,25 @@
                 console.log('   → Anliefertermin:', anfrage.anliefertermin);
                 console.log('   → ServiceTyp:', fahrzeugData.serviceTyp);
 
+                // ✅ SUCCESS: Button wieder aktivieren (User kann nächste Anfrage annehmen)
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = originalButtonText || '✅ Annehmen';
+                    console.log('🔓 Button wieder aktiviert nach SUCCESS');
+                }
+
                 alert(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`);
                 await loadAnfragen();
             } catch (error) {
                 console.error('❌ Fehler beim Annehmen:', error);
+
+                // ❌ ERROR: Button wieder aktivieren (User kann es nochmal versuchen)
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = originalButtonText || '✅ Annehmen';
+                    console.log('🔓 Button wieder aktiviert nach ERROR (User kann retry)');
+                }
+
                 alert(`❌ Fehler beim Annehmen der Anfrage.\\n\\nDetails: ${error.message}\\n\\nBitte versuchen Sie es erneut.`);
             }
         }
