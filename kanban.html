@@ -1229,7 +1229,19 @@
                             return fahrzeugStatus === status;
                         }
                     } else {
-                        // 🐛 CRITICAL: Service-spezifischer Filter
+                        // 🐛 CRITICAL: Service-spezifischer Filter mit Status-Fallback-Mappings
+
+                        // ✅ QUICK FIX: Status-Fallback für falsche Firestore-Daten
+                        // Problem: TÜV Fahrzeuge haben manchmal "bereit" (Lackierung-Status) statt "abholbereit"
+                        const statusFallbacks = {
+                            // TÜV End-Spalten
+                            'fertig': ['fertig', 'bereit'],           // TÜV "fertig" akzeptiert auch Lackierung "bereit"
+                            'abholbereit': ['abholbereit', 'bereit'], // TÜV "abholbereit" akzeptiert auch "bereit"
+                            // Reifen End-Spalte
+                            // (bei Reifen ist "fertig" korrekt, aber "bereit" sollte auch funktionieren)
+                            // Mechanik, Pflege, Versicherung End-Spalten ebenfalls
+                        };
+
                         // SPEZIAL: Terminiert-Spalte zeigt auch alte "angenommen" Status
                         if (status === 'terminiert') {
                             const matches = fahrzeugServiceTyp === currentProcess &&
@@ -1239,9 +1251,16 @@
                             }
                             return matches;
                         }
-                        const matches = fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
+
+                        // Standard-Match ODER Fallback-Match
+                        const directMatch = fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
+                        const fallbackStatuses = statusFallbacks[status] || [status];
+                        const fallbackMatch = fahrzeugServiceTyp === currentProcess && fallbackStatuses.includes(fahrzeugStatus);
+
+                        const matches = directMatch || fallbackMatch;
                         if (matches) {
-                            console.log(`✅ Match: ${f.kennzeichen} (${fahrzeugServiceTyp}) in Spalte '${status}'`);
+                            const matchType = directMatch ? 'Direct' : 'Fallback';
+                            console.log(`✅ ${matchType} Match: ${f.kennzeichen} (${fahrzeugServiceTyp}, Status: ${fahrzeugStatus}) in Spalte '${status}'`);
                         }
                         return matches;
                     }

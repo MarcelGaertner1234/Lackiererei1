@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status-Konsistenz Migration - Auto-Lackierzentrum Mosbach</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #003366;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #0dcaf0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        #logOutput {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+
+        .log-info { color: #0dcaf0; }
+        .log-success { color: #28a745; }
+        .log-warning { color: #ffc107; }
+        .log-error { color: #dc3545; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #003366;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-wrong { background: #f8d7da; color: #721c24; }
+        .badge-correct { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Status-Konsistenz Migration</h1>
+        <p style="color: #666; margin-bottom: 30px;">Korrigiert falsche prozessStatus-Werte in Firestore</p>
+
+        <div class="warning">
+            <strong>⚠️ WICHTIG:</strong> Dieses Script korrigiert Fahrzeuge mit falschen prozessStatus-Werten.<br>
+            <strong>Problem:</strong> TÜV Fahrzeuge haben manchmal "bereit" (Lackierung-Status) statt "fertig" oder "abholbereit".<br>
+            <strong>Lösung:</strong> Automatische Korrektur basierend auf serviceTyp und Kanban-Definition.
+        </div>
+
+        <div class="info">
+            <strong>ℹ️ Was wird gemacht:</strong><br>
+            1. Alle Fahrzeuge aus Firestore laden<br>
+            2. Prüfen ob prozessStatus für serviceTyp gültig ist<br>
+            3. Falsche Status automatisch korrigieren (z.B. TÜV "bereit" → "fertig")<br>
+            4. Änderungen in Firestore speichern
+        </div>
+
+        <div style="margin: 30px 0;">
+            <button class="btn" id="scanBtn" onclick="scanFahrzeuge()">
+                🔍 Schritt 1: Fahrzeuge scannen
+            </button>
+            <button class="btn btn-danger" id="migrateBtn" onclick="migrateFahrzeuge()" disabled>
+                🚀 Schritt 2: Migration starten
+            </button>
+        </div>
+
+        <div id="logOutput"></div>
+
+        <div id="resultsContainer" style="display: none;">
+            <h3 style="color: #003366; margin-top: 30px;">📊 Gefundene Probleme:</h3>
+            <table id="problemsTable">
+                <thead>
+                    <tr>
+                        <th>Kennzeichen</th>
+                        <th>Service</th>
+                        <th>Status (aktuell)</th>
+                        <th>Status (korrigiert)</th>
+                    </tr>
+                </thead>
+                <tbody id="problemsTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js?v=1d12218"></script>
+
+    <script>
+        let firebaseApp;
+        let firebaseInitialized = false;
+        let problemFahrzeuge = [];
+
+        // Valid Status Definitions (aus kanban.html)
+        const validStatuses = {
+            lackier: ['angenommen', 'terminiert', 'vorbereitung', 'lackierung', 'trocknung', 'qualitaetskontrolle', 'bereit'],
+            reifen: ['neu', 'terminiert', 'bestellung', 'angekommen', 'montage', 'wuchten', 'fertig'],
+            mechanik: ['neu', 'terminiert', 'diagnose', 'angebot', 'beauftragt', 'reparatur', 'test', 'fertig'],
+            pflege: ['neu', 'terminiert', 'termin', 'aufbereitung', 'qualitaet', 'fertig'],
+            tuev: ['neu', 'terminiert', 'termin_gebucht', 'pruefung', 'fertig', 'abholbereit'],
+            versicherung: ['neu', 'terminiert', 'gutachten', 'freigabe', 'reparatur', 'qualitaet', 'fertig']
+        };
+
+        // Status-Korrektur-Mappings
+        const statusCorrections = {
+            tuev: {
+                'bereit': 'fertig',  // Lackierung "bereit" → TÜV "fertig"
+                'lackierung': 'pruefung',
+                'trocknung': 'pruefung',
+                'qualitaetskontrolle': 'fertig'
+            },
+            reifen: {
+                'bereit': 'fertig',
+                'lackierung': 'montage',
+                'abholbereit': 'fertig'
+            },
+            mechanik: {
+                'bereit': 'fertig',
+                'lackierung': 'reparatur',
+                'abholbereit': 'fertig'
+            },
+            pflege: {
+                'bereit': 'fertig',
+                'lackierung': 'aufbereitung',
+                'abholbereit': 'fertig'
+            },
+            versicherung: {
+                'bereit': 'fertig',
+                'lackierung': 'reparatur',
+                'abholbereit': 'fertig'
+            },
+            lackier: {
+                'fertig': 'bereit',  // Andere Services "fertig" → Lackierung "bereit"
+                'abholbereit': 'bereit'
+            }
+        };
+
+        function log(message, type = 'info') {
+            const output = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString('de-DE');
+            const className = `log-${type}`;
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+            console.log(message);
+        }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            log('🔄 Initialisiere Firebase...', 'info');
+
+            await initFirebase();
+            if (window.firebaseInitialized && window.firebaseApp) {
+                firebaseApp = window.firebaseApp;
+                firebaseInitialized = true;
+                log('✅ Firebase verbunden', 'success');
+            } else {
+                log('❌ Firebase Fehler - kann nicht fortfahren!', 'error');
+            }
+        });
+
+        async function scanFahrzeuge() {
+            if (!firebaseInitialized) {
+                log('❌ Firebase nicht initialisiert!', 'error');
+                return;
+            }
+
+            document.getElementById('scanBtn').disabled = true;
+            problemFahrzeuge = [];
+
+            log('🔍 Lade alle Fahrzeuge aus Firestore...', 'info');
+
+            try {
+                const db = firebase.firestore();
+                const snapshot = await db.collection('fahrzeuge').get();
+                const alleFahrzeuge = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                log(`📊 ${alleFahrzeuge.length} Fahrzeuge geladen`, 'info');
+
+                // Nur aktive Fahrzeuge prüfen
+                const aktiveFahrzeuge = alleFahrzeuge.filter(f => f.status !== 'abgeschlossen');
+                log(`📋 ${aktiveFahrzeuge.length} aktive Fahrzeuge (ohne abgeschlossen)`, 'info');
+
+                // Prüfe jeden Fahrzeug
+                aktiveFahrzeuge.forEach(fahrzeug => {
+                    const serviceTyp = fahrzeug.serviceTyp || 'lackier';
+                    const prozessStatus = fahrzeug.prozessStatus || 'angenommen';
+                    const validForService = validStatuses[serviceTyp] || [];
+
+                    if (!validForService.includes(prozessStatus)) {
+                        // Finde Korrektur
+                        const corrections = statusCorrections[serviceTyp] || {};
+                        const correctedStatus = corrections[prozessStatus] || 'neu';
+
+                        problemFahrzeuge.push({
+                            id: fahrzeug.id,
+                            kennzeichen: fahrzeug.kennzeichen,
+                            serviceTyp: serviceTyp,
+                            currentStatus: prozessStatus,
+                            correctedStatus: correctedStatus
+                        });
+
+                        log(`⚠️ Problem: ${fahrzeug.kennzeichen} (${serviceTyp}) - "${prozessStatus}" ist ungültig → "${correctedStatus}"`, 'warning');
+                    }
+                });
+
+                if (problemFahrzeuge.length === 0) {
+                    log('✅ Keine Probleme gefunden! Alle Status sind korrekt.', 'success');
+                    document.getElementById('scanBtn').disabled = false;
+                } else {
+                    log(`❌ ${problemFahrzeuge.length} Fahrzeuge mit falschen Status gefunden!`, 'error');
+                    document.getElementById('migrateBtn').disabled = false;
+                    showProblemsTable();
+                }
+
+            } catch (error) {
+                log(`❌ Fehler beim Scannen: ${error.message}`, 'error');
+                document.getElementById('scanBtn').disabled = false;
+            }
+        }
+
+        function showProblemsTable() {
+            const container = document.getElementById('resultsContainer');
+            const tbody = document.getElementById('problemsTableBody');
+
+            tbody.innerHTML = '';
+            problemFahrzeuge.forEach(problem => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td><strong>${problem.kennzeichen}</strong></td>
+                    <td>${problem.serviceTyp}</td>
+                    <td><span class="status-badge badge-wrong">${problem.currentStatus}</span></td>
+                    <td><span class="status-badge badge-correct">${problem.correctedStatus}</span></td>
+                `;
+            });
+
+            container.style.display = 'block';
+        }
+
+        async function migrateFahrzeuge() {
+            if (!firebaseInitialized || problemFahrzeuge.length === 0) {
+                log('❌ Keine Migration möglich!', 'error');
+                return;
+            }
+
+            if (!confirm(`🚀 Migration starten?\n\n${problemFahrzeuge.length} Fahrzeuge werden korrigiert.\n\nFortfahren?`)) {
+                return;
+            }
+
+            document.getElementById('migrateBtn').disabled = true;
+
+            log('🚀 Starte Migration...', 'info');
+
+            const db = firebase.firestore();
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const problem of problemFahrzeuge) {
+                try {
+                    await db.collection('fahrzeuge').doc(problem.id).update({
+                        prozessStatus: problem.correctedStatus,
+                        lastModified: Date.now(),
+                        migrationNote: `Status korrigiert von "${problem.currentStatus}" zu "${problem.correctedStatus}" (Migration: ${new Date().toISOString()})`
+                    });
+
+                    log(`✅ ${problem.kennzeichen}: "${problem.currentStatus}" → "${problem.correctedStatus}"`, 'success');
+                    successCount++;
+
+                } catch (error) {
+                    log(`❌ ${problem.kennzeichen}: Fehler - ${error.message}`, 'error');
+                    errorCount++;
+                }
+            }
+
+            log('', 'info');
+            log('═══════════════════════════════════════', 'info');
+            log(`✅ Migration abgeschlossen!`, 'success');
+            log(`   Erfolgreich: ${successCount}`, 'success');
+            if (errorCount > 0) {
+                log(`   Fehler: ${errorCount}`, 'error');
+            }
+            log('═══════════════════════════════════════', 'info');
+
+            // Reset
+            problemFahrzeuge = [];
+            document.getElementById('resultsContainer').style.display = 'none';
+            document.getElementById('scanBtn').disabled = false;
+        }
+    </script>
+</body>
+</html>
