@@ -1081,6 +1081,34 @@
                 unsubscribeListener = firebaseApp.listenToFahrzeuge(async function(fahrzeuge) {
                     console.log(`🔥 Realtime Update: ${fahrzeuge.length} Fahrzeuge empfangen`);
 
+                    // 🐛 DEBUG: Check for duplicates (ID und Kennzeichen)
+                    const idCount = {};
+                    const kennzeichenCount = {};
+                    fahrzeuge.forEach(f => {
+                        const id = f.id;
+                        const kz = f.kennzeichen || 'OHNE_KZ';
+                        idCount[id] = (idCount[id] || 0) + 1;
+                        kennzeichenCount[kz] = (kennzeichenCount[kz] || 0) + 1;
+                    });
+
+                    const idDuplikate = Object.entries(idCount).filter(([id, count]) => count > 1);
+                    const kzDuplikate = Object.entries(kennzeichenCount).filter(([kz, count]) => count > 1);
+
+                    if (idDuplikate.length > 0) {
+                        console.error('❌ DUPLIKAT IDs GEFUNDEN:', idDuplikate);
+                        console.error('   → Firestore hat wahrscheinlich ein Problem!');
+                    }
+                    if (kzDuplikate.length > 1) {
+                        console.warn('⚠️ DUPLIKAT KENNZEICHEN GEFUNDEN:', kzDuplikate);
+                        kzDuplikate.forEach(([kz, count]) => {
+                            const betroffeneFahrzeuge = fahrzeuge.filter(f => f.kennzeichen === kz);
+                            console.warn(`   → "${kz}" kommt ${count}x vor:`);
+                            betroffeneFahrzeuge.forEach(f => {
+                                console.warn(`      - ID: ${f.id}, serviceTyp: ${f.serviceTyp}, prozessStatus: ${f.prozessStatus}`);
+                            });
+                        });
+                    }
+
                     // Migration: Alte baujahr-Werte in baujahrVon/baujahrBis konvertieren
                     allFahrzeuge = fahrzeuge.map(f => {
                         if (!f.baujahrVon && f.baujahr) {
