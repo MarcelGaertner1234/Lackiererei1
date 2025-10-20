@@ -497,6 +497,53 @@
             margin-bottom: 8px;
         }
 
+        /* Preis-Vergleich für KVA-Varianten */
+        .card-preis-vergleich {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 10px 0;
+        }
+
+        .preis-option {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            background: rgba(33, 150, 243, 0.05);
+            border: 1px solid rgba(33, 150, 243, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .preis-option:hover {
+            background: rgba(33, 150, 243, 0.1);
+        }
+
+        .preis-option.empfohlen {
+            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+            color: white;
+            border: none;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+        }
+
+        .preis-option.empfohlen:hover {
+            background: linear-gradient(135deg, #388e3c 0%, #2e7d32 100%);
+        }
+
+        .preis-label {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .preis-wert {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
         .card-actions {
             display: flex;
             flex-wrap: wrap; /* Erlaubt Umbruch auf 2 Zeilen */
@@ -2340,28 +2387,51 @@
                 year: 'numeric'
             });
 
-            let preis = 'k.A.';
+            // Preis-Anzeige vorbereiten (mit Vergleich wenn beide Varianten vorhanden)
+            let preisHTML = '';
             if (anfrage.kva) {
                 // Single-Service KVA mit Varianten (aktuelles Format)
                 if (anfrage.kva.varianten) {
+                    const original = anfrage.kva.varianten.original;
+                    const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
                     const gewaehlte = anfrage.kva.gewaehlteVariante;
-                    if (gewaehlte && anfrage.kva.varianten[gewaehlte]) {
-                        // Partner hat bereits eine Variante gewählt
-                        preis = anfrage.kva.varianten[gewaehlte].gesamt.toFixed(2) + '€';
-                    } else if (anfrage.kva.varianten.original) {
-                        // FIX: Original-Variante priorisieren (Standard-Anzeige)
-                        preis = anfrage.kva.varianten.original.gesamt.toFixed(2) + '€';
-                    } else if (anfrage.kva.varianten.zubehoer) {
-                        // Fallback: Zubehör-Variante
-                        preis = anfrage.kva.varianten.zubehoer.gesamt.toFixed(2) + '€';
-                    } else if (anfrage.kva.varianten.partner) {
-                        // Fallback: Partner-Variante (Ersatzteil vorhanden)
-                        preis = anfrage.kva.varianten.partner.gesamt.toFixed(2) + '€';
+
+                    if (original && aftermarket) {
+                        // BEIDE Optionen verfügbar → Vergleich anzeigen
+                        const aftermarketLabel = anfrage.kva.varianten.zubehoer ? '🔧 Aftermarket' : '🔧 Partner-Teil';
+                        preisHTML = `
+                            <div class="card-preis-vergleich">
+                                <div class="preis-option ${gewaehlte === 'zubehoer' || gewaehlte === 'partner' ? 'empfohlen' : ''}">
+                                    <span class="preis-label">${aftermarketLabel}</span>
+                                    <span class="preis-wert">${aftermarket.gesamt.toFixed(2)}€</span>
+                                </div>
+                                <div class="preis-option ${gewaehlte === 'original' ? 'empfohlen' : ''}">
+                                    <span class="preis-label">⭐ Originalteil</span>
+                                    <span class="preis-wert">${original.gesamt.toFixed(2)}€</span>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // Nur EINE Option verfügbar → Einzelpreis wie bisher
+                        let preis = 'k.A.';
+                        if (gewaehlte && anfrage.kva.varianten[gewaehlte]) {
+                            preis = anfrage.kva.varianten[gewaehlte].gesamt.toFixed(2) + '€';
+                        } else if (original) {
+                            preis = original.gesamt.toFixed(2) + '€';
+                        } else if (aftermarket) {
+                            preis = aftermarket.gesamt.toFixed(2) + '€';
+                        }
+                        preisHTML = `<div class="card-preis">💶 ${preis}</div>`;
                     }
                 } else if (anfrage.kva.gesamt) {
                     // Legacy KVA Format (falls direkt gesamt gespeichert)
-                    preis = anfrage.kva.gesamt.toFixed(2) + '€';
+                    preisHTML = `<div class="card-preis">💶 ${anfrage.kva.gesamt.toFixed(2)}€</div>`;
+                } else {
+                    preisHTML = '<div class="card-preis">💶 k.A.</div>';
                 }
+            } else {
+                // Kein KVA vorhanden
+                preisHTML = '<div class="card-preis">💶 k.A.</div>';
             }
 
             const unreadCount = unreadCounts[anfrage.id] || 0;
@@ -2391,7 +2461,7 @@
                     ${anfrage.kva?.termine?.ende ? `<div>🏁 Fertig: ${new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE')}</div>` : terminAnzeige}
                     ${anfrage.kva?.termine?.abholzeit ? `<div>🕐 ${anfrage.kva.termine.abholzeit} Uhr</div>` : ''}
                 </div>
-                <div class="card-preis">💶 ${preis}</div>
+                ${preisHTML}
                 <div class="card-actions">
                     <button class="card-btn card-btn-chat" onclick="openChat('${anfrage.id}', event)">
                         💬 Chat
