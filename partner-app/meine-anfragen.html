@@ -2992,6 +2992,41 @@
             }
         }
 
+        // Helper: Berechne Abhol/Anlieferungs-Datum (letzter Werktag VOR Start)
+        function berechneAbholDatum(startDatum) {
+            if (!startDatum) return null;
+
+            const start = new Date(startDatum);
+            const abhol = new Date(start);
+
+            // 1 Tag zurück
+            abhol.setDate(abhol.getDate() - 1);
+
+            // Wenn Samstag (6) → Gehe zu Freitag
+            if (abhol.getDay() === 6) {
+                abhol.setDate(abhol.getDate() - 1);
+            }
+
+            // Wenn Sonntag (0) → Gehe zu Freitag (2 Tage zurück)
+            if (abhol.getDay() === 0) {
+                abhol.setDate(abhol.getDate() - 2);
+            }
+
+            return abhol;
+        }
+
+        // Helper: Format Datum mit Wochentag
+        function formatDatumMitWochentag(datum) {
+            if (!datum) return '';
+
+            const date = typeof datum === 'string' ? new Date(datum) : datum;
+            const wochentage = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+            const wochentag = wochentage[date.getDay()];
+            const formatted = date.toLocaleDateString('de-DE');
+
+            return `${formatted} (${wochentag})`;
+        }
+
         function createCompactCard(anfrage) {
             const card = document.createElement('div');
             card.className = 'anfrage-card-compact';
@@ -3208,6 +3243,19 @@
                 `;
             }
 
+            // Abhol/Anlieferungs-Datum Badge (dynamisch basierend auf Partner-Wunsch)
+            let abholBadgeHTML = '';
+            if (anfrage.kva?.termine?.start) {
+                const abholDatum = berechneAbholDatum(anfrage.kva.termine.start);
+                if (abholDatum) {
+                    const abholFormatted = formatDatumMitWochentag(abholDatum);
+                    const isAbholung = anfrage.abholserviceGewuenscht === true;
+                    const icon = isAbholung ? '🚙' : '📅';
+                    const label = isAbholung ? 'Abholung' : 'Anlieferung';
+                    abholBadgeHTML = `<div>${icon} ${label}: ${abholFormatted}</div>`;
+                }
+            }
+
             card.innerHTML = `
                 <div class="card-header">
                     ${serviceBadgeHTML}
@@ -3215,8 +3263,9 @@
                 </div>
                 ${fotoGalerieHTML}
                 <div class="card-meta">
-                    ${anfrage.kva?.termine?.start ? `<div>🗓️ Start: ${new Date(anfrage.kva.termine.start).toLocaleDateString('de-DE')}</div>` : `<div>📅 ${datum}</div>`}
-                    ${anfrage.kva?.termine?.ende ? `<div>🏁 Fertig: ${new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE')}</div>` : terminAnzeige}
+                    ${abholBadgeHTML}
+                    ${anfrage.kva?.termine?.start ? `<div>🗓️ Start: ${formatDatumMitWochentag(anfrage.kva.termine.start)}</div>` : `<div>📅 ${datum}</div>`}
+                    ${anfrage.kva?.termine?.ende ? `<div>🏁 Fertig: ${formatDatumMitWochentag(anfrage.kva.termine.ende)}</div>` : terminAnzeige}
                     ${anfrage.kva?.termine?.abholzeit ? `<div>🕐 ${anfrage.kva.termine.abholzeit} Uhr</div>` : ''}
                 </div>
                 ${preisHTML}
@@ -3302,10 +3351,20 @@
                 preisText = `${anfrage.kva.gesamt.toFixed(0)}€`;
             }
 
-            // Datum
-            const datum = anfrage.kva?.termine?.start ?
-                new Date(anfrage.kva.termine.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) :
-                new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+            // Datum (mit Abhol/Anlieferungs-Info)
+            let datumText = '';
+            if (anfrage.kva?.termine?.start) {
+                const abholDatum = berechneAbholDatum(anfrage.kva.termine.start);
+                if (abholDatum) {
+                    const icon = anfrage.abholserviceGewuenscht ? '🚙' : '📅';
+                    const abholFormatted = abholDatum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                    datumText = `${icon} ${abholFormatted}`;
+                } else {
+                    datumText = new Date(anfrage.kva.termine.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                }
+            } else {
+                datumText = new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+            }
 
             const unreadCount = unreadCounts[anfrage.id] || 0;
 
@@ -3327,7 +3386,7 @@
                 <div class="liste-kennzeichen">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
                 <div class="liste-fotos">${fotosHTML}</div>
                 <div class="liste-preis">${preisText}</div>
-                <div class="liste-datum">${datum}</div>
+                <div class="liste-datum">${datumText}</div>
                 <div class="liste-actions">
                     <button class="card-btn card-btn-chat" onclick="openChat('${anfrage.id}', event)">
                         💬
@@ -3391,6 +3450,17 @@
                 preisText = `${anfrage.kva.gesamt.toFixed(0)}€`;
             }
 
+            // Abhol/Anlieferungs-Datum
+            let abholText = '';
+            if (anfrage.kva?.termine?.start) {
+                const abholDatum = berechneAbholDatum(anfrage.kva.termine.start);
+                if (abholDatum) {
+                    const icon = anfrage.abholserviceGewuenscht ? '🚙' : '📅';
+                    const abholFormatted = abholDatum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                    abholText = `<div style="font-size: 11px; color: #666;">${icon} ${abholFormatted}</div>`;
+                }
+            }
+
             const unreadCount = unreadCounts[anfrage.id] || 0;
 
             const card = document.createElement('div');
@@ -3411,6 +3481,7 @@
                 </div>
                 <div class="kompakt-fotos">${fotosHTML}</div>
                 <div class="kompakt-info">
+                    ${abholText}
                     <div class="kompakt-preis">${preisText}</div>
                 </div>
                 <div class="kompakt-actions">
