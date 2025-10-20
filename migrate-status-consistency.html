@@ -161,6 +161,9 @@
             <button class="btn" id="scanBtn" onclick="scanFahrzeuge()">
                 🔍 Schritt 1: Fahrzeuge scannen
             </button>
+            <button class="btn" id="backupBtn" onclick="createBackup()" disabled style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                💾 Backup erstellen
+            </button>
             <button class="btn btn-danger" id="migrateBtn" onclick="migrateFahrzeuge()" disabled>
                 🚀 Schritt 2: Migration starten
             </button>
@@ -310,6 +313,7 @@
                     document.getElementById('scanBtn').disabled = false;
                 } else {
                     log(`❌ ${problemFahrzeuge.length} Fahrzeuge mit falschen Status gefunden!`, 'error');
+                    document.getElementById('backupBtn').disabled = false;  // ✅ IMPROVEMENT #3: Backup-Button aktivieren
                     document.getElementById('migrateBtn').disabled = false;
                     showProblemsTable();
                 }
@@ -338,6 +342,40 @@
             container.style.display = 'block';
         }
 
+        // ✅ IMPROVEMENT #3: Backup-Funktion (Rollback möglich bei Fehler)
+        async function createBackup() {
+            if (problemFahrzeuge.length === 0) {
+                log('❌ Keine Probleme gefunden - kein Backup nötig', 'info');
+                return;
+            }
+
+            const backup = {
+                timestamp: Date.now(),
+                date: new Date().toISOString(),
+                count: problemFahrzeuge.length,
+                fahrzeuge: problemFahrzeuge.map(p => ({
+                    id: p.id,
+                    kennzeichen: p.kennzeichen,
+                    serviceTyp: p.serviceTyp,
+                    currentStatus: p.currentStatus,
+                    correctedStatus: p.correctedStatus
+                }))
+            };
+
+            // LocalStorage Backup (persistent)
+            const backupKey = 'migration_backup_' + backup.timestamp;
+            localStorage.setItem(backupKey, JSON.stringify(backup));
+
+            log('✅ Backup erstellt:', 'success');
+            log(`   Timestamp: ${backup.date}`, 'info');
+            log(`   Fahrzeuge: ${backup.count}`, 'info');
+            log(`   LocalStorage Key: ${backupKey}`, 'info');
+            log('', 'info');
+            log('ℹ️ ROLLBACK: localStorage.getItem("' + backupKey + '")', 'info');
+
+            alert(`✅ Backup erstellt!\n\nTimestamp: ${backup.date}\nFahrzeuge: ${backup.count}\n\nLocalStorage Key:\n${backupKey}`);
+        }
+
         async function migrateFahrzeuge() {
             if (!firebaseInitialized || problemFahrzeuge.length === 0) {
                 log('❌ Keine Migration möglich!', 'error');
@@ -351,6 +389,11 @@
             document.getElementById('migrateBtn').disabled = true;
 
             log('🚀 Starte Migration...', 'info');
+
+            // ✅ IMPROVEMENT #3: Auto-Backup BEFORE Migration (Rollback möglich!)
+            log('💾 Erstelle Backup vor Migration...', 'info');
+            await createBackup();
+            log('✅ Backup erstellt - Migration kann starten', 'success');
 
             const db = firebase.firestore();
             let successCount = 0;
