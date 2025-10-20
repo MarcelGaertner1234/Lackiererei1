@@ -401,10 +401,22 @@
 
             for (const problem of problemFahrzeuge) {
                 try {
-                    await db.collection('fahrzeuge').doc(problem.id).update({
-                        prozessStatus: problem.correctedStatus,
-                        lastModified: Date.now(),
-                        migrationNote: `Status korrigiert von "${problem.currentStatus}" zu "${problem.correctedStatus}" (Migration: ${new Date().toISOString()})`
+                    // ✅ IMPROVEMENT #4: Nutze Transaction statt simples update (Atomicity garantiert)
+                    const fahrzeugRef = db.collection('fahrzeuge').doc(problem.id);
+
+                    await db.runTransaction(async (transaction) => {
+                        const doc = await transaction.get(fahrzeugRef);
+
+                        if (!doc.exists) {
+                            throw new Error(`Fahrzeug ${problem.id} nicht gefunden!`);
+                        }
+
+                        // Atomic Update
+                        transaction.update(fahrzeugRef, {
+                            prozessStatus: problem.correctedStatus,
+                            lastModified: Date.now(),
+                            migrationNote: `Status korrigiert von "${problem.currentStatus}" zu "${problem.correctedStatus}" (Migration: ${new Date().toISOString()})`
+                        });
                     });
 
                     log(`✅ ${problem.kennzeichen}: "${problem.currentStatus}" → "${problem.correctedStatus}"`, 'success');
