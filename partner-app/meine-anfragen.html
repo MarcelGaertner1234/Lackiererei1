@@ -500,25 +500,30 @@
         /* Preis-Vergleich für KVA-Varianten */
         .card-preis-vergleich {
             display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin: 10px 0;
+            flex-direction: row;  /* Nebeneinander statt untereinander */
+            gap: 6px;
+            margin: 8px 0;
         }
 
         .preis-option {
+            flex: 1;  /* Gleiche Breite */
             display: flex;
-            justify-content: space-between;
+            flex-direction: column;
             align-items: center;
-            padding: 8px 12px;
+            padding: 8px 10px;
             border-radius: 8px;
-            font-size: 13px;
+            font-size: 12px;
             background: rgba(33, 150, 243, 0.05);
             border: 1px solid rgba(33, 150, 243, 0.2);
             transition: all 0.2s ease;
+            cursor: pointer;
+            position: relative;  /* Für Hover-Info */
         }
 
-        .preis-option:hover {
-            background: rgba(33, 150, 243, 0.1);
+        .preis-option:not(.empfohlen):hover {
+            background: rgba(33, 150, 243, 0.15);
+            transform: scale(1.03);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
 
         .preis-option.empfohlen {
@@ -526,6 +531,7 @@
             color: white;
             border: none;
             box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            cursor: default;
         }
 
         .preis-option.empfohlen:hover {
@@ -533,15 +539,80 @@
         }
 
         .preis-label {
+            font-size: 11px;
             font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 5px;
+            margin-bottom: 2px;
         }
 
         .preis-wert {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
+        }
+
+        /* Hover-Info-Box */
+        .preis-hover-info {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 2px solid #003366;
+            border-radius: 10px;
+            padding: 12px;
+            min-width: 220px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            z-index: 1000;
+            animation: fadeInUp 0.2s ease;
+        }
+
+        .preis-option:hover .preis-hover-info {
+            display: block;
+        }
+
+        /* Pfeil nach unten */
+        .preis-hover-info::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: #003366;
+        }
+
+        .preis-hover-info h4 {
+            margin: 0 0 8px 0;
+            font-size: 13px;
+            color: #003366;
+            font-weight: 700;
+        }
+
+        .preis-hover-breakdown {
+            font-size: 11px;
+            color: #666;
+            line-height: 1.6;
+        }
+
+        .preis-hover-breakdown div {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .preis-hover-breakdown strong {
+            color: #2e7d32;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
         }
 
         .card-actions {
@@ -2397,17 +2468,58 @@
                     const gewaehlte = anfrage.kva.gewaehlteVariante;
 
                     if (original && aftermarket) {
-                        // BEIDE Optionen verfügbar → Vergleich anzeigen
+                        // BEIDE Optionen verfügbar → Vergleich anzeigen mit Hover-Info
+                        const isAftermarket = anfrage.kva.varianten.zubehoer ? 'zubehoer' : 'partner';
                         const aftermarketLabel = anfrage.kva.varianten.zubehoer ? '🔧 Aftermarket' : '🔧 Partner-Teil';
+
+                        // Aftermarket Breakdown
+                        const amBreakdown = `
+                            <div><span>Lack:</span><span>${(aftermarket.lack || 0).toFixed(2)}€</span></div>
+                            <div><span>Teile:</span><span>${(aftermarket.teile || 0).toFixed(2)}€</span></div>
+                            <div><span>Arbeitszeit:</span><span>${(aftermarket.arbeitszeit || 0).toFixed(2)}€</span></div>
+                            ${aftermarket.sonstiges ? `<div><span>Sonstiges:</span><span>${aftermarket.sonstiges.toFixed(2)}€</span></div>` : ''}
+                            <div style="border-top: 1px solid #ddd; margin-top: 4px; padding-top: 4px;"><strong>Gesamt:</strong><strong>${aftermarket.gesamt.toFixed(2)}€</strong></div>
+                        `;
+
+                        // Original Breakdown
+                        const origBreakdown = `
+                            <div><span>Lack:</span><span>${(original.lack || 0).toFixed(2)}€</span></div>
+                            <div><span>Teile:</span><span>${(original.teile || 0).toFixed(2)}€</span></div>
+                            <div><span>Arbeitszeit:</span><span>${(original.arbeitszeit || 0).toFixed(2)}€</span></div>
+                            ${original.sonstiges ? `<div><span>Sonstiges:</span><span>${original.sonstiges.toFixed(2)}€</span></div>` : ''}
+                            <div style="border-top: 1px solid #ddd; margin-top: 4px; padding-top: 4px;"><strong>Gesamt:</strong><strong>${original.gesamt.toFixed(2)}€</strong></div>
+                        `;
+
                         preisHTML = `
                             <div class="card-preis-vergleich">
-                                <div class="preis-option ${gewaehlte === 'zubehoer' || gewaehlte === 'partner' ? 'empfohlen' : ''}">
-                                    <span class="preis-label">${aftermarketLabel}</span>
-                                    <span class="preis-wert">${aftermarket.gesamt.toFixed(2)}€</span>
+                                <!-- Aftermarket Button -->
+                                <div class="preis-option ${gewaehlte === isAftermarket ? 'empfohlen' : ''}"
+                                     onclick="${!gewaehlte ? `waehleKVAVariante('${anfrage.id}', '${isAftermarket}', event)` : 'event.stopPropagation()'}">
+                                    <div class="preis-label">${aftermarketLabel.split(' ')[0]}</div>
+                                    <div class="preis-wert">${aftermarket.gesamt.toFixed(2)}€</div>
+
+                                    <!-- Hover-Info-Box -->
+                                    <div class="preis-hover-info">
+                                        <h4>${aftermarketLabel}</h4>
+                                        <div class="preis-hover-breakdown">
+                                            ${amBreakdown}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="preis-option ${gewaehlte === 'original' ? 'empfohlen' : ''}">
-                                    <span class="preis-label">⭐ Originalteil</span>
-                                    <span class="preis-wert">${original.gesamt.toFixed(2)}€</span>
+
+                                <!-- Original Button -->
+                                <div class="preis-option ${gewaehlte === 'original' ? 'empfohlen' : ''}"
+                                     onclick="${!gewaehlte ? `waehleKVAVariante('${anfrage.id}', 'original', event)` : 'event.stopPropagation()'}">
+                                    <div class="preis-label">⭐ Original</div>
+                                    <div class="preis-wert">${original.gesamt.toFixed(2)}€</div>
+
+                                    <!-- Hover-Info-Box -->
+                                    <div class="preis-hover-info">
+                                        <h4>⭐ Originalteil</h4>
+                                        <div class="preis-hover-breakdown">
+                                            ${origBreakdown}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         `;
@@ -2506,6 +2618,49 @@
                 versicherung: 'Versicherung'
             };
             return labels[serviceTyp] || 'Service';
+        }
+
+        // KVA-Variante auswählen (Aftermarket vs. Originalteil)
+        async function waehleKVAVariante(anfrageId, variante, event) {
+            event?.stopPropagation();  // Verhindert Karten-Click
+
+            const anfrage = alleAnfragen.find(a => a.id === anfrageId);
+            if (!anfrage) {
+                alert('Anfrage nicht gefunden.');
+                return;
+            }
+
+            // Check: Bereits gewählt?
+            if (anfrage.kva.gewaehlteVariante) {
+                alert('⚠️ Variante bereits ausgewählt!\nKeine Änderung mehr möglich.');
+                return;
+            }
+
+            // Bestätigung
+            const varianteLabel = variante === 'original' ? 'Originalteil' : 'Aftermarket';
+            const preis = anfrage.kva.varianten[variante]?.gesamt || 0;
+            const bestaetigung = confirm(
+                `${varianteLabel} (${preis.toFixed(2)}€) auswählen?\n\n` +
+                `⚠️ Nach Auswahl KEINE Änderung mehr möglich!`
+            );
+
+            if (!bestaetigung) return;
+
+            // In Firestore speichern
+            try {
+                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    'kva.gewaehlteVariante': variante,
+                    updatedAt: Date.now()
+                });
+
+                // Push-Notification
+                alert(`✅ ${varianteLabel} ausgewählt!\n\nKeine Änderung mehr möglich.`);
+
+                // UI wird durch onSnapshot automatisch aktualisiert
+            } catch (error) {
+                console.error('Fehler beim Speichern der Variante:', error);
+                alert('❌ Fehler beim Speichern. Bitte erneut versuchen.');
+            }
         }
 
         async function stornierenAnfrage(anfrageId, event) {
