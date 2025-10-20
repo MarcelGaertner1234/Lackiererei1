@@ -4454,7 +4454,21 @@
                 abholnotiz: anfrage.abholnotiz || '',
 
                 // Preis & Details
-                vereinbarterPreis: anfrage.kva?.gesamt || anfrage.kva?.gesamtpreis || null,
+                // ✅ FIX #1: Korrektes Feld-Mapping für KVA-Preise (Varianten-System!)
+                // Problem: anfrage.kva.gesamt existiert NICHT (Preis ist in kva.varianten[...].gesamt)
+                // Fallback-Chain: gewaehlteVariante → original → aftermarket → legacy
+                vereinbarterPreis: anfrage.kva?.varianten?.[anfrage.kva.gewaehlteVariante]?.gesamt  // Prio 1: Gewählte Variante
+                                || anfrage.kva?.varianten?.original?.gesamt  // Prio 2: Original (Fallback wenn keine Auswahl)
+                                || anfrage.kva?.varianten?.zubehoer?.gesamt  // Prio 3: Aftermarket Zubehoer
+                                || anfrage.kva?.varianten?.partner?.gesamt   // Prio 4: Aftermarket Partner
+                                || anfrage.kva?.gesamt  // Prio 5: Legacy-Format (alte KVAs)
+                                || anfrage.kva?.gesamtpreis  // Prio 6: Legacy-Fallback #2
+                                || null,
+
+                // ✅ FIX #2: KVA-Objekt übertragen (für Fallback-Logik in kunden.html)
+                // Benefit: Kunden-Umsatz kann auf kva.varianten zugreifen + Audit Trail
+                kva: anfrage.kva || null,
+
                 notizen: anfrage.schadenBeschreibung ||
                          anfrage.beschreibung ||
                          anfrage.serviceData?.info ||
@@ -4496,6 +4510,17 @@
                 hasLackFelder: !!fahrzeugData.farbname,
                 anliefertermin: fahrzeugData.geplantesAbnahmeDatum
             });
+
+            // ✅ DEBUG: Verifiziere Preis-Übertragung (KVA-Fix Verification)
+            console.log('💶 [KVA-FIX] vereinbarterPreis:', fahrzeugData.vereinbarterPreis);
+            console.log('📦 [KVA-FIX] kva-Objekt übertragen:', !!fahrzeugData.kva);
+            if (fahrzeugData.kva) {
+                console.log('   🔑 gewaehlteVariante:', fahrzeugData.kva.gewaehlteVariante);
+                console.log('   📋 varianten:', Object.keys(fahrzeugData.kva.varianten || {}));
+            }
+            if (!fahrzeugData.vereinbarterPreis) {
+                console.warn('⚠️ [KVA-FIX] WARNUNG: vereinbarterPreis ist NULL! Fallback-Chain fehlgeschlagen?');
+            }
 
             return fahrzeugData;
         }
