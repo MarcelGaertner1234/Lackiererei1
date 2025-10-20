@@ -1142,6 +1142,12 @@
         function changeProcess() {
             currentProcess = document.getElementById('processSelect').value;
             console.log('🔄 Prozess gewechselt:', currentProcess);
+            console.log('📊 Fahrzeuge gesamt:', allFahrzeuge.length);
+            console.log('📋 ServiceTyp-Verteilung:', allFahrzeuge.reduce((acc, f) => {
+                const typ = f.serviceTyp || 'UNDEFINED';
+                acc[typ] = (acc[typ] || 0) + 1;
+                return acc;
+            }, {}));
             renderKanbanBoard();
         }
 
@@ -1201,6 +1207,11 @@
                     const fahrzeugServiceTyp = f.serviceTyp || 'lackier'; // Default: lackier
                     const fahrzeugStatus = f.prozessStatus || 'angenommen';
 
+                    // 🐛 DEBUG: Log für Service-Filter
+                    if (status === 'angenommen' || status === 'neu') {
+                        console.log(`🔍 Filter Check: ${f.kennzeichen} | serviceTyp: ${fahrzeugServiceTyp} | prozessStatus: ${fahrzeugStatus} | currentProcess: ${currentProcess}`);
+                    }
+
                     // Wenn currentProcess 'alle', alle Services anzeigen
                     if (currentProcess === 'alle') {
                         // Mapping für vereinheitlichte Spalten
@@ -1218,12 +1229,21 @@
                             return fahrzeugStatus === status;
                         }
                     } else {
+                        // 🐛 CRITICAL: Service-spezifischer Filter
                         // SPEZIAL: Terminiert-Spalte zeigt auch alte "angenommen" Status
                         if (status === 'terminiert') {
-                            return fahrzeugServiceTyp === currentProcess &&
+                            const matches = fahrzeugServiceTyp === currentProcess &&
                                    (fahrzeugStatus === 'terminiert' || fahrzeugStatus === 'angenommen');
+                            if (matches) {
+                                console.log(`✅ Match: ${f.kennzeichen} (${fahrzeugServiceTyp}) in Spalte '${status}'`);
+                            }
+                            return matches;
                         }
-                        return fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
+                        const matches = fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
+                        if (matches) {
+                            console.log(`✅ Match: ${f.kennzeichen} (${fahrzeugServiceTyp}) in Spalte '${status}'`);
+                        }
+                        return matches;
                     }
                 });
 
@@ -1483,14 +1503,24 @@
 
         // 🔧 HELPER: Mapping prozessStatus → status (für Liste-Kompatibilität)
         function mapProzessToStatus(prozessStatus) {
-            // abgeschlossen bleibt abgeschlossen
+            // ✅ BUG FIX #2: Erweiterte Status-Mappings für alle Services
+
+            // 1. Abgeschlossen (End-State)
             if (prozessStatus === 'abgeschlossen') return 'abgeschlossen';
 
-            // angenommen/neu bleiben angenommen/neu
+            // 2. Start-Status (angenommen, neu)
             if (prozessStatus === 'angenommen' || prozessStatus === 'neu') return prozessStatus;
 
-            // Alle Zwischen-Prozess-Status → in_arbeit
-            // (lackierung, trocknung, polierung, montage, wuchten, etc.)
+            // 3. Terminiert (alle Services haben diesen Status!)
+            if (prozessStatus === 'terminiert') return 'terminiert';
+
+            // 4. Fertig/Bereit Status (End-Status vor Abholung)
+            if (prozessStatus === 'bereit' || prozessStatus === 'fertig' || prozessStatus === 'abholbereit') {
+                return 'bereit'; // Vereinheitlicht: "Bereit zur Abnahme"
+            }
+
+            // 5. Alle Zwischen-Prozess-Status → in_arbeit
+            // (lackierung, trocknung, polierung, montage, wuchten, reparatur, aufbereitung, pruefung, etc.)
             return 'in_arbeit';
         }
 
