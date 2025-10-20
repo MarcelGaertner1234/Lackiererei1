@@ -112,6 +112,39 @@ window.firebaseApp = {
     }
   },
 
+  // ✅ BUG FIX #3: saveKunde() function
+  // Problem: kunden.html ruft firebaseApp.saveKunde() auf, aber Funktion existierte nicht
+  // Impact: Neue Kunden konnten NICHT in Firebase gespeichert werden → CRITICAL BUG
+  // Fix: Funktion hinzugefügt mit Firestore .set() operation
+  saveKunde: async (data) => {
+    try {
+      await db.collection('kunden').doc(data.id).set(data);
+      console.log('✅ Kunde in Firestore gespeichert:', data.id);
+      return data.id;
+    } catch (error) {
+      console.error('❌ Fehler beim Speichern des Kunden:', error);
+      throw error;
+    }
+  },
+
+  // ✅ BUG FIX #4: updateKunde() function
+  // Problem: kunden.html ruft firebaseApp.updateKunde() auf, aber Funktion existierte nicht
+  // Impact: Kunden konnten NICHT bearbeitet werden, Rabatt-Konditionen nicht gespeichert → CRITICAL BUG
+  // Fix: Funktion hinzugefügt mit Firestore .update() operation
+  updateKunde: async (id, updates) => {
+    try {
+      await db.collection('kunden').doc(id).update({
+        ...updates,
+        lastModified: Date.now()
+      });
+      console.log('✅ Kunde aktualisiert:', id);
+      return id;
+    } catch (error) {
+      console.error('❌ Fehler beim Aktualisieren des Kunden:', error);
+      throw error;
+    }
+  },
+
   // Helper Functions - CHANGED TO ARROW FUNCTIONS for closure access to `db`
   getAllFahrzeuge: async () => {
     const snapshot = await db.collection('fahrzeuge').get();
