@@ -2151,6 +2151,18 @@
         let unreadCounts = {}; // anfrageId -> unread count
         let cascadeDeleteLog = []; // 🐛 Debug-Log für CASCADE DELETE Operations
 
+        // ✅ IMPROVEMENT #2: Transaction-Status für beforeunload Handler
+        let transactionRunning = false;
+
+        // ✅ IMPROVEMENT #2: beforeunload Handler - warnt User vor Datenverlust
+        window.onbeforeunload = function(e) {
+            if (transactionRunning) {
+                e.preventDefault();
+                e.returnValue = ''; // Chrome benötigt das
+                return 'Transaction läuft noch! Wirklich verlassen?';
+            }
+        };
+
         window.addEventListener('DOMContentLoaded', async () => {
             console.log('🔧 RUN #68: [1/6] DOMContentLoaded fired in meine-anfragen.html');
             console.log('   URL:', window.location.href);
@@ -4040,6 +4052,10 @@
                 console.warn('⚠️ Button nicht gefunden (event.target fehlt) - Doppel-Klick-Schutz funktioniert nicht!');
             }
 
+            // ✅ IMPROVEMENT #2: Transaction-Status setzen (beforeunload Handler)
+            transactionRunning = true;
+            console.log('🔒 Transaction gestartet - beforeunload Handler aktiv');
+
             try {
                 // 1. Status auf "beauftragt" ändern
                 const updateData = {
@@ -4246,6 +4262,10 @@
                     console.log('🔓 Button wieder aktiviert nach SUCCESS');
                 }
 
+                // ✅ IMPROVEMENT #2: Transaction abgeschlossen (beforeunload Handler deaktivieren)
+                transactionRunning = false;
+                console.log('🔓 Transaction abgeschlossen - beforeunload Handler deaktiviert');
+
                 alert(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`);
                 await loadAnfragen();
             } catch (error) {
@@ -4257,6 +4277,10 @@
                     button.textContent = originalButtonText || '✅ Annehmen';
                     console.log('🔓 Button wieder aktiviert nach ERROR (User kann retry)');
                 }
+
+                // ✅ IMPROVEMENT #2: Transaction abgeschlossen (beforeunload Handler deaktivieren)
+                transactionRunning = false;
+                console.log('🔓 Transaction abgeschlossen (mit Error) - beforeunload Handler deaktiviert');
 
                 alert(`❌ Fehler beim Annehmen der Anfrage.\\n\\nDetails: ${error.message}\\n\\nBitte versuchen Sie es erneut.`);
             }
