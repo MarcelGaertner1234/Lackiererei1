@@ -579,10 +579,26 @@
                 // NEU: Fahrzeug laden (für Live-Produktionsfortschritt)
                 // CRITICAL: Load asynchronously (non-blocking) to prevent race condition
                 // Detail page must render immediately even if fahrzeug doesn't exist yet
+
+                // FIX #1: Debug Logging für Fahrzeug-Suche
+                console.log('🔍 DEBUG: Versuche Fahrzeug zu laden:', {
+                    anfrageId: anfrageId,
+                    kennzeichen: anfrage.kennzeichen || 'LEER!',
+                    auftragsnummer: anfrage.auftragsnummer || 'LEER!',
+                    marke: anfrage.marke,
+                    modell: anfrage.modell,
+                    serviceTyp: anfrage.serviceTyp,
+                    status: anfrage.status
+                });
+
                 if (anfrage.kennzeichen) {
                     loadFahrzeugByKennzeichen(anfrage.kennzeichen);  // No await - runs in background!
                 } else if (anfrage.auftragsnummer) {
                     loadFahrzeugByAuftragsnummer(anfrage.auftragsnummer);  // No await - runs in background!
+                } else {
+                    // FIX #3: Extended Fallback Chain - partnerAnfrageId als letzter Fallback
+                    console.warn('⚠️ Kein Kennzeichen/Auftragsnummer vorhanden, versuche Suche per partnerAnfrageId');
+                    loadFahrzeugByPartnerAnfrageId(anfrageId);  // No await - runs in background!
                 }
 
                 renderAnfrage();
@@ -630,9 +646,19 @@
                         statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0,
                         quelle: fahrzeugDoc.data().quelle
                     });
+
+                    // Re-render nach erfolgreichem Laden
+                    renderAnfrage(true);
                 } else {
                     console.log('ℹ️ Kein Fahrzeug mit Kennzeichen gefunden:', kennzeichen);
                     console.warn('⚠️ DEBUG: Mögliche Ursachen: kennzeichen field fehlt in Firestore oder Groß/Kleinschreibung');
+
+                    // FIX #4: Fallback auf partnerAnfrageId wenn Kennzeichen-Suche fehlschlägt
+                    console.warn('⚠️ Kennzeichen-Suche fehlgeschlagen, versuche partnerAnfrageId');
+                    const anfrageId = new URLSearchParams(window.location.search).get('id');
+                    if (anfrageId) {
+                        await loadFahrzeugByPartnerAnfrageId(anfrageId);
+                    }
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Fahrzeugs:', error);
@@ -651,11 +677,64 @@
                     const fahrzeugDoc = snapshot.docs[0];
                     anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
                     console.log('✅ Fahrzeug geladen:', fahrzeugDoc.id, '- Auftragsnummer:', auftragsnummer);
+
+                    // Re-render nach erfolgreichem Laden
+                    renderAnfrage(true);
                 } else {
                     console.log('ℹ️ Kein Fahrzeug mit Auftragsnummer gefunden:', auftragsnummer);
+
+                    // FIX #4: Fallback auf partnerAnfrageId wenn Auftragsnummer-Suche fehlschlägt
+                    console.warn('⚠️ Auftragsnummer-Suche fehlgeschlagen, versuche partnerAnfrageId');
+                    const anfrageId = new URLSearchParams(window.location.search).get('id');
+                    if (anfrageId) {
+                        await loadFahrzeugByPartnerAnfrageId(anfrageId);
+                    }
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Fahrzeugs:', error);
+            }
+        }
+
+        // FIX #2: Fahrzeug per partnerAnfrageId laden (Ultimate Fallback)
+        async function loadFahrzeugByPartnerAnfrageId(anfrageId) {
+            try {
+                console.log('🔍 DEBUG: Suche Fahrzeug per partnerAnfrageId:', anfrageId);
+
+                const snapshot = await db.collection('fahrzeuge')
+                    .where('partnerAnfrageId', '==', anfrageId)
+                    .limit(1)
+                    .get();
+
+                console.log('🔍 DEBUG: partnerAnfrageId Query Result:', {
+                    anfrageId: anfrageId,
+                    found: !snapshot.empty,
+                    documentCount: snapshot.size
+                });
+
+                if (!snapshot.empty) {
+                    const fahrzeugDoc = snapshot.docs[0];
+                    anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+                    console.log('✅ Fahrzeug gefunden per partnerAnfrageId!', {
+                        fahrzeugId: fahrzeugDoc.id,
+                        kennzeichen: fahrzeugDoc.data().kennzeichen,
+                        prozessStatus: fahrzeugDoc.data().prozessStatus,
+                        statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0
+                    });
+
+                    // Re-render nach erfolgreichem Laden
+                    renderAnfrage(true);
+
+                    // Setup Live-Updates für dieses Fahrzeug
+                    setupLiveFahrzeugUpdatesByPartnerAnfrageId(anfrageId);
+                } else {
+                    console.warn('⚠️ Kein Fahrzeug mit partnerAnfrageId gefunden:', anfrageId);
+                    console.log('ℹ️ Mögliche Ursachen:');
+                    console.log('   1. Fahrzeug noch nicht im Kanban angelegt (Partner-Anfrage noch nicht bearbeitet)');
+                    console.log('   2. partnerAnfrageId wurde beim Fahrzeug-Erstellen nicht gesetzt');
+                    console.log('   3. Fahrzeug wurde manuell angelegt (nicht über Partner-Anfrage)');
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Fahrzeugs per partnerAnfrageId:', error);
             }
         }
 
@@ -715,6 +794,64 @@
                 });
 
             console.log('✅ Live-Updates für Fahrzeug aktiviert:', kennzeichen);
+        }
+
+        // FIX #5: Live-Updates mit partnerAnfrageId (Fallback wenn kein Kennzeichen)
+        function setupLiveFahrzeugUpdatesByPartnerAnfrageId(anfrageId) {
+            console.log('🔍 DEBUG: setupLiveFahrzeugUpdatesByPartnerAnfrageId() gestartet für anfrageId:', anfrageId);
+
+            // Alte Listener entfernen falls vorhanden
+            if (window.unsubscribeFahrzeug) window.unsubscribeFahrzeug();
+
+            window.unsubscribeFahrzeug = db.collection('fahrzeuge')
+                .where('partnerAnfrageId', '==', anfrageId)
+                .limit(1)
+                .onSnapshot((snapshot) => {
+                    // DEBUG: onSnapshot triggered
+                    console.log('🔍 DEBUG: onSnapshot (partnerAnfrageId) triggered:', {
+                        snapshotSize: snapshot.size,
+                        isEmpty: snapshot.empty,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    if (!snapshot.empty) {
+                        const fahrzeugDoc = snapshot.docs[0];
+                        const newData = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+
+                        // DEBUG: Show updated data
+                        console.log('🔍 DEBUG: Fahrzeug onSnapshot Data (partnerAnfrageId):', {
+                            fahrzeugId: fahrzeugDoc.id,
+                            prozessStatus: fahrzeugDoc.data().prozessStatus,
+                            statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0,
+                            latestStatus: fahrzeugDoc.data().statusHistory?.slice(-1)[0]?.status || 'keine'
+                        });
+
+                        // Prüfen ob sich statusHistory geändert hat
+                        if (anfrage.fahrzeug &&
+                            JSON.stringify(anfrage.fahrzeug.statusHistory) !== JSON.stringify(newData.statusHistory)) {
+                            console.log('🔄 Fahrzeug aktualisiert - neue statusHistory (partnerAnfrageId)');
+                            console.log('🔍 DEBUG: StatusHistory Änderung:', {
+                                old: anfrage.fahrzeug.statusHistory,
+                                new: newData.statusHistory
+                            });
+                            showUpdateNotification('Neuer Produktionsfortschritt!');
+                        }
+
+                        anfrage.fahrzeug = newData;
+                        renderAnfrage(true);  // true = Live-Update
+                    } else {
+                        console.warn('⚠️ DEBUG: onSnapshot (partnerAnfrageId) triggered but snapshot is empty!');
+                    }
+                }, (error) => {
+                    console.error('❌ Fehler beim Live-Update des Fahrzeugs (partnerAnfrageId):', error);
+                    console.error('🔍 DEBUG: Error details:', {
+                        code: error.code,
+                        message: error.message,
+                        anfrageId: anfrageId
+                    });
+                });
+
+            console.log('✅ Live-Updates für Fahrzeug aktiviert (partnerAnfrageId):', anfrageId);
         }
 
         function setupLiveUpdates(anfrageId) {
