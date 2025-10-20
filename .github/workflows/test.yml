@@ -1,0 +1,118 @@
+name: E2E Tests (Playwright)
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Erlaubt manuelles Triggern
+
+jobs:
+  test:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Test parallel auf mehreren Browsern (optional)
+        browser: [chromium]
+        # browser: [chromium, firefox, webkit]
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci
+
+      - name: 🎭 Install Playwright Browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: 🔥 Setup Firebase Emulator (optional)
+        run: |
+          # Firebase Emulator für lokale Tests (falls gewünscht)
+          # npm install -g firebase-tools
+          # firebase emulators:start --only firestore,storage &
+          echo "Skipping Firebase Emulator - Tests run against Production"
+
+      - name: 🧪 Run Playwright Tests
+        env:
+          # Environment Variables für Tests
+          CI: true
+          BROWSER: ${{ matrix.browser }}
+        run: npx playwright test --browser=${{ matrix.browser }} --workers=2
+
+      - name: 📊 Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: playwright-report/
+          retention-days: 30
+
+      - name: 📸 Upload Test Screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-screenshots-${{ matrix.browser }}
+          path: test-results/
+          retention-days: 7
+
+      - name: 📹 Upload Test Videos (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-videos-${{ matrix.browser }}
+          path: test-results/**/*.webm
+          retention-days: 7
+
+  # Optional: Test-Report als GitHub Pages deployen
+  publish-report:
+    name: Publish Test Report
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: 📥 Download Test Reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-report-*
+          path: reports/
+
+      - name: 📄 Merge Reports
+        run: |
+          mkdir -p merged-report
+          # Merge alle Browser-Reports (falls mehrere)
+          cp -r reports/playwright-report-chromium/* merged-report/ 2>/dev/null || true
+
+      - name: 📤 Upload Merged Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-merged
+          path: merged-report/
+          retention-days: 30
+
+  # Optional: Badge für README
+  badge:
+    name: Update Test Badge
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: 🏷️ Create Test Badge
+        run: |
+          if [ "${{ needs.test.result }}" == "success" ]; then
+            echo "✅ Tests passing"
+          else
+            echo "❌ Tests failing"
+          fi
