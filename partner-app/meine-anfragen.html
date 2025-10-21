@@ -1949,8 +1949,16 @@
                         <div class="rabatt-badge" id="rabattProzent">0%</div>
                     </div>
                     <div class="ersparnis">
-                        <div>Ersparnis</div>
-                        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;" id="ersparnisMonat">0,00 €</div>
+                        <div style="font-size: 14px; opacity: 0.9;">Laufender Rabatt (Monat)</div>
+                        <div style="font-size: 18px; font-weight: 600; margin-top: 3px;" id="ersparnisRabatt">0,00 €</div>
+                    </div>
+                    <div class="ersparnis">
+                        <div style="font-size: 14px; opacity: 0.9;">🎁 Einmalige Bonuses</div>
+                        <div style="font-size: 18px; font-weight: 600; margin-top: 3px;" id="ersparnisBonus">0,00 €</div>
+                    </div>
+                    <div class="ersparnis" style="border-top: 2px solid rgba(255,255,255,0.3); padding-top: 8px; margin-top: 8px;">
+                        <div style="font-size: 16px;">✨ Gesamt-Vorteil</div>
+                        <div style="font-size: 26px; font-weight: 700; margin-top: 5px; color: #ffd700;" id="ersparnisGesamt">0,00 €</div>
                     </div>
                 </div>
 
@@ -2134,7 +2142,7 @@
         </div>
     </div>
 
-    <script src="../firebase-config.js?v=20251021-doppelklick-fix"></script>
+    <script src="../firebase-config.js?v=20251021-bonus-anzeige"></script>
     <script>
         let partner = null;
         let alleAnfragen = [];
@@ -5354,6 +5362,26 @@
             console.log(`   💰 Monat:  ${formatCurrency(umsatzMonat)}`);
             console.log(`   💰 Gesamt: ${formatCurrency(umsatzGesamt)}`);
 
+            // ✅ NEU: Lade einmalige Bonuses aus Firestore
+            console.log('\n🎁 Lade Bonuses für Partner:', partner.id);
+            let gesamtBonus = 0;
+            try {
+                const db = firebase.firestore();
+                const bonusSnapshot = await db.collection('bonusAuszahlungen')
+                    .where('partnerId', '==', partner.id)
+                    .get();
+
+                gesamtBonus = bonusSnapshot.docs.reduce((sum, doc) => {
+                    const data = doc.data();
+                    console.log(`   💰 Bonus: ${data.bonusBetrag}€ (Stufe: ${data.stufeKey})`);
+                    return sum + (data.bonusBetrag || 0);
+                }, 0);
+
+                console.log(`✅ Gesamt-Bonus: ${formatCurrency(gesamtBonus)}`);
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Bonuses:', error);
+            }
+
             // Rabatt-Konditionen prüfen
             const rabattKonditionen = partner.rabattKonditionen;
             const rabattSection = document.getElementById('rabattSection');
@@ -5370,9 +5398,18 @@
                     // Rabatt-Prozent
                     document.getElementById('rabattProzent').textContent = `${aktuelleStufe.rabatt}%`;
 
-                    // Ersparnis
-                    const ersparnis = calculateErsparnis(umsatzMonat, aktuelleStufe.rabatt);
-                    document.getElementById('ersparnisMonat').textContent = formatCurrency(ersparnis);
+                    // ✅ ERWEITERTE Ersparnis-Berechnung (Rabatt + Bonuses)
+                    const laufenderRabatt = calculateErsparnis(umsatzMonat, aktuelleStufe.rabatt);
+                    const gesamtErsparnis = laufenderRabatt + gesamtBonus;
+
+                    // Anzeigen
+                    document.getElementById('ersparnisRabatt').textContent = formatCurrency(laufenderRabatt);
+                    document.getElementById('ersparnisBonus').textContent = formatCurrency(gesamtBonus);
+                    document.getElementById('ersparnisGesamt').textContent = formatCurrency(gesamtErsparnis);
+
+                    console.log(`💰 Laufender Rabatt: ${formatCurrency(laufenderRabatt)}`);
+                    console.log(`🎁 Einmalige Bonuses: ${formatCurrency(gesamtBonus)}`);
+                    console.log(`✨ Gesamt-Ersparnis: ${formatCurrency(gesamtErsparnis)}`);
 
                     // Fortschrittsbalken zur nächsten Stufe
                     const progressSection = document.getElementById('progressSection');
@@ -5398,10 +5435,12 @@
                         document.getElementById('progressPercent').textContent = '100%';
                     }
                 } else {
-                    // Noch keine Rabatt-Stufe erreicht
+                    // Noch keine Rabatt-Stufe erreicht (aber Bonuses könnten existieren!)
                     rabattSection.style.display = 'block';
                     document.getElementById('rabattProzent').textContent = '0%';
-                    document.getElementById('ersparnisMonat').textContent = formatCurrency(0);
+                    document.getElementById('ersparnisRabatt').textContent = formatCurrency(0);
+                    document.getElementById('ersparnisBonus').textContent = formatCurrency(gesamtBonus);
+                    document.getElementById('ersparnisGesamt').textContent = formatCurrency(gesamtBonus);
 
                     const ersteStufe = getNextRabattStufe(0, rabattKonditionen);
                     if (ersteStufe) {
