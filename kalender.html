@@ -685,6 +685,16 @@
             border-left-color: #1976d2;
         }
 
+        .timeline-event.abholung {
+            border-left-color: #ff9800;
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        }
+
+        .timeline-event.start {
+            border-left-color: #4caf50;
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        }
+
         .timeline-event.geplant {
             border-left-color: #e65100;
         }
@@ -727,6 +737,16 @@
 
         .day-event-card.annahme {
             border-left-color: #1976d2;
+        }
+
+        .day-event-card.abholung {
+            border-left-color: #ff9800;
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        }
+
+        .day-event-card.start {
+            border-left-color: #4caf50;
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
         }
 
         .day-event-card.geplant {
@@ -844,6 +864,16 @@
             color: #1976d2;
         }
 
+        .week-event-badge.abholung {
+            background: #fff3e0;
+            color: #ff9800;
+        }
+
+        .week-event-badge.start {
+            background: #e8f5e9;
+            color: #4caf50;
+        }
+
         .week-event-badge.geplant {
             background: #fff3e0;
             color: #e65100;
@@ -943,6 +973,14 @@
 
         .month-event-dot.annahme {
             background: #1976d2;
+        }
+
+        .month-event-dot.abholung {
+            background: #ff9800;
+        }
+
+        .month-event-dot.start {
+            background: #4caf50;
         }
 
         .month-event-dot.geplant {
@@ -1248,7 +1286,7 @@
         let allVehicles = [];
         let currentDate = new Date();
         let currentView = 'month'; // 'day', 'week', 'month'
-        // firebaseApp is provided by firebase-config.js as window.firebaseApp (already declared there!)
+        // firebaseApp is provided by firebase-config.js as window.firebaseApp
         let firebaseInitialized = false;
         let activeFilters = ['all']; // Filter-State
         let maxCapacityPerDay = 8; // Konfigurierbar
@@ -1296,56 +1334,6 @@
             renderStatistics();
             updateFilterCounts();
             renderMiniCalendar();
-        }
-
-        // ========== FIRESTORE HELPER FUNCTIONS ==========
-        // ✅ CRITICAL FIX: Helper-Funktionen für Kalender-Operationen
-        // Problem: kalender.html rief saveToFirestore() und deleteVehicle() auf, aber Funktionen existierten nicht
-        // Impact: Alle Kalender-Änderungen (Drag&Drop, Datum ändern, Löschen) wurden NICHT gespeichert
-        // Fix: Helper-Funktionen hinzugefügt, die auf firebase-config.js Funktionen mappen
-
-        async function saveToFirestore(vehicle) {
-            try {
-                if (firebaseInitialized && firebaseApp) {
-                    // Firestore update (nutzt firebase-config.js updateFahrzeug)
-                    await firebaseApp.updateFahrzeug(vehicle.id, vehicle);
-                    console.log('✅ [KALENDER] Fahrzeug in Firestore gespeichert:', vehicle.id, vehicle.kennzeichen);
-                } else {
-                    // LocalStorage Fallback
-                    const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                    const index = fahrzeuge.findIndex(f => f.id === vehicle.id);
-                    if (index !== -1) {
-                        fahrzeuge[index] = vehicle;
-                        localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
-                        console.log('ℹ️ [KALENDER] Fahrzeug in LocalStorage gespeichert:', vehicle.id);
-                    } else {
-                        console.warn('⚠️ [KALENDER] Fahrzeug nicht gefunden:', vehicle.id);
-                    }
-                }
-            } catch (error) {
-                console.error('❌ [KALENDER] Fehler beim Speichern:', error);
-                throw error;
-            }
-        }
-
-        async function deleteVehicle(id) {
-            try {
-                if (firebaseInitialized && firebaseApp) {
-                    // Firestore delete
-                    const db = firebase.firestore();
-                    await db.collection('fahrzeuge').doc(id).delete();
-                    console.log('✅ [KALENDER] Fahrzeug aus Firestore gelöscht:', id);
-                } else {
-                    // LocalStorage Fallback
-                    const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                    const filtered = fahrzeuge.filter(f => f.id !== id);
-                    localStorage.setItem('fahrzeuge', JSON.stringify(filtered));
-                    console.log('ℹ️ [KALENDER] Fahrzeug aus LocalStorage gelöscht:', id);
-                }
-            } catch (error) {
-                console.error('❌ [KALENDER] Fehler beim Löschen:', error);
-                throw error;
-            }
         }
 
         // Filter Toggle
@@ -1582,21 +1570,33 @@
             today.setHours(0, 0, 0, 0);
 
             allVehicles.forEach(vehicle => {
-                if (vehicle.datum && vehicle.datum === dateString) {
-                    events.push({ vehicle, type: 'annahme', typeName: 'Annahme', time: vehicle.zeit || '08:00', overdue: false });
+                // 🚙 ABHOLUNG (falls gewünscht - 1 Tag vor START)
+                if (vehicle.fahrzeugAbholung === 'ja' && vehicle.abholdatum && vehicle.abholdatum === dateString) {
+                    const abholzeit = vehicle.abholzeit || '08:00';
+                    events.push({ vehicle, type: 'abholung', typeName: '🚙 Abholung', time: abholzeit, overdue: false });
                 }
 
+                // 🔧 ARBEITSBEGINN (START des Auftrags)
+                if (vehicle.geplantesStartDatum) {
+                    const startDate = new Date(vehicle.geplantesStartDatum);
+                    if (formatDate(startDate) === dateString) {
+                        events.push({ vehicle, type: 'start', typeName: '🔧 Arbeitsbeginn', time: '09:00', overdue: false });
+                    }
+                }
+
+                // ✅ GEPLANTE ABNAHME (ENDE des Auftrags)
                 if (vehicle.geplantesAbnahmeDatum) {
                     const geplantDate = new Date(vehicle.geplantesAbnahmeDatum);
                     if (formatDate(geplantDate) === dateString) {
                         geplantDate.setHours(0, 0, 0, 0);
                         const overdue = geplantDate < today && vehicle.status === 'angenommen';
-                        events.push({ vehicle, type: 'geplant', typeName: 'Geplante Abnahme', time: '10:00', overdue });
+                        events.push({ vehicle, type: 'geplant', typeName: '✅ Geplante Abnahme', time: '15:00', overdue });
                     }
                 }
 
+                // ✅ ABGESCHLOSSEN (tatsächliches Abnahme-Datum)
                 if (vehicle.abnahmeDatum && vehicle.abnahmeDatum === dateString) {
-                    events.push({ vehicle, type: 'abgeschlossen', typeName: 'Abgeschlossen', time: vehicle.abnahmeZeit || '16:00', overdue: false });
+                    events.push({ vehicle, type: 'abgeschlossen', typeName: '✅ Abgeschlossen', time: vehicle.abnahmeZeit || '16:00', overdue: false });
                 }
             });
 
@@ -1940,23 +1940,43 @@
             today.setHours(0, 0, 0, 0);
 
             allVehicles.forEach(vehicle => {
-                // Annahme
-                if (vehicle.datum && vehicle.datum === dateString) {
+                // 🚙 ABHOLUNG (falls gewünscht - 1 Tag vor START)
+                if (vehicle.fahrzeugAbholung === 'ja' && vehicle.abholdatum && vehicle.abholdatum === dateString) {
+                    const abholzeit = vehicle.abholzeit || '08:00';
                     const event = {
                         vehicle: vehicle,
-                        type: 'annahme',
-                        typeName: 'Annahme',
-                        time: vehicle.zeit || '08:00',
+                        type: 'abholung',
+                        typeName: '🚙 Abholung',
+                        time: abholzeit,
                         overdue: false
                     };
 
                     // Filter anwenden
-                    if (activeFilters.includes('all') || activeFilters.includes('annahme')) {
+                    if (activeFilters.includes('all') || activeFilters.includes('abholung')) {
                         events.push(event);
                     }
                 }
 
-                // Geplante Abnahme
+                // 🔧 ARBEITSBEGINN (START des Auftrags)
+                if (vehicle.geplantesStartDatum) {
+                    const startDate = new Date(vehicle.geplantesStartDatum);
+                    if (formatDate(startDate) === dateString) {
+                        const event = {
+                            vehicle: vehicle,
+                            type: 'start',
+                            typeName: '🔧 Arbeitsbeginn',
+                            time: '09:00',
+                            overdue: false
+                        };
+
+                        // Filter anwenden
+                        if (activeFilters.includes('all') || activeFilters.includes('start')) {
+                            events.push(event);
+                        }
+                    }
+                }
+
+                // ✅ GEPLANTE ABNAHME (ENDE des Auftrags)
                 if (vehicle.geplantesAbnahmeDatum) {
                     const geplantDate = new Date(vehicle.geplantesAbnahmeDatum);
                     if (formatDate(geplantDate) === dateString) {
@@ -1967,8 +1987,8 @@
                         const event = {
                             vehicle: vehicle,
                             type: 'geplant',
-                            typeName: 'Geplante Abnahme',
-                            time: '10:00',
+                            typeName: '✅ Geplante Abnahme',
+                            time: '15:00',
                             overdue: isOverdue
                         };
 
@@ -1981,7 +2001,7 @@
                     }
                 }
 
-                // Abnahme
+                // ✅ ABGESCHLOSSEN (tatsächliches Abnahme-Datum)
                 if (vehicle.abnahmeDatum && vehicle.abnahmeDatum === dateString) {
                     const event = {
                         vehicle: vehicle,
@@ -2105,7 +2125,7 @@
             }
         }
 
-        async function quickActionComplete() {  // ✅ FIX #2: async hinzugefügt
+        function quickActionComplete() {
             if (!currentQuickActionVehicle) return;
 
             const confirmed = confirm(`Fahrzeug ${currentQuickActionVehicle.kennzeichen} als abgeschlossen markieren?`);
@@ -2114,20 +2134,20 @@
                 currentQuickActionVehicle.abnahmeDatum = formatDate(new Date());
                 currentQuickActionVehicle.abnahmeZeit = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
-                await saveToFirestore(currentQuickActionVehicle);  // ✅ FIX #2: await hinzugefügt (wartet auf Firestore)
-                await loadData();  // ✅ FIX #2: await hinzugefügt (lädt erst nach Save)
+                saveToFirestore(currentQuickActionVehicle);
+                loadData();
                 closeQuickActions();
             }
         }
 
-        async function quickActionReschedule() {  // ✅ FIX #3: async hinzugefügt
+        function quickActionReschedule() {
             if (!currentQuickActionVehicle) return;
 
             const newDate = prompt('Neues Datum (TT.MM.JJJJ):', currentQuickActionVehicle.geplantesAbnahmeDatum || '');
             if (newDate) {
                 currentQuickActionVehicle.geplantesAbnahmeDatum = newDate;
-                await saveToFirestore(currentQuickActionVehicle);  // ✅ FIX #3: await hinzugefügt (wartet auf Firestore)
-                await loadData();  // ✅ FIX #3: await hinzugefügt (lädt erst nach Save)
+                saveToFirestore(currentQuickActionVehicle);
+                loadData();
                 closeQuickActions();
             }
         }
