@@ -1514,7 +1514,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 
     <!-- Firebase Konfiguration -->
-    <script src="firebase-config.js?v=15606a5"></script>
+    <script src="firebase-config.js?v=20251021-auto-partner-code"></script>
 
     <!-- Chart.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -3233,11 +3233,27 @@
             const konditionenGeprueft = document.getElementById('konditionenGeprueft').checked;
             const konditionenDatum = document.getElementById('konditionenDatum').value;
 
-            // ✅ FIX: Partner-Code aus Input ODER aus bestehendem Kunden-Datensatz
+            // ✅ AUTO-GENERATE Partner-Code aus Email (wenn nicht manuell eingegeben)
             const partnerCodeInput = document.getElementById('partnerCode').value.trim();
-            const partnerCode = currentKundeId
-                ? (partnerCodeInput || allKunden.find(k => k.id === currentKundeId)?.partnerCode || null)
-                : (partnerCodeInput || null);
+            const kundenEmail = document.getElementById('kundenEmail').value.trim();
+
+            let partnerCode = partnerCodeInput;
+
+            // Wenn kein Partner-Code eingegeben, aber Email vorhanden → Auto-generiere aus Email
+            // Beispiel: "marcel@test.de" → "marcel"
+            // → Konsistent mit Partner Portal Login (index.html:389 verwendet email.split('@')[0])
+            if (!partnerCode && kundenEmail && kundenEmail.includes('@')) {
+                partnerCode = kundenEmail.split('@')[0].toLowerCase();
+                console.log(`🤖 Auto-generierter Partner-Code aus Email: "${kundenEmail}" → "${partnerCode}"`);
+            }
+
+            // Fallback: Bei Edit existierenden Partner-Code übernehmen (falls Email geändert wurde)
+            if (!partnerCode && currentKundeId) {
+                partnerCode = allKunden.find(k => k.id === currentKundeId)?.partnerCode || null;
+                if (partnerCode) {
+                    console.log(`♻️ Verwende existierenden Partner-Code: "${partnerCode}"`);
+                }
+            }
 
             const kundeData = {
                 id: currentKundeId || 'kunde_' + Date.now(),
@@ -3285,6 +3301,15 @@
                     showSuccessToast(`Neuer Kunde "${kundeData.name}" erstellt!`);
                 }
 
+                // ✅ DEBUG: SYNC Check vor Ausführung
+                console.log('🔍 SYNC-Check:', {
+                    partnerCode: partnerCode,
+                    dbVerfuegbar: !!db,
+                    windowDbVerfuegbar: !!window.db,
+                    rabattKonditionenVorhanden: !!kundeData.rabattKonditionen,
+                    syncWirdAusgefuehrt: !!(partnerCode && db)
+                });
+
                 // ✅ SYNC zu Partner Collection (wenn Partner-Code vorhanden)
                 if (partnerCode && db) {
                     try {
@@ -3292,9 +3317,12 @@
                         const partnerRef = db.collection('partner').doc(partnerCode);
 
                         const syncData = {
+                            name: kundeData.name,  // ✅ Partner-Name für Anzeige
+                            email: kundeData.email,  // ✅ Email für Kommunikation
                             rabattKonditionen: kundeData.rabattKonditionen,
                             konditionenGeprueft: kundeData.konditionenGeprueft,
-                            konditionenDatum: kundeData.konditionenDatum
+                            konditionenDatum: kundeData.konditionenDatum,
+                            lastSync: new Date().toISOString()  // ✅ Sync-Timestamp
                         };
 
                         await partnerRef.set(syncData, { merge: true });
