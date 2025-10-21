@@ -2546,6 +2546,7 @@
             // SCHRITT 3: Verknüpfe Fahrzeuge mit Anfragen (O(1) Lookup via Map!)
             let verknuepft = 0;
             let nichtGefunden = 0;
+            const anfrageForRetry = []; // Anfragen die retry brauchen
 
             anfragen.forEach(anfrage => {
                 let fahrzeug = null;
@@ -2563,10 +2564,51 @@
                 } else {
                     nichtGefunden++;
                     console.log(`ℹ️ Kein Fahrzeug gefunden für: ${anfrage.kennzeichen || anfrage.auftragsnummer}`);
+
+                    // ✅ FIX: RETRY-LOGIC für Anfragen mit fahrzeugAngelegt Flag
+                    // Problem: Firestore hat Indexing-Delay (1-10 Sekunden)
+                    // Lösung: Retry nach 2 Sekunden für Anfragen wo Fahrzeug SOLLTE existieren
+                    if (anfrage.fahrzeugAngelegt && anfrage.fahrzeugId) {
+                        console.log(`⏳ Retry-Kandidat: ${anfrage.kennzeichen || anfrage.id} (fahrzeugAngelegt=true, aber nicht gefunden)`);
+                        anfrageForRetry.push(anfrage);
+                    }
                 }
             });
 
             console.log(`✅ Fahrzeug-Verknüpfung abgeschlossen: ${verknuepft} verknüpft, ${nichtGefunden} nicht gefunden`);
+
+            // ✅ FIX: RETRY-LOGIC - Lade fehlende Fahrzeuge nach 2 Sekunden nochmal
+            if (anfrageForRetry.length > 0) {
+                console.log(`⏳ RETRY in 2s für ${anfrageForRetry.length} Anfragen mit Indexing-Delay...`);
+                setTimeout(async () => {
+                    console.log('🔄 Starte RETRY für Fahrzeug-Verknüpfung...');
+                    let retrySuccess = 0;
+
+                    for (const anfrage of anfrageForRetry) {
+                        try {
+                            // Direkte ID-Suche ist schneller als Kennzeichen-Suche
+                            if (anfrage.fahrzeugId) {
+                                const fahrzeugDoc = await db.collection('fahrzeuge').doc(anfrage.fahrzeugId).get();
+                                if (fahrzeugDoc.exists) {
+                                    anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+                                    retrySuccess++;
+                                    console.log(`✅ RETRY SUCCESS: ${anfrage.kennzeichen || anfrage.id} → Fahrzeug gefunden!`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`❌ RETRY FAILED für ${anfrage.kennzeichen || anfrage.id}:`, error);
+                        }
+                    }
+
+                    console.log(`✅ RETRY abgeschlossen: ${retrySuccess}/${anfrageForRetry.length} erfolgreich`);
+
+                    // UI neu rendern wenn mindestens 1 Fahrzeug gefunden
+                    if (retrySuccess > 0) {
+                        console.log('🔄 Rendere Kanban neu mit nachgeladenen Fahrzeugen...');
+                        renderKanban();
+                    }
+                }, 2000); // 2 Sekunden warten (Firestore Indexing)
+            }
         }
 
         /**
@@ -4259,20 +4301,6 @@
                     console.log('ℹ️ Keine Fotos vorhanden - Foto-Speicherung wird übersprungen');
                 }
 
-                // ✅ FIX: fahrzeugAngelegt Flag setzen (verhindert doppelte Erstellung in admin-anfragen.html!)
-                console.log('🏷️ Setze fahrzeugAngelegt Flag...');
-                try {
-                    await db.collection('partnerAnfragen').doc(anfrageId).update({
-                        fahrzeugAngelegt: true,
-                        fahrzeugAngelegtAm: new Date().toISOString(),
-                        fahrzeugId: fahrzeugData.id  // Verknüpfung zum Fahrzeug
-                    });
-                    console.log('✅ fahrzeugAngelegt Flag gesetzt → Verhindert doppelte Erstellung in Admin-Portal');
-                } catch (flagError) {
-                    console.error('❌ Konnte fahrzeugAngelegt Flag nicht setzen:', flagError);
-                    console.warn('⚠️ WARNUNG: Admin könnte Fahrzeug nochmal anlegen!');
-                }
-
                 // 6. Kalender-Eintrag erstellen (DEAKTIVIERT - nicht benötigt)
                 // HINWEIS: kanban.html nutzt Realtime Listener auf 'fahrzeuge' Collection
                 // Das Fahrzeug erscheint automatisch in kanban.html, sobald es in fahrzeuge Collection erstellt wurde
@@ -4295,6 +4323,24 @@
                 console.log('🔓 Transaction abgeschlossen - beforeunload Handler deaktiviert');
 
                 alert(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`);
+
+                // ✅ FIX: fahrzeugAngelegt Flag setzen (NACH allen Operationen!)
+                // WICHTIG: Wird NACH Fotos UND Success-Message gesetzt → Garantiert dass Fahrzeug komplett fertig ist
+                // Verhindert Realtime Listener Race Condition (Flag-Update triggert Listener während Transaction läuft)
+                console.log('🏷️ Setze fahrzeugAngelegt Flag (FINAL STEP)...');
+                try {
+                    await db.collection('partnerAnfragen').doc(anfrageId).update({
+                        fahrzeugAngelegt: true,
+                        fahrzeugAngelegtAm: new Date().toISOString(),
+                        fahrzeugId: fahrzeugData.id,  // Verknüpfung zum Fahrzeug
+                        fahrzeugKennzeichen: fahrzeugData.kennzeichen  // Für schnellere Suche
+                    });
+                    console.log('✅ fahrzeugAngelegt Flag gesetzt → Verhindert doppelte Erstellung in Admin-Portal');
+                } catch (flagError) {
+                    console.error('❌ Konnte fahrzeugAngelegt Flag nicht setzen:', flagError);
+                    console.warn('⚠️ WARNUNG: Admin könnte Fahrzeug nochmal anlegen!');
+                }
+
                 await loadAnfragen();
             } catch (error) {
                 console.error('❌ Fehler beim Annehmen:', error);

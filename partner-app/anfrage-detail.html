@@ -2375,23 +2375,26 @@
                     console.log('ℹ️ Keine Fotos vorhanden');
                 }
 
-                // ✅ FIX: fahrzeugAngelegt Flag setzen (verhindert doppelte Erstellung in admin-anfragen.html!)
-                console.log('🏷️ Setze fahrzeugAngelegt Flag...');
+                console.log('✅ Fahrzeug erfolgreich erstellt:', fahrzeugData.id);
+
+                alert(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`);
+
+                // ✅ FIX: fahrzeugAngelegt Flag setzen (NACH allen Operationen!)
+                // WICHTIG: Wird NACH Fotos UND Success-Message gesetzt → Garantiert dass Fahrzeug komplett fertig ist
+                // Verhindert Realtime Listener Race Condition (Flag-Update triggert Listener während Transaction läuft)
+                console.log('🏷️ Setze fahrzeugAngelegt Flag (FINAL STEP)...');
                 try {
                     await db.collection('partnerAnfragen').doc(anfrageId).update({
                         fahrzeugAngelegt: true,
                         fahrzeugAngelegtAm: new Date().toISOString(),
-                        fahrzeugId: fahrzeugData.id  // Verknüpfung zum Fahrzeug
+                        fahrzeugId: fahrzeugData.id,  // Verknüpfung zum Fahrzeug
+                        fahrzeugKennzeichen: fahrzeugData.kennzeichen  // Für schnellere Suche
                     });
                     console.log('✅ fahrzeugAngelegt Flag gesetzt → Verhindert doppelte Erstellung in Admin-Portal');
                 } catch (flagError) {
                     console.error('❌ Konnte fahrzeugAngelegt Flag nicht setzen:', flagError);
                     console.warn('⚠️ WARNUNG: Admin könnte Fahrzeug nochmal anlegen!');
                 }
-
-                console.log('✅ Fahrzeug erfolgreich erstellt:', fahrzeugData.id);
-
-                alert(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`);
 
                 // RUN #51: Removed await loadAnfrage() to prevent page navigation during E2E tests
                 // Live-Update listeners (setupLiveUpdates, setupLiveFahrzeugUpdates) handle UI updates automatically
