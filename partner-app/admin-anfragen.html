@@ -1931,6 +1931,44 @@
                 return;
             }
 
+            // ✅ FIX: DOPPEL-CHECK in Firestore ob Fahrzeug bereits existiert (Extra Safety!)
+            // Falls fahrzeugAngelegt Flag nicht gesetzt wurde (Bug), prüfen wir in Firestore
+            console.log('🔍 DOPPEL-CHECK: Prüfe ob Fahrzeug bereits in Firestore existiert...');
+            try {
+                const existingVehicle = await db.collection('fahrzeuge')
+                    .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                    .limit(1)
+                    .get();
+
+                if (!existingVehicle.empty) {
+                    const vehicle = existingVehicle.docs[0];
+                    console.error('❌ DUPLIKAT VERHINDERT! Fahrzeug existiert bereits:', vehicle.id);
+                    alert('⚠️ Fahrzeug wurde bereits angelegt!\n\n' +
+                        `📦 Fahrzeug-ID: ${vehicle.id}\n` +
+                        `🚗 Kennzeichen: ${vehicle.data().kennzeichen || 'k.A.'}\n` +
+                        `📅 Angelegt am: ${vehicle.data().datum ? new Date(vehicle.data().datum).toLocaleString('de-DE') : 'k.A.'}\n\n` +
+                        `DUPLIKAT VERHINDERT! Das Fahrzeug ist bereits in der Hauptapp verfügbar.\n\n` +
+                        `Hinweis: Falls fahrzeugAngelegt Flag fehlt, wird es jetzt nachträglich gesetzt.`);
+
+                    // ✅ Nachträglich fahrzeugAngelegt Flag setzen (falls vergessen)
+                    if (!anfrage.fahrzeugAngelegt) {
+                        console.log('🔧 Setze fahrzeugAngelegt Flag nachträglich...');
+                        await db.collection('partnerAnfragen').doc(anfrageId).update({
+                            fahrzeugAngelegt: true,
+                            fahrzeugAngelegtAm: vehicle.data().datum || new Date().toISOString(),
+                            fahrzeugId: vehicle.id
+                        });
+                        console.log('✅ Flag nachträglich gesetzt');
+                    }
+
+                    return; // Abbruch - Fahrzeug existiert bereits!
+                }
+                console.log('✅ Kein Duplikat gefunden - Fahrzeug kann angelegt werden');
+            } catch (checkError) {
+                console.error('❌ Fehler beim Duplikat-Check:', checkError);
+                // Trotzdem fortfahren - im schlimmsten Fall gibt es ein Duplikat
+            }
+
             // ========================================
             // SCHRITT 2: PREIS ERMITTELN
             // ========================================

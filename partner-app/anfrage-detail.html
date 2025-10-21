@@ -2182,7 +2182,9 @@
             // Datums-Validierung: anliefertermin muss in der Zukunft liegen
             const heute = new Date();
             heute.setHours(0, 0, 0, 0);
-            const anlieferDate = new Date(anfrage.anliefertermin);
+            // CRITICAL FIX: Nutze KVA-START wenn verfügbar (das ist der echte Beginn der Arbeiten!)
+            const startDatum = anfrage.kva?.termine?.start || anfrage.anliefertermin;
+            const anlieferDate = new Date(startDatum);
             anlieferDate.setHours(0, 0, 0, 0);
 
             if (anlieferDate < heute) {
@@ -2212,12 +2214,23 @@
                     beauftragtVon: anfrage.partnerEmail || anfrage.partnerName || 'Partner'
                 };
 
-                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen
+                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vor START, Wochenenden berücksichtigen)
                 let abholtermin = null;
                 if (anfrage.abholserviceGewuenscht) {
-                    const abholDate = new Date(anlieferDate);
-                    abholDate.setDate(anlieferDate.getDate() - 1);
-                    abholtermin = abholDate.toISOString().split('T')[0];
+                    const abhol = new Date(startDatum);
+                    abhol.setDate(abhol.getDate() - 1);
+
+                    // Wenn Samstag (6) → Gehe zu Freitag
+                    if (abhol.getDay() === 6) {
+                        abhol.setDate(abhol.getDate() - 1);
+                    }
+
+                    // Wenn Sonntag (0) → Gehe zu Freitag (2 Tage zurück)
+                    if (abhol.getDay() === 0) {
+                        abhol.setDate(abhol.getDate() - 2);
+                    }
+
+                    abholtermin = abhol.toISOString().split('T')[0];
                     updateData.abholtermin = abholtermin;
                 }
 
@@ -2360,6 +2373,20 @@
                     }
                 } else {
                     console.log('ℹ️ Keine Fotos vorhanden');
+                }
+
+                // ✅ FIX: fahrzeugAngelegt Flag setzen (verhindert doppelte Erstellung in admin-anfragen.html!)
+                console.log('🏷️ Setze fahrzeugAngelegt Flag...');
+                try {
+                    await db.collection('partnerAnfragen').doc(anfrageId).update({
+                        fahrzeugAngelegt: true,
+                        fahrzeugAngelegtAm: new Date().toISOString(),
+                        fahrzeugId: fahrzeugData.id  // Verknüpfung zum Fahrzeug
+                    });
+                    console.log('✅ fahrzeugAngelegt Flag gesetzt → Verhindert doppelte Erstellung in Admin-Portal');
+                } catch (flagError) {
+                    console.error('❌ Konnte fahrzeugAngelegt Flag nicht setzen:', flagError);
+                    console.warn('⚠️ WARNUNG: Admin könnte Fahrzeug nochmal anlegen!');
                 }
 
                 console.log('✅ Fahrzeug erfolgreich erstellt:', fahrzeugData.id);
