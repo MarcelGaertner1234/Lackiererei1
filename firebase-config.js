@@ -56,13 +56,13 @@ console.log('  ✅ Target:', useEmulator ? 'EMULATORS (localhost:8080/9199)' : '
 
 // ✅ Firebase Credentials aus Git History wiederhergestellt (RUN #45)
 const firebaseConfig = {
-  apiKey: "AIzaSyD-ulIZd6GvNb3rVGQu44QtXt-zeeva3Kg",
+  apiKey: "AIzaSyDuiIZdBGvNb3rYGOOw44QIxt-zesya3Kg",
   authDomain: "auto-lackierzentrum-mosbach.firebaseapp.com",
   projectId: "auto-lackierzentrum-mosbach",
   storageBucket: "auto-lackierzentrum-mosbach.firebasestorage.app",
   messagingSenderId: "298750297417",
-  appId: "1:298750297417:web:16a0d14d3bb5d9bf83c698",
-  measurementId: "G-9VZE8QXR38"
+  appId: "1:298750297417:web:16a9d14d3bb5d9bf83c698",
+  measurementId: "G-9VZEB0XR38"
 };
 
 // Initialize Firebase (wrapped in DOMContentLoaded to ensure SDK loaded)
