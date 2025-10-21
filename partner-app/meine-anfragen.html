@@ -4025,7 +4025,9 @@
             // Datums-Validierung: anliefertermin muss in der Zukunft liegen
             const heute = new Date();
             heute.setHours(0, 0, 0, 0);
-            const anlieferDate = new Date(anfrage.anliefertermin);
+            // CRITICAL FIX: Nutze KVA-START wenn verfügbar (das ist der echte Beginn der Arbeiten!)
+            const startDatum = anfrage.kva?.termine?.start || anfrage.anliefertermin;
+            const anlieferDate = new Date(startDatum);
             anlieferDate.setHours(0, 0, 0, 0);
 
             if (anlieferDate < heute) {
@@ -4076,14 +4078,13 @@
                     beauftragtVon: partner?.email || partner?.name || partner?.id || 'Unbekannt'
                 };
 
-                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vorher, Wochenenden berücksichtigen)
+                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vorher)
                 let abholtermin = null;
                 if (anfrage.abholserviceGewuenscht) {
-                    const abholDate = berechneAbholDatum(anliefertermin);
-                    if (abholDate) {
-                        abholtermin = abholDate.toISOString().split('T')[0];
-                        updateData.abholtermin = abholtermin;
-                    }
+                    const abholDate = new Date(anlieferDate);
+                    abholDate.setDate(anlieferDate.getDate() - 1);
+                    abholtermin = abholDate.toISOString().split('T')[0];
+                    updateData.abholtermin = abholtermin;
                 }
 
                 // 3. Kunden registrieren (NEU! - Mit vollen Daten)
