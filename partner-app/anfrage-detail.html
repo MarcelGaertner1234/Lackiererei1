@@ -546,7 +546,7 @@
         <img id="lightboxImg" src="" alt="Foto">
     </div>
 
-    <script src="../firebase-config.js"></script>
+    <script src="../firebase-config.js?v=20251021-no-double-vehicle"></script>
     <script>
         let anfrage = null;
         let unsubscribe = null; // Firebase Listener
@@ -2161,11 +2161,15 @@
                 return;
             }
 
-            // KRITISCHER FIX: Erlaube sowohl "kva_gesendet" ALS AUCH "beauftragt"
-            // Grund: updateVariante() setzt Status auf "beauftragt" wenn Partner Variante wählt
-            // Beide Stati bedeuten: Fahrzeug wurde noch NICHT angelegt
-            if (anfrage.status !== 'kva_gesendet' && anfrage.status !== 'beauftragt') {
-                alert('Diese Anfrage kann nicht angenommen werden.\\n\\nNur Anfragen mit Status "Angebot erstellt" können angenommen werden.');
+            // ✅ FIX: Nur "kva_gesendet" erlauben!
+            // Status "beauftragt" bedeutet: Fahrzeug wurde BEREITS angelegt (in meine-anfragen.html)
+            // Wiederholtes Annehmen würde doppeltes Fahrzeug erstellen!
+            if (anfrage.status !== 'kva_gesendet') {
+                if (anfrage.status === 'beauftragt') {
+                    alert('✅ Diese Anfrage wurde bereits angenommen!\\n\\nDas Fahrzeug befindet sich bereits im Produktionsprozess (Kanban).\\n\\nStatus: Beauftragt');
+                } else {
+                    alert('Diese Anfrage kann nicht angenommen werden.\\n\\nNur Anfragen mit Status "Angebot erstellt" können angenommen werden.');
+                }
                 return;
             }
 
@@ -2281,12 +2285,16 @@
                         const currentStatus = anfrageDoc.data().status;
                         console.log(`   🔍 Status-Check: "${currentStatus}"`);
 
-                        // KRITISCHER FIX: Erlaube sowohl "kva_gesendet" ALS AUCH "beauftragt"
-                        // Grund: updateVariante() setzt Status auf "beauftragt" wenn Partner Variante wählt
-                        // Beide Stati bedeuten: Fahrzeug wurde noch NICHT angelegt
-                        if (currentStatus !== 'kva_gesendet' && currentStatus !== 'beauftragt') {
-                            console.error(`❌ OPTIMISTIC LOCKING FAILED: Status ist "${currentStatus}"`);
-                            throw new Error(`Diese Anfrage wurde bereits bearbeitet (Status: "${currentStatus}")!\\n\\nBitte aktualisieren Sie die Seite (F5).`);
+                        // ✅ FIX: NUR "kva_gesendet" erlauben!
+                        // Status "beauftragt" bedeutet: Fahrzeug wurde bereits angelegt
+                        // Wiederholtes Annehmen würde doppeltes Fahrzeug erstellen!
+                        if (currentStatus !== 'kva_gesendet') {
+                            console.error(`❌ OPTIMISTIC LOCKING FAILED: Status ist "${currentStatus}" (nicht "kva_gesendet")`);
+                            if (currentStatus === 'beauftragt') {
+                                throw new Error(`✅ Diese Anfrage wurde bereits angenommen!\\n\\nDas Fahrzeug befindet sich bereits im Produktionsprozess.\\n\\nBitte aktualisieren Sie die Seite (F5).`);
+                            } else {
+                                throw new Error(`Diese Anfrage wurde bereits bearbeitet (Status: "${currentStatus}")!\\n\\nBitte aktualisieren Sie die Seite (F5).`);
+                            }
                         }
 
                         console.log('   ✅ Status-Check OK: Anfrage kann verarbeitet werden');
