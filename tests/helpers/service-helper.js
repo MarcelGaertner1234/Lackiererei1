@@ -159,20 +159,29 @@ async function createPartnerRequest(page, serviceTyp, data) {
   const { waitForFirebaseReady } = require('./firebase-helper');
   await waitForFirebaseReady(page);
 
-  // Fülle Formular aus
-  await page.fill('input[name="partnername"]', data.partnerName);
-  await page.fill('input[name="partneremail"]', data.partnerEmail);
-  await page.fill('input[name="kennzeichen"]', data.kennzeichen);
-  await page.fill('input[name="marke"]', data.marke);
-  await page.fill('input[name="modell"]', data.modell);
-  await page.fill('textarea[name="schadenBeschreibung"]', data.schadenBeschreibung || 'E2E Test Beschreibung');
+  // ✅ FIX: Partner ist bereits eingeloggt - keine partnername/email Felder!
+  // Partner-Daten werden automatisch aus Session geladen (partner-session.js)
+
+  // Fülle Formular aus (ID-Selektoren statt name-Selektoren!)
+  await page.fill('input#kennzeichen', data.kennzeichen);
+  await page.selectOption('select#marke', data.marke);
+  await page.fill('input#modell', data.modell);
+  await page.fill('textarea#schadenBeschreibung', data.schadenBeschreibung || 'E2E Test Beschreibung');
+
+  // Optional: Baujahr & Kilometerstand
+  if (data.baujahr) {
+    await page.fill('input#baujahr', data.baujahr.toString());
+  }
+  if (data.kilometerstand) {
+    await page.fill('input#kilometerstand', data.kilometerstand.toString());
+  }
 
   // Service-spezifische Felder (wenn vorhanden)
   if (serviceTyp === 'reifen' && data.reifengroesse) {
-    await page.fill('input[name="reifengroesse"]', data.reifengroesse);
+    await page.fill('input#reifengroesse', data.reifengroesse);
   }
   if (serviceTyp === 'tuev' && data.tuevart) {
-    await page.selectOption('select[name="tuevart"]', data.tuevart);
+    await page.selectOption('select#tuevart', data.tuevart);
   }
 
   // Formular absenden
