@@ -258,91 +258,101 @@ async function createPartnerRequest(page, serviceTyp, data) {
     console.log(`📊 Kilometerstand ausgefüllt: ${kmWert}`);
   }
 
-  // Weiter zu Schritt 3
-  await page.click('button:has-text("Weiter")');
-  await page.waitForTimeout(500);
+  // ✅ NEUE STRATEGIE: Navigiere durch ALLE Wizard-Steps bis zum Absenden-Button
+  // Fülle dabei alle sichtbaren Felder dynamisch aus
+  console.log('🎯 Navigiere durch Wizard (Steps 3-9) bis zum Absenden-Button...');
 
-  // SCHRITT 3-6: Abhängig vom Service-Typ (überspringen für jetzt)
-  console.log('⏭️ Wizard Steps 3-6: Navigation (skip for now)');
+  // Maximal 20 Versuche (9 Steps + Reserve für Wiederholungen)
+  let stepCount = 3; // Wir sind jetzt auf Step 3
+  for (let i = 0; i < 20; i++) {
+    console.log(`\n🔄 Wizard Loop Iteration ${i + 1} (erwarteter Step: ${stepCount})`);
 
-  // Service-spezifische Felder werden später gefüllt
-  // Für jetzt: Durchklicken bis zum Schaden-Beschreibung Feld
+    // Prüfe welcher Button sichtbar ist
+    const weiterVisible = await page.locator('button:has-text("Weiter")').isVisible().catch(() => false);
+    const absendenVisible = await page.locator('button:has-text("Absenden"), button[type="submit"]').isVisible().catch(() => false);
 
-  // SCHRITT 4 oder später: Schadensbeschreibung / Anmerkungen
-  // Suche nach dem Textarea-Feld (kann in verschiedenen Steps sein)
-  const schadenBeschreibungVisible = await page.locator('textarea#schadenBeschreibung').isVisible().catch(() => false);
-
-  if (schadenBeschreibungVisible) {
-    console.log('📝 Fülle Schadensbeschreibung aus');
-    await page.fill('textarea#schadenBeschreibung', data.schadenBeschreibung || 'E2E Test Beschreibung');
-  }
-
-  // Service-spezifische Felder (wenn vorhanden und sichtbar)
-  if (serviceTyp === 'reifen' && data.reifengroesse) {
-    const reifenFeldVisible = await page.locator('input#reifengroesse').isVisible().catch(() => false);
-    if (reifenFeldVisible) {
-      await page.fill('input#reifengroesse', data.reifengroesse);
-    }
-  }
-  if (serviceTyp === 'tuev' && data.tuevart) {
-    const tuevFeldVisible = await page.locator('select#tuevart').isVisible().catch(() => false);
-    if (tuevFeldVisible) {
-      await page.selectOption('select#tuevart', data.tuevart);
-    }
-  }
-
-  // Navigiere durch restliche Steps bis zum Submit
-  console.log('🎯 Navigiere zum letzten Schritt (Zusammenfassung)');
-
-  // Klicke "Weiter" bis wir beim Submit-Button sind
-  // Maximal 15 Versuche (bis zu 10 Steps + Reserve)
-  for (let i = 0; i < 15; i++) {
-    const weiterButton = await page.locator('button:has-text("Weiter")').isVisible().catch(() => false);
-    const submitButton = await page.locator('button:has-text("Absenden"), button[type="submit"]').isVisible().catch(() => false);
-
-    if (submitButton) {
-      console.log('✅ Submit-Button gefunden!');
+    // SUCCESS: Absenden-Button gefunden!
+    if (absendenVisible) {
+      console.log('✅ ABSENDEN-Button gefunden! Wizard-Navigation abgeschlossen.');
       break;
     }
 
-    if (weiterButton) {
-      // ✅ WICHTIG: Prüfe ob aktueller Schritt ein Foto-Pflichtfeld hat!
-      const photoInputVisible = await page.locator('input[type="file"]#photoInput, input#photoInput').isVisible().catch(() => false);
-
-      if (photoInputVisible) {
-        console.log('📸 Foto-Pflichtfeld gefunden - Lade Mock-Foto hoch');
-
-        // Upload Mock-Foto (gleiche Logik wie Schritt 1)
-        await page.evaluate((imageData) => {
-          const byteString = atob(imageData.split(',')[1]);
-          const mimeString = imageData.split(',')[0].split(':')[1].split(';')[0];
-          const ab = new ArrayBuffer(byteString.length);
-          const ia = new Uint8Array(ab);
-          for (let i = 0; i < byteString.length; i++) {
-            ia[i] = byteString.charCodeAt(i);
-          }
-          const blob = new Blob([ab], { type: mimeString });
-          const file = new File([blob], 'test-photo-' + Date.now() + '.png', { type: 'image/png' });
-
-          const photoInput = document.getElementById('photoInput') || document.querySelector('input[type="file"]');
-          if (photoInput) {
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(file);
-            photoInput.files = dataTransfer.files;
-            const event = new Event('change', { bubbles: true });
-            photoInput.dispatchEvent(event);
-          }
-        }, dummyImageBase64);
-
-        await page.waitForTimeout(1000); // Warte auf Foto-Verarbeitung
+    // Wenn kein Weiter-Button mehr: Loop beenden
+    if (!weiterVisible) {
+      console.log('⚠️ Kein Weiter-Button gefunden - prüfe ob Absenden-Button jetzt verfügbar ist...');
+      await page.waitForTimeout(1000);
+      const absendenNow = await page.locator('button:has-text("Absenden"), button[type="submit"]').isVisible().catch(() => false);
+      if (absendenNow) {
+        console.log('✅ Absenden-Button erschienen nach Wartezeit!');
+        break;
       }
-
-      await page.click('button:has-text("Weiter")');
-      await page.waitForTimeout(500);
-    } else {
-      console.log('⚠️ Kein Weiter-Button mehr gefunden');
+      console.log('❌ Weder Weiter noch Absenden gefunden - Loop abbrechen');
       break;
     }
+
+    // DYNAMISCHES FELD-AUSFÜLLEN: Prüfe welche Felder sichtbar sind und fülle sie aus
+
+    // 1. Foto-Upload (wenn vorhanden)
+    const photoInputVisible = await page.locator('input[type="file"]#photoInput, input#photoInput').isVisible().catch(() => false);
+    if (photoInputVisible) {
+      console.log('📸 Foto-Pflichtfeld gefunden - Lade Mock-Foto hoch');
+      await page.evaluate((imageData) => {
+        const byteString = atob(imageData.split(',')[1]);
+        const mimeString = imageData.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const file = new File([blob], 'test-photo-' + Date.now() + '.png', { type: 'image/png' });
+        const photoInput = document.getElementById('photoInput') || document.querySelector('input[type="file"]');
+        if (photoInput) {
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          photoInput.files = dataTransfer.files;
+          const event = new Event('change', { bubbles: true });
+          photoInput.dispatchEvent(event);
+        }
+      }, dummyImageBase64);
+      await page.waitForTimeout(1000);
+    }
+
+    // 2. VIN-Nummer (Step 3: Identifikation)
+    const vinVisible = await page.locator('input#vinNummer, input[placeholder*="VIN"]').isVisible().catch(() => false);
+    if (vinVisible) {
+      console.log('🔑 VIN-Nummer Feld gefunden - fülle aus');
+      await page.fill('input#vinNummer, input[placeholder*="VIN"]', 'WVWZZZ1JZXW123456');
+    }
+
+    // 3. Schadensbeschreibung (Step 4: Beschreibung)
+    const schadenVisible = await page.locator('textarea#schadenBeschreibung').isVisible().catch(() => false);
+    if (schadenVisible) {
+      console.log('📝 Schadensbeschreibung Feld gefunden - fülle aus');
+      await page.fill('textarea#schadenBeschreibung', data.schadenBeschreibung || 'E2E Test Beschreibung');
+    }
+
+    // 4. Service-spezifische Felder
+    if (serviceTyp === 'reifen' && data.reifengroesse) {
+      const reifenVisible = await page.locator('input#reifengroesse').isVisible().catch(() => false);
+      if (reifenVisible) {
+        console.log('🚗 Reifengröße Feld gefunden - fülle aus');
+        await page.fill('input#reifengroesse', data.reifengroesse);
+      }
+    }
+    if (serviceTyp === 'tuev' && data.tuevart) {
+      const tuevVisible = await page.locator('select#tuevart').isVisible().catch(() => false);
+      if (tuevVisible) {
+        console.log('✅ TÜV-Art Feld gefunden - fülle aus');
+        await page.selectOption('select#tuevart', data.tuevart);
+      }
+    }
+
+    // Klicke "Weiter" zum nächsten Step
+    console.log(`➡️ Klicke "Weiter" zu Step ${stepCount + 1}`);
+    await page.click('button:has-text("Weiter")');
+    await page.waitForTimeout(800); // Etwas mehr Zeit für Step-Transition
+    stepCount++;
   }
 
   // Formular absenden
