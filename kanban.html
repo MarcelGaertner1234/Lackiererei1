@@ -1167,15 +1167,75 @@
         }
 
         // Prozess wechseln
-        function changeProcess() {
-            currentProcess = document.getElementById('processSelect').value;
-            console.log('🔄 Prozess gewechselt:', currentProcess);
+        async function changeProcess() {
+            const newProcess = document.getElementById('processSelect').value;
+            console.log('🔄 Prozess gewechselt:', currentProcess, '→', newProcess);
             console.log('📊 Fahrzeuge gesamt:', allFahrzeuge.length);
             console.log('📋 ServiceTyp-Verteilung:', allFahrzeuge.reduce((acc, f) => {
                 const typ = f.serviceTyp || 'UNDEFINED';
                 acc[typ] = (acc[typ] || 0) + 1;
                 return acc;
             }, {}));
+
+            // 🆕 BUG #10 FIX: Auto-Korrektur beim Zurück-Wechseln zu Service-Tab
+            if (newProcess !== 'alle') {
+                console.log('🔍 Auto-Korrektur Check: Prüfe ob Fahrzeuge ungültige Stati haben...');
+
+                // Map process key to serviceTyp (z.B. 'lackier' → 'lackierung')
+                const serviceTypMap = {
+                    'lackier': 'lackierung',
+                    'reifen': 'reifen',
+                    'mechanik': 'mechanik',
+                    'pflege': 'pflege',
+                    'tuev': 'tuev',
+                    'versicherung': 'versicherung'
+                };
+                const serviceTyp = serviceTypMap[newProcess];
+
+                if (serviceTyp) {
+                    const validStatuses = getValidStatusesForService(serviceTyp);
+                    let correctionCount = 0;
+
+                    // Prüfe alle Fahrzeuge dieses Service-Typs
+                    for (const fahrzeug of allFahrzeuge) {
+                        const fahrzeugServiceTyp = fahrzeug.serviceTyp || 'lackierung';
+
+                        if (fahrzeugServiceTyp === serviceTyp) {
+                            const fahrzeugStatus = fahrzeug.prozessStatus || 'angenommen';
+
+                            // Check: Ist Status gültig für diesen Service?
+                            if (!validStatuses.includes(fahrzeugStatus)) {
+                                console.warn(`⚠️ Auto-Korrektur: ${fahrzeug.kennzeichen} hat ungültigen Status "${fahrzeugStatus}" für ${serviceTyp}`);
+
+                                // Auto-Korrektur: Nächster gültiger Status
+                                const correctedStatus = getNextValidStatus(serviceTyp, fahrzeugStatus);
+                                console.log(`🔧 Korrigiere: "${fahrzeugStatus}" → "${correctedStatus}"`);
+
+                                // Update in Firestore
+                                if (firebaseInitialized && firebaseApp) {
+                                    try {
+                                        await directStatusUpdate(fahrzeug.id, correctedStatus);
+                                        correctionCount++;
+                                    } catch (error) {
+                                        console.error(`❌ Fehler bei Auto-Korrektur für ${fahrzeug.kennzeichen}:`, error);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (correctionCount > 0) {
+                        console.log(`✅ Auto-Korrektur abgeschlossen: ${correctionCount} Fahrzeuge korrigiert`);
+                        alert(`ℹ️ Auto-Korrektur durchgeführt!\n\n` +
+                              `${correctionCount} Fahrzeug(e) hatten ungültige Stati für "${processDefinitions[newProcess].name}".\n` +
+                              `Stati wurden automatisch korrigiert.`);
+                    } else {
+                        console.log('✅ Keine Korrektur nötig - alle Stati sind gültig');
+                    }
+                }
+            }
+
+            currentProcess = newProcess;
             renderKanbanBoard();
         }
 
@@ -1242,18 +1302,30 @@
 
                     // Wenn currentProcess 'alle', alle Services anzeigen
                     if (currentProcess === 'alle') {
-                        // Mapping für vereinheitlichte Spalten
-                        // Verschiedene Prozess-Status auf Standard-Spalten mappen
+                        // 🆕 BUG #10 FIX: Mapping für vereinheitlichte Spalten
+                        // WICHTIG: Zeige ALLE Fahrzeuge, auch mit service-spezifischen Stati!
+                        // Mapping: Verschiedene Prozess-Status auf Standard-Spalten mappen
                         if (status === 'angenommen') {
                             return ['angenommen', 'neu'].includes(fahrzeugStatus);
                         } else if (status === 'terminiert') {
                             // NEU: Terminiert-Spalte zeigt ALLE terminierten Fahrzeuge (service-unabhängig)
                             return fahrzeugStatus === 'terminiert';
+                        } else if (status === 'vorbereitung') {
+                            // ✅ BUG #10 FIX: Zeige ALLE Vorbereitungs-Stati (nur Lackierung hat "vorbereitung")
+                            // ABER: In "Alle Prozesse" wird diese Spalte angezeigt!
+                            return fahrzeugStatus === 'vorbereitung';
                         } else if (status === 'in_arbeit') {
-                            return ['in_arbeit', 'lackierung', 'trocknung', 'montage', 'wuchten', 'reparatur', 'aufbereitung', 'pruefung'].includes(fahrzeugStatus);
+                            // ✅ BUG #10 FIX: Erweitert um ALLE service-spezifischen Arbeitsschritte!
+                            return ['in_arbeit', 'lackierung', 'trocknung', 'montage', 'wuchten', 'reparatur',
+                                    'aufbereitung', 'pruefung', 'diagnose', 'bestellung', 'angekommen', 'termin',
+                                    'termin_gebucht', 'gutachten', 'freigabe', 'angebot', 'beauftragt', 'test'].includes(fahrzeugStatus);
+                        } else if (status === 'qualitaetskontrolle') {
+                            // ✅ BUG #10 FIX: Zeige ALLE Qualitäts-Stati
+                            return ['qualitaetskontrolle', 'qualitaet'].includes(fahrzeugStatus);
                         } else if (status === 'bereit') {
                             return ['bereit', 'fertig', 'abholbereit'].includes(fahrzeugStatus);
                         } else {
+                            // ✅ BUG #10 FIX: Alle anderen Stati (auch ungültige!) direkt matchen
                             return fahrzeugStatus === status;
                         }
                     } else {
@@ -1543,6 +1615,38 @@
                     const fahrzeugId = e.dataTransfer.getData('text/plain');
                     const newStatus = column.closest('.kanban-column').dataset.status;
 
+                    // 🆕 BUG #10 FIX: Auto-Tab-Wechsel wenn Status ungültig für aktuellen Service
+                    const fahrzeug = allFahrzeuge.find(f => f.id == fahrzeugId);
+                    if (fahrzeug && currentProcess !== 'alle') {
+                        const serviceTyp = fahrzeug.serviceTyp || 'lackierung';
+                        const validStatuses = getValidStatusesForService(serviceTyp);
+
+                        // Check: Ist newStatus gültig für diesen Service?
+                        if (!validStatuses.includes(newStatus)) {
+                            console.warn(`⚠️ Status "${newStatus}" ist NICHT gültig für Service "${serviceTyp}"`);
+
+                            // Auto-Tab-Wechsel: Finde richtigen Service für diesen Status
+                            const correctService = findServiceForStatus(newStatus);
+
+                            if (correctService) {
+                                console.log(`🔄 Auto-Tab-Wechsel: ${currentProcess} → ${correctService}`);
+
+                                // Tab wechseln
+                                currentProcess = correctService;
+                                document.getElementById('processSelect').value = correctService;
+
+                                // Notification anzeigen
+                                alert(`ℹ️ Tab gewechselt zu "${processDefinitions[correctService].name}"\n\n` +
+                                      `Grund: Status "${newStatus}" gehört zu diesem Service-Workflow.`);
+
+                                // Board neu rendern (zeigt jetzt richtigen Service-Tab)
+                                renderKanbanBoard();
+                            } else {
+                                console.log(`ℹ️ Status "${newStatus}" ist universal → kein Tab-Wechsel nötig`);
+                            }
+                        }
+                    }
+
                     await updateFahrzeugStatus(fahrzeugId, newStatus);
                 });
             });
@@ -1569,6 +1673,73 @@
             // 5. Alle Zwischen-Prozess-Status → in_arbeit
             // (lackierung, trocknung, polierung, montage, wuchten, reparatur, aufbereitung, pruefung, etc.)
             return 'in_arbeit';
+        }
+
+        // 🆕 BUG #10 FIX: Helper-Funktionen für Service-Workflow Validation
+
+        // 1. Get valid statuses for service
+        function getValidStatusesForService(serviceTyp) {
+            // Map serviceTyp to processDefinition key
+            const serviceKey = {
+                'lackierung': 'lackier',
+                'reifen': 'reifen',
+                'mechanik': 'mechanik',
+                'pflege': 'pflege',
+                'tuev': 'tuev',
+                'versicherung': 'versicherung'
+            }[serviceTyp];
+
+            if (!serviceKey || !processDefinitions[serviceKey]) {
+                console.warn(`⚠️ Unbekannter Service-Typ: ${serviceTyp}, fallback auf Lackierung`);
+                return processDefinitions['lackier'].steps.map(s => s.id);
+            }
+
+            return processDefinitions[serviceKey].steps.map(s => s.id);
+        }
+
+        // 2. Find service for status (returns processDefinition key like 'lackier', 'reifen', etc.)
+        function findServiceForStatus(status) {
+            // Universal statuses that exist in ALL services
+            const universalStatuses = ['neu', 'angenommen', 'terminiert', 'bereit', 'fertig', 'abgeschlossen'];
+
+            if (universalStatuses.includes(status)) {
+                return null; // Status ist universal, kein spezifischer Service
+            }
+
+            // Service-specific statuses
+            const serviceSpecificStatuses = {
+                'lackier': ['vorbereitung', 'lackierung', 'trocknung', 'qualitaetskontrolle'],
+                'reifen': ['bestellung', 'angekommen', 'montage', 'wuchten'],
+                'mechanik': ['diagnose', 'angebot', 'beauftragt', 'reparatur', 'test'],
+                'pflege': ['termin', 'aufbereitung', 'qualitaet'],
+                'tuev': ['termin_gebucht', 'pruefung', 'abholbereit'],
+                'versicherung': ['gutachten', 'freigabe', 'reparatur', 'qualitaet']
+            };
+
+            for (const [service, statuses] of Object.entries(serviceSpecificStatuses)) {
+                if (statuses.includes(status)) {
+                    return service; // z.B. 'lackier', 'reifen'
+                }
+            }
+
+            return null; // Status nicht gefunden
+        }
+
+        // 3. Get next valid status (Auto-Korrektur Fallback-Chain)
+        function getNextValidStatus(serviceTyp, currentStatus) {
+            const validStatuses = getValidStatusesForService(serviceTyp);
+
+            // Fallback-Chain:
+            // 1. 'terminiert' (fast alle Services haben das)
+            // 2. 'angenommen' (alle haben das)
+            // 3. 'neu' (alle haben das)
+
+            if (validStatuses.includes('terminiert')) return 'terminiert';
+            if (validStatuses.includes('angenommen')) return 'angenommen';
+            if (validStatuses.includes('neu')) return 'neu';
+
+            // Final Fallback: Erster Status im Workflow
+            return validStatuses[0] || 'angenommen';
         }
 
         // Fahrzeug-Status aktualisieren
