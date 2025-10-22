@@ -153,7 +153,26 @@ async function createPartnerRequest(page, serviceTyp, data) {
     versicherung: 'versicherung-anfrage.html'
   };
 
+  // ✅ FIX #2: Partner Login-Session mocken (verhindert Redirect zu login.html)
   await page.goto(`/partner-app/${servicePages[serviceTyp]}`);
+
+  // Mock Partner Session in localStorage (BEFORE page fully loads)
+  await page.evaluate((partnerData) => {
+    localStorage.setItem('partner', JSON.stringify({
+      id: 'e2e-test-partner-' + Date.now(),
+      name: partnerData.name,
+      email: partnerData.email,
+      adresse: 'E2E Test Adresse, Teststraße 123, 74821 Mosbach',
+      telefon: '+49 6261 123456',
+      ansprechpartner: partnerData.name,
+      iban: 'DE89370400440532013000',
+      status: 'aktiv',
+      erstelltAm: Date.now()
+    }));
+  }, { name: data.partnerName, email: data.partnerEmail });
+
+  // Reload page to apply session
+  await page.reload();
 
   // Warte auf Firebase Initialisierung
   const { waitForFirebaseReady } = require('./firebase-helper');
