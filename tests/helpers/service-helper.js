@@ -359,12 +359,31 @@ async function createPartnerRequest(page, serviceTyp, data) {
     stepCount++;
   }
 
-  // Formular absenden
+  // ✅ FIX: Absenden-Button ist außerhalb des Viewports!
+  // Scrolle zum Button bevor wir klicken
   console.log('📤 Sende Formular ab...');
-  await page.click('button:has-text("Absenden"), button[type="submit"]').catch(async () => {
-    // Fallback: Wenn "Absenden" nicht gefunden, versuche generischen Submit
-    await page.click('button[type="submit"]');
-  });
+
+  // Warte kurz damit Summary vollständig geladen ist
+  await page.waitForTimeout(1000);
+
+  // Suche den Absenden-Button und scrolle zu ihm
+  const submitButton = page.locator('button:has-text("Absenden"), button[type="submit"]').first();
+
+  // Prüfe ob Button existiert
+  const buttonExists = await submitButton.count() > 0;
+  if (!buttonExists) {
+    console.error('❌ Absenden-Button nicht gefunden!');
+    throw new Error('Submit button not found after completing all wizard steps');
+  }
+
+  // Scrolle zum Button (macht ihn sichtbar)
+  await submitButton.scrollIntoViewIfNeeded();
+  console.log('📜 Zu Absenden-Button gescrollt');
+
+  await page.waitForTimeout(500);
+
+  // Klicke den Button
+  await submitButton.click();
 
   // Warte auf Success-Message
   await page.waitForSelector('.success-message, .alert-success', { timeout: 10000 });
