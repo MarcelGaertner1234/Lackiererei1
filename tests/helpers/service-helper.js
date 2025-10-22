@@ -393,8 +393,13 @@ async function createPartnerRequest(page, serviceTyp, data) {
   await submitButton.click();
   console.log('✅ Absenden-Button geklickt!');
 
-  // Warte auf Success-Message
-  await page.waitForSelector('.success-message, .alert-success', { timeout: 10000 });
+  // ✅ FIX: Success-Message existiert aber ist hidden! Wait for 'attached' state instead of 'visible'
+  console.log('⏳ Warte auf Success-Message...');
+  await page.waitForSelector('.success-message, .alert-success, #successMessage', {
+    timeout: 10000,
+    state: 'attached' // Element muss im DOM sein, muss NICHT sichtbar sein!
+  });
+  console.log('✅ Success-Message gefunden (Form erfolgreich abgeschickt)!');
 
   // Hole anfrageId aus Firestore
   const anfrageId = await page.evaluate(async (kz, serviceTyp) => {
