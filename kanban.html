@@ -1177,9 +1177,11 @@
                 return acc;
             }, {}));
 
-            // 🆕 BUG #10 FIX: Auto-Korrektur beim Zurück-Wechseln zu Service-Tab
-            if (newProcess !== 'alle') {
+            // 🆕 BUG #10 FIX + NEBENWIRKUNG FIX #3: Auto-Korrektur beim Zurück-Wechseln zu Service-Tab
+            // OPTIMIERUNG: Nur wenn von "Alle Prozesse" kommend (nicht bei jedem Tab-Wechsel!)
+            if (newProcess !== 'alle' && currentProcess === 'alle') {
                 console.log('🔍 Auto-Korrektur Check: Prüfe ob Fahrzeuge ungültige Stati haben...');
+                console.log('   (Trigger: Wechsel von "Alle Prozesse" zu Service-Tab)');
 
                 // Map process key to serviceTyp (z.B. 'lackier' → 'lackierung')
                 const serviceTypMap = {
@@ -1195,8 +1197,9 @@
                 if (serviceTyp) {
                     const validStatuses = getValidStatusesForService(serviceTyp);
                     let correctionCount = 0;
+                    const toCorrect = [];  // Sammle erst, dann update (Batch!)
 
-                    // Prüfe alle Fahrzeuge dieses Service-Typs
+                    // Prüfe ALLE Fahrzeuge dieses Service-Typs (Quick-Scan)
                     for (const fahrzeug of allFahrzeuge) {
                         const fahrzeugServiceTyp = fahrzeug.serviceTyp || 'lackierung';
 
@@ -1205,34 +1208,37 @@
 
                             // Check: Ist Status gültig für diesen Service?
                             if (!validStatuses.includes(fahrzeugStatus)) {
-                                console.warn(`⚠️ Auto-Korrektur: ${fahrzeug.kennzeichen} hat ungültigen Status "${fahrzeugStatus}" für ${serviceTyp}`);
-
-                                // Auto-Korrektur: Nächster gültiger Status
+                                console.warn(`⚠️ Auto-Korrektur nötig: ${fahrzeug.kennzeichen} "${fahrzeugStatus}" → ungültig für ${serviceTyp}`);
                                 const correctedStatus = getNextValidStatus(serviceTyp, fahrzeugStatus);
-                                console.log(`🔧 Korrigiere: "${fahrzeugStatus}" → "${correctedStatus}"`);
-
-                                // Update in Firestore
-                                if (firebaseInitialized && firebaseApp) {
-                                    try {
-                                        await directStatusUpdate(fahrzeug.id, correctedStatus);
-                                        correctionCount++;
-                                    } catch (error) {
-                                        console.error(`❌ Fehler bei Auto-Korrektur für ${fahrzeug.kennzeichen}:`, error);
-                                    }
-                                }
+                                toCorrect.push({ fahrzeug, oldStatus: fahrzeugStatus, newStatus: correctedStatus });
                             }
                         }
                     }
 
-                    if (correctionCount > 0) {
-                        console.log(`✅ Auto-Korrektur abgeschlossen: ${correctionCount} Fahrzeuge korrigiert`);
+                    // Batch-Update (falls nötig)
+                    if (toCorrect.length > 0 && firebaseInitialized && firebaseApp) {
+                        console.log(`🔧 Auto-Korrektur START: ${toCorrect.length} Fahrzeuge werden korrigiert...`);
+
+                        for (const { fahrzeug, oldStatus, newStatus } of toCorrect) {
+                            try {
+                                await directStatusUpdate(fahrzeug.id, newStatus);
+                                correctionCount++;
+                                console.log(`   ✅ ${fahrzeug.kennzeichen}: "${oldStatus}" → "${newStatus}"`);
+                            } catch (error) {
+                                console.error(`   ❌ Fehler bei ${fahrzeug.kennzeichen}:`, error);
+                            }
+                        }
+
+                        console.log(`✅ Auto-Korrektur FERTIG: ${correctionCount}/${toCorrect.length} Fahrzeuge korrigiert`);
                         alert(`ℹ️ Auto-Korrektur durchgeführt!\n\n` +
                               `${correctionCount} Fahrzeug(e) hatten ungültige Stati für "${processDefinitions[newProcess].name}".\n` +
                               `Stati wurden automatisch korrigiert.`);
-                    } else {
+                    } else if (toCorrect.length === 0) {
                         console.log('✅ Keine Korrektur nötig - alle Stati sind gültig');
                     }
                 }
+            } else if (newProcess !== 'alle' && currentProcess !== 'alle') {
+                console.log('ℹ️ Auto-Korrektur ÜBERSPRUNGEN (Tab-Wechsel zwischen Services)');
             }
 
             currentProcess = newProcess;
@@ -1315,10 +1321,12 @@
                             // ABER: In "Alle Prozesse" wird diese Spalte angezeigt!
                             return fahrzeugStatus === 'vorbereitung';
                         } else if (status === 'in_arbeit') {
-                            // ✅ BUG #10 FIX: Erweitert um ALLE service-spezifischen Arbeitsschritte!
+                            // ✅ BUG #10 FIX + NEBENWIRKUNG FIX #6: Erweitert um ALLE service-spezifischen Arbeitsschritte!
+                            // Vollständige Liste aller Arbeits-Stati aus processDefinitions:
                             return ['in_arbeit', 'lackierung', 'trocknung', 'montage', 'wuchten', 'reparatur',
                                     'aufbereitung', 'pruefung', 'diagnose', 'bestellung', 'angekommen', 'termin',
-                                    'termin_gebucht', 'gutachten', 'freigabe', 'angebot', 'beauftragt', 'test'].includes(fahrzeugStatus);
+                                    'termin_gebucht', 'gutachten', 'freigabe', 'angebot', 'beauftragt', 'test',
+                                    'qualitaet'].includes(fahrzeugStatus);  // ✅ FEHLTE: 'qualitaet' (Pflege + Versicherung!)
                         } else if (status === 'qualitaetskontrolle') {
                             // ✅ BUG #10 FIX: Zeige ALLE Qualitäts-Stati
                             return ['qualitaetskontrolle', 'qualitaet'].includes(fahrzeugStatus);
@@ -1618,12 +1626,12 @@
                     // 🆕 BUG #10 FIX: Auto-Tab-Wechsel wenn Status ungültig für aktuellen Service
                     const fahrzeug = allFahrzeuge.find(f => f.id == fahrzeugId);
                     if (fahrzeug && currentProcess !== 'alle') {
-                        const serviceTyp = fahrzeug.serviceTyp || 'lackierung';
-                        const validStatuses = getValidStatusesForService(serviceTyp);
+                        const currentServiceTyp = fahrzeug.serviceTyp || 'lackierung';
+                        const validStatuses = getValidStatusesForService(currentServiceTyp);
 
-                        // Check: Ist newStatus gültig für diesen Service?
+                        // Check: Ist newStatus gültig für aktuellen Service?
                         if (!validStatuses.includes(newStatus)) {
-                            console.warn(`⚠️ Status "${newStatus}" ist NICHT gültig für Service "${serviceTyp}"`);
+                            console.warn(`⚠️ Status "${newStatus}" ist NICHT gültig für Service "${currentServiceTyp}"`);
 
                             // Auto-Tab-Wechsel: Finde richtigen Service für diesen Status
                             const correctService = findServiceForStatus(newStatus);
@@ -1631,13 +1639,41 @@
                             if (correctService) {
                                 console.log(`🔄 Auto-Tab-Wechsel: ${currentProcess} → ${correctService}`);
 
+                                // 🆕 NEBENWIRKUNG FIX #2+7: serviceTyp MUSS geändert werden!
+                                // Map process key to serviceTyp
+                                const serviceTypMap = {
+                                    'lackier': 'lackierung',
+                                    'reifen': 'reifen',
+                                    'mechanik': 'mechanik',
+                                    'pflege': 'pflege',
+                                    'tuev': 'tuev',
+                                    'versicherung': 'versicherung'
+                                };
+                                const newServiceTyp = serviceTypMap[correctService];
+
+                                if (newServiceTyp && firebaseInitialized && firebaseApp) {
+                                    console.log(`🔧 Ändere serviceTyp: "${currentServiceTyp}" → "${newServiceTyp}"`);
+
+                                    // Update serviceTyp in Firestore (zusammen mit Status!)
+                                    const db = firebase.firestore();
+                                    await db.collection('fahrzeuge').doc(fahrzeugId).update({
+                                        serviceTyp: newServiceTyp,
+                                        _serviceTypGeaendertAm: new Date().toISOString(),
+                                        _alterServiceTyp: currentServiceTyp
+                                    });
+
+                                    // Update lokales Objekt
+                                    fahrzeug.serviceTyp = newServiceTyp;
+                                }
+
                                 // Tab wechseln
                                 currentProcess = correctService;
                                 document.getElementById('processSelect').value = correctService;
 
                                 // Notification anzeigen
                                 alert(`ℹ️ Tab gewechselt zu "${processDefinitions[correctService].name}"\n\n` +
-                                      `Grund: Status "${newStatus}" gehört zu diesem Service-Workflow.`);
+                                      `Grund: Status "${newStatus}" gehört zu diesem Service-Workflow.\n` +
+                                      `Service-Typ wurde automatisch geändert: ${currentServiceTyp} → ${newServiceTyp}`);
 
                                 // Board neu rendern (zeigt jetzt richtigen Service-Tab)
                                 renderKanbanBoard();
@@ -1706,15 +1742,21 @@
                 return null; // Status ist universal, kein spezifischer Service
             }
 
-            // Service-specific statuses
+            // 🆕 NEBENWIRKUNG FIX #5: Service-specific statuses (dedupliziert + Priorität)
+            // WICHTIG: Reihenfolge = Priorität bei Konflikten!
             const serviceSpecificStatuses = {
                 'lackier': ['vorbereitung', 'lackierung', 'trocknung', 'qualitaetskontrolle'],
                 'reifen': ['bestellung', 'angekommen', 'montage', 'wuchten'],
-                'mechanik': ['diagnose', 'angebot', 'beauftragt', 'reparatur', 'test'],
+                'mechanik': ['diagnose', 'angebot', 'beauftragt', 'test'],  // ❌ 'reparatur' entfernt (Konflikt mit Versicherung!)
                 'pflege': ['termin', 'aufbereitung', 'qualitaet'],
                 'tuev': ['termin_gebucht', 'pruefung', 'abholbereit'],
-                'versicherung': ['gutachten', 'freigabe', 'reparatur', 'qualitaet']
+                'versicherung': ['gutachten', 'freigabe', 'reparatur']  // ✅ 'reparatur' nur hier! (höchste Priorität)
+                // ❌ 'qualitaet' entfernt aus Versicherung (Konflikt mit Pflege!)
             };
+
+            // Spezial-Behandlung für konfliktreiche Stati:
+            // "reparatur" → Versicherung (höchste Priorität, da teurer/wichtiger)
+            // "qualitaet" → Pflege (höchste Priorität, da häufiger)
 
             for (const [service, statuses] of Object.entries(serviceSpecificStatuses)) {
                 if (statuses.includes(status)) {
