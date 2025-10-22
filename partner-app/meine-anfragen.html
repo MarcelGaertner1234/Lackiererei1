@@ -5186,14 +5186,32 @@
             let aktuelleStufe = null;
             let maxAb = 0;
 
+            console.log('\n🔍 ========== getCurrentRabattStufe() DEBUG ==========');
+            console.log(`   💰 Monatsumsatz: ${umsatzMonat} (${typeof umsatzMonat})`);
+
             // Finde die höchste erreichte Stufe
             Object.keys(rabattKonditionen).forEach(stufeKey => {
                 const stufe = rabattKonditionen[stufeKey];
-                if (stufe.ab <= umsatzMonat && stufe.ab > maxAb) {
-                    maxAb = stufe.ab;
-                    aktuelleStufe = { key: stufeKey, ...stufe };
+
+                // 🐛 BUG #14 FIX: Erzwinge numerischen Vergleich!
+                const stufeAb = Number(stufe.ab);  // String → Number conversion
+                const stufeRabatt = Number(stufe.rabatt);
+
+                console.log(`   📊 ${stufeKey}: ${stufeRabatt}% ab ${stufeAb}€ (ab type: ${typeof stufe.ab})`);
+                console.log(`      Vergleich: ${stufeAb} <= ${umsatzMonat} → ${stufeAb <= umsatzMonat}`);
+                console.log(`      Bedingung: ${stufeAb} > ${maxAb} → ${stufeAb > maxAb}`);
+
+                if (stufeAb <= umsatzMonat && stufeAb > maxAb) {
+                    console.log(`      ✅ ERREICHT! Neue aktuelle Stufe: ${stufeKey}`);
+                    maxAb = stufeAb;
+                    aktuelleStufe = { key: stufeKey, ...stufe, ab: stufeAb, rabatt: stufeRabatt };
+                } else {
+                    console.log(`      ❌ NICHT erreicht`);
                 }
             });
+
+            console.log(`   🎯 Resultat: ${aktuelleStufe ? aktuelleStufe.key + ' (' + aktuelleStufe.rabatt + '%)' : 'keine'}`);
+            console.log('===============================================\n');
 
             return aktuelleStufe;
         }
@@ -5207,13 +5225,28 @@
             let naechsteStufe = null;
             let minAb = Infinity;
 
+            console.log('\n🔍 ========== getNextRabattStufe() DEBUG ==========');
+            console.log(`   💰 Monatsumsatz: ${umsatzMonat} (${typeof umsatzMonat})`);
+
             Object.keys(rabattKonditionen).forEach(stufeKey => {
                 const stufe = rabattKonditionen[stufeKey];
-                if (stufe.ab > umsatzMonat && stufe.ab < minAb) {
-                    minAb = stufe.ab;
-                    naechsteStufe = { key: stufeKey, ...stufe };
+
+                // 🐛 BUG #14 FIX: Erzwinge numerischen Vergleich!
+                const stufeAb = Number(stufe.ab);
+                const stufeRabatt = Number(stufe.rabatt);
+
+                console.log(`   📊 ${stufeKey}: ${stufeRabatt}% ab ${stufeAb}€`);
+                console.log(`      Vergleich: ${stufeAb} > ${umsatzMonat} → ${stufeAb > umsatzMonat}`);
+
+                if (stufeAb > umsatzMonat && stufeAb < minAb) {
+                    console.log(`      ✅ Nächste Stufe gefunden: ${stufeKey}`);
+                    minAb = stufeAb;
+                    naechsteStufe = { key: stufeKey, ...stufe, ab: stufeAb, rabatt: stufeRabatt };
                 }
             });
+
+            console.log(`   🎯 Resultat: ${naechsteStufe ? naechsteStufe.key + ' (' + naechsteStufe.rabatt + '%)' : 'keine (höchste Stufe erreicht)'}`);
+            console.log('===============================================\n');
 
             return naechsteStufe;
         }
@@ -5552,17 +5585,27 @@
                     // Rabatt-Prozent
                     document.getElementById('rabattProzent').textContent = `${aktuelleStufe.rabatt}%`;
 
-                    // ✅ ERWEITERTE Ersparnis-Berechnung (Rabatt + Bonuses)
+                    // 🐛 BUG #14 FIX: Bonus aus aktueller Stufe anzeigen!
+                    const verfuegbarerBonus = Number(aktuelleStufe.einmalBonus) || 0;  // Bonus aus erreichter Stufe
+                    const ausgezahlterBonus = gesamtBonus;  // Bereits ausgezahlte Bonuses aus DB
+
+                    console.log('\n🎁 ========== BONUS-BERECHNUNG ==========');
+                    console.log(`   🎯 Aktuelle Stufe: ${aktuelleStufe.key}`);
+                    console.log(`   💰 Verfügbarer Bonus (Stufe): ${formatCurrency(verfuegbarerBonus)}`);
+                    console.log(`   ✅ Ausgezahlter Bonus (DB): ${formatCurrency(ausgezahlterBonus)}`);
+                    console.log('========================================\n');
+
+                    // ✅ ERWEITERTE Ersparnis-Berechnung (Rabatt + Verfügbarer Bonus)
                     const laufenderRabatt = calculateErsparnis(umsatzMonat, aktuelleStufe.rabatt);
-                    const gesamtErsparnis = laufenderRabatt + gesamtBonus;
+                    const gesamtErsparnis = laufenderRabatt + verfuegbarerBonus;
 
                     // Anzeigen
                     document.getElementById('ersparnisRabatt').textContent = formatCurrency(laufenderRabatt);
-                    document.getElementById('ersparnisBonus').textContent = formatCurrency(gesamtBonus);
+                    document.getElementById('ersparnisBonus').textContent = formatCurrency(verfuegbarerBonus);  // ⬅️ FIX: Zeige verfügbaren Bonus!
                     document.getElementById('ersparnisGesamt').textContent = formatCurrency(gesamtErsparnis);
 
                     console.log(`💰 Laufender Rabatt: ${formatCurrency(laufenderRabatt)}`);
-                    console.log(`🎁 Einmalige Bonuses: ${formatCurrency(gesamtBonus)}`);
+                    console.log(`🎁 Verfügbarer Bonus (angezeigt): ${formatCurrency(verfuegbarerBonus)}`);
                     console.log(`✨ Gesamt-Ersparnis: ${formatCurrency(gesamtErsparnis)}`);
 
                     // Fortschrittsbalken zur nächsten Stufe
@@ -5589,12 +5632,14 @@
                         document.getElementById('progressPercent').textContent = '100%';
                     }
                 } else {
-                    // Noch keine Rabatt-Stufe erreicht (aber Bonuses könnten existieren!)
+                    // Noch keine Rabatt-Stufe erreicht
                     rabattSection.style.display = 'block';
                     document.getElementById('rabattProzent').textContent = '0%';
                     document.getElementById('ersparnisRabatt').textContent = formatCurrency(0);
-                    document.getElementById('ersparnisBonus').textContent = formatCurrency(gesamtBonus);
-                    document.getElementById('ersparnisGesamt').textContent = formatCurrency(gesamtBonus);
+                    document.getElementById('ersparnisBonus').textContent = formatCurrency(0);  // 🐛 FIX: Kein Bonus ohne erreichte Stufe
+                    document.getElementById('ersparnisGesamt').textContent = formatCurrency(0);
+
+                    console.log('⚠️ Noch keine Rabatt-Stufe erreicht → Kein Rabatt, kein Bonus');
 
                     const ersteStufe = getNextRabattStufe(0, rabattKonditionen);
                     if (ersteStufe) {
