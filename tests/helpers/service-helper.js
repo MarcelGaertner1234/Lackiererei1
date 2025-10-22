@@ -241,12 +241,21 @@ async function createPartnerRequest(page, serviceTyp, data) {
   await page.selectOption('select#marke', data.marke);
   await page.fill('input#modell', data.modell);
 
-  // Optional: Baujahr & Kilometerstand
-  if (data.baujahr) {
-    await page.fill('input#baujahr', data.baujahr.toString());
+  // ✅ CRITICAL FIX: Baujahr ist PFLICHTFELD (mit * markiert)!
+  // Prüfe ob Feld vorhanden ist und fülle es aus
+  const baujahrVisible = await page.locator('input#baujahr, input[name="baujahr"]').isVisible().catch(() => false);
+  if (baujahrVisible) {
+    const baujahrWert = data.baujahr ? data.baujahr.toString() : '2020';
+    await page.fill('input#baujahr, input[name="baujahr"]', baujahrWert);
+    console.log(`📅 Baujahr ausgefüllt: ${baujahrWert}`);
   }
-  if (data.kilometerstand) {
-    await page.fill('input#kilometerstand', data.kilometerstand.toString());
+
+  // Kilometerstand ist optional
+  const kmVisible = await page.locator('input#kilometerstand, input[name="kilometerstand"]').isVisible().catch(() => false);
+  if (kmVisible) {
+    const kmWert = data.kilometerstand ? data.kilometerstand.toString() : '50000';
+    await page.fill('input#kilometerstand, input[name="kilometerstand"]', kmWert);
+    console.log(`📊 Kilometerstand ausgefüllt: ${kmWert}`);
   }
 
   // Weiter zu Schritt 3
