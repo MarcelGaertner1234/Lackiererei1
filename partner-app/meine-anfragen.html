@@ -4147,7 +4147,74 @@
                     // Trotzdem fortfahren - Fahrzeug ohne Kunden-Verknüpfung erstellen
                 }
 
-                // 4. Fahrzeug-Daten vorbereiten (NEUE PIPELINE mit Rabatt-Berechnung!)
+                // 4. DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert (CRITICAL!)
+                // Verhindert doppelte Fahrzeuge wenn Transaction beim Flag-Setting fehlschlägt
+                console.log('🔍 DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
+                let existingVehicle = null;
+
+                // Check 1: Auftragsnummer (wenn vorhanden)
+                if (anfrage.auftragsnummer) {
+                    try {
+                        existingVehicle = await db.collection('fahrzeuge')
+                            .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                            .limit(1)
+                            .get();
+                        console.log(`   📊 Check Auftragsnummer "${anfrage.auftragsnummer}": ${existingVehicle.size} Treffer`);
+                    } catch (error) {
+                        console.error('❌ Fehler bei Auftragsnummer-Check:', error);
+                    }
+                }
+
+                // Check 2: Kennzeichen (Fallback wenn Auftragsnummer nicht existiert oder keine Treffer)
+                if ((!existingVehicle || existingVehicle.empty) && anfrage.kennzeichen) {
+                    try {
+                        existingVehicle = await db.collection('fahrzeuge')
+                            .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                            .limit(1)
+                            .get();
+                        console.log(`   📊 Check Kennzeichen "${anfrage.kennzeichen}": ${existingVehicle.size} Treffer`);
+                    } catch (error) {
+                        console.error('❌ Fehler bei Kennzeichen-Check:', error);
+                    }
+                }
+
+                if (existingVehicle && !existingVehicle.empty) {
+                    const vehicle = existingVehicle.docs[0];
+                    console.error('❌ DUPLIKAT VERHINDERT! Fahrzeug existiert bereits:', vehicle.id);
+                    alert('⚠️ Fahrzeug wurde bereits angelegt!\n\n' +
+                        `📦 Fahrzeug-ID: ${vehicle.id}\n` +
+                        `🚗 Kennzeichen: ${vehicle.data().kennzeichen || 'k.A.'}\n` +
+                        `📅 Angelegt am: ${vehicle.data().datum ? new Date(vehicle.data().datum).toLocaleString('de-DE') : 'k.A.'}\n\n` +
+                        `DUPLIKAT VERHINDERT! Das Fahrzeug ist bereits im System.\n\n` +
+                        `Hinweis: Falls fahrzeugAngelegt Flag fehlt, wird es jetzt nachträglich gesetzt.`);
+
+                    // ✅ Nachträglich fahrzeugAngelegt Flag setzen (falls vergessen)
+                    if (!anfrage.fahrzeugAngelegt) {
+                        console.log('🔧 Setze fahrzeugAngelegt Flag nachträglich...');
+                        try {
+                            await db.collection('partnerAnfragen').doc(anfrageId).update({
+                                fahrzeugAngelegt: true,
+                                fahrzeugAngelegtAm: vehicle.data().datum || new Date().toISOString(),
+                                fahrzeugId: vehicle.id,
+                                fahrzeugKennzeichen: vehicle.data().kennzeichen
+                            });
+                            console.log('✅ Flag nachträglich gesetzt');
+                        } catch (flagError) {
+                            console.error('❌ Konnte Flag nicht setzen:', flagError);
+                        }
+                    }
+
+                    // Button wieder aktivieren + Transaction abbrechen
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = originalButtonText || '✅ Annehmen';
+                    }
+                    transactionRunning = false;
+                    return; // Abbruch - Fahrzeug existiert bereits!
+                }
+                console.log('✅ Kein Duplikat gefunden - Fahrzeug kann angelegt werden');
+
+                // 5. Fahrzeug-Daten vorbereiten (NEUE PIPELINE mit Rabatt-Berechnung!)
                 console.log('📋 Erstelle Fahrzeug-Dokument aus Partner-Anfrage...');
                 const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin, alleAnfragen);
                 if (kundeId) {
