@@ -1058,30 +1058,63 @@
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth() + 1;
 
-            // Lade alle Anfragen für diesen Partner im aktuellen Monat
+            console.log(`\n   🔍 ========== UMSATZ-BERECHNUNG für ${partnerId} ==========`);
+            console.log(`   📅 Aktuelles Datum: ${now.toLocaleDateString('de-DE')}`);
+            console.log(`   📅 Suche Anfragen für: Monat ${currentMonth}/${currentYear}`);
+
+            // Lade alle Anfragen für diesen Partner
             const anfragenSnapshot = await db.collection('anfragen')
                 .where('partnerId', '==', partnerId)
                 .get();
 
+            console.log(`   📊 Gefundene Anfragen (gesamt): ${anfragenSnapshot.size}`);
+
             let umsatzMonat = 0;
+            let countGezaehlt = 0;
+            let countIgnoriert = 0;
 
             anfragenSnapshot.docs.forEach(doc => {
                 const anfrage = doc.data();
                 const status = anfrage.status || anfrage.prozessStatus || 'beauftragt';
+                const anfrageId = doc.id;
+
+                console.log(`\n   📄 Anfrage: ${anfrageId}`);
+                console.log(`      Status: ${status}`);
 
                 // Nur Anfragen zählen die in Arbeit oder abgeschlossen sind
                 if (['beauftragt', 'in_arbeit', 'fertig', 'abgeschlossen'].includes(status)) {
                     const erstelltAm = anfrage.erstelltAm ? new Date(anfrage.erstelltAm) : null;
 
-                    if (erstelltAm &&
-                        erstelltAm.getFullYear() === currentYear &&
-                        (erstelltAm.getMonth() + 1) === currentMonth) {
+                    if (erstelltAm) {
+                        const anfrageYear = erstelltAm.getFullYear();
+                        const anfrageMonth = erstelltAm.getMonth() + 1;
+                        console.log(`      Erstellt am: ${erstelltAm.toLocaleDateString('de-DE')} (Monat: ${anfrageMonth}/${anfrageYear})`);
 
-                        const preis = Number(anfrage.finalPreis || anfrage.geschaetzterPreis || 0);
-                        umsatzMonat += preis;
+                        if (anfrageYear === currentYear && anfrageMonth === currentMonth) {
+                            const preis = Number(anfrage.finalPreis || anfrage.geschaetzterPreis || 0);
+                            console.log(`      Preis: ${preis}€`);
+                            console.log(`      ✅ GEZÄHLT!`);
+                            umsatzMonat += preis;
+                            countGezaehlt++;
+                        } else {
+                            console.log(`      ❌ IGNORIERT: Falscher Monat (${anfrageMonth}/${anfrageYear} ≠ ${currentMonth}/${currentYear})`);
+                            countIgnoriert++;
+                        }
+                    } else {
+                        console.log(`      ❌ IGNORIERT: Kein erstelltAm Datum!`);
+                        countIgnoriert++;
                     }
+                } else {
+                    console.log(`      ❌ IGNORIERT: Status "${status}" nicht zählbar`);
+                    countIgnoriert++;
                 }
             });
+
+            console.log(`\n   📊 ZUSAMMENFASSUNG:`);
+            console.log(`      Gezählte Anfragen: ${countGezaehlt}`);
+            console.log(`      Ignorierte Anfragen: ${countIgnoriert}`);
+            console.log(`      💰 MONATSUMSATZ: ${umsatzMonat.toFixed(2)}€`);
+            console.log(`   ================================================\n`);
 
             return umsatzMonat;
         }
