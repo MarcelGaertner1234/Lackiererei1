@@ -2143,7 +2143,7 @@
         </div>
     </div>
 
-    <script src="../firebase-config.js?v=20251021-bonus-retroactive"></script>
+    <script src="../firebase-config.js?v=20251022-bonus-auto-save"></script>
     <script>
         let partner = null;
         let alleAnfragen = [];
@@ -5310,6 +5310,96 @@
         }
 
         /**
+         * Speichert neu erreichte Bonuses automatisch in Firestore
+         *
+         * @param {Object} partner - Partner-Objekt mit ID, Name, rabattKonditionen
+         * @param {number} umsatzMonat - Aktueller Monatsumsatz
+         * @returns {Promise<number>} Anzahl gespeicherter Bonuses
+         */
+        async function saveBonusToFirestore(partner, umsatzMonat) {
+            if (!partner || !partner.id || !partner.rabattKonditionen) {
+                console.log('⚠️ saveBonusToFirestore: Ungültige Partner-Daten');
+                return 0;
+            }
+
+            const db = window.db || firebase.firestore();
+            let savedCount = 0;
+
+            console.log('\n💾 ========== BONUS-TO-FIRESTORE CHECK ==========');
+            console.log(`   Partner: ${partner.name} (${partner.id})`);
+            console.log(`   Monatsumsatz: ${umsatzMonat}€`);
+
+            // Prüfe JEDE Stufe einzeln
+            for (const stufeKey of Object.keys(partner.rabattKonditionen)) {
+                const stufe = partner.rabattKonditionen[stufeKey];
+                const stufeAb = Number(stufe.ab);
+                const stufeBonus = Number(stufe.einmalBonus) || 0;
+                const bonusErhalten = stufe.bonusErhalten === true;
+
+                console.log(`\n   📊 Prüfe ${stufeKey}: ${stufe.rabatt}% ab ${stufeAb}€ → Bonus: ${stufeBonus}€`);
+                console.log(`      bonusErhalten Flag: ${bonusErhalten}`);
+
+                // Bedingungen: Stufe erreicht UND Bonus noch nicht erhalten UND Bonus > 0
+                if (umsatzMonat >= stufeAb && !bonusErhalten && stufeBonus > 0) {
+                    console.log(`      ✅ BONUS VERFÜGBAR! Speichere in Firestore...`);
+
+                    try {
+                        // 1. Prüfe ob Bonus bereits in bonusAuszahlungen existiert
+                        const existingBonus = await db.collection('bonusAuszahlungen')
+                            .where('partnerId', '==', partner.id)
+                            .where('stufe', '==', stufeKey)
+                            .limit(1)
+                            .get();
+
+                        if (!existingBonus.empty) {
+                            console.log(`      ⏭️ Bonus bereits in Firestore vorhanden (ID: ${existingBonus.docs[0].id})`);
+                            continue;  // Nächste Stufe prüfen
+                        }
+
+                        // 2. Erstelle neuen Bonus-Eintrag
+                        const bonusData = {
+                            partnerId: partner.id,
+                            partnerName: partner.name || partner.email || partner.id,
+                            stufe: stufeKey,
+                            bonusBetrag: stufeBonus,
+                            umsatzBeimErreichen: umsatzMonat,
+                            erreichtAm: new Date().toISOString(),
+                            status: 'pending',  // Admin muss auszahlen!
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        };
+
+                        const bonusRef = await db.collection('bonusAuszahlungen').add(bonusData);
+                        console.log(`      ✅ Bonus in Firestore gespeichert! ID: ${bonusRef.id}`);
+
+                        // 3. Setze bonusErhalten Flag im Partner-Dokument
+                        await db.collection('partner').doc(partner.id).update({
+                            [`rabattKonditionen.${stufeKey}.bonusErhalten`]: true
+                        });
+                        console.log(`      ✅ bonusErhalten Flag gesetzt in Partner-Dokument`);
+
+                        savedCount++;
+
+                    } catch (error) {
+                        console.error(`      ❌ Fehler beim Speichern:`, error);
+                    }
+                } else {
+                    if (bonusErhalten) {
+                        console.log(`      ⏭️ Bereits erhalten (bonusErhalten=true)`);
+                    } else if (umsatzMonat < stufeAb) {
+                        console.log(`      ❌ Noch nicht erreicht (${umsatzMonat}€ < ${stufeAb}€)`);
+                    } else if (stufeBonus <= 0) {
+                        console.log(`      ❌ Kein Bonus definiert (${stufeBonus}€)`);
+                    }
+                }
+            }
+
+            console.log(`\n   🎯 Gespeichert: ${savedCount} neue Bonuses`);
+            console.log('=================================================\n');
+
+            return savedCount;
+        }
+
+        /**
          * Berechnet Ersparnis durch Rabatt
          */
         function calculateErsparnis(umsatzMonat, rabattProzent) {
@@ -5646,6 +5736,9 @@
                     // 🐛 BUG #14 FIX (v2): Summiere ALLE erreichten Bonuses!
                     const verfuegbarerBonus = calculateGesamtBonus(umsatzMonat, rabattKonditionen);  // ✅ SUMME aller Stufen!
                     const ausgezahlterBonus = gesamtBonus;  // Bereits ausgezahlte Bonuses aus DB (für spätere Tracking)
+
+                    // 🚀 AUTOMATISCHES SPEICHERN: Bonus-Stufen in Firestore schreiben
+                    await saveBonusToFirestore(partner, umsatzMonat);
 
                     console.log('\n🎁 ========== BONUS-DISPLAY ==========');
                     console.log(`   🎯 Aktuelle Stufe: ${aktuelleStufe.key}`);
