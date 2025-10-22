@@ -1301,9 +1301,23 @@
                     const fahrzeugServiceTyp = f.serviceTyp || 'lackier'; // Default: lackier
                     const fahrzeugStatus = f.prozessStatus || 'angenommen';
 
+                    // 🆕 NEBENWIRKUNG FIX #1+4: Map serviceTyp to process key for comparison
+                    // Problem: serviceTyp kann 'lackierung' ODER 'lackier' sein (nach Auto-Tab-Wechsel)
+                    // Lösung: Normalisiere zu process key für Vergleich
+                    const serviceTypToProcessKey = {
+                        'lackierung': 'lackier',
+                        'lackier': 'lackier',      // Support both formats
+                        'reifen': 'reifen',
+                        'mechanik': 'mechanik',
+                        'pflege': 'pflege',
+                        'tuev': 'tuev',
+                        'versicherung': 'versicherung'
+                    };
+                    const processKey = serviceTypToProcessKey[fahrzeugServiceTyp] || fahrzeugServiceTyp;
+
                     // 🐛 DEBUG: Log für Service-Filter
                     if (status === 'angenommen' || status === 'neu') {
-                        console.log(`🔍 Filter Check: ${f.kennzeichen} | serviceTyp: ${fahrzeugServiceTyp} | prozessStatus: ${fahrzeugStatus} | currentProcess: ${currentProcess}`);
+                        console.log(`🔍 Filter Check: ${f.kennzeichen} | serviceTyp: ${fahrzeugServiceTyp} → processKey: ${processKey} | prozessStatus: ${fahrzeugStatus} | currentProcess: ${currentProcess}`);
                     }
 
                     // Wenn currentProcess 'alle', alle Services anzeigen
@@ -1352,23 +1366,23 @@
 
                         // SPEZIAL: Terminiert-Spalte zeigt auch alte "angenommen" Status
                         if (status === 'terminiert') {
-                            const matches = fahrzeugServiceTyp === currentProcess &&
+                            const matches = processKey === currentProcess &&
                                    (fahrzeugStatus === 'terminiert' || fahrzeugStatus === 'angenommen');
                             if (matches) {
-                                console.log(`✅ Match: ${f.kennzeichen} (${fahrzeugServiceTyp}) in Spalte '${status}'`);
+                                console.log(`✅ Match: ${f.kennzeichen} (serviceTyp: ${fahrzeugServiceTyp} → processKey: ${processKey}) in Spalte '${status}'`);
                             }
                             return matches;
                         }
 
                         // Standard-Match ODER Fallback-Match
-                        const directMatch = fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
+                        const directMatch = processKey === currentProcess && fahrzeugStatus === status;
                         const fallbackStatuses = statusFallbacks[status] || [status];
-                        const fallbackMatch = fahrzeugServiceTyp === currentProcess && fallbackStatuses.includes(fahrzeugStatus);
+                        const fallbackMatch = processKey === currentProcess && fallbackStatuses.includes(fahrzeugStatus);
 
                         const matches = directMatch || fallbackMatch;
                         if (matches) {
                             const matchType = directMatch ? 'Direct' : 'Fallback';
-                            console.log(`✅ ${matchType} Match: ${f.kennzeichen} (${fahrzeugServiceTyp}, Status: ${fahrzeugStatus}) in Spalte '${status}'`);
+                            console.log(`✅ ${matchType} Match: ${f.kennzeichen} (serviceTyp: ${fahrzeugServiceTyp} → processKey: ${processKey}, Status: ${fahrzeugStatus}) in Spalte '${status}'`);
                         }
                         return matches;
                     }
