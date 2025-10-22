@@ -1668,7 +1668,8 @@
                             console.warn(`⚠️ Status "${newStatus}" ist NICHT gültig für Service "${currentServiceTyp}"`);
 
                             // Auto-Tab-Wechsel: Finde richtigen Service für diesen Status
-                            const correctService = findServiceForStatus(newStatus);
+                            // 🆕 BUG #12+#13 FIX: Übergebe currentServiceTyp für Konflikt-Resolution!
+                            const correctService = findServiceForStatus(newStatus, currentServiceTyp);
 
                             if (correctService) {
                                 console.log(`🔄 Auto-Tab-Wechsel: ${currentProcess} → ${correctService}`);
@@ -1768,7 +1769,8 @@
         }
 
         // 2. Find service for status (returns processDefinition key like 'lackier', 'reifen', etc.)
-        function findServiceForStatus(status) {
+        // 🆕 BUG #12+#13 FIX: currentServiceTyp Parameter für Konflikt-Resolution
+        function findServiceForStatus(status, currentServiceTyp = null) {
             // Universal statuses that exist in ALL services
             const universalStatuses = ['neu', 'angenommen', 'terminiert', 'bereit', 'fertig', 'abgeschlossen'];
 
@@ -1776,21 +1778,73 @@
                 return null; // Status ist universal, kein spezifischer Service
             }
 
+            // 🆕 BUG #12 FIX: Konflikt-Resolution für 'reparatur' (Mechanik UND Versicherung haben diesen Status!)
+            if (status === 'reparatur') {
+                // Map serviceTyp to processKey für Vergleich
+                const serviceTypToProcessKey = {
+                    'lackierung': 'lackier',
+                    'lackier': 'lackier',
+                    'reifen': 'reifen',
+                    'mechanik': 'mechanik',
+                    'pflege': 'pflege',
+                    'tuev': 'tuev',
+                    'versicherung': 'versicherung'
+                };
+                const processKey = currentServiceTyp ? (serviceTypToProcessKey[currentServiceTyp] || currentServiceTyp) : null;
+
+                // Bevorzuge aktuellen Service (wenn bekannt)
+                if (processKey === 'mechanik') {
+                    console.log(`🔍 BUG #12 FIX: 'reparatur' + serviceTyp='${currentServiceTyp}' → mechanik (conflict resolved)`);
+                    return 'mechanik';
+                }
+                if (processKey === 'versicherung') {
+                    console.log(`🔍 BUG #12 FIX: 'reparatur' + serviceTyp='${currentServiceTyp}' → versicherung (conflict resolved)`);
+                    return 'versicherung';
+                }
+
+                // Fallback: Versicherung (höhere Priorität, da teurer/wichtiger)
+                console.log(`🔍 BUG #12 FIX: 'reparatur' ohne serviceTyp → versicherung (default priority)`);
+                return 'versicherung';
+            }
+
+            // 🆕 BUG #13 FIX: Konflikt-Resolution für 'qualitaet' (Pflege UND Versicherung haben diesen Status!)
+            if (status === 'qualitaet') {
+                const serviceTypToProcessKey = {
+                    'lackierung': 'lackier',
+                    'lackier': 'lackier',
+                    'reifen': 'reifen',
+                    'mechanik': 'mechanik',
+                    'pflege': 'pflege',
+                    'tuev': 'tuev',
+                    'versicherung': 'versicherung'
+                };
+                const processKey = currentServiceTyp ? (serviceTypToProcessKey[currentServiceTyp] || currentServiceTyp) : null;
+
+                // Bevorzuge aktuellen Service (wenn bekannt)
+                if (processKey === 'pflege') {
+                    console.log(`🔍 BUG #13 FIX: 'qualitaet' + serviceTyp='${currentServiceTyp}' → pflege (conflict resolved)`);
+                    return 'pflege';
+                }
+                if (processKey === 'versicherung') {
+                    console.log(`🔍 BUG #13 FIX: 'qualitaet' + serviceTyp='${currentServiceTyp}' → versicherung (conflict resolved)`);
+                    return 'versicherung';
+                }
+
+                // Fallback: Pflege (höhere Priorität, da häufiger)
+                console.log(`🔍 BUG #13 FIX: 'qualitaet' ohne serviceTyp → pflege (default priority)`);
+                return 'pflege';
+            }
+
             // 🆕 NEBENWIRKUNG FIX #5: Service-specific statuses (dedupliziert + Priorität)
-            // WICHTIG: Reihenfolge = Priorität bei Konflikten!
+            // WICHTIG: 'reparatur' und 'qualitaet' jetzt mit Konflikt-Resolution oben!
             const serviceSpecificStatuses = {
                 'lackier': ['vorbereitung', 'lackierung', 'trocknung', 'qualitaetskontrolle'],
                 'reifen': ['bestellung', 'angekommen', 'montage', 'wuchten'],
-                'mechanik': ['diagnose', 'angebot', 'beauftragt', 'test'],  // ❌ 'reparatur' entfernt (Konflikt mit Versicherung!)
-                'pflege': ['termin', 'aufbereitung', 'qualitaet'],
+                'mechanik': ['diagnose', 'angebot', 'beauftragt', 'test'],  // 'reparatur' jetzt mit Konflikt-Resolution!
+                'pflege': ['termin', 'aufbereitung'],  // 'qualitaet' jetzt mit Konflikt-Resolution!
                 'tuev': ['termin_gebucht', 'pruefung', 'abholbereit'],
-                'versicherung': ['gutachten', 'freigabe', 'reparatur']  // ✅ 'reparatur' nur hier! (höchste Priorität)
-                // ❌ 'qualitaet' entfernt aus Versicherung (Konflikt mit Pflege!)
+                'versicherung': ['gutachten', 'freigabe']  // 'reparatur' + 'qualitaet' jetzt mit Konflikt-Resolution!
             };
-
-            // Spezial-Behandlung für konfliktreiche Stati:
-            // "reparatur" → Versicherung (höchste Priorität, da teurer/wichtiger)
-            // "qualitaet" → Pflege (höchste Priorität, da häufiger)
 
             for (const [service, statuses] of Object.entries(serviceSpecificStatuses)) {
                 if (statuses.includes(status)) {
