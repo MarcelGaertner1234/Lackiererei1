@@ -360,30 +360,37 @@ async function createPartnerRequest(page, serviceTyp, data) {
   }
 
   // ✅ FIX: Absenden-Button ist außerhalb des Viewports!
-  // Scrolle zum Button bevor wir klicken
+  // Warte bis Button erscheint, dann scrolle & klicke
   console.log('📤 Sende Formular ab...');
 
-  // Warte kurz damit Summary vollständig geladen ist
-  await page.waitForTimeout(1000);
-
-  // Suche den Absenden-Button und scrolle zu ihm
-  const submitButton = page.locator('button:has-text("Absenden"), button[type="submit"]').first();
-
-  // Prüfe ob Button existiert
-  const buttonExists = await submitButton.count() > 0;
-  if (!buttonExists) {
-    console.error('❌ Absenden-Button nicht gefunden!');
+  // Warte bis Absenden-Button sichtbar wird (max 10 Sekunden)
+  try {
+    console.log('⏳ Warte auf Absenden-Button...');
+    await page.waitForSelector('button:has-text("Absenden"), button[type="submit"]', {
+      timeout: 10000,
+      state: 'attached' // Button muss im DOM sein (kann außerhalb Viewport sein!)
+    });
+    console.log('✅ Absenden-Button gefunden!');
+  } catch (error) {
+    console.error('❌ Absenden-Button nicht gefunden nach 10 Sekunden!');
+    // Debug: Zeige welche Buttons vorhanden sind
+    const allButtons = await page.locator('button').allTextContents();
+    console.log('Verfügbare Buttons:', allButtons);
     throw new Error('Submit button not found after completing all wizard steps');
   }
 
-  // Scrolle zum Button (macht ihn sichtbar)
+  // Hole Button-Referenz
+  const submitButton = page.locator('button:has-text("Absenden"), button[type="submit"]').first();
+
+  // Scrolle zum Button (macht ihn sichtbar im Viewport)
   await submitButton.scrollIntoViewIfNeeded();
   console.log('📜 Zu Absenden-Button gescrollt');
 
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(500); // Kurz warten nach Scroll
 
   // Klicke den Button
   await submitButton.click();
+  console.log('✅ Absenden-Button geklickt!');
 
   // Warte auf Success-Message
   await page.waitForSelector('.success-message, .alert-success', { timeout: 10000 });
