@@ -1635,10 +1635,30 @@
                     column.closest('.kanban-column').classList.remove('drag-over');
 
                     const fahrzeugId = e.dataTransfer.getData('text/plain');
-                    const newStatus = column.closest('.kanban-column').dataset.status;
+                    let newStatus = column.closest('.kanban-column').dataset.status;
+
+                    // 🆕 BUG #11 FIX: Auto-Mapping für Pseudo-Universal-Stati
+                    // Problem: "Alle Prozesse" hat Stati ('in_arbeit', 'vorbereitung', 'qualitaetskontrolle')
+                    // die NICHT in allen Services existieren → Fahrzeug verschwindet aus Service-Tab!
+                    // Lösung: Mappe zu service-spezifischem Status BEVOR updateFahrzeugStatus() aufgerufen wird
+                    const fahrzeug = allFahrzeuge.find(f => f.id == fahrzeugId);
+                    if (fahrzeug && currentProcess === 'alle') {
+                        const pseudoUniversalStatuses = ['in_arbeit', 'vorbereitung', 'qualitaetskontrolle'];
+
+                        if (pseudoUniversalStatuses.includes(newStatus)) {
+                            const currentServiceTyp = fahrzeug.serviceTyp || 'lackierung';
+                            const mappedStatus = mapUniversalToServiceStatus(newStatus, currentServiceTyp);
+
+                            console.log(`🎯 BUG #11 FIX: Pseudo-Universal-Status erkannt!`);
+                            console.log(`   Original: "${newStatus}" (nur in "Alle Prozesse")`);
+                            console.log(`   Gemappt: "${mappedStatus}" (gültig für ${currentServiceTyp})`);
+
+                            // Überschreibe newStatus mit gemapptem Status
+                            newStatus = mappedStatus;
+                        }
+                    }
 
                     // 🆕 BUG #10 FIX: Auto-Tab-Wechsel wenn Status ungültig für aktuellen Service
-                    const fahrzeug = allFahrzeuge.find(f => f.id == fahrzeugId);
                     if (fahrzeug && currentProcess !== 'alle') {
                         const currentServiceTyp = fahrzeug.serviceTyp || 'lackierung';
                         const validStatuses = getValidStatusesForService(currentServiceTyp);
@@ -1796,6 +1816,64 @@
 
             // Final Fallback: Erster Status im Workflow
             return validStatuses[0] || 'angenommen';
+        }
+
+        // 4. Map Universal-Status to Service-Specific Status (BUG #11 FIX)
+        // Problem: "Alle Prozesse" hat Pseudo-Universal-Stati ('in_arbeit', 'vorbereitung', 'qualitaetskontrolle')
+        // Diese existieren NICHT in allen Services → Fahrzeug verschwindet aus Service-Tab!
+        // Lösung: Auto-Mapping zu passendem service-spezifischem Status
+        function mapUniversalToServiceStatus(universalStatus, serviceTyp) {
+            // Map serviceTyp to process key
+            const serviceTypToProcessKey = {
+                'lackierung': 'lackier',
+                'lackier': 'lackier',
+                'reifen': 'reifen',
+                'mechanik': 'mechanik',
+                'pflege': 'pflege',
+                'tuev': 'tuev',
+                'versicherung': 'versicherung'
+            };
+            const processKey = serviceTypToProcessKey[serviceTyp] || serviceTyp;
+
+            // Mapping-Regeln: Universal-Status → Service-spezifischer Status
+            const mappings = {
+                'in_arbeit': {
+                    'lackier': 'lackierung',       // Hauptarbeitsschritt
+                    'reifen': 'montage',           // Hauptarbeitsschritt
+                    'mechanik': 'reparatur',       // Hauptarbeitsschritt
+                    'pflege': 'aufbereitung',      // Hauptarbeitsschritt
+                    'tuev': 'pruefung',            // Hauptarbeitsschritt
+                    'versicherung': 'reparatur'    // Hauptarbeitsschritt
+                },
+                'vorbereitung': {
+                    'lackier': 'vorbereitung',     // Existiert in Lackierung
+                    'reifen': 'bestellung',        // Erste Arbeitsphase
+                    'mechanik': 'diagnose',        // Erste Arbeitsphase
+                    'pflege': 'termin',            // Erste Arbeitsphase
+                    'tuev': 'termin_gebucht',      // Erste Arbeitsphase
+                    'versicherung': 'gutachten'    // Erste Arbeitsphase
+                },
+                'qualitaetskontrolle': {
+                    'lackier': 'qualitaetskontrolle', // Existiert in Lackierung
+                    'reifen': 'wuchten',              // Qualitätsschritt
+                    'mechanik': 'test',               // Qualitätsschritt
+                    'pflege': 'qualitaet',            // Qualitätsschritt
+                    'tuev': 'fertig',                 // TÜV hat keine QK (direkt fertig)
+                    'versicherung': 'qualitaet'       // Qualitätsschritt
+                }
+            };
+
+            // Mappe Status
+            const mapped = mappings[universalStatus]?.[processKey];
+
+            if (mapped) {
+                console.log(`🔄 Auto-Mapping: "${universalStatus}" (Universal) → "${mapped}" (${serviceTyp}/${processKey})`);
+                return mapped;
+            } else {
+                // Fallback: Original-Status zurückgeben (wenn kein Mapping definiert)
+                console.warn(`⚠️ Kein Mapping gefunden für: "${universalStatus}" + "${serviceTyp}" → Behalte Original-Status`);
+                return universalStatus;
+            }
         }
 
         // Fahrzeug-Status aktualisieren
