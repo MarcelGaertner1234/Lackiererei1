@@ -154,9 +154,12 @@ async function createPartnerRequest(page, serviceTyp, data) {
   };
 
   // ✅ FIX #2: Partner Login-Session mocken (verhindert Redirect zu login.html)
-  await page.goto(`/partner-app/${servicePages[serviceTyp]}`);
+  // WICHTIG: localStorage MUSS gesetzt werden BEVOR die Zielseite lädt!
 
-  // Mock Partner Session in localStorage (BEFORE page fully loads)
+  // Schritt 1: Navigiere zu irgendeine Partner-Portal-Seite (um Domain zu setzen)
+  await page.goto('/partner-app/');
+
+  // Schritt 2: JETZT localStorage setzen (BEVOR Zielseite lädt!)
   await page.evaluate((partnerData) => {
     localStorage.setItem('partner', JSON.stringify({
       id: 'e2e-test-partner-' + Date.now(),
@@ -171,8 +174,8 @@ async function createPartnerRequest(page, serviceTyp, data) {
     }));
   }, { name: data.partnerName, email: data.partnerEmail });
 
-  // Reload page to apply session
-  await page.reload();
+  // Schritt 3: JETZT Zielseite laden (mit Session im localStorage!)
+  await page.goto(`/partner-app/${servicePages[serviceTyp]}`);
 
   // Warte auf Firebase Initialisierung
   const { waitForFirebaseReady } = require('./firebase-helper');
