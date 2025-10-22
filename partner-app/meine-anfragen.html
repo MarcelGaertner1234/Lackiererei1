@@ -5252,6 +5252,48 @@
         }
 
         /**
+         * Berechnet GESAMT-Bonus (Summe ALLER erreichten Stufen-Bonuses)
+         *
+         * WICHTIG: Bonuses sind EINMALIG und KUMULATIV!
+         * - STUFE 1 (100€): 10€
+         * - STUFE 2 (5000€): 500€ ZUSÄTZLICH → Gesamt: 510€
+         * - STUFE 3 (10000€): 1500€ ZUSÄTZLICH → Gesamt: 2010€
+         *
+         * @param {number} umsatzMonat - Aktueller Monatsumsatz
+         * @param {Object} rabattKonditionen - Rabatt-Konditionen mit Stufen
+         * @returns {number} Summe aller erreichten Bonuses
+         */
+        function calculateGesamtBonus(umsatzMonat, rabattKonditionen) {
+            if (!rabattKonditionen) return 0;
+
+            let gesamtBonus = 0;
+
+            console.log('\n🎁 ========== GESAMT-BONUS BERECHNUNG ==========');
+            console.log(`   💰 Monatsumsatz: ${umsatzMonat}€`);
+
+            // Summiere ALLE Bonuses von erreichten Stufen
+            Object.keys(rabattKonditionen).forEach(stufeKey => {
+                const stufe = rabattKonditionen[stufeKey];
+                const stufeAb = Number(stufe.ab);
+                const stufeBonus = Number(stufe.einmalBonus) || 0;
+
+                console.log(`   📊 ${stufeKey}: ${stufe.rabatt}% ab ${stufeAb}€ → Bonus: ${stufeBonus}€`);
+
+                if (stufeAb <= umsatzMonat) {
+                    console.log(`      ✅ ERREICHT! Bonus wird addiert: +${stufeBonus}€`);
+                    gesamtBonus += stufeBonus;
+                } else {
+                    console.log(`      ❌ NICHT erreicht (${stufeAb}€ > ${umsatzMonat}€)`);
+                }
+            });
+
+            console.log(`   🎯 GESAMT-BONUS: ${gesamtBonus}€`);
+            console.log('===============================================\n');
+
+            return gesamtBonus;
+        }
+
+        /**
          * Berechnet Ersparnis durch Rabatt
          */
         function calculateErsparnis(umsatzMonat, rabattProzent) {
@@ -5585,27 +5627,27 @@
                     // Rabatt-Prozent
                     document.getElementById('rabattProzent').textContent = `${aktuelleStufe.rabatt}%`;
 
-                    // 🐛 BUG #14 FIX: Bonus aus aktueller Stufe anzeigen!
-                    const verfuegbarerBonus = Number(aktuelleStufe.einmalBonus) || 0;  // Bonus aus erreichter Stufe
-                    const ausgezahlterBonus = gesamtBonus;  // Bereits ausgezahlte Bonuses aus DB
+                    // 🐛 BUG #14 FIX (v2): Summiere ALLE erreichten Bonuses!
+                    const verfuegbarerBonus = calculateGesamtBonus(umsatzMonat, rabattKonditionen);  // ✅ SUMME aller Stufen!
+                    const ausgezahlterBonus = gesamtBonus;  // Bereits ausgezahlte Bonuses aus DB (für spätere Tracking)
 
-                    console.log('\n🎁 ========== BONUS-BERECHNUNG ==========');
+                    console.log('\n🎁 ========== BONUS-DISPLAY ==========');
                     console.log(`   🎯 Aktuelle Stufe: ${aktuelleStufe.key}`);
-                    console.log(`   💰 Verfügbarer Bonus (Stufe): ${formatCurrency(verfuegbarerBonus)}`);
+                    console.log(`   💰 Verfügbarer Bonus (GESAMT): ${formatCurrency(verfuegbarerBonus)}`);
                     console.log(`   ✅ Ausgezahlter Bonus (DB): ${formatCurrency(ausgezahlterBonus)}`);
-                    console.log('========================================\n');
+                    console.log('=====================================\n');
 
-                    // ✅ ERWEITERTE Ersparnis-Berechnung (Rabatt + Verfügbarer Bonus)
+                    // ✅ ERWEITERTE Ersparnis-Berechnung (Rabatt + GESAMT-Bonus)
                     const laufenderRabatt = calculateErsparnis(umsatzMonat, aktuelleStufe.rabatt);
                     const gesamtErsparnis = laufenderRabatt + verfuegbarerBonus;
 
                     // Anzeigen
                     document.getElementById('ersparnisRabatt').textContent = formatCurrency(laufenderRabatt);
-                    document.getElementById('ersparnisBonus').textContent = formatCurrency(verfuegbarerBonus);  // ⬅️ FIX: Zeige verfügbaren Bonus!
+                    document.getElementById('ersparnisBonus').textContent = formatCurrency(verfuegbarerBonus);  // ✅ GESAMT-Bonus!
                     document.getElementById('ersparnisGesamt').textContent = formatCurrency(gesamtErsparnis);
 
                     console.log(`💰 Laufender Rabatt: ${formatCurrency(laufenderRabatt)}`);
-                    console.log(`🎁 Verfügbarer Bonus (angezeigt): ${formatCurrency(verfuegbarerBonus)}`);
+                    console.log(`🎁 Verfügbarer GESAMT-Bonus: ${formatCurrency(verfuegbarerBonus)}`);
                     console.log(`✨ Gesamt-Ersparnis: ${formatCurrency(gesamtErsparnis)}`);
 
                     // Fortschrittsbalken zur nächsten Stufe
