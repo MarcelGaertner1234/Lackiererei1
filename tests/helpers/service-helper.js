@@ -319,17 +319,21 @@ async function createPartnerRequest(page, serviceTyp, data) {
     }
 
     // 2. VIN-Nummer (Step 3: Identifikation)
-    const vinVisible = await page.locator('input#vinNummer, input[placeholder*="VIN"]').isVisible().catch(() => false);
+    // ✅ FIX: Field hat kein ID! Nutze Placeholder-Selector
+    const vinVisible = await page.locator('input[placeholder*="WVWZZZ"]').isVisible().catch(() => false);
     if (vinVisible) {
       console.log('🔑 VIN-Nummer Feld gefunden - fülle aus');
-      await page.fill('input#vinNummer, input[placeholder*="VIN"]', 'WVWZZZ1JZXW123456');
+      await page.fill('input[placeholder*="WVWZZZ"]', 'WVWZZZ1JZXW123456');
+      await page.waitForTimeout(500); // Kurz warten für Validation
     }
 
     // 3. Schadensbeschreibung (Step 4: Beschreibung)
-    const schadenVisible = await page.locator('textarea#schadenBeschreibung').isVisible().catch(() => false);
+    // ✅ FIX: Ist ein textbox, nicht textarea! Nutze Placeholder
+    const schadenVisible = await page.locator('textarea#schadenBeschreibung, input[placeholder*="Kratzer"], textbox[placeholder*="Kratzer"]').isVisible().catch(() => false);
     if (schadenVisible) {
       console.log('📝 Schadensbeschreibung Feld gefunden - fülle aus');
-      await page.fill('textarea#schadenBeschreibung', data.schadenBeschreibung || 'E2E Test Beschreibung');
+      await page.fill('textarea#schadenBeschreibung, input[placeholder*="Kratzer"], textbox[placeholder*="Kratzer"]', data.schadenBeschreibung || 'E2E Test Beschreibung');
+      await page.waitForTimeout(500);
     }
 
     // 4. Service-spezifische Felder
