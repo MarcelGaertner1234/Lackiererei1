@@ -363,24 +363,25 @@ async function createPartnerRequest(page, serviceTyp, data) {
   // Warte bis Button erscheint, dann scrolle & klicke
   console.log('📤 Sende Formular ab...');
 
-  // Warte bis Absenden-Button sichtbar wird (max 10 Sekunden)
+  // ✅ CRITICAL FIX: Button-Text ist "Anfrage senden" NICHT "Absenden"!
+  // Warte bis Submit-Button sichtbar wird (max 10 Sekunden)
   try {
-    console.log('⏳ Warte auf Absenden-Button...');
-    await page.waitForSelector('button:has-text("Absenden"), button[type="submit"]', {
+    console.log('⏳ Warte auf Submit-Button...');
+    await page.waitForSelector('button:has-text("Anfrage senden"), button:has-text("Absenden"), button[type="submit"]', {
       timeout: 10000,
       state: 'attached' // Button muss im DOM sein (kann außerhalb Viewport sein!)
     });
-    console.log('✅ Absenden-Button gefunden!');
+    console.log('✅ Submit-Button gefunden!');
   } catch (error) {
-    console.error('❌ Absenden-Button nicht gefunden nach 10 Sekunden!');
+    console.error('❌ Submit-Button nicht gefunden nach 10 Sekunden!');
     // Debug: Zeige welche Buttons vorhanden sind
     const allButtons = await page.locator('button').allTextContents();
     console.log('Verfügbare Buttons:', allButtons);
     throw new Error('Submit button not found after completing all wizard steps');
   }
 
-  // Hole Button-Referenz
-  const submitButton = page.locator('button:has-text("Absenden"), button[type="submit"]').first();
+  // Hole Button-Referenz (versuche beide möglichen Texte)
+  const submitButton = page.locator('button:has-text("Anfrage senden"), button:has-text("Absenden"), button[type="submit"]').first();
 
   // Scrolle zum Button (macht ihn sichtbar im Viewport)
   await submitButton.scrollIntoViewIfNeeded();
