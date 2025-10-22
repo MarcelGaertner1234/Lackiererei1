@@ -286,8 +286,8 @@ async function createPartnerRequest(page, serviceTyp, data) {
   console.log('🎯 Navigiere zum letzten Schritt (Zusammenfassung)');
 
   // Klicke "Weiter" bis wir beim Submit-Button sind
-  // Maximal 10 Versuche (9 Steps + 1 Reserve)
-  for (let i = 0; i < 10; i++) {
+  // Maximal 15 Versuche (bis zu 10 Steps + Reserve)
+  for (let i = 0; i < 15; i++) {
     const weiterButton = await page.locator('button:has-text("Weiter")').isVisible().catch(() => false);
     const submitButton = await page.locator('button:has-text("Absenden"), button[type="submit"]').isVisible().catch(() => false);
 
@@ -297,6 +297,37 @@ async function createPartnerRequest(page, serviceTyp, data) {
     }
 
     if (weiterButton) {
+      // ✅ WICHTIG: Prüfe ob aktueller Schritt ein Foto-Pflichtfeld hat!
+      const photoInputVisible = await page.locator('input[type="file"]#photoInput, input#photoInput').isVisible().catch(() => false);
+
+      if (photoInputVisible) {
+        console.log('📸 Foto-Pflichtfeld gefunden - Lade Mock-Foto hoch');
+
+        // Upload Mock-Foto (gleiche Logik wie Schritt 1)
+        await page.evaluate((imageData) => {
+          const byteString = atob(imageData.split(',')[1]);
+          const mimeString = imageData.split(',')[0].split(':')[1].split(';')[0];
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          const blob = new Blob([ab], { type: mimeString });
+          const file = new File([blob], 'test-photo-' + Date.now() + '.png', { type: 'image/png' });
+
+          const photoInput = document.getElementById('photoInput') || document.querySelector('input[type="file"]');
+          if (photoInput) {
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            photoInput.files = dataTransfer.files;
+            const event = new Event('change', { bubbles: true });
+            photoInput.dispatchEvent(event);
+          }
+        }, dummyImageBase64);
+
+        await page.waitForTimeout(1000); // Warte auf Foto-Verarbeitung
+      }
+
       await page.click('button:has-text("Weiter")');
       await page.waitForTimeout(500);
     } else {
