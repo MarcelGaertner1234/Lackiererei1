@@ -177,6 +177,31 @@ window.firebaseApp = {
     });
   },
 
+  // ✅ BUG FIX #5: loadPhotosFromFirestore() function (CRITICAL for abnahme.html)
+  // Problem: abnahme.html Line 1062 ruft firebaseApp.loadPhotosFromFirestore() auf, aber Funktion existierte nicht
+  // Impact: PDF-Erstellung schlägt fehl, weil "vorher" Fotos nicht geladen werden können → CRITICAL BUG
+  // Fix: Funktion hinzugefügt zum Laden von Fotos aus Firestore Subcollection
+  loadPhotosFromFirestore: async (fahrzeugId, type = 'vorher') => {
+    try {
+      const photosRef = db.collection('fahrzeuge')
+        .doc(String(fahrzeugId))
+        .collection('fotos')
+        .doc(type);
+
+      const doc = await photosRef.get();
+      if (doc.exists) {
+        const data = doc.data();
+        console.log(`✅ Fotos geladen (${type}): ${data.photos?.length || 0} Fotos`);
+        return data.photos || [];
+      }
+      console.log(`ℹ️ Keine Fotos gefunden für ${type}`);
+      return [];
+    } catch (error) {
+      console.error(`❌ Fehler beim Laden der ${type} Fotos:`, error);
+      return [];
+    }
+  },
+
   loadAllPhotosFromFirestore: async (fahrzeugId) => {
     try {
       const vorherDoc = await db.collection('fahrzeuge')
