@@ -184,8 +184,49 @@ async function createPartnerRequest(page, serviceTyp, data) {
   // ✅ FIX #3: Multi-Step Wizard Navigation
   // Das Formular ist ein 9-Schritte-Wizard! Wir müssen durch die Steps navigieren.
 
-  // SCHRITT 1: Fotos (überspringen - optional für Tests)
-  console.log('📸 Wizard Step 1: Fotos (skip)');
+  // SCHRITT 1: Fotos - PFLICHTFELD! Müssen mindestens 1 Dummy-Foto hochladen
+  console.log('📸 Wizard Step 1: Fotos - Lade Mock-Foto hoch');
+
+  // Erstelle ein 1x1 Pixel Dummy-Bild (Base64 PNG)
+  const dummyImageBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  // Injiziere Foto über JavaScript (simuliert File-Upload)
+  await page.evaluate((imageData) => {
+    // Konvertiere Base64 zu Blob
+    const byteString = atob(imageData.split(',')[1]);
+    const mimeString = imageData.split(',')[0].split(':')[1].split(';')[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mimeString });
+
+    // Erstelle File-Objekt
+    const file = new File([blob], 'test-photo.png', { type: 'image/png' });
+
+    // Suche Photo-Input und simuliere Upload
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) {
+      // Erstelle DataTransfer für File-Upload
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      photoInput.files = dataTransfer.files;
+
+      // Triggere Change-Event (für App-Logic)
+      const event = new Event('change', { bubbles: true });
+      photoInput.dispatchEvent(event);
+
+      console.log('✅ Mock-Foto hochgeladen (1x1 Pixel PNG)');
+    } else {
+      console.warn('⚠️ photoInput nicht gefunden!');
+    }
+  }, dummyImageBase64);
+
+  // Warte kurz damit App das Foto verarbeiten kann
+  await page.waitForTimeout(1000);
+
+  console.log('➡️ Klicke Weiter zu Schritt 2');
   await page.click('button:has-text("Weiter")');
   await page.waitForTimeout(500); // Wait for step transition
 
