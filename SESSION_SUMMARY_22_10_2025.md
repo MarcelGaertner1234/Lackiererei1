@@ -8,7 +8,7 @@
 
 ---
 
-## 📊 Übersicht: 13 Bugs gefunden & gefixt!
+## 📊 Übersicht: 15 Bugs gefunden & gefixt!
 
 | Bug # | Problem | Fix | Status |
 |-------|---------|-----|--------|
@@ -25,6 +25,8 @@
 | #11 | Submit-Button Text falsch | "Anfrage senden" statt "Absenden" | ✅ Fixed |
 | #12 | Success-Message versteckt | state: 'attached' statt 'visible' | ✅ Fixed |
 | #13 | Test-Daten Konflikte (Race Conditions) | Kennzeichen mit Timestamp | ✅ Fixed |
+| #14 | Bonus Display - Firebase Init Pattern | `db = window.db` statt `firebase.firestore()` | ✅ Fixed |
+| #15 | Bonus Auto-Save fehlte komplett | `saveBonusToFirestore()` Funktion hinzugefügt | ✅ Fixed |
 
 ---
 
@@ -235,6 +237,152 @@ kennzeichen: 'E2E-MECHANIK-1761148562445' ✅ MIT Timestamp!
 
 ---
 
+### BUG #14: Bonus Display - Firebase Init Pattern
+
+**Error:** admin-bonus-auszahlungen.html zeigt "Received 0 bonuses" obwohl Partner Bonus hat
+
+**Root Cause:**
+Line 676 in admin-bonus-auszahlungen.html:
+```javascript
+db = firebase.firestore();  // ❌ Erstellt NEUE Firestore-Instanz!
+```
+
+Gleicher Bug wie RUN #70 in anderen Dateien, aber admin-bonus-auszahlungen.html wurde vergessen!
+
+**Fix (admin-bonus-auszahlungen.html:676):**
+```javascript
+// VORHER:
+db = firebase.firestore();  // ❌
+
+// JETZT:
+db = window.db;  // ✅ Globales db von firebase-config.js
+```
+
+**Zusätzlich:**
+- Cache-Buster: `?v=BONUS-FIX-22OCT`
+
+**Workflow Vorher:**
+1. Firebase init ✅
+2. `db = firebase.firestore()` → Neue Instanz ❌
+3. Query läuft gegen leere DB ❌
+4. `snapshot.size === 0` ❌
+
+**Workflow Jetzt:**
+1. Firebase init ✅
+2. `db = window.db` → Referenziert Production Firestore ✅
+3. Query läuft gegen echte DB ✅
+4. Bonuses geladen ✅
+
+**Commit:** 70eb361
+
+---
+
+### BUG #15: Bonus Auto-Save fehlte komplett! (ROOT CAUSE!)
+
+**Error:** Bonuses werden berechnet (1.000€) aber NICHT in Firestore gespeichert
+
+**Konsolen-Beweis:**
+- meine-anfragen.html: "Verfügbarer Bonus: 1.000€" ✅
+- admin-bonus-auszahlungen.html: "Received 0 bonuses" ❌
+
+**Root Cause:**
+Code in meine-anfragen.html (Lines 5268-5310):
+- ✅ Berechnet Bonuses korrekt
+- ✅ Zeigt sie im Dashboard an
+- ❌ Schreibt sie NICHT in Firestore!
+- ❌ Setzt `bonusErhalten` Flag NICHT!
+
+**Warum vorherige Fixes scheiterten:**
+- Fix #1-3: Wir fixten an FALSCHER Stelle!
+- Fix #3: Firebase Init Pattern war korrekt ✅
+- ABER: Collection war leer! (Bonuses nie geschrieben) ❌
+
+**Solution (meine-anfragen.html:5312-5400):**
+
+Neue Funktion `saveBonusToFirestore()`:
+
+```javascript
+async function saveBonusToFirestore(partner, umsatzMonat) {
+    // Prüft JEDE Stufe einzeln
+    for (const stufeKey of Object.keys(partner.rabattKonditionen)) {
+        const stufe = partner.rabattKonditionen[stufeKey];
+
+        // Bedingung: Stufe erreicht UND nicht erhalten UND Bonus > 0
+        if (umsatzMonat >= stufe.ab && !stufe.bonusErhalten && stufe.einmalBonus > 0) {
+
+            // 1. Prüfe ob bereits in Firestore
+            const existing = await db.collection('bonusAuszahlungen')
+                .where('partnerId', '==', partner.id)
+                .where('stufe', '==', stufeKey)
+                .get();
+
+            if (existing.empty) {
+                // 2. Erstelle Bonus-Eintrag
+                await db.collection('bonusAuszahlungen').add({
+                    partnerId: partner.id,
+                    partnerName: partner.name,
+                    stufe: stufeKey,
+                    bonusBetrag: stufe.einmalBonus,
+                    umsatzBeimErreichen: umsatzMonat,
+                    erreichtAm: new Date().toISOString(),
+                    status: 'pending',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                // 3. Setze bonusErhalten Flag
+                await db.collection('partner').doc(partner.id).update({
+                    [`rabattKonditionen.${stufeKey}.bonusErhalten`]: true
+                });
+            }
+        }
+    }
+}
+```
+
+**Aufruf in renderUmsatzDashboard() (Line 5741):**
+```javascript
+await saveBonusToFirestore(partner, umsatzMonat);
+```
+
+**Firestore Schema (bonusAuszahlungen):**
+```javascript
+{
+    partnerId: "marcel",
+    partnerName: "marcel@test.de",
+    stufe: "stufe1",
+    bonusBetrag: 1000,
+    umsatzBeimErreichen: 171845,
+    erreichtAm: "2025-10-22T...",
+    status: "pending",  // Admin muss auszahlen!
+    createdAt: FieldValue.serverTimestamp()
+}
+```
+
+**Complete Workflow (End-to-End):**
+
+**Partner Side:**
+1. KVA gesendet → Umsatz 171.845€
+2. Dashboard lädt → `renderUmsatzDashboard()`
+3. `calculateGesamtBonus()` → 1.000€
+4. `saveBonusToFirestore()` → Schreibt in Firestore ✅
+5. Dashboard zeigt: "Verfügbarer Bonus: 1.000€"
+
+**Admin Side:**
+1. admin-bonus-auszahlungen.html lädt
+2. Firestore Listener → Received 1 bonus ✅
+3. Tabelle zeigt: "marcel - Stufe 1 - 1.000€ - Pending"
+4. Admin zahlt aus → Status "ausgezahlt"
+5. `bonusErhalten = true` ✅
+
+**Duplikat-Schutz:**
+- Firestore Where-Query prüft existierenden Eintrag
+- `bonusErhalten` Flag verhindert erneutes Erstellen
+- Mehrfaches Laden der Page erstellt KEINEN 2. Bonus!
+
+**Commit:** b25a399
+
+---
+
 ## 📈 Resultat
 
 ### Vorher:
@@ -281,8 +429,10 @@ Running 28 tests using 4 workers
 | 5247851 | Submit Button Text | #11 |
 | dbb1bd5 | Success Message Hidden | #12 |
 | c21bba6 | Test-Daten Konflikte | #13 |
+| 70eb361 | Bonus Display - Firebase Init Pattern | #14 |
+| b25a399 | Bonus Auto-Save - saveBonusToFirestore() | #15 |
 
-**Total:** 13 Commits, 13 Bugs gefixt! 🎉
+**Total:** 15 Commits, 15 Bugs gefixt! 🎉
 
 ---
 
@@ -304,6 +454,17 @@ Running 28 tests using 4 workers
 **Änderung:**
 - Nur Chromium + Mobile Chrome aktiviert
 
+### admin-bonus-auszahlungen.html (Line 676)
+**Änderung:**
+- Firebase Init Pattern Fix: `db = window.db`
+- Cache-Buster: `?v=BONUS-FIX-22OCT`
+
+### partner-app/meine-anfragen.html (Lines 5312-5400, 5741)
+**Änderungen:**
+- Neue Funktion `saveBonusToFirestore()` (Lines 5312-5400)
+- Aufruf in `renderUmsatzDashboard()` (Line 5741)
+- Cache-Buster: `?v=20251022-bonus-auto-save`
+
 ---
 
 ## 📚 Lessons Learned
@@ -323,34 +484,70 @@ Running 28 tests using 4 workers
 ### 5. state: 'attached' statt 'visible' für CSS-hidden Elements
 **Warum:** Success-Message kann im DOM sein aber CSS-hidden
 
+### 6. Bonus-System braucht AUTOMATISCHES Schreiben in Firestore
+**Warum:** Nur Berechnen + Anzeigen reicht nicht! Bonuses müssen persistent gespeichert werden
+
+### 7. Firebase Init Pattern Bug ist SEHR häufig!
+**Warum:** Leicht zu übersehen, betrifft JEDE HTML-Datei die Firebase nutzt
+**Pattern:** IMMER `db = window.db` statt `firebase.firestore()` verwenden!
+
 ---
 
 ## 🚀 Nächste Schritte
 
+### ✅ Abgeschlossen:
+1. ✅ Alle 15 Bugs gefixt
+2. ✅ Commits gepushed zu GitHub
+3. ✅ Bonus-System funktioniert vollständig
+4. ✅ E2E-Test-Infrastruktur repariert
+
+### 📋 Nächste Session: UX-Optimierung
+
+**Partner Portal (meine-anfragen.html):**
+- Dashboard visuell verbessern (Lines 5670-5830)
+- Bonus-Display ansprechender gestalten
+- Responsive Design prüfen
+- Mobile-Ansicht optimieren
+
+**Admin Portal (admin-bonus-auszahlungen.html):**
+- Tabelle UX verbessern (Lines 742-834)
+- Filter-Funktionen optimieren
+- Mobile-Ansicht
+- Auszahlungs-Workflow verbessern
+
+**Bonus-Auszahlungs-Flow:**
+- Modal-Design verbessern
+- Bestätigungs-Prozess optimieren
+- Erfolgs-/Fehler-Feedback
+
 ### Verbleibende Test-Probleme (nicht critical):
 - Status-Mapping Tests scheitern (Admin-Flow nach Partner-Anfrage)
 - Ursache: Admin muss Anfrage in Kanban bearbeiten
-- Lösung: Helper-Funktion für Admin-Aktionen erstellen
+- Lösung: Helper-Funktion für Admin-Aktionen erstellen (später)
 
 ### Empfehlungen:
-1. ✅ Commit & Push der Fixes
-2. ⏳ GitHub Actions Tests beobachten
-3. 📊 Test-Report analysieren
-4. 🐛 Verbleibende Failures debuggen (falls vorhanden)
+1. ✅ Commit & Push der Fixes → ERLEDIGT
+2. ✅ Session Summary dokumentiert
+3. ⏳ CLAUDE.md aktualisieren (Version 3.2)
+4. ⏳ NEXT_SESSION_PROMPT.md erstellen
 
 ---
 
 ## ✨ Session-Highlights
 
-- **13 Bugs gefixt** in einer Session! 🏆
+- **15 Bugs gefixt** in einer Session! 🏆 (13 E2E + 2 Bonus)
 - **Alle Form-Submission-Probleme gelöst** ✅
 - **Race Conditions eliminiert** durch Timestamp-Kennzeichen
 - **Test-Suite optimiert**: 84 → 28 Tests (nur installierte Browser)
-- **Test-Logs bestätigen**: Forms werden erfolgreich submitted! 🎉
+- **Bonus-System ENDGÜLTIG gefixt** nach 4 Fix-Versuchen! 🎉
+- **Root Cause gefunden**: Bonuses wurden berechnet aber nicht gespeichert!
+- **Automatisches Speichern**: `saveBonusToFirestore()` Funktion implementiert
 
 ---
 
 **Session Ende:** 22.10.2025
-**Dauer:** ~3 Stunden
-**Bugs Fixed:** 13 / 13 ✅
-**Status:** E2E-Test-Infrastruktur komplett repariert! 🚀
+**Dauer:** ~4-5 Stunden
+**Bugs Fixed:** 15 / 15 ✅
+**Status:** E2E-Test-Infrastruktur + Bonus-System komplett repariert! 🚀
+
+**Nächste Session:** UX-Optimierung (Partner Portal + Admin Portal)

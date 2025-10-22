@@ -565,6 +565,159 @@ Partner Portal hatte service-spezifische Bugs:
 
 ---
 
+## 🚀 Version 3.2 - Bonus-System Fix & E2E Tests (22.10.2025)
+
+### **Critical Fixes:** 15 Bugs gefixt in einer Session! 🏆
+
+**Session Summary:** See `SESSION_SUMMARY_22_10_2025.md` for full details
+
+### **1. BONUS-SYSTEM ENDGÜLTIG GEFIXT** ⭐ (4. Fix-Versuch!)
+
+**Problem (User-Bericht):**
+> "diesen bug haben wir eigentlich schon 3 mal gefixt - die rabatte werden nicht angezeigt in admin-bonus-auszahlungen.html"
+
+**Root Cause gefunden:**
+- Bonuses wurden **berechnet** (meine-anfragen.html) ✅
+- Bonuses wurden **angezeigt** im Dashboard ✅
+- ABER: Bonuses wurden **NICHT in Firestore gespeichert**! ❌
+
+**Warum vorherige Fixes scheiterten:**
+1. Fix #1-3: Firebase Init Pattern (richtige Richtung, aber nicht root cause)
+2. admin-bonus-auszahlungen.html zeigte "0 bonuses" weil Collection leer war!
+
+**Solution (meine-anfragen.html:5312-5400):**
+
+Neue Funktion `saveBonusToFirestore()`:
+- Prüft JEDE Rabatt-Stufe einzeln
+- Schreibt automatisch in `bonusAuszahlungen` Collection
+- Setzt `bonusErhalten` Flag im Partner-Dokument
+- Duplikat-Schutz durch Firestore Where-Query
+
+```javascript
+async function saveBonusToFirestore(partner, umsatzMonat) {
+    // Automatisches Speichern beim Dashboard-Load!
+    for (const stufeKey of Object.keys(partner.rabattKonditionen)) {
+        if (umsatzMonat >= stufe.ab && !stufe.bonusErhalten && stufe.einmalBonus > 0) {
+            // 1. Prüfe ob bereits vorhanden
+            const existing = await db.collection('bonusAuszahlungen')
+                .where('partnerId', '==', partner.id)
+                .where('stufe', '==', stufeKey)
+                .get();
+
+            if (existing.empty) {
+                // 2. Erstelle Bonus-Eintrag
+                await db.collection('bonusAuszahlungen').add({
+                    partnerId, partnerName, stufe, bonusBetrag,
+                    umsatzBeimErreichen, erreichtAm, status: 'pending'
+                });
+
+                // 3. Setze Flag
+                await db.collection('partner').doc(partner.id).update({
+                    [`rabattKonditionen.${stufeKey}.bonusErhalten`]: true
+                });
+            }
+        }
+    }
+}
+```
+
+**Firestore Schema (bonusAuszahlungen):**
+```javascript
+{
+    partnerId: "marcel",
+    partnerName: "marcel@test.de",
+    stufe: "stufe1",
+    bonusBetrag: 1000,
+    umsatzBeimErreichen: 171845,
+    erreichtAm: "2025-10-22T...",
+    status: "pending",  // Admin muss auszahlen!
+    createdAt: FieldValue.serverTimestamp()
+}
+```
+
+**Complete Workflow:**
+1. Partner erreicht Umsatz-Schwelle (z.B. 50.000€)
+2. `renderUmsatzDashboard()` lädt → `saveBonusToFirestore()` wird aufgerufen
+3. Bonus wird in Firestore geschrieben (status: pending)
+4. Admin öffnet admin-bonus-auszahlungen.html → Sieht Bonus!
+5. Admin zahlt aus → Status "ausgezahlt" → bonusErhalten = true
+
+**Files Changed:**
+- `partner-app/meine-anfragen.html` (Lines 5312-5400, 5741)
+- `admin-bonus-auszahlungen.html` (Line 676 - Firebase Init Pattern)
+
+**Commits:**
+- `70eb361` - fix: Bonus Display - Firebase Init Pattern
+- `b25a399` - feat: Bonus Auto-Save - saveBonusToFirestore()
+
+---
+
+### **2. E2E-TEST-INFRASTRUKTUR REPARIERT** 🔧
+
+**Problem:** ALLE 84 Tests schlugen fehl mit Timeouts
+
+**13 Bugs gefixt:**
+1. Form Selector Mismatch (`input[name=]` → `input#`)
+2. Login Page Redirect (localStorage Mock)
+3. localStorage Timing Race Condition
+4. Wizard Multi-Step Navigation
+5. Photo Validation Failed (Base64 PNG Mock)
+6. Multiple Photo Fields
+7. Baujahr Pflichtfeld nicht ausgefüllt
+8. Infinite Loop - Wizard stuck
+9. VIN & Schadensbeschreibung Selectors
+10. Submit-Button außerhalb Viewport
+11. Submit-Button Text falsch
+12. Success-Message versteckt
+13. Test-Daten Konflikte (Race Conditions)
+
+**Solution:**
+- Dynamischer Wizard-Loop (tests/helpers/service-helper.js)
+- Unique Kennzeichen mit Timestamp
+- Test-Suite optimiert: 84 → 28 Tests (nur installierte Browser)
+
+**Resultat:** ✅ Partner-Form-Submission funktioniert! (Admin-Flow noch offen)
+
+---
+
+### **3. WICHTIGE PATTERNS FÜR ENTWICKLER** ⚠️
+
+**Firebase Init Pattern (SEHR häufiger Bug!):**
+```javascript
+// ❌ FALSCH (erstellt neue Instanz!)
+db = firebase.firestore();
+
+// ✅ RICHTIG (nutzt global db)
+db = window.db;
+```
+
+**Bonus-System:**
+- Bonuses MÜSSEN automatisch in Firestore geschrieben werden!
+- Nur Berechnen + Anzeigen reicht NICHT!
+- Immer `bonusErhalten` Flag setzen (verhindert Duplikate)
+
+**Testing:**
+- Parallele Tests brauchen eindeutige Test-Daten (Timestamps!)
+- localStorage muss VOR page.goto() gesetzt werden
+- Wizard-Forms brauchen dynamisches Feld-Ausfüllen
+
+---
+
+### **Version 3.2 Status**
+
+**✅ Fixed:**
+- Bonus-System komplett funktional (Partner + Admin)
+- E2E-Test-Infrastruktur repariert
+- Firebase Init Pattern überall korrekt
+
+**📋 Next Steps (UX-Optimierung):**
+- Dashboard visuell verbessern
+- Bonus-Display ansprechender
+- Admin-Tabelle UX verbessern
+- Mobile-Ansicht optimieren
+
+---
+
 ## 🚀 Version 3.0 Features (07.10.2025)
 
 ### **1. SAFARI-KOMPATIBILITÄT FIX** ⭐ KRITISCH
