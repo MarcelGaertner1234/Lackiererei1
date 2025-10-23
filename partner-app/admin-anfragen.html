@@ -1935,12 +1935,27 @@
             // Falls fahrzeugAngelegt Flag nicht gesetzt wurde (Bug), prüfen wir in Firestore
             console.log('🔍 DOPPEL-CHECK: Prüfe ob Fahrzeug bereits in Firestore existiert...');
             try {
-                const existingVehicle = await db.collection('fahrzeuge')
-                    .where('auftragsnummer', '==', anfrage.auftragsnummer)
-                    .limit(1)
-                    .get();
+                let existingVehicle = null;
 
-                if (!existingVehicle.empty) {
+                // Check 1: Auftragsnummer (wenn vorhanden)
+                if (anfrage.auftragsnummer) {
+                    existingVehicle = await db.collection('fahrzeuge')
+                        .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                        .limit(1)
+                        .get();
+                    console.log(`   📊 Check Auftragsnummer "${anfrage.auftragsnummer}": ${existingVehicle.size} Treffer`);
+                }
+
+                // Check 2: Kennzeichen (Fallback wenn keine Auftragsnummer oder keine Treffer)
+                if ((!existingVehicle || existingVehicle.empty) && anfrage.kennzeichen) {
+                    existingVehicle = await db.collection('fahrzeuge')
+                        .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                        .limit(1)
+                        .get();
+                    console.log(`   📊 Check Kennzeichen "${anfrage.kennzeichen}": ${existingVehicle.size} Treffer`);
+                }
+
+                if (existingVehicle && !existingVehicle.empty) {
                     const vehicle = existingVehicle.docs[0];
                     console.error('❌ DUPLIKAT VERHINDERT! Fahrzeug existiert bereits:', vehicle.id);
                     alert('⚠️ Fahrzeug wurde bereits angelegt!\n\n' +
