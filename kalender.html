@@ -338,6 +338,10 @@
             background: linear-gradient(135deg, #2e7d32 0%, #66bb6a 100%);
         }
 
+        .stat-card.purple {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
         .stat-card.yellow {
             background: linear-gradient(135deg, #ffc107 0%, #ffd54f 100%);
         }
@@ -707,6 +711,11 @@
             border-left-color: #2e7d32;
         }
 
+        .timeline-event.material {
+            border-left-color: #667eea;
+            background: linear-gradient(135deg, #f3f4ff 0%, #e8eaff 100%);
+        }
+
         .timeline-event-title {
             font-weight: 600;
             color: #003366;
@@ -741,6 +750,11 @@
 
         .day-event-card.annahme {
             border-left-color: #1976d2;
+        }
+
+        .day-event-card.material {
+            border-left-color: #667eea;
+            background: linear-gradient(135deg, #f3f4ff 0%, #e8eaff 100%);
         }
 
         .day-event-card.abholung {
@@ -1016,6 +1030,10 @@
             background: #2e7d32;
         }
 
+        .month-event-dot.material {
+            background: #667eea;
+        }
+
         .month-event-count {
             background: rgba(0,0,0,0.7);
             color: white;
@@ -1251,6 +1269,9 @@
             <button class="filter-btn" onclick="toggleFilter('abgeschlossen')" data-filter="abgeschlossen">
                 🟢 Erledigt <span class="filter-count" id="count-abgeschlossen">0</span>
             </button>
+            <button class="filter-btn" onclick="toggleFilter('material')" data-filter="material">
+                🟣 Material <span class="filter-count" id="count-material">0</span>
+            </button>
             <button class="filter-btn" onclick="toggleFilter('overdue')" data-filter="overdue">
                 🔴 Überfällig <span class="filter-count" id="count-overdue">0</span>
             </button>
@@ -1269,6 +1290,10 @@
             <div class="legend-item">
                 <div class="legend-color" style="background: #2e7d32;"></div>
                 <span>Abgeschlossen</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #667eea;"></div>
+                <span>Material-Bestellung</span>
             </div>
             <div class="legend-item">
                 <div class="legend-color" style="background: #ffc107;"></div>
@@ -1309,6 +1334,7 @@
 
     <script>
         let allVehicles = [];
+        window.materialRequests = [];
         let currentDate = new Date();
         let currentView = 'month'; // 'day', 'week', 'month'
         // firebaseApp is provided by firebase-config.js as window.firebaseApp
@@ -1359,6 +1385,35 @@
             renderStatistics();
             updateFilterCounts();
             renderMiniCalendar();
+
+            // Material-Requests Realtime Listener einrichten
+            if (firebaseInitialized && window.db) {
+                setupMaterialListener();
+            }
+        }
+
+        // Material-Requests Realtime Listener
+        function setupMaterialListener() {
+            window.db.collection('materialRequests')
+                .orderBy('timestamp', 'desc')
+                .onSnapshot((snapshot) => {
+                    window.materialRequests = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        window.materialRequests.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    });
+                    console.log('✅ Material-Requests geladen:', window.materialRequests.length);
+
+                    // Kalender neu rendern
+                    renderCalendar();
+                    renderStatistics();
+                    updateFilterCounts();
+                }, (error) => {
+                    console.error('❌ Fehler bei Material-Requests Listener:', error);
+                });
         }
 
         // Filter Toggle
@@ -1470,7 +1525,8 @@
                 annahme: events.filter(e => e.type === 'annahme').length,
                 geplant: events.filter(e => e.type === 'geplant').length,
                 abgeschlossen: events.filter(e => e.type === 'abgeschlossen').length,
-                revenue: events.reduce((sum, e) => sum + (parseFloat(e.vehicle.vereinbarterPreis) || 0), 0)
+                material: events.filter(e => e.type === 'material').length,
+                revenue: events.reduce((sum, e) => sum + (parseFloat(e.vehicle?.vereinbarterPreis) || 0), 0)
             };
 
             const label = currentView === 'day' ? 'Heute' : currentView === 'week' ? 'Diese Woche' : 'Dieser Monat';
@@ -1487,6 +1543,10 @@
                 <div class="stat-card green">
                     <div class="stat-number">${stats.abgeschlossen}</div>
                     <div class="stat-label">✅ Abgeschlossen ${label}</div>
+                </div>
+                <div class="stat-card purple">
+                    <div class="stat-number">${stats.material}</div>
+                    <div class="stat-label">📦 Material ${label}</div>
                 </div>
                 <div class="stat-card yellow">
                     <div class="stat-number">€ ${stats.revenue.toFixed(0)}</div>
@@ -1628,6 +1688,26 @@
                 }
             });
 
+            // 📦 MATERIAL-REQUESTS laden (unfiltered)
+            if (window.materialRequests && Array.isArray(window.materialRequests)) {
+                window.materialRequests.forEach(request => {
+                    if (request.status === 'pending' && request.timestamp) {
+                        const requestDate = new Date(request.timestamp);
+                        if (formatDate(requestDate) === dateString) {
+                            const requestTime = requestDate.toTimeString().slice(0, 5) || '00:00';
+                            events.push({
+                                type: 'material',
+                                requestId: request.id,
+                                description: request.description || 'Keine Beschreibung',
+                                requestedBy: request.requestedBy || 'Unbekannt',
+                                time: requestTime,
+                                overdue: false
+                            });
+                        }
+                    }
+                });
+            }
+
             return events.sort((a, b) => a.time.localeCompare(b.time));
         }
 
@@ -1731,35 +1811,56 @@
             let html = '<div class="day-list">';
 
             events.forEach(event => {
-                const time = event.time || '00:00';
+                const time = event.time || event.zeit || '00:00';
                 const overdueClass = event.overdue ? 'event-overdue' : '';
                 const overdueBadge = event.overdue ? '<span class="overdue-badge">ÜBERFÄLLIG</span>' : '';
 
-                html += `
-                    <div class="day-event-card ${event.type} ${overdueClass} draggable"
-                         draggable="true"
-                         data-vehicle-id="${event.vehicle.id}"
-                         data-event-type="${event.type}"
-                         ondragstart="handleDragStart(event)"
-                         ondragend="handleDragEnd(event)"
-                         onclick="showEventDetails('${event.vehicle.id}', '${event.type}')"
-                         style="position: relative;">
-                        <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
-                        <div class="day-event-header">
-                            <div class="day-event-title">
-                                ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
-                                ${overdueBadge}
+                // ✅ Material-Events anders rendern
+                if (event.type === 'material') {
+                    html += `
+                        <div class="day-event-card material"
+                             onclick="showMaterialDetails('${event.requestId}')"
+                             style="position: relative; cursor: pointer;">
+                            <div class="day-event-header">
+                                <div class="day-event-title">
+                                    📦 Material-Bestellung
+                                </div>
+                                <div class="day-event-time">${time}</div>
                             </div>
-                            <div class="day-event-time">${time}</div>
+                            <div class="day-event-details">
+                                <strong>Beschreibung:</strong> ${event.description}<br>
+                                <strong>Bestellt von:</strong> ${event.requestedBy}
+                            </div>
                         </div>
-                        <div class="day-event-details">
-                            <strong>Kunde:</strong> ${event.vehicle.kundenname}<br>
-                            <strong>Farbnummer:</strong> ${event.vehicle.farbnummer}<br>
-                            <strong>Typ:</strong> ${event.typeName}
-                            ${event.vehicle.vereinbarterPreis ? `<br><strong>Preis:</strong> € ${parseFloat(event.vehicle.vereinbarterPreis).toFixed(2)}` : ''}
+                    `;
+                } else {
+                    // Fahrzeug-Events (bestehender Code)
+                    html += `
+                        <div class="day-event-card ${event.type} ${overdueClass} draggable"
+                             draggable="true"
+                             data-vehicle-id="${event.vehicle.id}"
+                             data-event-type="${event.type}"
+                             ondragstart="handleDragStart(event)"
+                             ondragend="handleDragEnd(event)"
+                             onclick="showEventDetails('${event.vehicle.id}', '${event.type}')"
+                             style="position: relative;">
+                            <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
+                            <div class="day-event-header">
+                                <div class="day-event-title">
+                                    ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
+                                    ${overdueBadge}
+                                </div>
+                                <div class="day-event-time">${time}</div>
+                            </div>
+                            <div class="day-event-details">
+                                <strong>Kunde:</strong> ${event.vehicle.kundenname}<br>
+                                <strong>Farbnummer:</strong> ${event.vehicle.farbnummer}<br>
+                                <strong>Typ:</strong> ${event.typeName}
+                                ${event.vehicle.vereinbarterPreis ? `<br><strong>Preis:</strong> € ${parseFloat(event.vehicle.vereinbarterPreis).toFixed(2)}` : ''}
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
             });
 
             html += '</div>';
@@ -1785,31 +1886,48 @@
 
             // Events positionieren
             events.forEach(event => {
-                const time = event.time || '08:00';
+                const time = event.time || event.zeit || '08:00';
                 const [hours, minutes] = time.split(':').map(Number);
                 const topPosition = (hours * 60 + minutes);
                 const overdueClass = event.overdue ? 'event-overdue' : '';
                 const overdueBadge = event.overdue ? '<span class="overdue-badge">ÜBERFÄLLIG</span>' : '';
 
-                html += `
-                    <div class="timeline-event ${event.type} ${overdueClass} draggable"
-                         draggable="true"
-                         data-vehicle-id="${event.vehicle.id}"
-                         data-event-type="${event.type}"
-                         ondragstart="handleDragStart(event)"
-                         ondragend="handleDragEnd(event)"
-                         style="top: ${topPosition}px; height: 50px; position: relative;"
-                         onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
-                        <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
-                        <div class="timeline-event-title">
-                            ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
-                            ${overdueBadge}
+                // ✅ Material-Events in Timeline anders rendern
+                if (event.type === 'material') {
+                    html += `
+                        <div class="timeline-event material"
+                             style="top: ${topPosition}px; height: 40px; position: relative; cursor: pointer;"
+                             onclick="showMaterialDetails('${event.requestId}')">
+                            <div class="timeline-event-title">
+                                📦 Material: ${event.description}
+                            </div>
+                            <div class="timeline-event-details">
+                                Von: ${event.requestedBy}
+                            </div>
                         </div>
-                        <div class="timeline-event-details">
-                            ${event.typeName} • ${event.vehicle.kundenname}
+                    `;
+                } else {
+                    // Fahrzeug-Events (bestehender Code)
+                    html += `
+                        <div class="timeline-event ${event.type} ${overdueClass} draggable"
+                             draggable="true"
+                             data-vehicle-id="${event.vehicle.id}"
+                             data-event-type="${event.type}"
+                             ondragstart="handleDragStart(event)"
+                             ondragend="handleDragEnd(event)"
+                             style="top: ${topPosition}px; height: 50px; position: relative;"
+                             onclick="showEventDetails('${event.vehicle.id}', '${event.type}')">
+                            <div class="event-actions-trigger" onclick="showQuickActions(event, '${event.vehicle.id}', '${event.type}')">⋯</div>
+                            <div class="timeline-event-title">
+                                ${event.vehicle.kennzeichen} - ${event.vehicle.marke} ${event.vehicle.modell}
+                                ${overdueBadge}
+                            </div>
+                            <div class="timeline-event-details">
+                                ${event.typeName} • ${event.vehicle.kundenname}
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
             });
 
             html += '</div></div></div>';
@@ -2049,6 +2167,31 @@
                 }
             });
 
+            // 📦 MATERIAL-REQUESTS laden
+            if (window.materialRequests && Array.isArray(window.materialRequests)) {
+                window.materialRequests.forEach(request => {
+                    if (request.status === 'pending' && request.timestamp) {
+                        const requestDate = new Date(request.timestamp);
+                        if (formatDate(requestDate) === dateString) {
+                            const requestTime = requestDate.toTimeString().slice(0, 5) || '00:00';
+                            const event = {
+                                type: 'material',
+                                requestId: request.id,
+                                description: request.description || 'Keine Beschreibung',
+                                requestedBy: request.requestedBy || 'Unbekannt',
+                                time: requestTime,
+                                overdue: false
+                            };
+
+                            // Filter anwenden
+                            if (activeFilters.includes('all') || activeFilters.includes('material')) {
+                                events.push(event);
+                            }
+                        }
+                    }
+                });
+            }
+
             return events.sort((a, b) => a.time.localeCompare(b.time));
         }
 
@@ -2107,6 +2250,11 @@
             `;
 
             modal.classList.add('show');
+        }
+
+        function showMaterialDetails(requestId) {
+            // Navigate to material.html where the Material-Liste is displayed
+            window.location.href = `material.html#${requestId}`;
         }
 
         function closeModal() {
