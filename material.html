@@ -735,7 +735,7 @@
         }
 
         async function saveMaterialRequest(photoDataURL, description) {
-            if (!db) {
+            if (!window.db) {
                 throw new Error('Firebase nicht initialisiert');
             }
 
@@ -759,7 +759,7 @@
             };
 
             // In Firestore speichern
-            await db.collection('materialRequests').doc(requestId).set(requestData);
+            await window.db.collection('materialRequests').doc(requestId).set(requestData);
 
             // Kalender-Eintrag erstellen
             const calendarEntry = {
@@ -771,18 +771,18 @@
             };
 
             // Kalender-Eintrag hinzufügen (append to existing entries)
-            const calendarDoc = await db.collection('calendar').doc(today).get();
+            const calendarDoc = await window.db.collection('calendar').doc(today).get();
 
             if (calendarDoc.exists) {
                 // Eintrag existiert, neue Anfrage hinzufügen
                 const existingEntries = calendarDoc.data().entries || [];
                 existingEntries.push(calendarEntry);
-                await db.collection('calendar').doc(today).update({
+                await window.db.collection('calendar').doc(today).update({
                     entries: existingEntries
                 });
             } else {
                 // Neuer Kalender-Tag
-                await db.collection('calendar').doc(today).set({
+                await window.db.collection('calendar').doc(today).set({
                     entries: [calendarEntry]
                 });
             }
@@ -808,14 +808,18 @@
 
             console.log('📦 Setting up Material Requests Listener...');
 
-            // Realtime Listener für alle offenen Anfragen
+            // Realtime Listener für alle Material-Anfragen (sortiert nach timestamp)
+            // Filter status='pending' in JavaScript (vermeidet Firestore Composite Index)
             window.db.collection('materialRequests')
-                .where('status', '==', 'pending')
                 .orderBy('timestamp', 'desc')
                 .onSnapshot((snapshot) => {
                     const requests = [];
                     snapshot.forEach(doc => {
-                        requests.push(doc.data());
+                        const data = doc.data();
+                        // Filter: nur pending Anfragen
+                        if (data.status === 'pending') {
+                            requests.push(data);
+                        }
                     });
 
                     console.log(`📦 ${requests.length} offene Material-Anfragen geladen`);
