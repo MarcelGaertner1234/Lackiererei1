@@ -1,0 +1,344 @@
+{
+  "name": "Fahrzeugannahme - Performance Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "name": "Schedule: Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300],
+      "id": "schedule-trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://marcelgaertner1234.github.io/Lackiererei1/",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Performance Test: Homepage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 200],
+      "id": "perf-homepage"
+    },
+    {
+      "parameters": {
+        "url": "https://marcelgaertner1234.github.io/Lackiererei1/annahme.html",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Performance Test: Annahme",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300],
+      "id": "perf-annahme"
+    },
+    {
+      "parameters": {
+        "url": "https://marcelgaertner1234.github.io/Lackiererei1/liste.html",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Performance Test: Liste",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 400],
+      "id": "perf-liste"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate performance metrics from HTTP responses (n8n compatible - ES5)\nvar startTime = Date.now();\nvar allInputs = $input.all();\n\n// DEBUG OUTPUT\nconsole.log('🔍 Performance Monitoring - Received ' + allInputs.length + ' inputs');\nfor (var debugIdx = 0; debugIdx < allInputs.length; debugIdx++) {\n  var debugItem = allInputs[debugIdx];\n  console.log('  Input ' + (debugIdx + 1) + ':');\n  console.log('    - Node: ' + (debugItem.json && debugItem.json.nodeName ? debugItem.json.nodeName : 'Unknown'));\n  console.log('    - Status: ' + (debugItem.json && debugItem.json.statusCode ? debugItem.json.statusCode : 'N/A'));\n  console.log('    - Data type: ' + typeof debugItem.json);\n}\n\n// Process each input manually (no arrow functions)\nvar results = [];\nfor (var i = 0; i < allInputs.length; i++) {\n  var input = allInputs[i];\n  var data = input.json;\n  var nodeName = data.nodeName || 'Unknown';\n  var statusCode = data.statusCode || 0;\n  var headers = data.headers || {};\n  \n  // Calculate response time (if available in headers)\n  var responseTime = null;\n  if (headers['x-response-time']) {\n    responseTime = parseInt(headers['x-response-time']);\n  }\n  \n  // Get content size (check both json and body)\n  var bodyContent = typeof data === 'string' ? data : (data.body || '');\n  var contentLength = headers['content-length'] \n    ? parseInt(headers['content-length']) \n    : bodyContent.length;\n  \n  // Determine performance rating\n  var performanceRating = 'N/A';\n  if (responseTime) {\n    if (responseTime < 1000) performanceRating = '🚀 Excellent';\n    else if (responseTime < 3000) performanceRating = '✅ Good';\n    else if (responseTime < 5000) performanceRating = '⚠️ Acceptable';\n    else performanceRating = '❌ Slow';\n  }\n  \n  results.push({\n    page: nodeName.replace('Performance Test: ', ''),\n    statusCode: statusCode,\n    responseTime: responseTime,\n    contentSize: contentLength,\n    contentSizeKB: Math.round(contentLength / 1024 * 100) / 100,\n    status: statusCode === 200 ? '✅' : '❌',\n    performanceRating: performanceRating\n  });\n}\n\n// Calculate aggregate metrics manually\nvar totalResponseTime = 0;\nvar responseTimeCount = 0;\nvar totalContentSize = 0;\nvar allPagesUp = true;\n\nfor (var j = 0; j < results.length; j++) {\n  if (results[j].responseTime !== null) {\n    totalResponseTime += results[j].responseTime;\n    responseTimeCount++;\n  }\n  totalContentSize += results[j].contentSize;\n  if (results[j].statusCode !== 200) {\n    allPagesUp = false;\n  }\n}\n\nvar avgResponseTime = responseTimeCount > 0 ? Math.round(totalResponseTime / responseTimeCount) : 0;\n\n// Determine avg response time rating\nvar avgResponseTimeRating = '✅ Good';\nif (avgResponseTime < 1000) avgResponseTimeRating = '🚀 Excellent';\nelse if (avgResponseTime < 3000) avgResponseTimeRating = '✅ Good';\nelse if (avgResponseTime < 5000) avgResponseTimeRating = '⚠️ Acceptable';\nelse avgResponseTimeRating = '❌ Slow';\n\n// Build summary string manually (no template literals)\nvar summaryLines = [];\nsummaryLines.push('\\n📊 PERFORMANCE MONITORING REPORT');\nsummaryLines.push('================================');\nsummaryLines.push('Timestamp: ' + new Date().toLocaleString('de-DE'));\nsummaryLines.push('');\nsummaryLines.push('Overall Status: ' + (allPagesUp ? '✅ ALL PAGES UP' : '❌ SOME PAGES DOWN'));\nsummaryLines.push('Avg Response Time: ' + avgResponseTime + 'ms (' + (avgResponseTime < 3000 ? '✅ Good' : '⚠️ Needs Attention') + ')');\nsummaryLines.push('Total Content Size: ' + Math.round(totalContentSize / 1024) + 'KB');\nsummaryLines.push('');\nsummaryLines.push('--- Per-Page Results ---');\n\nfor (var k = 0; k < results.length; k++) {\n  var r = results[k];\n  summaryLines.push(r.status + ' ' + r.page + ':');\n  summaryLines.push('   - Status: ' + r.statusCode);\n  summaryLines.push('   - Response Time: ' + (r.responseTime || 'N/A') + 'ms (' + r.performanceRating + ')');\n  summaryLines.push('   - Size: ' + r.contentSizeKB + 'KB');\n  summaryLines.push('');\n}\n\nvar summaryText = summaryLines.join('\\n');\n\n// Build alerts manually (no filter/arrow functions)\nvar slowPages = [];\nvar downPages = [];\nvar largePages = [];\n\nfor (var m = 0; m < results.length; m++) {\n  if (results[m].responseTime && results[m].responseTime > 3000) {\n    slowPages.push(results[m]);\n  }\n  if (results[m].statusCode !== 200) {\n    downPages.push(results[m]);\n  }\n  if (results[m].contentSizeKB > 500) {\n    largePages.push(results[m]);\n  }\n}\n\nvar performanceReport = {\n  timestamp: new Date().toISOString(),\n  date: new Date().toLocaleDateString('de-DE'),\n  time: new Date().toLocaleTimeString('de-DE'),\n  \n  overallStatus: allPagesUp ? '✅ ALL PAGES UP' : '❌ SOME PAGES DOWN',\n  avgResponseTime: avgResponseTime,\n  avgResponseTimeRating: avgResponseTimeRating,\n  totalContentSizeKB: Math.round(totalContentSize / 1024 * 100) / 100,\n  \n  pages: results,\n  summary: summaryText,\n  \n  alerts: {\n    slowPages: slowPages,\n    downPages: downPages,\n    largePages: largePages\n  }\n};\n\nconsole.log(performanceReport.summary);\n\nreturn [{ json: performanceReport }];"
+      },
+      "name": "Calculate Performance Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300],
+      "id": "calculate-metrics"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-alerts",
+              "leftValue": "={{ $json.alerts.slowPages.length > 0 || $json.alerts.downPages.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "name": "Check for Performance Issues",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "id": "check-issues"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "alert-subject",
+              "name": "alertSubject",
+              "value": "⚠️ Performance Alert - Fahrzeugannahme App",
+              "type": "string"
+            },
+            {
+              "id": "alert-body",
+              "name": "alertBody",
+              "value": "=🚨 PERFORMANCE ALERT\n\nTimestamp: {{ $json.timestamp }}\n\nAlerts: {{ $json.alerts.downPages.length }} page(s) down, {{ $json.alerts.slowPages.length }} slow page(s), {{ $json.alerts.largePages.length }} large page(s)\n\nAvg Response Time: {{ $json.avgResponseTime }}ms\n\nCheck the app: https://marcelgaertner1234.github.io/Lackiererei1/",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Format Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1100, 200],
+      "id": "format-alert"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "normal-subject",
+              "name": "logSubject",
+              "value": "✅ Performance OK - Fahrzeugannahme App",
+              "type": "string"
+            },
+            {
+              "id": "normal-body",
+              "name": "logBody",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Format Normal Log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1100, 400],
+      "id": "format-log"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition"
+      },
+      "name": "Merge Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1300, 300],
+      "id": "merge-outputs"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "monitoring-complete",
+              "name": "monitoringComplete",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "next-check",
+              "name": "nextCheckIn",
+              "value": "30 minutes",
+              "type": "string"
+            },
+            {
+              "id": "monitoring-message",
+              "name": "message",
+              "value": "=Performance monitoring abgeschlossen: {{ $json.overallStatus }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Final Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1500, 300],
+      "id": "final-output"
+    }
+  ],
+  "connections": {
+    "Schedule: Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Performance Test: Homepage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Performance Test: Annahme",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Performance Test: Liste",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Performance Test: Homepage": {
+      "main": [
+        [
+          {
+            "node": "Calculate Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Performance Test: Annahme": {
+      "main": [
+        [
+          {
+            "node": "Calculate Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Performance Test: Liste": {
+      "main": [
+        [
+          {
+            "node": "Calculate Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Performance Metrics": {
+      "main": [
+        [
+          {
+            "node": "Check for Performance Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Performance Issues": {
+      "main": [
+        [
+          {
+            "node": "Format Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Normal Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Alert": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Normal Log": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Outputs": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "id": "performance-monitoring",
+  "meta": {
+    "instanceId": "your-instance-id"
+  },
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-19T10:00:00.000Z",
+  "createdAt": "2025-10-19T10:00:00.000Z"
+}

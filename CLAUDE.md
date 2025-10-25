@@ -1,8 +1,8 @@
 # 🚗 Fahrzeugannahme-App - Claude Code Dokumentation
 
-**Version:** 3.2 (Service Consistency Audit - COMPLETE!)
-**Status:** ✅ Production-Ready - Alle 6 Services konsistent, E2E Tests vorhanden
-**Letzte Aktualisierung:** 20.10.2025
+**Version:** 3.3 (Dark Mode & Mobile Optimierungen - COMPLETE!)
+**Status:** ✅ Production-Ready - Kunden-Verwaltung vollständig Dark Mode optimiert
+**Letzte Aktualisierung:** 25.10.2025
 **Live-URL:** https://marcelgaertner1234.github.io/Lackiererei1/
 
 ---
@@ -70,6 +70,205 @@ Digitale Fahrzeug-Annahme und -Abnahme für **Auto-Lackierzentrum Mosbach** mit 
 6. **Landing Page** (index.html)
 
 *(Details siehe alte CLAUDE.md - hier fokussieren wir auf Version 3.0+ Änderungen)*
+
+---
+
+## 🚀 Version 3.3 Features (25.10.2025) ⭐ DARK MODE & MOBILE OPTIMIERUNGEN
+
+**Status:** ✅ 100% COMPLETE - Kunden-Verwaltung vollständig optimiert!
+
+### **Projekt-Ziel**
+Apple Liquid Glass Dark Mode + Mobile-First Optimierungen für `kunden.html`:
+- 🌙 Konsistenter Dark Mode für ALLE UI-Elemente
+- 📱 Mobile Navigation optimiert
+- 🎨 Kunden-Karten im Dark Mode lesbar
+- 🔍 Input-Felder & Container im Dark Mode dunkel
+
+---
+
+### **Phasen Übersicht (7 Phasen)**
+
+| PHASE | Status | Zeilen | Beschreibung |
+|-------|--------|--------|--------------|
+| **#10** | ✅ | 1080 | Desktop Navigation auf Mobile versteckt (!important Fix) |
+| **#11** | ✅ | 1307-1578 | ALLE Texte im Dark Mode weiß (273 Zeilen CSS) |
+| **#12** | ✅ | 3310-3494 | Chart.js Text-Farben dynamisch (Theme-Helper) |
+| **#13** | ✅ | 1580-1632 | Container & Input-Felder Dark Mode (58 Zeilen) |
+| **#14** | ✅ | 1141 | Navigation Bar display: none !important |
+| **#15** | ✅ | 2739, 3756, 3765, 4123, 4131 | Kunden-Cards Container Sichtbarkeit (5 Fixes) |
+| **#16** | ✅ | 1634-1679 | Kunden-Karten Dark Mode (47 Zeilen CSS) |
+
+**Total:** ~450 Zeilen Code-Änderungen!
+
+---
+
+### **PHASE 10: Mobile Navigation Fix**
+
+**Problem:** Desktop Navigation Bar (7 blaue Buttons) sichtbar auf Mobile trotz `display: none` in Media Query
+
+**Root Cause:** CSS-Kaskade - Desktop-Regel (Zeile 1252) überschrieb Mobile-Regel (Zeile 1140)
+
+**Lösung:**
+```css
+/* kunden.html Zeile 1141 */
+.nav-bar {
+    display: none !important; /* ✅ Überschreibt Desktop-Regel */
+}
+```
+
+**Resultat:** +150px Viewport-Höhe auf Mobile!
+
+---
+
+### **PHASE 11: Alle Texte im Dark Mode weiß**
+
+**Problem:** Viele Texte hatten hardcoded `#003366` (Dunkelblau) oder niedrige Opacity → unlesbar im Dark Mode
+
+**Lösung:** 273 Zeilen Dark Mode CSS (Zeilen 1307-1578):
+- 18 CSS-Klassen-basierte Regeln (154 Zeilen)
+- Attribute-Selektoren für Inline-Styles (119 Zeilen)
+
+**Beispiele:**
+```css
+[data-theme="dark"] .stat-label {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+[data-theme="dark"] span[style*="color: #003366"] {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+```
+
+**Resultat:** ALLE Texte konsistent weiß/hellgrau im Dark Mode!
+
+---
+
+### **PHASE 12: Chart.js Text-Farben dynamisch**
+
+**Problem:** Chart.js rendert zu Canvas → CSS funktioniert nicht
+
+**Lösung:** JavaScript Theme-Helper (Zeilen 3310-3327):
+```javascript
+function isDarkMode() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+function getChartColors() {
+    const isDark = isDarkMode();
+    return {
+        textColor: isDark ? 'rgba(255, 255, 255, 0.9)' : '#666',
+        gridColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+    };
+}
+```
+
+**Charts aktualisiert:**
+- Bar Chart (Top 10 Kunden) - Achsen-Texte
+- Doughnut Chart (Tag-Distribution) - Legend-Texte
+
+**Resultat:** Charts passen sich automatisch an Theme-Wechsel an!
+
+---
+
+### **PHASE 13: Container & Input-Felder Dark Mode**
+
+**Problem:** 3 große weiße Bereiche im Dark Mode:
+- Umsatz-Filter-Box
+- Such-Eingabefeld
+- Erweiterte Filter-Box
+
+**Lösung:** 58 Zeilen Dark Mode CSS (Zeilen 1580-1632):
+```css
+[data-theme="dark"] .umsatz-filter {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="dark"] .search-box input {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+}
+```
+
+**Resultat:** Alle Boxen & Inputs dunkel mit Apple Liquid Glass Stil!
+
+---
+
+### **PHASE 14: Navigation Bar Mobile Fix**
+
+**Duplicate von Phase 10** (Same Fix, dokumentiert für Klarheit)
+
+---
+
+### **PHASE 15: Kunden-Cards Container Sichtbarkeit**
+
+**Problem:** `kundenCardsContainer` hatte `style="display: none"` und wurde NIE auf `block` gesetzt
+
+**Root Cause:** JavaScript befüllte Container, setzte aber nicht `display: block`
+
+**Lösung:** 5 JavaScript-Fixes:
+1. **HTML:** Inline-Style entfernt (Zeile 2739)
+2. **renderKundenCards():** Container auf `block` bei Inhalt (Zeile 3765)
+3. **renderKundenCards():** Container auf `none` wenn leer (Zeile 3756)
+4. **renderKundenTable():** Container auf `none` in Table Mode (Zeile 4131)
+5. **renderKundenTable():** Container auf `none` wenn leer (Zeile 4123)
+
+**Resultat:** Kunden-Karten werden auf Mobile korrekt angezeigt!
+
+---
+
+### **PHASE 16: Kunden-Karten Dark Mode**
+
+**Problem:** Karten hatten weißen Hintergrund mit schwarzem Text → unlesbar im Dark Mode
+
+**Lösung:** 47 Zeilen Dark Mode CSS (Zeilen 1634-1679):
+```css
+/* Hauptkarte - Glassmorphism Dark */
+[data-theme="dark"] .kunde-card {
+    background: rgba(255, 255, 255, 0.08);
+    border-left-color: rgba(46, 200, 255, 0.6);
+    box-shadow:
+        0 2px 8px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+/* Info-Labels & Values */
+[data-theme="dark"] .info-label {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="dark"] .info-value {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* Badges - Muted Colors */
+[data-theme="dark"] .kunde-badge-green {
+    background: rgba(40, 167, 69, 0.2);
+    color: rgba(76, 217, 100, 0.95);
+}
+```
+
+**Resultat:** Karten perfekt lesbar mit Apple Liquid Glass Stil!
+
+---
+
+### **Zusammenfassung Version 3.3**
+
+**Dateien geändert:** 1 (kunden.html)
+**Zeilen Code:** ~450 neue Zeilen (CSS + JavaScript)
+**Phasen:** 7 (10-16)
+**Dauer:** ~2 Stunden
+
+**Key Achievements:**
+- ✅ Dark Mode 100% konsistent (Texte, Charts, Cards, Inputs)
+- ✅ Mobile Navigation optimiert (Desktop Nav versteckt)
+- ✅ Kunden-Karten responsive & lesbar
+- ✅ Apple Liquid Glass Design durchgehend
+- ✅ Chart.js dynamisch Theme-aware
+
+**Nächste Session:**
+- Weitere Seiten (liste.html, kanban.html) mit Dark Mode optimieren?
+- Mobile Optimierungen auf andere Seiten anwenden?
 
 ---
 

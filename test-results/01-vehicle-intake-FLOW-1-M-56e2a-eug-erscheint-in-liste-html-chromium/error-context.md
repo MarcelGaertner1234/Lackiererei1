@@ -1,0 +1,246 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - link "🏠 Home" [ref=e4] [cursor=pointer]:
+        - /url: index.html
+      - link "📋 Annahme" [ref=e5] [cursor=pointer]:
+        - /url: annahme.html
+      - link "✅ Abnahme" [ref=e6] [cursor=pointer]:
+        - /url: abnahme.html
+      - link "📊 Übersicht" [ref=e7] [cursor=pointer]:
+        - /url: liste.html
+      - link "👥 Kunden" [ref=e8] [cursor=pointer]:
+        - /url: kunden.html
+      - link "🎯 Prozessüberwachung" [ref=e9] [cursor=pointer]:
+        - /url: kanban.html
+    - generic [ref=e10]:
+      - heading "🚗 Fahrzeug-Annahme" [level=1] [ref=e11]
+      - paragraph [ref=e12]: Auto-Lackierzentrum Mosbach
+    - generic [ref=e13]:
+      - text: "Datum:"
+      - strong [ref=e14]: 19.10.2025
+    - generic [ref=e15]:
+      - text: 💡
+      - strong [ref=e16]: "Tipp:"
+      - text: Füllen Sie alle Fahrzeugdaten und die Farbnummer aus - das erleichtert die Arbeit in der Farbkabine enorm!
+    - generic [ref=e17]:
+      - generic [ref=e18]: 👤 Kundendaten
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e21]: Kennzeichen *
+          - textbox "Kennzeichen *" [ref=e22]:
+            - /placeholder: z.B. MOS-CG 123
+        - generic [ref=e23]:
+          - generic [ref=e24]: Kundenauswahl
+          - combobox [ref=e25]:
+            - option "🆕 Neuer Kunde" [selected]
+      - generic [ref=e26]:
+        - generic [ref=e27]: Kundenname *
+        - textbox "Kundenname *" [ref=e28]:
+          - /placeholder: z.B. Max Mustermann
+      - generic [ref=e29]:
+        - generic [ref=e30]: Voraussichtliches Abnahme-Datum *
+        - textbox "Voraussichtliches Abnahme-Datum *" [ref=e31]
+      - generic [ref=e32]:
+        - generic [ref=e33]: Service-Typ *
+        - combobox "Service-Typ *" [ref=e34]:
+          - option "🎨 Lackierung" [selected]
+          - option "🔧 Reifen-Service"
+          - option "⚙️ Mechanik"
+          - option "✨ Pflege & Aufbereitung"
+          - option "📋 TÜV & Prüfung"
+          - option "🛡️ Versicherungsschaden"
+        - generic [ref=e35]: 💡 Wichtig für korrekte Prozessüberwachung im Kanban-Board
+      - generic [ref=e36]: 🚙 Fahrzeug-Abholung
+      - generic [ref=e37]:
+        - generic [ref=e38]: Fahrzeug abholen?
+        - generic [ref=e39]:
+          - generic [ref=e41] [cursor=pointer]: Nein, Kunde bringt Fahrzeug selbst
+          - generic [ref=e43] [cursor=pointer]: Ja, Fahrzeug abholen
+      - generic [ref=e44]: 🚙 Fahrzeugdaten
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - generic [ref=e47]: Marke *
+          - combobox "Marke *" [ref=e48]:
+            - option "-- Bitte wählen --" [selected]
+            - option "Audi"
+            - option "BMW"
+            - option "Citroen"
+            - option "Cupra"
+            - option "Fiat"
+            - option "Ford"
+            - option "Honda"
+            - option "Hyundai"
+            - option "Kia"
+            - option "Mazda"
+            - option "Mercedes-Benz"
+            - option "MINI"
+            - option "Nissan"
+            - option "Opel"
+            - option "Peugeot"
+            - option "Porsche"
+            - option "Renault"
+            - option "Seat"
+            - option "Skoda"
+            - option "Suzuki"
+            - option "Toyota"
+            - option "Volkswagen"
+            - option "Volvo"
+            - option "Sonstige"
+        - generic [ref=e49]:
+          - generic [ref=e50]: Modell *
+          - textbox "Modell *" [ref=e51]:
+            - /placeholder: z.B. Golf 8, A4, 3er
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - generic [ref=e54]: Baujahr
+          - generic [ref=e55]:
+            - combobox [ref=e56]:
+              - option "Von" [selected]
+              - option "2025"
+              - option "2024"
+              - option "2023"
+              - option "2022"
+              - option "2021"
+              - option "2020"
+              - option "2019"
+              - option "2018"
+              - option "2017"
+              - option "2016"
+              - option "2015"
+              - option "2014"
+              - option "2013"
+              - option "2012"
+              - option "2011"
+              - option "2010"
+              - option "2009"
+              - option "2008"
+              - option "2007"
+              - option "2006"
+              - option "2005"
+              - option "2004"
+              - option "2003"
+              - option "2002"
+              - option "2001"
+              - option "2000"
+              - option "1999"
+              - option "1998"
+              - option "1997"
+              - option "1996"
+              - option "1995"
+              - option "1994"
+              - option "1993"
+              - option "1992"
+              - option "1991"
+              - option "1990"
+              - option "1989"
+              - option "1988"
+              - option "1987"
+              - option "1986"
+              - option "1985"
+              - option "1984"
+              - option "1983"
+              - option "1982"
+              - option "1981"
+              - option "1980"
+              - option "Älter als 1980"
+            - generic [ref=e57]: "-"
+            - combobox [ref=e58]:
+              - option "Bis" [selected]
+              - option "2025"
+              - option "2024"
+              - option "2023"
+              - option "2022"
+              - option "2021"
+              - option "2020"
+              - option "2019"
+              - option "2018"
+              - option "2017"
+              - option "2016"
+              - option "2015"
+              - option "2014"
+              - option "2013"
+              - option "2012"
+              - option "2011"
+              - option "2010"
+              - option "2009"
+              - option "2008"
+              - option "2007"
+              - option "2006"
+              - option "2005"
+              - option "2004"
+              - option "2003"
+              - option "2002"
+              - option "2001"
+              - option "2000"
+              - option "1999"
+              - option "1998"
+              - option "1997"
+              - option "1996"
+              - option "1995"
+              - option "1994"
+              - option "1993"
+              - option "1992"
+              - option "1991"
+              - option "1990"
+              - option "1989"
+              - option "1988"
+              - option "1987"
+              - option "1986"
+              - option "1985"
+              - option "1984"
+              - option "1983"
+              - option "1982"
+              - option "1981"
+              - option "1980"
+              - option "Älter als 1980"
+        - generic [ref=e59]:
+          - generic [ref=e60]: KM-Stand
+          - spinbutton "KM-Stand" [ref=e61]
+      - generic [ref=e62]:
+        - generic [ref=e63]: VIN/FIN (optional)
+        - textbox "VIN/FIN (optional)" [ref=e64]:
+          - /placeholder: Fahrgestellnummer
+      - generic [ref=e65]: 🎨 Lackier-Informationen
+      - generic [ref=e66]:
+        - generic [ref=e67]: Farbname
+        - textbox "Farbname" [ref=e68]:
+          - /placeholder: z.B. Silber Metallic, Tiefes Schwarz Perleffekt
+      - generic [ref=e69]:
+        - generic [ref=e70]: 🔬 Farbvariante (für Lackierer)
+        - combobox "🔬 Farbvariante (für Lackierer)" [ref=e71]
+        - generic [ref=e72]: "💡 Notiz für Lackierer: Welche Mischvariante wurde verwendet? (Vorschläge beim Tippen)"
+      - generic [ref=e73]:
+        - generic [ref=e74]: 🎨 FARBNUMMER / FARBCODE *
+        - textbox "🎨 FARBNUMMER / FARBCODE *" [ref=e75]:
+          - /placeholder: z.B. LC9Z, C7A, A96, LY9B
+      - generic [ref=e76]:
+        - generic [ref=e77]: Lackart *
+        - generic [ref=e78]:
+          - generic [ref=e80] [cursor=pointer]: Uni / Solid
+          - generic [ref=e82] [cursor=pointer]: Metallic
+          - generic [ref=e84] [cursor=pointer]: Perleffekt
+      - generic [ref=e85]: 📷 Fotos
+      - generic [ref=e86]:
+        - generic [ref=e87]: Schadensfotos (min. 1 Foto erforderlich)
+        - generic [ref=e89] [cursor=pointer]: 📷
+      - generic [ref=e90]: 📝 Schadensbeschreibung & Preis
+      - generic [ref=e91]:
+        - generic [ref=e92]: Notizen / Schadensbeschreibung
+        - textbox "Notizen / Schadensbeschreibung" [ref=e93]:
+          - /placeholder: z.B. Delle an linker Tür, Kratzer am Kotflügel hinten rechts...
+      - generic [ref=e94]:
+        - generic [ref=e95]: 💰 Vereinbarter Preis *
+        - spinbutton "💰 Vereinbarter Preis *" [ref=e96]
+        - generic [ref=e97]: Erforderlich für vollständige Dokumentation
+      - generic [ref=e98]: ✍️ Unterschrift
+      - generic [ref=e99]:
+        - generic [ref=e100]: Unterschrift Kunde *
+        - button "Löschen" [ref=e103] [cursor=pointer]
+      - button "💾 Speichern & PDF erstellen" [ref=e104] [cursor=pointer]
+      - button "📋 Arbeitsauftrag für Werkstatt drucken" [ref=e105] [cursor=pointer]
+  - generic [ref=e107] [cursor=pointer]: 🔔
+```

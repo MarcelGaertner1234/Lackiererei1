@@ -1,0 +1,291 @@
+{
+  "name": "🐛 BUG HUNTER - Complete E2E Analysis",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 500],
+      "id": "manual-trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://marcelgaertner1234.github.io/Lackiererei1/firebase-config.js",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Load Firebase Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300],
+      "id": "load-firebase-config"
+    },
+    {
+      "parameters": {
+        "url": "https://marcelgaertner1234.github.io/Lackiererei1/annahme.html",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Load Annahme Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 450],
+      "id": "load-annahme"
+    },
+    {
+      "parameters": {
+        "url": "https://marcelgaertner1234.github.io/Lackiererei1/liste.html",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Load Liste Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 600],
+      "id": "load-liste"
+    },
+    {
+      "parameters": {
+        "url": "https://marcelgaertner1234.github.io/Lackiererei1/kanban.html",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Load Kanban Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 750],
+      "id": "load-kanban"
+    },
+    {
+      "parameters": {
+        "jsCode": "var responseData = $input.first().json;\nvar code = typeof responseData === 'string' ? responseData : (responseData.data || responseData.body || '');\n\nvar bugs = [];\nvar warnings = [];\n\nconsole.log('=== FIREBASE CONFIG ANALYSE ===');\nconsole.log('Code Length:', code.length);\n\nvar hasSaveFahrzeug = code.includes('saveFahrzeug');\nvar hasUpdateFahrzeug = code.includes('updateFahrzeug');\nvar hasGetAllFahrzeuge = code.includes('getAllFahrzeuge');\nvar hasDeleteFahrzeug = code.includes('deleteFahrzeug');\nvar hasSavePhotos = code.includes('savePhotosToFirestore');\nvar hasListenToFahrzeuge = code.includes('listenToFahrzeuge');\nvar hasRegistriereKundenbesuch = code.includes('registriereKundenbesuch');\n\nvar hasDbCollection = code.includes('db.collection');\nvar hasDbCollectionAdd = code.includes('.add(') || code.includes('.set(');\nvar hasDbCollectionUpdate = code.includes('.update(');\nvar hasOnSnapshot = code.includes('onSnapshot');\n\nif (!hasSaveFahrzeug) {\n  bugs.push({\n    severity: 'CRITICAL',\n    location: 'firebase-config.js',\n    issue: 'saveFahrzeug() function is MISSING',\n    impact: 'Vehicles CANNOT be saved to Firestore',\n    evidence: 'Function not found in code',\n    fix: 'Add: saveFahrzeug: async (data) => { await db.collection(\"fahrzeuge\").doc(data.id).set(data); }'\n  });\n}\n\nif (!hasUpdateFahrzeug) {\n  bugs.push({\n    severity: 'CRITICAL',\n    location: 'firebase-config.js',\n    issue: 'updateFahrzeug() function is MISSING',\n    impact: 'Nachannahme updates CANNOT work',\n    evidence: 'Function not found in code',\n    fix: 'Add: updateFahrzeug: async (id, updates) => { await db.collection(\"fahrzeuge\").doc(id).update(updates); }'\n  });\n}\n\nif (!hasListenToFahrzeuge) {\n  bugs.push({\n    severity: 'HIGH',\n    location: 'firebase-config.js',\n    issue: 'listenToFahrzeuge() may not be implemented correctly',\n    impact: 'Realtime listeners may not work',\n    evidence: 'Function exists but implementation unclear'\n  });\n}\n\nif (!hasDbCollectionAdd && !hasDbCollectionUpdate) {\n  bugs.push({\n    severity: 'CRITICAL',\n    location: 'firebase-config.js',\n    issue: 'NO Firestore write operations found',\n    impact: 'App cannot save ANY data to Firestore',\n    evidence: 'No .add() or .set() or .update() calls found'\n  });\n}\n\nvar result = {\n  timestamp: new Date().toISOString(),\n  testName: 'Firebase Config Code Analysis',\n  file: 'firebase-config.js',\n  summary: {\n    totalBugs: bugs.length,\n    totalWarnings: warnings.length,\n    criticalBugs: bugs.filter(function(b) { return b.severity === 'CRITICAL'; }).length,\n    status: bugs.length > 0 ? '❌ BUGS FOUND' : '✅ NO BUGS'\n  },\n  functionsFound: {\n    saveFahrzeug: hasSaveFahrzeug ? '✅ Found' : '❌ MISSING',\n    updateFahrzeug: hasUpdateFahrzeug ? '✅ Found' : '❌ MISSING',\n    getAllFahrzeuge: hasGetAllFahrzeuge ? '✅ Found' : '❌ MISSING',\n    deleteFahrzeug: hasDeleteFahrzeug ? '✅ Found' : '❌ MISSING',\n    savePhotosToFirestore: hasSavePhotos ? '✅ Found' : '❌ MISSING',\n    listenToFahrzeuge: hasListenToFahrzeuge ? '✅ Found' : '❌ MISSING',\n    registriereKundenbesuch: hasRegistriereKundenbesuch ? '✅ Found' : '❌ MISSING'\n  },\n  firebaseOperations: {\n    hasDbCollection: hasDbCollection ? '✅ Present' : '❌ Missing',\n    hasWriteOps: hasDbCollectionAdd ? '✅ Present' : '❌ Missing',\n    hasUpdateOps: hasDbCollectionUpdate ? '✅ Present' : '❌ Missing',\n    hasRealtimeListeners: hasOnSnapshot ? '✅ Present' : '❌ Missing'\n  },\n  bugs: bugs,\n  warnings: warnings\n};\n\nconsole.log('=== RESULT ===');\nconsole.log(JSON.stringify(result, null, 2));\n\nreturn [{ json: result }];"
+      },
+      "name": "Analyze Firebase Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300],
+      "id": "analyze-firebase-config"
+    },
+    {
+      "parameters": {
+        "jsCode": "var responseData = $input.first().json;\nvar html = typeof responseData === 'string' ? responseData : (responseData.data || responseData.body || '');\n\nvar bugs = [];\nvar warnings = [];\n\nconsole.log('=== ANNAHME PAGE ANALYSE ===');\nconsole.log('HTML Length:', html.length);\n\nvar hasSaveFahrzeugCall = html.includes('firebaseApp.saveFahrzeug');\nvar hasUpdateFahrzeugCall = html.includes('firebaseApp.updateFahrzeug');\nvar hasSavePhotosCall = html.includes('firebaseApp.savePhotosToFirestore');\nvar hasGetAllFahrzeugeCall = html.includes('firebaseApp.getAllFahrzeuge');\nvar hasRegistriereKundenbesuchCall = html.includes('firebaseApp.registriereKundenbesuch');\n\nvar hasFormSubmitListener = html.includes('addEventListener') && html.includes('submit');\nvar hasFormValidation = html.includes('if (!document.getElementById');\nvar hasPDFGeneration = html.includes('createPDF');\n\nvar hasErrorHandling = html.includes('try {') && html.includes('catch');\nvar hasFallbackLogic = html.includes('localStorage.setItem') && html.includes('fahrzeuge');\n\nif (hasSaveFahrzeugCall) {\n  bugs.push({\n    severity: 'CRITICAL',\n    location: 'annahme.html',\n    linePattern: 'firebaseApp.saveFahrzeug',\n    issue: 'Calls saveFahrzeug() which does NOT exist in firebase-config.js',\n    impact: 'SAVES WILL FAIL - Vehicles cannot be stored',\n    evidence: 'Function call found but function is missing',\n    fix: 'Either: 1) Add saveFahrzeug to firebase-config.js OR 2) Replace with db.collection(\"fahrzeuge\").doc(data.id).set(data)'\n  });\n}\n\nif (hasUpdateFahrzeugCall) {\n  bugs.push({\n    severity: 'CRITICAL',\n    location: 'annahme.html',\n    linePattern: 'firebaseApp.updateFahrzeug',\n    issue: 'Calls updateFahrzeug() which does NOT exist in firebase-config.js',\n    impact: 'UPDATES WILL FAIL - Nachannahme cannot work',\n    evidence: 'Function call found but function is missing',\n    fix: 'Either: 1) Add updateFahrzeug to firebase-config.js OR 2) Replace with db.collection(\"fahrzeuge\").doc(id).update(data)'\n  });\n}\n\nif (!hasFormSubmitListener) {\n  bugs.push({\n    severity: 'HIGH',\n    location: 'annahme.html',\n    issue: 'No form submit listener found',\n    impact: 'Form may not submit correctly'\n  });\n}\n\nif (!hasErrorHandling) {\n  warnings.push({\n    severity: 'MEDIUM',\n    location: 'annahme.html',\n    issue: 'No error handling (try/catch) found',\n    impact: 'Errors may crash the page'\n  });\n}\n\nif (!hasFallbackLogic) {\n  warnings.push({\n    severity: 'LOW',\n    location: 'annahme.html',\n    issue: 'No localStorage fallback found',\n    impact: 'Data may be lost if Firebase fails'\n  });\n}\n\nvar result = {\n  timestamp: new Date().toISOString(),\n  testName: 'Annahme Page Code Analysis',\n  file: 'annahme.html',\n  summary: {\n    totalBugs: bugs.length,\n    totalWarnings: warnings.length,\n    criticalBugs: bugs.filter(function(b) { return b.severity === 'CRITICAL'; }).length,\n    status: bugs.length > 0 ? '❌ BUGS FOUND' : '✅ NO BUGS'\n  },\n  firebaseCalls: {\n    saveFahrzeug: hasSaveFahrzeugCall ? '❌ CALLED (but missing)' : '✅ Not called',\n    updateFahrzeug: hasUpdateFahrzeugCall ? '❌ CALLED (but missing)' : '✅ Not called',\n    savePhotosToFirestore: hasSavePhotosCall ? '✅ Called' : '⚠️ Not called',\n    getAllFahrzeuge: hasGetAllFahrzeugeCall ? '✅ Called' : '⚠️ Not called',\n    registriereKundenbesuch: hasRegistriereKundenbesuchCall ? '✅ Called' : '⚠️ Not called'\n  },\n  features: {\n    formSubmitListener: hasFormSubmitListener ? '✅ Present' : '❌ Missing',\n    formValidation: hasFormValidation ? '✅ Present' : '❌ Missing',\n    pdfGeneration: hasPDFGeneration ? '✅ Present' : '❌ Missing',\n    errorHandling: hasErrorHandling ? '✅ Present' : '⚠️ Missing',\n    fallbackLogic: hasFallbackLogic ? '✅ Present' : '⚠️ Missing'\n  },\n  bugs: bugs,\n  warnings: warnings\n};\n\nconsole.log('=== RESULT ===');\nconsole.log(JSON.stringify(result, null, 2));\n\nreturn [{ json: result }];"
+      },
+      "name": "Analyze Annahme Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 450],
+      "id": "analyze-annahme"
+    },
+    {
+      "parameters": {
+        "jsCode": "var responseData = $input.first().json;\nvar html = typeof responseData === 'string' ? responseData : (responseData.data || responseData.body || '');\n\nvar bugs = [];\nvar warnings = [];\n\nconsole.log('=== LISTE PAGE ANALYSE ===');\nconsole.log('HTML Length:', html.length);\n\nvar hasOnSnapshotCount = (html.match(/onSnapshot/g) || []).length;\nvar hasGetDocsCall = html.includes('.get()');\nvar hasLocalStorageLoad = html.includes('localStorage.getItem') && html.includes('fahrzeuge')\nvar hasRealtimeListener = html.includes('db.collection') && html.includes('onSnapshot');\n\nvar hasSearchFunction = html.includes('search') || html.includes('filter');\nvar hasFilterButtons = html.includes('filter-btn') || html.includes('data-filter');\nvar hasTableDisplay = html.includes('table') || html.includes('fahrzeugListe');\n\nif (hasOnSnapshotCount === 0) {\n  bugs.push({\n    severity: 'HIGH',\n    location: 'liste.html',\n    issue: 'NO onSnapshot() realtime listeners found',\n    impact: 'List will NOT update automatically - requires page refresh',\n    evidence: 'onSnapshot count: 0',\n    fix: 'Add: db.collection(\"fahrzeuge\").onSnapshot(snapshot => { /* render list */ })'\n  });\n} else if (hasOnSnapshotCount === 1) {\n  warnings.push({\n    severity: 'MEDIUM',\n    location: 'liste.html',\n    issue: 'Only 1 onSnapshot() listener found - may not cover all cases',\n    impact: 'Some updates may not trigger list refresh',\n    evidence: 'onSnapshot count: 1'\n  });\n}\n\nif (!hasRealtimeListener) {\n  bugs.push({\n    severity: 'HIGH',\n    location: 'liste.html',\n    issue: 'No proper Firestore realtime listener setup',\n    impact: 'Changes in Firestore will NOT appear in list automatically',\n    evidence: 'No db.collection(\"fahrzeuge\").onSnapshot found'\n  });\n}\n\nif (hasLocalStorageLoad && !hasGetDocsCall && !hasRealtimeListener) {\n  warnings.push({\n    severity: 'MEDIUM',\n    location: 'liste.html',\n    issue: 'Page uses ONLY localStorage - Firebase not used',\n    impact: 'Data not synchronized across devices',\n    evidence: 'localStorage.getItem found, no Firestore calls'\n  });\n}\n\nvar result = {\n  timestamp: new Date().toISOString(),\n  testName: 'Liste Page Code Analysis',\n  file: 'liste.html',\n  summary: {\n    totalBugs: bugs.length,\n    totalWarnings: warnings.length,\n    criticalBugs: bugs.filter(function(b) { return b.severity === 'CRITICAL'; }).length,\n    status: bugs.length > 0 ? '❌ BUGS FOUND' : '✅ NO BUGS'\n  },\n  dataLoading: {\n    onSnapshotCount: hasOnSnapshotCount + ' listeners',\n    hasRealtimeListener: hasRealtimeListener ? '✅ Yes' : '❌ NO',\n    hasGetDocs: hasGetDocsCall ? '✅ Yes' : '⚠️ No',\n    hasLocalStorage: hasLocalStorageLoad ? '✅ Yes' : '⚠️ No',\n    loadingMethod: hasRealtimeListener ? 'Realtime (onSnapshot)' : (hasGetDocsCall ? 'One-time (get)' : 'LocalStorage only')\n  },\n  features: {\n    search: hasSearchFunction ? '✅ Present' : '❌ Missing',\n    filterButtons: hasFilterButtons ? '✅ Present' : '❌ Missing',\n    tableDisplay: hasTableDisplay ? '✅ Present' : '❌ Missing'\n  },\n  bugs: bugs,\n  warnings: warnings\n};\n\nconsole.log('=== RESULT ===');\nconsole.log(JSON.stringify(result, null, 2));\n\nreturn [{ json: result }];"
+      },
+      "name": "Analyze Liste Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 600],
+      "id": "analyze-liste"
+    },
+    {
+      "parameters": {
+        "jsCode": "var responseData = $input.first().json;\nvar html = typeof responseData === 'string' ? responseData : (responseData.data || responseData.body || '');\n\nvar bugs = [];\nvar warnings = [];\n\nconsole.log('=== KANBAN PAGE ANALYSE ===');\nconsole.log('HTML Length:', html.length);\n\nvar hasOnSnapshotCount = (html.match(/onSnapshot/g) || []).length;\nvar hasGetDocsCall = html.includes('.get()');\nvar hasLocalStorageLoad = html.includes('localStorage.getItem') && html.includes('fahrzeuge');\nvar hasRealtimeListener = html.includes('db.collection') && html.includes('onSnapshot');\n\nvar hasDragDropLibrary = html.includes('draggable') || html.includes('sortable') || html.includes('Sortable');\nvar hasStatusUpdate = html.includes('updateStatus') || html.includes('status') || html.includes('prozessStatus');\nvar hasProcessSelect = html.includes('processSelect');\nvar hasKanbanBoard = html.includes('kanbanBoard') || html.includes('kanban-board');\n\nif (hasOnSnapshotCount === 0) {\n  bugs.push({\n    severity: 'CRITICAL',\n    location: 'kanban.html',\n    issue: 'NO onSnapshot() realtime listeners found AT ALL',\n    impact: 'Kanban board will NEVER update - requires page refresh for every change',\n    evidence: 'onSnapshot count: 0',\n    fix: 'Add: db.collection(\"fahrzeuge\").onSnapshot(snapshot => { renderKanbanBoard(); })'\n  });\n}\n\nif (!hasRealtimeListener) {\n  bugs.push({\n    severity: 'CRITICAL',\n    location: 'kanban.html',\n    issue: 'No proper Firestore realtime listener setup',\n    impact: 'Kanban board is STATIC - drag/drop changes not saved or synced',\n    evidence: 'No db.collection(\"fahrzeuge\").onSnapshot found',\n    fix: 'Implement realtime listener for automatic updates'\n  });\n}\n\nif (hasLocalStorageLoad && !hasGetDocsCall && !hasRealtimeListener) {\n  bugs.push({\n    severity: 'HIGH',\n    location: 'kanban.html',\n    issue: 'Kanban uses ONLY localStorage - NO Firebase integration',\n    impact: 'Changes not saved to cloud, no multi-device sync',\n    evidence: 'localStorage.getItem found, no Firestore calls'\n  });\n}\n\nif (!hasStatusUpdate) {\n  warnings.push({\n    severity: 'MEDIUM',\n    location: 'kanban.html',\n    issue: 'No status update function found',\n    impact: 'Drag & drop may not persist status changes'\n  });\n}\n\nvar result = {\n  timestamp: new Date().toISOString(),\n  testName: 'Kanban Page Code Analysis',\n  file: 'kanban.html',\n  summary: {\n    totalBugs: bugs.length,\n    totalWarnings: warnings.length,\n    criticalBugs: bugs.filter(function(b) { return b.severity === 'CRITICAL'; }).length,\n    status: bugs.length > 0 ? '❌ BUGS FOUND' : '✅ NO BUGS'\n  },\n  dataLoading: {\n    onSnapshotCount: hasOnSnapshotCount + ' listeners',\n    hasRealtimeListener: hasRealtimeListener ? '✅ Yes' : '❌ NO - CRITICAL BUG',\n    hasGetDocs: hasGetDocsCall ? '✅ Yes' : '⚠️ No',\n    hasLocalStorage: hasLocalStorageLoad ? '✅ Yes' : '⚠️ No',\n    loadingMethod: hasRealtimeListener ? 'Realtime (onSnapshot)' : (hasGetDocsCall ? 'One-time (get) - NOT REALTIME' : 'LocalStorage only - NO CLOUD SYNC')\n  },\n  features: {\n    dragDropLibrary: hasDragDropLibrary ? '✅ Present' : '❌ Missing',\n    statusUpdate: hasStatusUpdate ? '✅ Present' : '❌ Missing',\n    processSelect: hasProcessSelect ? '✅ Present' : '❌ Missing',\n    kanbanBoard: hasKanbanBoard ? '✅ Present' : '❌ Missing'\n  },\n  bugs: bugs,\n  warnings: warnings\n};\n\nconsole.log('=== RESULT ===');\nconsole.log(JSON.stringify(result, null, 2));\n\nreturn [{ json: result }];"
+      },
+      "name": "Analyze Kanban Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 750],
+      "id": "analyze-kanban"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "name": "Merge All Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [950, 500],
+      "id": "merge-results"
+    },
+    {
+      "parameters": {
+        "jsCode": "var allInputs = $input.all();\n\nconsole.log('=== COMBINING BUG REPORTS ===');\nconsole.log('Inputs received:', allInputs.length);\n\nvar firebaseConfigResult = null;\nvar annahmeResult = null;\nvar listeResult = null;\nvar kanbanResult = null;\n\nfor (var i = 0; i < allInputs.length; i++) {\n  var item = allInputs[i].json;\n  console.log('Processing input ' + (i+1) + ':', item.testName);\n  \n  if (item.testName === 'Firebase Config Code Analysis') {\n    firebaseConfigResult = item;\n  } else if (item.testName === 'Annahme Page Code Analysis') {\n    annahmeResult = item;\n  } else if (item.testName === 'Liste Page Code Analysis') {\n    listeResult = item;\n  } else if (item.testName === 'Kanban Page Code Analysis') {\n    kanbanResult = item;\n  }\n}\n\nvar allBugs = [];\nvar allWarnings = [];\n\nif (firebaseConfigResult) {\n  allBugs = allBugs.concat(firebaseConfigResult.bugs || []);\n  allWarnings = allWarnings.concat(firebaseConfigResult.warnings || []);\n}\n\nif (annahmeResult) {\n  allBugs = allBugs.concat(annahmeResult.bugs || []);\n  allWarnings = allWarnings.concat(annahmeResult.warnings || []);\n}\n\nif (listeResult) {\n  allBugs = allBugs.concat(listeResult.bugs || []);\n  allWarnings = allWarnings.concat(listeResult.warnings || []);\n}\n\nif (kanbanResult) {\n  allBugs = allBugs.concat(kanbanResult.bugs || []);\n  allWarnings = allWarnings.concat(kanbanResult.warnings || []);\n}\n\nvar criticalBugs = allBugs.filter(function(b) { return b.severity === 'CRITICAL'; });\nvar highBugs = allBugs.filter(function(b) { return b.severity === 'HIGH'; });\nvar mediumBugs = allBugs.filter(function(b) { return b.severity === 'MEDIUM'; });\n\nvar bugSummary = '\\n';\nbugSummary += '╔════════════════════════════════════════════════════════════╗\\n';\nbugSummary += '║           🐛 BUG HUNTER - COMPLETE ANALYSIS 🐛            ║\\n';\nbugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\nbugSummary += '║ Timestamp: ' + new Date().toLocaleString('de-DE') + '                    ║\\n';\nbugSummary += '║ Files analyzed: 4 (firebase-config, annahme, liste, kanban)║\\n';\nbugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\nbugSummary += '║                    📊 SUMMARY                             ║\\n';\nbugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\nbugSummary += '║ Total Bugs: ' + allBugs.length + '                                            ║\\n';\nbugSummary += '║   - CRITICAL: ' + criticalBugs.length + ' ❌                                      ║\\n';\nbugSummary += '║   - HIGH:     ' + highBugs.length + ' ⚠️                                       ║\\n';\nbugSummary += '║   - MEDIUM:   ' + mediumBugs.length + ' ⚠️                                       ║\\n';\nbugSummary += '║ Total Warnings: ' + allWarnings.length + '                                        ║\\n';\nbugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\nbugSummary += '║                 🔥 CRITICAL BUGS 🔥                        ║\\n';\nbugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\n\nfor (var i = 0; i < criticalBugs.length; i++) {\n  var bug = criticalBugs[i];\n  bugSummary += '║ ' + (i+1) + '. [' + bug.location + ']                               ║\\n';\n  bugSummary += '║    Issue: ' + bug.issue.substring(0, 48) + '║\\n';\n  bugSummary += '║    Impact: ' + bug.impact.substring(0, 47) + '║\\n';\n  if (bug.fix) {\n    bugSummary += '║    Fix: ' + bug.fix.substring(0, 50) + '║\\n';\n  }\n  bugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\n}\n\nif (criticalBugs.length === 0) {\n  bugSummary += '║ ✅ No critical bugs found!                                ║\\n';\n  bugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\n}\n\nbugSummary += '║                   💡 RECOMMENDATIONS                       ║\\n';\nbugSummary += '╠════════════════════════════════════════════════════════════╣\\n';\n\nif (criticalBugs.length > 0) {\n  bugSummary += '║ 1. FIX CRITICAL BUGS IMMEDIATELY - App is BROKEN          ║\\n';\n  bugSummary += '║ 2. Add missing functions to firebase-config.js            ║\\n';\n  bugSummary += '║ 3. Implement realtime listeners in liste/kanban           ║\\n';\n} else if (highBugs.length > 0) {\n  bugSummary += '║ 1. Address HIGH severity bugs for better UX               ║\\n';\n  bugSummary += '║ 2. Improve error handling                                 ║\\n';\n} else {\n  bugSummary += '║ ✅ Code quality looks good! Minor improvements possible   ║\\n';\n}\n\nbugSummary += '╚════════════════════════════════════════════════════════════╝\\n';\n\nvar result = {\n  timestamp: new Date().toISOString(),\n  testSuite: '🐛 BUG HUNTER - Complete E2E Analysis',\n  overallStatus: criticalBugs.length > 0 ? '❌ CRITICAL BUGS FOUND - APP BROKEN' : (highBugs.length > 0 ? '⚠️ HIGH PRIORITY BUGS' : '✅ NO MAJOR BUGS'),\n  summary: {\n    filesAnalyzed: 4,\n    totalBugs: allBugs.length,\n    criticalBugs: criticalBugs.length,\n    highBugs: highBugs.length,\n    mediumBugs: mediumBugs.length,\n    totalWarnings: allWarnings.length\n  },\n  results: {\n    firebaseConfig: firebaseConfigResult || { status: 'N/A' },\n    annahmePage: annahmeResult || { status: 'N/A' },\n    listePage: listeResult || { status: 'N/A' },\n    kanbanPage: kanbanResult || { status: 'N/A' }\n  },\n  allBugs: allBugs,\n  allWarnings: allWarnings,\n  criticalBugs: criticalBugs,\n  bugReport: bugSummary,\n  actionItems: [\n    criticalBugs.length > 0 ? '❌ FIX CRITICAL: Add saveFahrzeug() and updateFahrzeug() to firebase-config.js' : '✅ No critical action needed',\n    highBugs.length > 0 ? '⚠️ HIGH PRIORITY: Implement onSnapshot() realtime listeners in liste/kanban' : '✅ Realtime listeners OK',\n    'ℹ️ NEXT: Run Playwright E2E tests to verify actual behavior'\n  ]\n};\n\nconsole.log('=== FINAL BUG REPORT ===');\nconsole.log(bugSummary);\n\nreturn [{ json: result }];"
+      },
+      "name": "Generate Bug Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1150, 500],
+      "id": "generate-bug-report"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Firebase Config",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Load Annahme Page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Load Liste Page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Load Kanban Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Firebase Config": {
+      "main": [
+        [
+          {
+            "node": "Analyze Firebase Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Annahme Page": {
+      "main": [
+        [
+          {
+            "node": "Analyze Annahme Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Liste Page": {
+      "main": [
+        [
+          {
+            "node": "Analyze Liste Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Kanban Page": {
+      "main": [
+        [
+          {
+            "node": "Analyze Kanban Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Firebase Config": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Annahme Page": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Analyze Liste Page": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Analyze Kanban Page": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge All Results": {
+      "main": [
+        [
+          {
+            "node": "Generate Bug Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "id": "bug-hunter-complete",
+  "meta": {
+    "instanceId": "bug-hunter-e2e"
+  },
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-19T15:00:00.000Z",
+  "createdAt": "2025-10-19T15:00:00.000Z"
+}
