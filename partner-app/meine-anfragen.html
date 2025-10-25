@@ -1213,6 +1213,7 @@
             padding: 15px;
             background: #f9f9f9;
             max-height: 400px;
+            min-height: 300px;  /* ✅ FIX: Nachrichten sofort sichtbar (kein Kollaps!) */
         }
 
         .chat-messages {
@@ -2142,7 +2143,7 @@
         </div>
     </div>
 
-    <script src="../firebase-config.js?v=20251021-bonus-retroactive"></script>
+    <script src="../firebase-config.js?v=20251022-bonus-auto-save"></script>
     <script>
         let partner = null;
         let alleAnfragen = [];
@@ -2312,6 +2313,12 @@
             }
 
             // NEU: Aktuelle Partner-Daten aus Firestore laden (nur Production)
+            // 🐛 BUG #14 DEBUG: Erweiterte Logs für Partner-Loading
+            console.log('\n🔍 ========== PARTNER-LOADING DEBUG ==========');
+            console.log('   partner.id:', partner.id || 'FEHLT! ❌');
+            console.log('   partner.email:', partner.email || 'FEHLT! ❌');
+            console.log('   db vorhanden:', !!db);
+
             try {
                 if (db && partner.id) {
                     console.log('🔄 Lade aktuelle Partner-Daten aus Firestore für ID:', partner.id);
@@ -2319,6 +2326,11 @@
 
                     if (partnerDoc.exists) {
                         const firestoreData = partnerDoc.data();
+                        console.log('✅ Partner-Dokument gefunden!');
+                        console.log('   📊 Partner-Daten:', firestoreData);
+                        console.log('   📊 rabattKonditionen vorhanden:', !!firestoreData.rabattKonditionen);
+                        console.log('   📊 konditionenGeprueft:', !!firestoreData.konditionenGeprueft);
+
                         // Partner-Objekt mit Firestore-Daten aktualisieren
                         partner = {
                             id: partner.id,
@@ -2330,14 +2342,21 @@
                         console.log('   📊 RabattKonditionen:', partner.rabattKonditionen ? 'JA ✅' : 'NEIN ❌');
                         console.log('   📊 konditionenGeprueft:', partner.konditionenGeprueft ? 'JA ✅' : 'NEIN ❌');
                     } else {
-                        console.warn('⚠️ Partner-Dokument nicht in Firestore gefunden:', partner.id);
+                        console.warn('❌ Partner-Dokument NICHT GEFUNDEN in Firestore!');
+                        console.warn('   Partner-ID:', partner.id);
+                        console.warn('   ⚠️ MÖGLICHE URSACHE: kunden.html hat mit anderem partnerCode synchronisiert!');
+                        console.warn('   ⚠️ RESULTAT: Keine Rabatt-Konditionen verfügbar! 🐛');
                         // RUN #62: Kein Redirect - fahre mit LocalStorage-Daten fort
                     }
+                } else {
+                    if (!db) console.warn('❌ Firebase DB nicht verfügbar!');
+                    if (!partner.id) console.warn('❌ Partner-ID fehlt!');
                 }
             } catch (error) {
                 console.warn('⚠️ Fehler beim Laden der Partner-Daten aus Firestore:', error);
                 // Fahre mit LocalStorage-Daten fort (Fallback)
             }
+            console.log('========== PARTNER-LOADING DEBUG ENDE ==========\n');
 
             document.getElementById('partnerName').textContent = partner.name;
         }
@@ -4147,7 +4166,74 @@
                     // Trotzdem fortfahren - Fahrzeug ohne Kunden-Verknüpfung erstellen
                 }
 
-                // 4. Fahrzeug-Daten vorbereiten (NEUE PIPELINE mit Rabatt-Berechnung!)
+                // 4. DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert (CRITICAL!)
+                // Verhindert doppelte Fahrzeuge wenn Transaction beim Flag-Setting fehlschlägt
+                console.log('🔍 DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
+                let existingVehicle = null;
+
+                // Check 1: Auftragsnummer (wenn vorhanden)
+                if (anfrage.auftragsnummer) {
+                    try {
+                        existingVehicle = await db.collection('fahrzeuge')
+                            .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                            .limit(1)
+                            .get();
+                        console.log(`   📊 Check Auftragsnummer "${anfrage.auftragsnummer}": ${existingVehicle.size} Treffer`);
+                    } catch (error) {
+                        console.error('❌ Fehler bei Auftragsnummer-Check:', error);
+                    }
+                }
+
+                // Check 2: Kennzeichen (Fallback wenn Auftragsnummer nicht existiert oder keine Treffer)
+                if ((!existingVehicle || existingVehicle.empty) && anfrage.kennzeichen) {
+                    try {
+                        existingVehicle = await db.collection('fahrzeuge')
+                            .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                            .limit(1)
+                            .get();
+                        console.log(`   📊 Check Kennzeichen "${anfrage.kennzeichen}": ${existingVehicle.size} Treffer`);
+                    } catch (error) {
+                        console.error('❌ Fehler bei Kennzeichen-Check:', error);
+                    }
+                }
+
+                if (existingVehicle && !existingVehicle.empty) {
+                    const vehicle = existingVehicle.docs[0];
+                    console.error('❌ DUPLIKAT VERHINDERT! Fahrzeug existiert bereits:', vehicle.id);
+                    alert('⚠️ Fahrzeug wurde bereits angelegt!\n\n' +
+                        `📦 Fahrzeug-ID: ${vehicle.id}\n` +
+                        `🚗 Kennzeichen: ${vehicle.data().kennzeichen || 'k.A.'}\n` +
+                        `📅 Angelegt am: ${vehicle.data().datum ? new Date(vehicle.data().datum).toLocaleString('de-DE') : 'k.A.'}\n\n` +
+                        `DUPLIKAT VERHINDERT! Das Fahrzeug ist bereits im System.\n\n` +
+                        `Hinweis: Falls fahrzeugAngelegt Flag fehlt, wird es jetzt nachträglich gesetzt.`);
+
+                    // ✅ Nachträglich fahrzeugAngelegt Flag setzen (falls vergessen)
+                    if (!anfrage.fahrzeugAngelegt) {
+                        console.log('🔧 Setze fahrzeugAngelegt Flag nachträglich...');
+                        try {
+                            await db.collection('partnerAnfragen').doc(anfrageId).update({
+                                fahrzeugAngelegt: true,
+                                fahrzeugAngelegtAm: vehicle.data().datum || new Date().toISOString(),
+                                fahrzeugId: vehicle.id,
+                                fahrzeugKennzeichen: vehicle.data().kennzeichen
+                            });
+                            console.log('✅ Flag nachträglich gesetzt');
+                        } catch (flagError) {
+                            console.error('❌ Konnte Flag nicht setzen:', flagError);
+                        }
+                    }
+
+                    // Button wieder aktivieren + Transaction abbrechen
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = originalButtonText || '✅ Annehmen';
+                    }
+                    transactionRunning = false;
+                    return; // Abbruch - Fahrzeug existiert bereits!
+                }
+                console.log('✅ Kein Duplikat gefunden - Fahrzeug kann angelegt werden');
+
+                // 5. Fahrzeug-Daten vorbereiten (NEUE PIPELINE mit Rabatt-Berechnung!)
                 console.log('📋 Erstelle Fahrzeug-Dokument aus Partner-Anfrage...');
                 const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin, alleAnfragen);
                 if (kundeId) {
@@ -4881,8 +4967,9 @@
             // Unread Count zurücksetzen
             unreadCounts[anfrageId] = 0;
 
-            // Kanban neu rendern um Badge zu entfernen
-            renderSingleColumn(currentStatus);
+            // ✅ FIX: renderSingleColumn() entfernt - Funktion existiert nicht im Partner-Portal!
+            // Badge wird automatisch beim nächsten Realtime-Update entfernt (alleAnfragen listener)
+            // Kein manuelles Re-Rendering nötig → Performance-Optimierung
         }
 
         // ========== UMSATZ-TRACKING & RABATT-SYSTEM ==========
@@ -5101,14 +5188,32 @@
             let aktuelleStufe = null;
             let maxAb = 0;
 
+            console.log('\n🔍 ========== getCurrentRabattStufe() DEBUG ==========');
+            console.log(`   💰 Monatsumsatz: ${umsatzMonat} (${typeof umsatzMonat})`);
+
             // Finde die höchste erreichte Stufe
             Object.keys(rabattKonditionen).forEach(stufeKey => {
                 const stufe = rabattKonditionen[stufeKey];
-                if (stufe.ab <= umsatzMonat && stufe.ab > maxAb) {
-                    maxAb = stufe.ab;
-                    aktuelleStufe = { key: stufeKey, ...stufe };
+
+                // 🐛 BUG #14 FIX: Erzwinge numerischen Vergleich!
+                const stufeAb = Number(stufe.ab);  // String → Number conversion
+                const stufeRabatt = Number(stufe.rabatt);
+
+                console.log(`   📊 ${stufeKey}: ${stufeRabatt}% ab ${stufeAb}€ (ab type: ${typeof stufe.ab})`);
+                console.log(`      Vergleich: ${stufeAb} <= ${umsatzMonat} → ${stufeAb <= umsatzMonat}`);
+                console.log(`      Bedingung: ${stufeAb} > ${maxAb} → ${stufeAb > maxAb}`);
+
+                if (stufeAb <= umsatzMonat && stufeAb > maxAb) {
+                    console.log(`      ✅ ERREICHT! Neue aktuelle Stufe: ${stufeKey}`);
+                    maxAb = stufeAb;
+                    aktuelleStufe = { key: stufeKey, ...stufe, ab: stufeAb, rabatt: stufeRabatt };
+                } else {
+                    console.log(`      ❌ NICHT erreicht`);
                 }
             });
+
+            console.log(`   🎯 Resultat: ${aktuelleStufe ? aktuelleStufe.key + ' (' + aktuelleStufe.rabatt + '%)' : 'keine'}`);
+            console.log('===============================================\n');
 
             return aktuelleStufe;
         }
@@ -5122,15 +5227,176 @@
             let naechsteStufe = null;
             let minAb = Infinity;
 
+            console.log('\n🔍 ========== getNextRabattStufe() DEBUG ==========');
+            console.log(`   💰 Monatsumsatz: ${umsatzMonat} (${typeof umsatzMonat})`);
+
             Object.keys(rabattKonditionen).forEach(stufeKey => {
                 const stufe = rabattKonditionen[stufeKey];
-                if (stufe.ab > umsatzMonat && stufe.ab < minAb) {
-                    minAb = stufe.ab;
-                    naechsteStufe = { key: stufeKey, ...stufe };
+
+                // 🐛 BUG #14 FIX: Erzwinge numerischen Vergleich!
+                const stufeAb = Number(stufe.ab);
+                const stufeRabatt = Number(stufe.rabatt);
+
+                console.log(`   📊 ${stufeKey}: ${stufeRabatt}% ab ${stufeAb}€`);
+                console.log(`      Vergleich: ${stufeAb} > ${umsatzMonat} → ${stufeAb > umsatzMonat}`);
+
+                if (stufeAb > umsatzMonat && stufeAb < minAb) {
+                    console.log(`      ✅ Nächste Stufe gefunden: ${stufeKey}`);
+                    minAb = stufeAb;
+                    naechsteStufe = { key: stufeKey, ...stufe, ab: stufeAb, rabatt: stufeRabatt };
                 }
             });
 
+            console.log(`   🎯 Resultat: ${naechsteStufe ? naechsteStufe.key + ' (' + naechsteStufe.rabatt + '%)' : 'keine (höchste Stufe erreicht)'}`);
+            console.log('===============================================\n');
+
             return naechsteStufe;
+        }
+
+        /**
+         * Berechnet GESAMT-Bonus (Summe ALLER erreichten Stufen-Bonuses)
+         *
+         * WICHTIG: Bonuses sind EINMALIG und KUMULATIV!
+         * - STUFE 1 (100€): 10€
+         * - STUFE 2 (5000€): 500€ ZUSÄTZLICH → Gesamt: 510€
+         * - STUFE 3 (10000€): 1500€ ZUSÄTZLICH → Gesamt: 2010€
+         *
+         * @param {number} umsatzMonat - Aktueller Monatsumsatz
+         * @param {Object} rabattKonditionen - Rabatt-Konditionen mit Stufen
+         * @returns {number} Summe aller erreichten Bonuses
+         */
+        function calculateGesamtBonus(umsatzMonat, rabattKonditionen) {
+            if (!rabattKonditionen) return 0;
+
+            let gesamtBonus = 0;
+            let ausgezahltCount = 0;
+            let verfuegbarCount = 0;
+
+            console.log('\n🎁 ========== GESAMT-BONUS BERECHNUNG (mit Auszahlungs-Check) ==========');
+            console.log(`   💰 Monatsumsatz: ${umsatzMonat}€`);
+
+            // Summiere ALLE Bonuses von erreichten Stufen (NUR wenn noch nicht ausgezahlt!)
+            Object.keys(rabattKonditionen).forEach(stufeKey => {
+                const stufe = rabattKonditionen[stufeKey];
+                const stufeAb = Number(stufe.ab);
+                const stufeBonus = Number(stufe.einmalBonus) || 0;
+                const bonusErhalten = stufe.bonusErhalten === true;  // Flag aus Partner-Dokument
+
+                console.log(`   📊 ${stufeKey}: ${stufe.rabatt}% ab ${stufeAb}€ → Bonus: ${stufeBonus}€`);
+                console.log(`      Status: bonusErhalten = ${bonusErhalten ? 'true (AUSGEZAHLT)' : 'false (VERFÜGBAR)'}`);
+
+                if (stufeAb <= umsatzMonat) {
+                    if (!bonusErhalten) {
+                        // ✅ Stufe erreicht UND noch nicht ausgezahlt!
+                        console.log(`      ✅ VERFÜGBAR! Bonus wird addiert: +${stufeBonus}€`);
+                        gesamtBonus += stufeBonus;
+                        verfuegbarCount++;
+                    } else {
+                        // ⏭️ Stufe erreicht ABER bereits ausgezahlt!
+                        console.log(`      ⏭️ BEREITS AUSGEZAHLT! Bonus wird NICHT addiert`);
+                        ausgezahltCount++;
+                    }
+                } else {
+                    console.log(`      ❌ NICHT erreicht (${stufeAb}€ > ${umsatzMonat}€)`);
+                }
+            });
+
+            console.log(`\n   🎯 GESAMT-BONUS (verfügbar): ${gesamtBonus}€`);
+            console.log(`   ✅ Verfügbare Bonuses: ${verfuegbarCount}`);
+            console.log(`   ⏭️ Bereits ausgezahlte Bonuses: ${ausgezahltCount}`);
+            console.log('=================================================================\n');
+
+            return gesamtBonus;
+        }
+
+        /**
+         * Speichert neu erreichte Bonuses automatisch in Firestore
+         *
+         * @param {Object} partner - Partner-Objekt mit ID, Name, rabattKonditionen
+         * @param {number} umsatzMonat - Aktueller Monatsumsatz
+         * @returns {Promise<number>} Anzahl gespeicherter Bonuses
+         */
+        async function saveBonusToFirestore(partner, umsatzMonat) {
+            if (!partner || !partner.id || !partner.rabattKonditionen) {
+                console.log('⚠️ saveBonusToFirestore: Ungültige Partner-Daten');
+                return 0;
+            }
+
+            const db = window.db || firebase.firestore();
+            let savedCount = 0;
+
+            console.log('\n💾 ========== BONUS-TO-FIRESTORE CHECK ==========');
+            console.log(`   Partner: ${partner.name} (${partner.id})`);
+            console.log(`   Monatsumsatz: ${umsatzMonat}€`);
+
+            // Prüfe JEDE Stufe einzeln
+            for (const stufeKey of Object.keys(partner.rabattKonditionen)) {
+                const stufe = partner.rabattKonditionen[stufeKey];
+                const stufeAb = Number(stufe.ab);
+                const stufeBonus = Number(stufe.einmalBonus) || 0;
+                const bonusErhalten = stufe.bonusErhalten === true;
+
+                console.log(`\n   📊 Prüfe ${stufeKey}: ${stufe.rabatt}% ab ${stufeAb}€ → Bonus: ${stufeBonus}€`);
+                console.log(`      bonusErhalten Flag: ${bonusErhalten}`);
+
+                // Bedingungen: Stufe erreicht UND Bonus noch nicht erhalten UND Bonus > 0
+                if (umsatzMonat >= stufeAb && !bonusErhalten && stufeBonus > 0) {
+                    console.log(`      ✅ BONUS VERFÜGBAR! Speichere in Firestore...`);
+
+                    try {
+                        // 1. Prüfe ob Bonus bereits in bonusAuszahlungen existiert
+                        const existingBonus = await db.collection('bonusAuszahlungen')
+                            .where('partnerId', '==', partner.id)
+                            .where('stufe', '==', stufeKey)
+                            .limit(1)
+                            .get();
+
+                        if (!existingBonus.empty) {
+                            console.log(`      ⏭️ Bonus bereits in Firestore vorhanden (ID: ${existingBonus.docs[0].id})`);
+                            continue;  // Nächste Stufe prüfen
+                        }
+
+                        // 2. Erstelle neuen Bonus-Eintrag
+                        const bonusData = {
+                            partnerId: partner.id,
+                            partnerName: partner.name || partner.email || partner.id,
+                            stufe: stufeKey,
+                            bonusBetrag: stufeBonus,
+                            umsatzBeimErreichen: umsatzMonat,
+                            erreichtAm: new Date().toISOString(),
+                            status: 'pending',  // Admin muss auszahlen!
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        };
+
+                        const bonusRef = await db.collection('bonusAuszahlungen').add(bonusData);
+                        console.log(`      ✅ Bonus in Firestore gespeichert! ID: ${bonusRef.id}`);
+
+                        // 3. Setze bonusErhalten Flag im Partner-Dokument
+                        await db.collection('partner').doc(partner.id).update({
+                            [`rabattKonditionen.${stufeKey}.bonusErhalten`]: true
+                        });
+                        console.log(`      ✅ bonusErhalten Flag gesetzt in Partner-Dokument`);
+
+                        savedCount++;
+
+                    } catch (error) {
+                        console.error(`      ❌ Fehler beim Speichern:`, error);
+                    }
+                } else {
+                    if (bonusErhalten) {
+                        console.log(`      ⏭️ Bereits erhalten (bonusErhalten=true)`);
+                    } else if (umsatzMonat < stufeAb) {
+                        console.log(`      ❌ Noch nicht erreicht (${umsatzMonat}€ < ${stufeAb}€)`);
+                    } else if (stufeBonus <= 0) {
+                        console.log(`      ❌ Kein Bonus definiert (${stufeBonus}€)`);
+                    }
+                }
+            }
+
+            console.log(`\n   🎯 Gespeichert: ${savedCount} neue Bonuses`);
+            console.log('=================================================\n');
+
+            return savedCount;
         }
 
         /**
@@ -5467,17 +5733,30 @@
                     // Rabatt-Prozent
                     document.getElementById('rabattProzent').textContent = `${aktuelleStufe.rabatt}%`;
 
-                    // ✅ ERWEITERTE Ersparnis-Berechnung (Rabatt + Bonuses)
+                    // 🐛 BUG #14 FIX (v2): Summiere ALLE erreichten Bonuses!
+                    const verfuegbarerBonus = calculateGesamtBonus(umsatzMonat, rabattKonditionen);  // ✅ SUMME aller Stufen!
+                    const ausgezahlterBonus = gesamtBonus;  // Bereits ausgezahlte Bonuses aus DB (für spätere Tracking)
+
+                    // 🚀 AUTOMATISCHES SPEICHERN: Bonus-Stufen in Firestore schreiben
+                    await saveBonusToFirestore(partner, umsatzMonat);
+
+                    console.log('\n🎁 ========== BONUS-DISPLAY ==========');
+                    console.log(`   🎯 Aktuelle Stufe: ${aktuelleStufe.key}`);
+                    console.log(`   💰 Verfügbarer Bonus (GESAMT): ${formatCurrency(verfuegbarerBonus)}`);
+                    console.log(`   ✅ Ausgezahlter Bonus (DB): ${formatCurrency(ausgezahlterBonus)}`);
+                    console.log('=====================================\n');
+
+                    // ✅ ERWEITERTE Ersparnis-Berechnung (Rabatt + GESAMT-Bonus)
                     const laufenderRabatt = calculateErsparnis(umsatzMonat, aktuelleStufe.rabatt);
-                    const gesamtErsparnis = laufenderRabatt + gesamtBonus;
+                    const gesamtErsparnis = laufenderRabatt + verfuegbarerBonus;
 
                     // Anzeigen
                     document.getElementById('ersparnisRabatt').textContent = formatCurrency(laufenderRabatt);
-                    document.getElementById('ersparnisBonus').textContent = formatCurrency(gesamtBonus);
+                    document.getElementById('ersparnisBonus').textContent = formatCurrency(verfuegbarerBonus);  // ✅ GESAMT-Bonus!
                     document.getElementById('ersparnisGesamt').textContent = formatCurrency(gesamtErsparnis);
 
                     console.log(`💰 Laufender Rabatt: ${formatCurrency(laufenderRabatt)}`);
-                    console.log(`🎁 Einmalige Bonuses: ${formatCurrency(gesamtBonus)}`);
+                    console.log(`🎁 Verfügbarer GESAMT-Bonus: ${formatCurrency(verfuegbarerBonus)}`);
                     console.log(`✨ Gesamt-Ersparnis: ${formatCurrency(gesamtErsparnis)}`);
 
                     // Fortschrittsbalken zur nächsten Stufe
@@ -5504,12 +5783,14 @@
                         document.getElementById('progressPercent').textContent = '100%';
                     }
                 } else {
-                    // Noch keine Rabatt-Stufe erreicht (aber Bonuses könnten existieren!)
+                    // Noch keine Rabatt-Stufe erreicht
                     rabattSection.style.display = 'block';
                     document.getElementById('rabattProzent').textContent = '0%';
                     document.getElementById('ersparnisRabatt').textContent = formatCurrency(0);
-                    document.getElementById('ersparnisBonus').textContent = formatCurrency(gesamtBonus);
-                    document.getElementById('ersparnisGesamt').textContent = formatCurrency(gesamtBonus);
+                    document.getElementById('ersparnisBonus').textContent = formatCurrency(0);  // 🐛 FIX: Kein Bonus ohne erreichte Stufe
+                    document.getElementById('ersparnisGesamt').textContent = formatCurrency(0);
+
+                    console.log('⚠️ Noch keine Rabatt-Stufe erreicht → Kein Rabatt, kein Bonus');
 
                     const ersteStufe = getNextRabattStufe(0, rabattKonditionen);
                     if (ersteStufe) {

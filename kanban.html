@@ -1872,15 +1872,81 @@
         }
 
         // Prozess wechseln
-        function changeProcess() {
-            currentProcess = document.getElementById('processSelect').value;
-            console.log('🔄 Prozess gewechselt:', currentProcess);
+        async function changeProcess() {
+            const newProcess = document.getElementById('processSelect').value;
+            console.log('🔄 Prozess gewechselt:', currentProcess, '→', newProcess);
             console.log('📊 Fahrzeuge gesamt:', allFahrzeuge.length);
             console.log('📋 ServiceTyp-Verteilung:', allFahrzeuge.reduce((acc, f) => {
                 const typ = f.serviceTyp || 'UNDEFINED';
                 acc[typ] = (acc[typ] || 0) + 1;
                 return acc;
             }, {}));
+
+            // 🆕 BUG #10 FIX + NEBENWIRKUNG FIX #3: Auto-Korrektur beim Zurück-Wechseln zu Service-Tab
+            // OPTIMIERUNG: Nur wenn von "Alle Prozesse" kommend (nicht bei jedem Tab-Wechsel!)
+            if (newProcess !== 'alle' && currentProcess === 'alle') {
+                console.log('🔍 Auto-Korrektur Check: Prüfe ob Fahrzeuge ungültige Stati haben...');
+                console.log('   (Trigger: Wechsel von "Alle Prozesse" zu Service-Tab)');
+
+                // Map process key to serviceTyp (z.B. 'lackier' → 'lackierung')
+                const serviceTypMap = {
+                    'lackier': 'lackierung',
+                    'reifen': 'reifen',
+                    'mechanik': 'mechanik',
+                    'pflege': 'pflege',
+                    'tuev': 'tuev',
+                    'versicherung': 'versicherung'
+                };
+                const serviceTyp = serviceTypMap[newProcess];
+
+                if (serviceTyp) {
+                    const validStatuses = getValidStatusesForService(serviceTyp);
+                    let correctionCount = 0;
+                    const toCorrect = [];  // Sammle erst, dann update (Batch!)
+
+                    // Prüfe ALLE Fahrzeuge dieses Service-Typs (Quick-Scan)
+                    for (const fahrzeug of allFahrzeuge) {
+                        const fahrzeugServiceTyp = fahrzeug.serviceTyp || 'lackierung';
+
+                        if (fahrzeugServiceTyp === serviceTyp) {
+                            const fahrzeugStatus = fahrzeug.prozessStatus || 'angenommen';
+
+                            // Check: Ist Status gültig für diesen Service?
+                            if (!validStatuses.includes(fahrzeugStatus)) {
+                                console.warn(`⚠️ Auto-Korrektur nötig: ${fahrzeug.kennzeichen} "${fahrzeugStatus}" → ungültig für ${serviceTyp}`);
+                                const correctedStatus = getNextValidStatus(serviceTyp, fahrzeugStatus);
+                                toCorrect.push({ fahrzeug, oldStatus: fahrzeugStatus, newStatus: correctedStatus });
+                            }
+                        }
+                    }
+
+                    // Batch-Update (falls nötig)
+                    if (toCorrect.length > 0 && firebaseInitialized && firebaseApp) {
+                        console.log(`🔧 Auto-Korrektur START: ${toCorrect.length} Fahrzeuge werden korrigiert...`);
+
+                        for (const { fahrzeug, oldStatus, newStatus } of toCorrect) {
+                            try {
+                                await directStatusUpdate(fahrzeug.id, newStatus);
+                                correctionCount++;
+                                console.log(`   ✅ ${fahrzeug.kennzeichen}: "${oldStatus}" → "${newStatus}"`);
+                            } catch (error) {
+                                console.error(`   ❌ Fehler bei ${fahrzeug.kennzeichen}:`, error);
+                            }
+                        }
+
+                        console.log(`✅ Auto-Korrektur FERTIG: ${correctionCount}/${toCorrect.length} Fahrzeuge korrigiert`);
+                        alert(`ℹ️ Auto-Korrektur durchgeführt!\n\n` +
+                              `${correctionCount} Fahrzeug(e) hatten ungültige Stati für "${processDefinitions[newProcess].name}".\n` +
+                              `Stati wurden automatisch korrigiert.`);
+                    } else if (toCorrect.length === 0) {
+                        console.log('✅ Keine Korrektur nötig - alle Stati sind gültig');
+                    }
+                }
+            } else if (newProcess !== 'alle' && currentProcess !== 'alle') {
+                console.log('ℹ️ Auto-Korrektur ÜBERSPRUNGEN (Tab-Wechsel zwischen Services)');
+            }
+
+            currentProcess = newProcess;
             renderKanbanBoard();
             setupDragAndDrop();  // ← FIX: Event Listeners nach Re-Render neu hinzufügen!
         }
@@ -1941,25 +2007,53 @@
                     const fahrzeugServiceTyp = f.serviceTyp || 'lackier'; // Default: lackier
                     const fahrzeugStatus = f.prozessStatus || 'angenommen';
 
+                    // 🆕 NEBENWIRKUNG FIX #1+4: Map serviceTyp to process key for comparison
+                    // Problem: serviceTyp kann 'lackierung' ODER 'lackier' sein (nach Auto-Tab-Wechsel)
+                    // Lösung: Normalisiere zu process key für Vergleich
+                    const serviceTypToProcessKey = {
+                        'lackierung': 'lackier',
+                        'lackier': 'lackier',      // Support both formats
+                        'reifen': 'reifen',
+                        'mechanik': 'mechanik',
+                        'pflege': 'pflege',
+                        'tuev': 'tuev',
+                        'versicherung': 'versicherung'
+                    };
+                    const processKey = serviceTypToProcessKey[fahrzeugServiceTyp] || fahrzeugServiceTyp;
+
                     // 🐛 DEBUG: Log für Service-Filter
                     if (status === 'angenommen' || status === 'neu') {
-                        console.log(`🔍 Filter Check: ${f.kennzeichen} | serviceTyp: ${fahrzeugServiceTyp} | prozessStatus: ${fahrzeugStatus} | currentProcess: ${currentProcess}`);
+                        console.log(`🔍 Filter Check: ${f.kennzeichen} | serviceTyp: ${fahrzeugServiceTyp} → processKey: ${processKey} | prozessStatus: ${fahrzeugStatus} | currentProcess: ${currentProcess}`);
                     }
 
                     // Wenn currentProcess 'alle', alle Services anzeigen
                     if (currentProcess === 'alle') {
-                        // Mapping für vereinheitlichte Spalten
-                        // Verschiedene Prozess-Status auf Standard-Spalten mappen
+                        // 🆕 BUG #10 FIX: Mapping für vereinheitlichte Spalten
+                        // WICHTIG: Zeige ALLE Fahrzeuge, auch mit service-spezifischen Stati!
+                        // Mapping: Verschiedene Prozess-Status auf Standard-Spalten mappen
                         if (status === 'angenommen') {
                             return ['angenommen', 'neu'].includes(fahrzeugStatus);
                         } else if (status === 'terminiert') {
                             // NEU: Terminiert-Spalte zeigt ALLE terminierten Fahrzeuge (service-unabhängig)
                             return fahrzeugStatus === 'terminiert';
+                        } else if (status === 'vorbereitung') {
+                            // ✅ BUG #10 FIX: Zeige ALLE Vorbereitungs-Stati (nur Lackierung hat "vorbereitung")
+                            // ABER: In "Alle Prozesse" wird diese Spalte angezeigt!
+                            return fahrzeugStatus === 'vorbereitung';
                         } else if (status === 'in_arbeit') {
-                            return ['in_arbeit', 'lackierung', 'trocknung', 'montage', 'wuchten', 'reparatur', 'aufbereitung', 'pruefung'].includes(fahrzeugStatus);
+                            // ✅ BUG #10 FIX + NEBENWIRKUNG FIX #6: Erweitert um ALLE service-spezifischen Arbeitsschritte!
+                            // Vollständige Liste aller Arbeits-Stati aus processDefinitions:
+                            return ['in_arbeit', 'lackierung', 'trocknung', 'montage', 'wuchten', 'reparatur',
+                                    'aufbereitung', 'pruefung', 'diagnose', 'bestellung', 'angekommen', 'termin',
+                                    'termin_gebucht', 'gutachten', 'freigabe', 'angebot', 'beauftragt', 'test',
+                                    'qualitaet'].includes(fahrzeugStatus);  // ✅ FEHLTE: 'qualitaet' (Pflege + Versicherung!)
+                        } else if (status === 'qualitaetskontrolle') {
+                            // ✅ BUG #10 FIX: Zeige ALLE Qualitäts-Stati
+                            return ['qualitaetskontrolle', 'qualitaet'].includes(fahrzeugStatus);
                         } else if (status === 'bereit') {
                             return ['bereit', 'fertig', 'abholbereit'].includes(fahrzeugStatus);
                         } else {
+                            // ✅ BUG #10 FIX: Alle anderen Stati (auch ungültige!) direkt matchen
                             return fahrzeugStatus === status;
                         }
                     } else {
@@ -1978,23 +2072,23 @@
 
                         // SPEZIAL: Terminiert-Spalte zeigt auch alte "angenommen" Status
                         if (status === 'terminiert') {
-                            const matches = fahrzeugServiceTyp === currentProcess &&
+                            const matches = processKey === currentProcess &&
                                    (fahrzeugStatus === 'terminiert' || fahrzeugStatus === 'angenommen');
                             if (matches) {
-                                console.log(`✅ Match: ${f.kennzeichen} (${fahrzeugServiceTyp}) in Spalte '${status}'`);
+                                console.log(`✅ Match: ${f.kennzeichen} (serviceTyp: ${fahrzeugServiceTyp} → processKey: ${processKey}) in Spalte '${status}'`);
                             }
                             return matches;
                         }
 
                         // Standard-Match ODER Fallback-Match
-                        const directMatch = fahrzeugServiceTyp === currentProcess && fahrzeugStatus === status;
+                        const directMatch = processKey === currentProcess && fahrzeugStatus === status;
                         const fallbackStatuses = statusFallbacks[status] || [status];
-                        const fallbackMatch = fahrzeugServiceTyp === currentProcess && fallbackStatuses.includes(fahrzeugStatus);
+                        const fallbackMatch = processKey === currentProcess && fallbackStatuses.includes(fahrzeugStatus);
 
                         const matches = directMatch || fallbackMatch;
                         if (matches) {
                             const matchType = directMatch ? 'Direct' : 'Fallback';
-                            console.log(`✅ ${matchType} Match: ${f.kennzeichen} (${fahrzeugServiceTyp}, Status: ${fahrzeugStatus}) in Spalte '${status}'`);
+                            console.log(`✅ ${matchType} Match: ${f.kennzeichen} (serviceTyp: ${fahrzeugServiceTyp} → processKey: ${processKey}, Status: ${fahrzeugStatus}) in Spalte '${status}'`);
                         }
                         return matches;
                     }
@@ -2247,7 +2341,88 @@
                     column.closest('.kanban-column').classList.remove('drag-over');
 
                     const fahrzeugId = e.dataTransfer.getData('text/plain');
-                    const newStatus = column.closest('.kanban-column').dataset.status;
+                    let newStatus = column.closest('.kanban-column').dataset.status;
+
+                    // 🆕 BUG #11 FIX: Auto-Mapping für Pseudo-Universal-Stati
+                    // Problem: "Alle Prozesse" hat Stati ('in_arbeit', 'vorbereitung', 'qualitaetskontrolle')
+                    // die NICHT in allen Services existieren → Fahrzeug verschwindet aus Service-Tab!
+                    // Lösung: Mappe zu service-spezifischem Status BEVOR updateFahrzeugStatus() aufgerufen wird
+                    const fahrzeug = allFahrzeuge.find(f => f.id == fahrzeugId);
+                    if (fahrzeug && currentProcess === 'alle') {
+                        const pseudoUniversalStatuses = ['in_arbeit', 'vorbereitung', 'qualitaetskontrolle'];
+
+                        if (pseudoUniversalStatuses.includes(newStatus)) {
+                            const currentServiceTyp = fahrzeug.serviceTyp || 'lackierung';
+                            const mappedStatus = mapUniversalToServiceStatus(newStatus, currentServiceTyp);
+
+                            console.log(`🎯 BUG #11 FIX: Pseudo-Universal-Status erkannt!`);
+                            console.log(`   Original: "${newStatus}" (nur in "Alle Prozesse")`);
+                            console.log(`   Gemappt: "${mappedStatus}" (gültig für ${currentServiceTyp})`);
+
+                            // Überschreibe newStatus mit gemapptem Status
+                            newStatus = mappedStatus;
+                        }
+                    }
+
+                    // 🆕 BUG #10 FIX: Auto-Tab-Wechsel wenn Status ungültig für aktuellen Service
+                    if (fahrzeug && currentProcess !== 'alle') {
+                        const currentServiceTyp = fahrzeug.serviceTyp || 'lackierung';
+                        const validStatuses = getValidStatusesForService(currentServiceTyp);
+
+                        // Check: Ist newStatus gültig für aktuellen Service?
+                        if (!validStatuses.includes(newStatus)) {
+                            console.warn(`⚠️ Status "${newStatus}" ist NICHT gültig für Service "${currentServiceTyp}"`);
+
+                            // Auto-Tab-Wechsel: Finde richtigen Service für diesen Status
+                            // 🆕 BUG #12+#13 FIX: Übergebe currentServiceTyp für Konflikt-Resolution!
+                            const correctService = findServiceForStatus(newStatus, currentServiceTyp);
+
+                            if (correctService) {
+                                console.log(`🔄 Auto-Tab-Wechsel: ${currentProcess} → ${correctService}`);
+
+                                // 🆕 NEBENWIRKUNG FIX #2+7: serviceTyp MUSS geändert werden!
+                                // Map process key to serviceTyp
+                                const serviceTypMap = {
+                                    'lackier': 'lackierung',
+                                    'reifen': 'reifen',
+                                    'mechanik': 'mechanik',
+                                    'pflege': 'pflege',
+                                    'tuev': 'tuev',
+                                    'versicherung': 'versicherung'
+                                };
+                                const newServiceTyp = serviceTypMap[correctService];
+
+                                if (newServiceTyp && firebaseInitialized && firebaseApp) {
+                                    console.log(`🔧 Ändere serviceTyp: "${currentServiceTyp}" → "${newServiceTyp}"`);
+
+                                    // Update serviceTyp in Firestore (zusammen mit Status!)
+                                    const db = firebase.firestore();
+                                    await db.collection('fahrzeuge').doc(fahrzeugId).update({
+                                        serviceTyp: newServiceTyp,
+                                        _serviceTypGeaendertAm: new Date().toISOString(),
+                                        _alterServiceTyp: currentServiceTyp
+                                    });
+
+                                    // Update lokales Objekt
+                                    fahrzeug.serviceTyp = newServiceTyp;
+                                }
+
+                                // Tab wechseln
+                                currentProcess = correctService;
+                                document.getElementById('processSelect').value = correctService;
+
+                                // Notification anzeigen
+                                alert(`ℹ️ Tab gewechselt zu "${processDefinitions[correctService].name}"\n\n` +
+                                      `Grund: Status "${newStatus}" gehört zu diesem Service-Workflow.\n` +
+                                      `Service-Typ wurde automatisch geändert: ${currentServiceTyp} → ${newServiceTyp}`);
+
+                                // Board neu rendern (zeigt jetzt richtigen Service-Tab)
+                                renderKanbanBoard();
+                            } else {
+                                console.log(`ℹ️ Status "${newStatus}" ist universal → kein Tab-Wechsel nötig`);
+                            }
+                        }
+                    }
 
                     await updateFahrzeugStatus(fahrzeugId, newStatus);
                 });
@@ -2275,6 +2450,190 @@
             // 5. Alle Zwischen-Prozess-Status → in_arbeit
             // (lackierung, trocknung, polierung, montage, wuchten, reparatur, aufbereitung, pruefung, etc.)
             return 'in_arbeit';
+        }
+
+        // 🆕 BUG #10 FIX: Helper-Funktionen für Service-Workflow Validation
+
+        // 1. Get valid statuses for service
+        function getValidStatusesForService(serviceTyp) {
+            // Map serviceTyp to processDefinition key
+            const serviceKey = {
+                'lackierung': 'lackier',
+                'reifen': 'reifen',
+                'mechanik': 'mechanik',
+                'pflege': 'pflege',
+                'tuev': 'tuev',
+                'versicherung': 'versicherung'
+            }[serviceTyp];
+
+            if (!serviceKey || !processDefinitions[serviceKey]) {
+                console.warn(`⚠️ Unbekannter Service-Typ: ${serviceTyp}, fallback auf Lackierung`);
+                return processDefinitions['lackier'].steps.map(s => s.id);
+            }
+
+            return processDefinitions[serviceKey].steps.map(s => s.id);
+        }
+
+        // 2. Find service for status (returns processDefinition key like 'lackier', 'reifen', etc.)
+        // 🆕 BUG #12+#13 FIX: currentServiceTyp Parameter für Konflikt-Resolution
+        function findServiceForStatus(status, currentServiceTyp = null) {
+            // Universal statuses that exist in ALL services
+            const universalStatuses = ['neu', 'angenommen', 'terminiert', 'bereit', 'fertig', 'abgeschlossen'];
+
+            if (universalStatuses.includes(status)) {
+                return null; // Status ist universal, kein spezifischer Service
+            }
+
+            // 🆕 BUG #12 FIX: Konflikt-Resolution für 'reparatur' (Mechanik UND Versicherung haben diesen Status!)
+            if (status === 'reparatur') {
+                // Map serviceTyp to processKey für Vergleich
+                const serviceTypToProcessKey = {
+                    'lackierung': 'lackier',
+                    'lackier': 'lackier',
+                    'reifen': 'reifen',
+                    'mechanik': 'mechanik',
+                    'pflege': 'pflege',
+                    'tuev': 'tuev',
+                    'versicherung': 'versicherung'
+                };
+                const processKey = currentServiceTyp ? (serviceTypToProcessKey[currentServiceTyp] || currentServiceTyp) : null;
+
+                // Bevorzuge aktuellen Service (wenn bekannt)
+                if (processKey === 'mechanik') {
+                    console.log(`🔍 BUG #12 FIX: 'reparatur' + serviceTyp='${currentServiceTyp}' → mechanik (conflict resolved)`);
+                    return 'mechanik';
+                }
+                if (processKey === 'versicherung') {
+                    console.log(`🔍 BUG #12 FIX: 'reparatur' + serviceTyp='${currentServiceTyp}' → versicherung (conflict resolved)`);
+                    return 'versicherung';
+                }
+
+                // Fallback: Versicherung (höhere Priorität, da teurer/wichtiger)
+                console.log(`🔍 BUG #12 FIX: 'reparatur' ohne serviceTyp → versicherung (default priority)`);
+                return 'versicherung';
+            }
+
+            // 🆕 BUG #13 FIX: Konflikt-Resolution für 'qualitaet' (Pflege UND Versicherung haben diesen Status!)
+            if (status === 'qualitaet') {
+                const serviceTypToProcessKey = {
+                    'lackierung': 'lackier',
+                    'lackier': 'lackier',
+                    'reifen': 'reifen',
+                    'mechanik': 'mechanik',
+                    'pflege': 'pflege',
+                    'tuev': 'tuev',
+                    'versicherung': 'versicherung'
+                };
+                const processKey = currentServiceTyp ? (serviceTypToProcessKey[currentServiceTyp] || currentServiceTyp) : null;
+
+                // Bevorzuge aktuellen Service (wenn bekannt)
+                if (processKey === 'pflege') {
+                    console.log(`🔍 BUG #13 FIX: 'qualitaet' + serviceTyp='${currentServiceTyp}' → pflege (conflict resolved)`);
+                    return 'pflege';
+                }
+                if (processKey === 'versicherung') {
+                    console.log(`🔍 BUG #13 FIX: 'qualitaet' + serviceTyp='${currentServiceTyp}' → versicherung (conflict resolved)`);
+                    return 'versicherung';
+                }
+
+                // Fallback: Pflege (höhere Priorität, da häufiger)
+                console.log(`🔍 BUG #13 FIX: 'qualitaet' ohne serviceTyp → pflege (default priority)`);
+                return 'pflege';
+            }
+
+            // 🆕 NEBENWIRKUNG FIX #5: Service-specific statuses (dedupliziert + Priorität)
+            // WICHTIG: 'reparatur' und 'qualitaet' jetzt mit Konflikt-Resolution oben!
+            const serviceSpecificStatuses = {
+                'lackier': ['vorbereitung', 'lackierung', 'trocknung', 'qualitaetskontrolle'],
+                'reifen': ['bestellung', 'angekommen', 'montage', 'wuchten'],
+                'mechanik': ['diagnose', 'angebot', 'beauftragt', 'test'],  // 'reparatur' jetzt mit Konflikt-Resolution!
+                'pflege': ['termin', 'aufbereitung'],  // 'qualitaet' jetzt mit Konflikt-Resolution!
+                'tuev': ['termin_gebucht', 'pruefung', 'abholbereit'],
+                'versicherung': ['gutachten', 'freigabe']  // 'reparatur' + 'qualitaet' jetzt mit Konflikt-Resolution!
+            };
+
+            for (const [service, statuses] of Object.entries(serviceSpecificStatuses)) {
+                if (statuses.includes(status)) {
+                    return service; // z.B. 'lackier', 'reifen'
+                }
+            }
+
+            return null; // Status nicht gefunden
+        }
+
+        // 3. Get next valid status (Auto-Korrektur Fallback-Chain)
+        function getNextValidStatus(serviceTyp, currentStatus) {
+            const validStatuses = getValidStatusesForService(serviceTyp);
+
+            // Fallback-Chain:
+            // 1. 'terminiert' (fast alle Services haben das)
+            // 2. 'angenommen' (alle haben das)
+            // 3. 'neu' (alle haben das)
+
+            if (validStatuses.includes('terminiert')) return 'terminiert';
+            if (validStatuses.includes('angenommen')) return 'angenommen';
+            if (validStatuses.includes('neu')) return 'neu';
+
+            // Final Fallback: Erster Status im Workflow
+            return validStatuses[0] || 'angenommen';
+        }
+
+        // 4. Map Universal-Status to Service-Specific Status (BUG #11 FIX)
+        // Problem: "Alle Prozesse" hat Pseudo-Universal-Stati ('in_arbeit', 'vorbereitung', 'qualitaetskontrolle')
+        // Diese existieren NICHT in allen Services → Fahrzeug verschwindet aus Service-Tab!
+        // Lösung: Auto-Mapping zu passendem service-spezifischem Status
+        function mapUniversalToServiceStatus(universalStatus, serviceTyp) {
+            // Map serviceTyp to process key
+            const serviceTypToProcessKey = {
+                'lackierung': 'lackier',
+                'lackier': 'lackier',
+                'reifen': 'reifen',
+                'mechanik': 'mechanik',
+                'pflege': 'pflege',
+                'tuev': 'tuev',
+                'versicherung': 'versicherung'
+            };
+            const processKey = serviceTypToProcessKey[serviceTyp] || serviceTyp;
+
+            // Mapping-Regeln: Universal-Status → Service-spezifischer Status
+            const mappings = {
+                'in_arbeit': {
+                    'lackier': 'lackierung',       // Hauptarbeitsschritt
+                    'reifen': 'montage',           // Hauptarbeitsschritt
+                    'mechanik': 'reparatur',       // Hauptarbeitsschritt
+                    'pflege': 'aufbereitung',      // Hauptarbeitsschritt
+                    'tuev': 'pruefung',            // Hauptarbeitsschritt
+                    'versicherung': 'reparatur'    // Hauptarbeitsschritt
+                },
+                'vorbereitung': {
+                    'lackier': 'vorbereitung',     // Existiert in Lackierung
+                    'reifen': 'bestellung',        // Erste Arbeitsphase
+                    'mechanik': 'diagnose',        // Erste Arbeitsphase
+                    'pflege': 'termin',            // Erste Arbeitsphase
+                    'tuev': 'termin_gebucht',      // Erste Arbeitsphase
+                    'versicherung': 'gutachten'    // Erste Arbeitsphase
+                },
+                'qualitaetskontrolle': {
+                    'lackier': 'qualitaetskontrolle', // Existiert in Lackierung
+                    'reifen': 'wuchten',              // Qualitätsschritt
+                    'mechanik': 'test',               // Qualitätsschritt
+                    'pflege': 'qualitaet',            // Qualitätsschritt
+                    'tuev': 'fertig',                 // TÜV hat keine QK (direkt fertig)
+                    'versicherung': 'qualitaet'       // Qualitätsschritt
+                }
+            };
+
+            // Mappe Status
+            const mapped = mappings[universalStatus]?.[processKey];
+
+            if (mapped) {
+                console.log(`🔄 Auto-Mapping: "${universalStatus}" (Universal) → "${mapped}" (${serviceTyp}/${processKey})`);
+                return mapped;
+            } else {
+                // Fallback: Original-Status zurückgeben (wenn kein Mapping definiert)
+                console.warn(`⚠️ Kein Mapping gefunden für: "${universalStatus}" + "${serviceTyp}" → Behalte Original-Status`);
+                return universalStatus;
+            }
         }
 
         // Fahrzeug-Status aktualisieren

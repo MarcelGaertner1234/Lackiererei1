@@ -58,7 +58,8 @@ test.describe('V3.2: Service Consistency Tests', () => {
 
       test(`Partner-to-Admin Flow: ${SERVICE_CONFIGS[serviceTyp].label} (${serviceTyp})`, async ({ page }) => {
         const consoleMonitor = setupConsoleMonitoring(page);
-        const testKennzeichen = `E2E-${serviceTyp.toUpperCase()}-001`;
+        // ✅ FIX BUG #13: Eindeutige Kennzeichen mit Timestamp (vermeidet Race Conditions bei parallelen Tests!)
+        const testKennzeichen = `E2E-${serviceTyp.toUpperCase()}-${Date.now()}`;
         const config = SERVICE_CONFIGS[serviceTyp];
 
         console.log(`\n${'='.repeat(80)}`);

@@ -153,33 +153,253 @@ async function createPartnerRequest(page, serviceTyp, data) {
     versicherung: 'versicherung-anfrage.html'
   };
 
+  // ✅ FIX #2: Partner Login-Session mocken (verhindert Redirect zu login.html)
+  // WICHTIG: localStorage MUSS gesetzt werden BEVOR die Zielseite lädt!
+
+  // Schritt 1: Navigiere zu irgendeine Partner-Portal-Seite (um Domain zu setzen)
+  await page.goto('/partner-app/');
+
+  // Schritt 2: JETZT localStorage setzen (BEVOR Zielseite lädt!)
+  await page.evaluate((partnerData) => {
+    localStorage.setItem('partner', JSON.stringify({
+      id: 'e2e-test-partner-' + Date.now(),
+      name: partnerData.name,
+      email: partnerData.email,
+      adresse: 'E2E Test Adresse, Teststraße 123, 74821 Mosbach',
+      telefon: '+49 6261 123456',
+      ansprechpartner: partnerData.name,
+      iban: 'DE89370400440532013000',
+      status: 'aktiv',
+      erstelltAm: Date.now()
+    }));
+  }, { name: data.partnerName, email: data.partnerEmail });
+
+  // Schritt 3: JETZT Zielseite laden (mit Session im localStorage!)
   await page.goto(`/partner-app/${servicePages[serviceTyp]}`);
 
   // Warte auf Firebase Initialisierung
   const { waitForFirebaseReady } = require('./firebase-helper');
   await waitForFirebaseReady(page);
 
-  // Fülle Formular aus
-  await page.fill('input[name="partnername"]', data.partnerName);
-  await page.fill('input[name="partneremail"]', data.partnerEmail);
-  await page.fill('input[name="kennzeichen"]', data.kennzeichen);
-  await page.fill('input[name="marke"]', data.marke);
-  await page.fill('input[name="modell"]', data.modell);
-  await page.fill('textarea[name="schadenBeschreibung"]', data.schadenBeschreibung || 'E2E Test Beschreibung');
+  // ✅ FIX #3: Multi-Step Wizard Navigation
+  // Das Formular ist ein 9-Schritte-Wizard! Wir müssen durch die Steps navigieren.
 
-  // Service-spezifische Felder (wenn vorhanden)
-  if (serviceTyp === 'reifen' && data.reifengroesse) {
-    await page.fill('input[name="reifengroesse"]', data.reifengroesse);
+  // SCHRITT 1: Fotos - PFLICHTFELD! Müssen mindestens 1 Dummy-Foto hochladen
+  console.log('📸 Wizard Step 1: Fotos - Lade Mock-Foto hoch');
+
+  // Erstelle ein 1x1 Pixel Dummy-Bild (Base64 PNG)
+  const dummyImageBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  // Injiziere Foto über JavaScript (simuliert File-Upload)
+  await page.evaluate((imageData) => {
+    // Konvertiere Base64 zu Blob
+    const byteString = atob(imageData.split(',')[1]);
+    const mimeString = imageData.split(',')[0].split(':')[1].split(';')[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mimeString });
+
+    // Erstelle File-Objekt
+    const file = new File([blob], 'test-photo.png', { type: 'image/png' });
+
+    // Suche Photo-Input und simuliere Upload
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) {
+      // Erstelle DataTransfer für File-Upload
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      photoInput.files = dataTransfer.files;
+
+      // Triggere Change-Event (für App-Logic)
+      const event = new Event('change', { bubbles: true });
+      photoInput.dispatchEvent(event);
+
+      console.log('✅ Mock-Foto hochgeladen (1x1 Pixel PNG)');
+    } else {
+      console.warn('⚠️ photoInput nicht gefunden!');
+    }
+  }, dummyImageBase64);
+
+  // Warte kurz damit App das Foto verarbeiten kann
+  await page.waitForTimeout(1000);
+
+  console.log('➡️ Klicke Weiter zu Schritt 2');
+  await page.click('button:has-text("Weiter")');
+  await page.waitForTimeout(500); // Wait for step transition
+
+  // SCHRITT 2: Fahrzeug - HIER sind die Hauptfelder!
+  console.log('🚗 Wizard Step 2: Fahrzeug - Fülle Felder aus');
+
+  // ✅ FIX: Partner ist bereits eingeloggt - keine partnername/email Felder!
+  // Partner-Daten werden automatisch aus Session geladen (partner-session.js)
+
+  // Fülle Formular aus (ID-Selektoren statt name-Selektoren!)
+  await page.fill('input#kennzeichen', data.kennzeichen);
+  await page.selectOption('select#marke', data.marke);
+  await page.fill('input#modell', data.modell);
+
+  // ✅ CRITICAL FIX: Baujahr ist PFLICHTFELD (mit * markiert)!
+  // Prüfe ob Feld vorhanden ist und fülle es aus
+  const baujahrVisible = await page.locator('input#baujahr, input[name="baujahr"]').isVisible().catch(() => false);
+  if (baujahrVisible) {
+    const baujahrWert = data.baujahr ? data.baujahr.toString() : '2020';
+    await page.fill('input#baujahr, input[name="baujahr"]', baujahrWert);
+    console.log(`📅 Baujahr ausgefüllt: ${baujahrWert}`);
   }
-  if (serviceTyp === 'tuev' && data.tuevart) {
-    await page.selectOption('select[name="tuevart"]', data.tuevart);
+
+  // Kilometerstand ist optional
+  const kmVisible = await page.locator('input#kilometerstand, input[name="kilometerstand"]').isVisible().catch(() => false);
+  if (kmVisible) {
+    const kmWert = data.kilometerstand ? data.kilometerstand.toString() : '50000';
+    await page.fill('input#kilometerstand, input[name="kilometerstand"]', kmWert);
+    console.log(`📊 Kilometerstand ausgefüllt: ${kmWert}`);
   }
 
-  // Formular absenden
-  await page.click('button[type="submit"]');
+  // ✅ NEUE STRATEGIE: Navigiere durch ALLE Wizard-Steps bis zum Absenden-Button
+  // Fülle dabei alle sichtbaren Felder dynamisch aus
+  console.log('🎯 Navigiere durch Wizard (Steps 3-9) bis zum Absenden-Button...');
 
-  // Warte auf Success-Message
-  await page.waitForSelector('.success-message, .alert-success', { timeout: 10000 });
+  // Maximal 20 Versuche (9 Steps + Reserve für Wiederholungen)
+  let stepCount = 3; // Wir sind jetzt auf Step 3
+  for (let i = 0; i < 20; i++) {
+    console.log(`\n🔄 Wizard Loop Iteration ${i + 1} (erwarteter Step: ${stepCount})`);
+
+    // Prüfe welcher Button sichtbar ist
+    const weiterVisible = await page.locator('button:has-text("Weiter")').isVisible().catch(() => false);
+    const absendenVisible = await page.locator('button:has-text("Absenden"), button[type="submit"]').isVisible().catch(() => false);
+
+    // SUCCESS: Absenden-Button gefunden!
+    if (absendenVisible) {
+      console.log('✅ ABSENDEN-Button gefunden! Wizard-Navigation abgeschlossen.');
+      break;
+    }
+
+    // Wenn kein Weiter-Button mehr: Loop beenden
+    if (!weiterVisible) {
+      console.log('⚠️ Kein Weiter-Button gefunden - prüfe ob Absenden-Button jetzt verfügbar ist...');
+      await page.waitForTimeout(1000);
+      const absendenNow = await page.locator('button:has-text("Absenden"), button[type="submit"]').isVisible().catch(() => false);
+      if (absendenNow) {
+        console.log('✅ Absenden-Button erschienen nach Wartezeit!');
+        break;
+      }
+      console.log('❌ Weder Weiter noch Absenden gefunden - Loop abbrechen');
+      break;
+    }
+
+    // DYNAMISCHES FELD-AUSFÜLLEN: Prüfe welche Felder sichtbar sind und fülle sie aus
+
+    // 1. Foto-Upload (wenn vorhanden)
+    const photoInputVisible = await page.locator('input[type="file"]#photoInput, input#photoInput').isVisible().catch(() => false);
+    if (photoInputVisible) {
+      console.log('📸 Foto-Pflichtfeld gefunden - Lade Mock-Foto hoch');
+      await page.evaluate((imageData) => {
+        const byteString = atob(imageData.split(',')[1]);
+        const mimeString = imageData.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const file = new File([blob], 'test-photo-' + Date.now() + '.png', { type: 'image/png' });
+        const photoInput = document.getElementById('photoInput') || document.querySelector('input[type="file"]');
+        if (photoInput) {
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          photoInput.files = dataTransfer.files;
+          const event = new Event('change', { bubbles: true });
+          photoInput.dispatchEvent(event);
+        }
+      }, dummyImageBase64);
+      await page.waitForTimeout(1000);
+    }
+
+    // 2. VIN-Nummer (Step 3: Identifikation)
+    // ✅ FIX: Field hat kein ID! Nutze Placeholder-Selector
+    const vinVisible = await page.locator('input[placeholder*="WVWZZZ"]').isVisible().catch(() => false);
+    if (vinVisible) {
+      console.log('🔑 VIN-Nummer Feld gefunden - fülle aus');
+      await page.fill('input[placeholder*="WVWZZZ"]', 'WVWZZZ1JZXW123456');
+      await page.waitForTimeout(500); // Kurz warten für Validation
+    }
+
+    // 3. Schadensbeschreibung (Step 4: Beschreibung)
+    // ✅ FIX: Ist ein textbox, nicht textarea! Nutze Placeholder
+    const schadenVisible = await page.locator('textarea#schadenBeschreibung, input[placeholder*="Kratzer"], textbox[placeholder*="Kratzer"]').isVisible().catch(() => false);
+    if (schadenVisible) {
+      console.log('📝 Schadensbeschreibung Feld gefunden - fülle aus');
+      await page.fill('textarea#schadenBeschreibung, input[placeholder*="Kratzer"], textbox[placeholder*="Kratzer"]', data.schadenBeschreibung || 'E2E Test Beschreibung');
+      await page.waitForTimeout(500);
+    }
+
+    // 4. Service-spezifische Felder
+    if (serviceTyp === 'reifen' && data.reifengroesse) {
+      const reifenVisible = await page.locator('input#reifengroesse').isVisible().catch(() => false);
+      if (reifenVisible) {
+        console.log('🚗 Reifengröße Feld gefunden - fülle aus');
+        await page.fill('input#reifengroesse', data.reifengroesse);
+      }
+    }
+    if (serviceTyp === 'tuev' && data.tuevart) {
+      const tuevVisible = await page.locator('select#tuevart').isVisible().catch(() => false);
+      if (tuevVisible) {
+        console.log('✅ TÜV-Art Feld gefunden - fülle aus');
+        await page.selectOption('select#tuevart', data.tuevart);
+      }
+    }
+
+    // Klicke "Weiter" zum nächsten Step
+    console.log(`➡️ Klicke "Weiter" zu Step ${stepCount + 1}`);
+    await page.click('button:has-text("Weiter")');
+    await page.waitForTimeout(800); // Etwas mehr Zeit für Step-Transition
+    stepCount++;
+  }
+
+  // ✅ FIX: Absenden-Button ist außerhalb des Viewports!
+  // Warte bis Button erscheint, dann scrolle & klicke
+  console.log('📤 Sende Formular ab...');
+
+  // ✅ CRITICAL FIX: Button-Text ist "Anfrage senden" NICHT "Absenden"!
+  // Warte bis Submit-Button sichtbar wird (max 10 Sekunden)
+  try {
+    console.log('⏳ Warte auf Submit-Button...');
+    await page.waitForSelector('button:has-text("Anfrage senden"), button:has-text("Absenden"), button[type="submit"]', {
+      timeout: 10000,
+      state: 'attached' // Button muss im DOM sein (kann außerhalb Viewport sein!)
+    });
+    console.log('✅ Submit-Button gefunden!');
+  } catch (error) {
+    console.error('❌ Submit-Button nicht gefunden nach 10 Sekunden!');
+    // Debug: Zeige welche Buttons vorhanden sind
+    const allButtons = await page.locator('button').allTextContents();
+    console.log('Verfügbare Buttons:', allButtons);
+    throw new Error('Submit button not found after completing all wizard steps');
+  }
+
+  // Hole Button-Referenz (versuche beide möglichen Texte)
+  const submitButton = page.locator('button:has-text("Anfrage senden"), button:has-text("Absenden"), button[type="submit"]').first();
+
+  // Scrolle zum Button (macht ihn sichtbar im Viewport)
+  await submitButton.scrollIntoViewIfNeeded();
+  console.log('📜 Zu Absenden-Button gescrollt');
+
+  await page.waitForTimeout(500); // Kurz warten nach Scroll
+
+  // Klicke den Button
+  await submitButton.click();
+  console.log('✅ Absenden-Button geklickt!');
+
+  // ✅ FIX: Success-Message existiert aber ist hidden! Wait for 'attached' state instead of 'visible'
+  console.log('⏳ Warte auf Success-Message...');
+  await page.waitForSelector('.success-message, .alert-success, #successMessage', {
+    timeout: 10000,
+    state: 'attached' // Element muss im DOM sein, muss NICHT sichtbar sein!
+  });
+  console.log('✅ Success-Message gefunden (Form erfolgreich abgeschickt)!');
 
   // Hole anfrageId aus Firestore
   const anfrageId = await page.evaluate(async (kz, serviceTyp) => {

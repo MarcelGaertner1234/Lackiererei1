@@ -61,6 +61,7 @@ module.exports = defineConfig({
   },
 
   /* Test-Projekte für verschiedene Browser */
+  /* ✅ FIX BUG #13: Nur Chromium aktiviert (Firefox/WebKit nicht installiert) */
   projects: [
     {
       name: 'chromium',
@@ -82,15 +83,19 @@ module.exports = defineConfig({
       },
     },
 
+    /* ❌ DEAKTIVIERT: Firefox nicht installiert
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
     },
+    */
 
+    /* ❌ DEAKTIVIERT: WebKit nicht installiert
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },
+    */
 
     /* Mobile Tests */
     {
@@ -98,16 +103,19 @@ module.exports = defineConfig({
       use: { ...devices['Pixel 5'] },
     },
 
+    /* ❌ DEAKTIVIERT: Mobile Safari (WebKit) nicht installiert
     {
       name: 'mobile-safari',
       use: { ...devices['iPhone 13'] },
     },
+    */
 
-    /* Tablet Tests */
+    /* ❌ DEAKTIVIERT: Tablet Tests (WebKit nicht installiert)
     {
       name: 'tablet-ipad',
       use: { ...devices['iPad Pro'] },
     }
+    */
   ],
 
   /* Web Server starten vor Tests */
