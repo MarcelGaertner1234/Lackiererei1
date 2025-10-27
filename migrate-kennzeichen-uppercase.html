@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migration: Kennzeichen → UPPERCASE | Auto-Lackierzentrum Mosbach</title>
+
+    <!-- Design System -->
+    <link rel="stylesheet" href="design-system.css">
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="animations.css">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <style>
+        body {
+            font-family: var(--font-system);
+            background: var(--color-background);
+            padding: 40px 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .container {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-xl);
+            padding: 40px;
+            box-shadow: var(--shadow-lg);
+        }
+
+        h1 {
+            color: var(--color-text-primary);
+            margin-bottom: 10px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .warning h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .info h3 {
+            margin-top: 0;
+            color: #0c5460;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .success h3 {
+            margin-top: 0;
+            color: #155724;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: var(--radius-button);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px 10px 10px 0;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-primary-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #progress {
+            margin: 20px 0;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        #results {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-success {
+            color: #28a745;
+        }
+
+        .log-error {
+            color: #dc3545;
+        }
+
+        .log-info {
+            color: #17a2b8;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        th {
+            background: var(--color-surface);
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: 20px;
+            border-radius: var(--radius-card);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+
+        .stat-label {
+            color: var(--color-text-secondary);
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        /* ========================================
+           CUSTOM MODAL (Popup-Blocker Fix)
+           ======================================== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            z-index: 9999;
+            animation: fadeIn 0.2s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-xl);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 90%;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translate(-50%, -60%);
+                opacity: 0;
+            }
+            to {
+                transform: translate(-50%, -50%);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            padding: var(--space-6);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #dc3545;
+            font-size: 24px;
+        }
+
+        .modal-body {
+            padding: var(--space-6);
+        }
+
+        .modal-body p {
+            margin: 0;
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--color-text-primary);
+            white-space: pre-line;
+        }
+
+        .modal-footer {
+            padding: var(--space-6);
+            border-top: 1px solid var(--color-border);
+            display: flex;
+            gap: var(--space-3);
+            justify-content: flex-end;
+        }
+
+        .btn-secondary {
+            background: var(--color-surface);
+            color: var(--color-text-primary);
+            border: 1px solid var(--color-border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-border);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Migration: Kennzeichen → UPPERCASE</h1>
+        <p style="color: var(--color-text-secondary); margin-bottom: 30px;">
+            Normalisiert alle Kennzeichen in Firestore zu Großbuchstaben für konsistente Suche.
+        </p>
+
+        <!-- Warning Box -->
+        <div class="warning">
+            <h3>⚠️ WICHTIG - Bitte lesen!</h3>
+            <ul>
+                <li><strong>Backup:</strong> Originale Kennzeichen werden in <code>kennzeichen_original</code> gespeichert</li>
+                <li><strong>Dry-Run:</strong> Erst im Test-Modus ausführen (zeigt nur Änderungen an)</li>
+                <li><strong>Collections:</strong> Durchsucht <code>fahrzeuge_mosbach</code> und <code>fahrzeuge</code></li>
+                <li><strong>Keine Duplikate:</strong> Jedes Dokument wird nur einmal geändert</li>
+            </ul>
+        </div>
+
+        <!-- Info Box -->
+        <div class="info">
+            <h3>ℹ️ Was macht diese Migration?</h3>
+            <p><strong>VORHER:</strong> <code>kennzeichen: "test"</code> → Suche nach "TEST" findet nichts ❌</p>
+            <p><strong>NACHHER:</strong> <code>kennzeichen: "TEST"</code> → Suche nach "TEST" findet es ✅</p>
+            <p style="margin-top: 15px;">
+                <strong>Beispiel:</strong><br>
+                <code>{ kennzeichen: "mos-ab 123" }</code><br>
+                → <code>{ kennzeichen: "MOS-AB 123", kennzeichen_original: "mos-ab 123" }</code>
+            </p>
+        </div>
+
+        <!-- Statistics -->
+        <div class="stats" id="stats" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-number" id="totalCount">0</div>
+                <div class="stat-label">Gesamt gefunden</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="needsUpdate">0</div>
+                <div class="stat-label">Benötigen Update</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="processed">0</div>
+                <div class="stat-label">Verarbeitet</div>
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div>
+            <button class="btn btn-primary" onclick="runDryRun()" id="btnDryRun">
+                🔍 Dry-Run (Test-Modus)
+            </button>
+            <button class="btn btn-danger" onclick="runMigration()" id="btnMigrate" disabled>
+                ⚡ ECHTE MIGRATION STARTEN
+            </button>
+        </div>
+
+        <!-- Progress -->
+        <div id="progress">
+            <h3>Fortschritt:</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div id="results"></div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚠️ ACHTUNG!</h3>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btnModalCancel">
+                    Abbrechen
+                </button>
+                <button class="btn btn-danger" id="btnModalConfirm">
+                    Migration starten
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let migrationsData = [];
+        let isDryRun = true;
+
+        // ========================================
+        // FIREBASE CONFIG (Standalone - KEINE firebase-config.js Dependency)
+        // ========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDuiIZdBGvNb3rYGOOw44QIxt-zesya3Kg",
+            authDomain: "auto-lackierzentrum-mosbach.firebaseapp.com",
+            projectId: "auto-lackierzentrum-mosbach",
+            storageBucket: "auto-lackierzentrum-mosbach.firebasestorage.app",
+            messagingSenderId: "298750297417",
+            appId: "1:298750297417:web:16a9d14d3bb5d9bf83c698",
+            measurementId: "G-9VZEB0XR38"
+        };
+
+        // ========================================
+        // INIT FIREBASE
+        // ========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+
+            log('✅ Firebase initialisiert (Standalone)', 'success');
+            log('📊 Bereit für Migration', 'info');
+            log('🎯 Target: PRODUCTION Firestore', 'info');
+        });
+
+        // ========================================
+        // DRY-RUN (TEST-MODUS)
+        // ========================================
+        async function runDryRun() {
+            isDryRun = true;
+            log('🔍 DRY-RUN MODUS - Keine Änderungen werden gespeichert!', 'info');
+
+            const btnDryRun = document.getElementById('btnDryRun');
+            btnDryRun.disabled = true;
+            btnDryRun.textContent = '⏳ Analysiere...';
+
+            try {
+                migrationsData = await analyzeKennzeichen();
+
+                log(`\n✅ Analyse abgeschlossen!`, 'success');
+                log(`   Gesamt: ${migrationsData.length} Dokumente`, 'info');
+                log(`   Benötigen Update: ${migrationsData.filter(d => d.needsUpdate).length}`, 'info');
+                log(`   Bereits korrekt: ${migrationsData.filter(d => !d.needsUpdate).length}`, 'success');
+
+                // Enable Migration Button
+                document.getElementById('btnMigrate').disabled = false;
+                console.log('✅ Migration-Button enabled');
+                console.log('📊 migrationsData.length:', migrationsData.length);
+                console.log('🔧 Benötigen Update:', migrationsData.filter(d => d.needsUpdate).length);
+
+            } catch (error) {
+                log(`❌ Fehler: ${error.message}`, 'error');
+                console.error(error);
+            } finally {
+                btnDryRun.disabled = false;
+                btnDryRun.textContent = '🔍 Dry-Run (Test-Modus)';
+            }
+        }
+
+        // ========================================
+        // CUSTOM CONFIRM MODAL (Popup-Blocker Fix)
+        // ========================================
+        function showConfirm(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('confirmModal');
+                const messageEl = document.getElementById('confirmMessage');
+                const btnConfirm = document.getElementById('btnModalConfirm');
+                const btnCancel = document.getElementById('btnModalCancel');
+
+                messageEl.textContent = message;
+                modal.style.display = 'block';
+
+                console.log('📢 Custom Modal angezeigt:', message);
+
+                // Confirm button handler
+                btnConfirm.onclick = () => {
+                    console.log('✅ User hat BESTÄTIGT');
+                    modal.style.display = 'none';
+                    resolve(true);
+                };
+
+                // Cancel button handler
+                btnCancel.onclick = () => {
+                    console.log('❌ User hat ABGEBROCHEN');
+                    modal.style.display = 'none';
+                    resolve(false);
+                };
+
+                // Close on Escape key
+                const escHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        console.log('❌ User hat ESC gedrückt');
+                        modal.style.display = 'none';
+                        resolve(false);
+                        document.removeEventListener('keydown', escHandler);
+                    }
+                };
+                document.addEventListener('keydown', escHandler);
+            });
+        }
+
+        // ========================================
+        // ECHTE MIGRATION
+        // ========================================
+        async function runMigration() {
+            console.log('🚀 runMigration() aufgerufen');
+            console.log('📊 migrationsData:', migrationsData);
+            console.log('📊 migrationsData.length:', migrationsData.length);
+
+            if (!migrationsData.length) {
+                alert('Bitte erst Dry-Run ausführen!');
+                return;
+            }
+
+            const toUpdate = migrationsData.filter(d => d.needsUpdate).length;
+
+            // Custom Modal statt confirm()
+            const confirmed = await showConfirm(`${toUpdate} Dokumente werden geändert.\n\nBist du sicher?`);
+
+            if (!confirmed) {
+                console.log('❌ Migration abgebrochen (User Abbruch)');
+                return;
+            }
+
+            isDryRun = false;
+            log('\n⚡ STARTE ECHTE MIGRATION...', 'info');
+
+            const btnMigrate = document.getElementById('btnMigrate');
+            btnMigrate.disabled = true;
+            btnMigrate.textContent = '⏳ Migration läuft...';
+
+            document.getElementById('progress').style.display = 'block';
+
+            try {
+                await executeMigration();
+                log('\n✅ MIGRATION ERFOLGREICH ABGESCHLOSSEN!', 'success');
+
+                // Show success message
+                const successDiv = document.createElement('div');
+                successDiv.className = 'success';
+                successDiv.innerHTML = `
+                    <h3>✅ Migration erfolgreich!</h3>
+                    <p>Alle Kennzeichen wurden auf UPPERCASE normalisiert.</p>
+                    <p><strong>Nächster Schritt:</strong> Teste die Kennzeichen-Suche!</p>
+                `;
+                document.querySelector('.container').insertBefore(successDiv, document.getElementById('results'));
+
+            } catch (error) {
+                log(`❌ Migration fehlgeschlagen: ${error.message}`, 'error');
+                console.error(error);
+            } finally {
+                btnMigrate.disabled = false;
+                btnMigrate.textContent = '⚡ ECHTE MIGRATION STARTEN';
+            }
+        }
+
+        // ========================================
+        // ANALYZE KENNZEICHEN
+        // ========================================
+        async function analyzeKennzeichen() {
+            const db = firebase.firestore();
+            const results = [];
+
+            // Collections to check
+            const collections = ['fahrzeuge_mosbach', 'fahrzeuge'];
+
+            let totalCount = 0;
+            let needsUpdateCount = 0;
+
+            for (const collectionName of collections) {
+                log(`\n📂 Durchsuche Collection: ${collectionName}`, 'info');
+
+                try {
+                    const snapshot = await db.collection(collectionName).get();
+
+                    log(`   Gefunden: ${snapshot.size} Dokumente`, 'info');
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const currentKennzeichen = data.kennzeichen || '';
+                        const uppercaseKennzeichen = currentKennzeichen.toUpperCase();
+                        const needsUpdate = currentKennzeichen !== uppercaseKennzeichen;
+
+                        totalCount++;
+                        if (needsUpdate) needsUpdateCount++;
+
+                        results.push({
+                            collection: collectionName,
+                            id: doc.id,
+                            current: currentKennzeichen,
+                            new: uppercaseKennzeichen,
+                            needsUpdate: needsUpdate
+                        });
+
+                        if (needsUpdate) {
+                            log(`   "${currentKennzeichen}" → "${uppercaseKennzeichen}"`, 'info');
+                        }
+                    });
+
+                } catch (error) {
+                    log(`   ❌ Fehler in ${collectionName}: ${error.message}`, 'error');
+                }
+            }
+
+            // Update Stats
+            document.getElementById('stats').style.display = 'grid';
+            document.getElementById('totalCount').textContent = totalCount;
+            document.getElementById('needsUpdate').textContent = needsUpdateCount;
+            document.getElementById('processed').textContent = 0;
+
+            return results;
+        }
+
+        // ========================================
+        // EXECUTE MIGRATION
+        // ========================================
+        async function executeMigration() {
+            const db = firebase.firestore();
+            const toUpdate = migrationsData.filter(d => d.needsUpdate);
+
+            let processed = 0;
+
+            for (const item of toUpdate) {
+                try {
+                    // Update document
+                    await db.collection(item.collection).doc(item.id).update({
+                        kennzeichen: item.new,
+                        kennzeichen_original: item.current,
+                        migrated_at: new Date().toISOString()
+                    });
+
+                    processed++;
+                    const percent = Math.round((processed / toUpdate.length) * 100);
+
+                    // Update progress bar
+                    const fill = document.getElementById('progressFill');
+                    fill.style.width = percent + '%';
+                    fill.textContent = percent + '%';
+
+                    // Update stats
+                    document.getElementById('processed').textContent = processed;
+
+                    log(`✅ ${item.collection}/${item.id}: "${item.current}" → "${item.new}"`, 'success');
+
+                } catch (error) {
+                    log(`❌ Fehler bei ${item.collection}/${item.id}: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // ========================================
+        // LOGGING
+        // ========================================
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = message;
+            results.appendChild(entry);
+            results.scrollTop = results.scrollHeight;
+            console.log(message);
+        }
+
+        // ========================================
+        // DEBUG: Button-Click Listener
+        // ========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            const btnMigrate = document.getElementById('btnMigrate');
+            if (btnMigrate) {
+                // Log initial state
+                console.log('🔍 Debug: Migration-Button gefunden');
+                console.log('   Initial disabled state:', btnMigrate.disabled);
+
+                // Add click listener for debugging
+                btnMigrate.addEventListener('click', (event) => {
+                    console.log('🖱️ Migration-Button wurde geklickt!');
+                    console.log('   disabled:', btnMigrate.disabled);
+                    console.log('   Event:', event);
+                }, true); // Use capture phase to ensure we catch it
+            } else {
+                console.error('❌ Migration-Button NICHT gefunden!');
+            }
+        });
+    </script>
+</body>
+</html>

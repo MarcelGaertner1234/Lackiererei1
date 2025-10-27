@@ -308,6 +308,119 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* ============================================
+           🚗 QUICKVIEW SECTION STYLES
+           ============================================ */
+
+        .quickview-divider {
+            padding: var(--space-6) var(--space-6) 0;
+            text-align: center;
+            position: relative;
+        }
+
+        .quickview-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: var(--space-6);
+            right: var(--space-6);
+            height: 1px;
+            background: var(--color-border);
+        }
+
+        .quickview-divider span {
+            background: var(--color-surface);
+            padding: 0 var(--space-3);
+            color: var(--color-text-secondary);
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-medium);
+            position: relative;
+            z-index: 1;
+        }
+
+        .quickview-section {
+            padding: var(--space-6);
+            background: var(--color-surface);
+            border-top: 1px solid var(--color-border);
+        }
+
+        .quickview-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-bottom: var(--space-2);
+        }
+
+        .quickview-header h3 {
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-medium);
+            color: var(--color-text-primary);
+            margin: 0;
+        }
+
+        .quickview-description {
+            color: var(--color-text-secondary);
+            font-size: var(--font-size-sm);
+            margin-bottom: var(--space-4);
+        }
+
+        .quickview-form {
+            display: flex;
+            gap: var(--space-2);
+            margin-bottom: var(--space-4);
+        }
+
+        .quickview-form input {
+            flex: 1;
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-input);
+            font-size: var(--font-size-base);
+            color: var(--color-text-primary);
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-weight: var(--font-weight-semibold);
+            letter-spacing: 0.5px;
+        }
+
+        .quickview-form input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: var(--shadow-focus);
+        }
+
+        .btn-quickview {
+            padding: var(--space-3) var(--space-5);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-button);
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            color: var(--color-text-primary);
+            cursor: pointer;
+            transition: all var(--duration-base) var(--ease-out);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            white-space: nowrap;
+        }
+
+        .btn-quickview:hover {
+            background: var(--color-primary);
+            color: var(--color-text-inverse);
+            border-color: var(--color-primary);
+            transform: translateX(2px);
+        }
+
+        .quickview-info {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--font-size-xs);
+            color: var(--color-text-secondary);
+            margin: 0;
+        }
     </style>
 
     <!-- Firebase SDKs -->
@@ -379,6 +492,40 @@
         <div class="login-footer">
             <p>Bei Fragen oder Problemen:</p>
             <a href="mailto:info@auto-lackierzentrum.de">info@auto-lackierzentrum.de</a>
+        </div>
+
+        <!-- ============================================
+             🚗 SCHNELL-STATUS (OHNE LOGIN)
+             Kunden können Status per Kennzeichen prüfen
+             ============================================ -->
+        <div class="quickview-divider">
+            <span>ODER</span>
+        </div>
+
+        <div class="quickview-section">
+            <div class="quickview-header">
+                <i data-lucide="search" style="width: 24px; height: 24px;"></i>
+                <h3>Schnell-Status prüfen</h3>
+            </div>
+            <p class="quickview-description">Ohne Login - nur mit Kennzeichen</p>
+
+            <div class="quickview-form">
+                <input
+                    type="text"
+                    id="kennzeichenInput"
+                    placeholder="MOS-XX 123"
+                    maxlength="15"
+                    style="text-transform: uppercase;">
+                <button type="button" class="btn-quickview" onclick="handleQuickView()">
+                    <i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i>
+                    Status prüfen
+                </button>
+            </div>
+
+            <p class="quickview-info">
+                <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                Nur Statusinformationen - keine sensiblen Daten
+            </p>
         </div>
     </div>
 
@@ -576,6 +723,98 @@
 
             // Re-render Lucide icons (for smooth transition)
             lucide.createIcons();
+        });
+
+        // ========================================
+        // 🚗 QUICKVIEW HANDLER (KENNZEICHEN-SUCHE)
+        // ========================================
+
+        async function handleQuickView() {
+            const input = document.getElementById('kennzeichenInput');
+            const button = document.querySelector('.btn-quickview');
+            const kennzeichen = input.value.trim().toUpperCase();
+
+            // Validate
+            if (!kennzeichen) {
+                showError('Bitte geben Sie ein Kennzeichen ein');
+                input.focus();
+                return;
+            }
+
+            if (kennzeichen.length < 3) {
+                showError('Kennzeichen zu kurz (mindestens 3 Zeichen)');
+                input.focus();
+                return;
+            }
+
+            // Disable button & show loading
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner"></span> Suche läuft...';
+
+            try {
+                console.log('🔍 Suche nach Kennzeichen:', kennzeichen);
+
+                // Search in Firestore (GLOBAL - all fahrzeuge collections!)
+                // ⚠️ WICHTIG: Wir durchsuchen ALLE werkstatt-spezifischen Collections!
+                // Pattern: fahrzeuge_mosbach, fahrzeuge_neckarelz, etc.
+
+                // Get all fahrzeuge collections
+                const db = firebase.firestore();
+
+                // Try mosbach first (main location)
+                let snapshot = await db.collection('fahrzeuge_mosbach')
+                    .where('kennzeichen', '==', kennzeichen)
+                    .limit(1)
+                    .get();
+
+                if (snapshot.empty) {
+                    // Try global fahrzeuge collection (fallback)
+                    snapshot = await db.collection('fahrzeuge')
+                        .where('kennzeichen', '==', kennzeichen)
+                        .limit(1)
+                        .get();
+                }
+
+                if (snapshot.empty) {
+                    showError(`Kein Auftrag mit Kennzeichen "${kennzeichen}" gefunden`);
+                    button.disabled = false;
+                    button.innerHTML = '<i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i> Status prüfen';
+                    lucide.createIcons();
+                    return;
+                }
+
+                const fahrzeugDoc = snapshot.docs[0];
+                const fahrzeugId = fahrzeugDoc.id;
+
+                console.log('✅ Fahrzeug gefunden:', fahrzeugId);
+
+                // Redirect to anfrage-detail.html with QuickView mode
+                window.location.href = `anfrage-detail.html?id=${fahrzeugId}&mode=quickview&kennzeichen=${encodeURIComponent(kennzeichen)}`;
+
+            } catch (error) {
+                console.error('❌ QuickView Fehler:', error);
+                showError('Fehler bei der Suche. Bitte versuchen Sie es erneut.');
+                button.disabled = false;
+                button.innerHTML = '<i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i> Status prüfen';
+                lucide.createIcons();
+            }
+        }
+
+        // Enter-Taste in Kennzeichen-Input
+        document.addEventListener('DOMContentLoaded', () => {
+            const kennzeichenInput = document.getElementById('kennzeichenInput');
+            if (kennzeichenInput) {
+                kennzeichenInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        handleQuickView();
+                    }
+                });
+
+                // Auto-uppercase beim Tippen
+                kennzeichenInput.addEventListener('input', (e) => {
+                    e.target.value = e.target.value.toUpperCase();
+                });
+            }
         });
 
         // ========================================

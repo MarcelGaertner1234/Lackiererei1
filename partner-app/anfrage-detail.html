@@ -613,6 +613,10 @@
         async function loadAnfrage() {
             const urlParams = new URLSearchParams(window.location.search);
             const anfrageId = urlParams.get('id');
+            const mode = urlParams.get('mode');
+            const kennzeichen = urlParams.get('kennzeichen');
+
+            console.log('🔍 DEBUG: loadAnfrage() called with:', { anfrageId, mode, kennzeichen });
 
             if (!anfrageId) {
                 showError('Keine Anfrage-ID angegeben');
@@ -620,7 +624,54 @@
             }
 
             try {
-                // Initialer Ladevorgang
+                // ✅ NEU: QuickView Mode (Direkt-Zugriff per Fahrzeug-ID + Kennzeichen)
+                if (mode === 'quickview' && kennzeichen) {
+                    console.log('🔍 QuickView Mode aktiviert - Lade Fahrzeug direkt per ID');
+
+                    // ✅ Multi-Collection Search (funktioniert OHNE Login!)
+                    // 1. Versuche fahrzeuge_mosbach
+                    let fahrzeugDoc = await db.collection('fahrzeuge_mosbach').doc(String(anfrageId)).get();
+
+                    // 2. Falls nicht gefunden: Versuche fahrzeuge (Global)
+                    if (!fahrzeugDoc.exists) {
+                        console.log('⚠️ Nicht in fahrzeuge_mosbach gefunden, versuche fahrzeuge (Global)');
+                        fahrzeugDoc = await db.collection('fahrzeuge').doc(String(anfrageId)).get();
+                    }
+
+                    // 3. Falls immer noch nicht gefunden: ERROR
+                    if (!fahrzeugDoc.exists) {
+                        console.error('❌ Fahrzeug nicht gefunden in beiden Collections:', anfrageId);
+                        showError('Anfrage nicht gefunden');
+                        return;
+                    }
+
+                    console.log('✅ Fahrzeug gefunden in Collection:', fahrzeugDoc.ref.path);
+
+                    // Erstelle minimales anfrage-Objekt für QuickView
+                    anfrage = {
+                        id: fahrzeugDoc.id,
+                        kennzeichen: fahrzeugDoc.data().kennzeichen,
+                        marke: fahrzeugDoc.data().marke,
+                        modell: fahrzeugDoc.data().modell,
+                        serviceTyp: fahrzeugDoc.data().serviceTyp,
+                        status: fahrzeugDoc.data().status || fahrzeugDoc.data().prozessStatus,
+                        createdAt: fahrzeugDoc.data().createdAt,
+                        fahrzeug: { id: fahrzeugDoc.id, ...fahrzeugDoc.data() },
+                        isQuickView: true  // ✅ Flag für QuickView Mode
+                    };
+
+                    console.log('✅ QuickView Fahrzeug geladen:', anfrage);
+                    renderAnfrage();
+
+                    // Live-Updates für Fahrzeug
+                    if (kennzeichen) {
+                        setupLiveFahrzeugUpdates(kennzeichen);
+                    }
+
+                    return;
+                }
+
+                // ✅ NORMAL Mode: Load from partnerAnfragen Collection
                 const doc = await db.collection('partnerAnfragen').doc(anfrageId).get();
 
                 if (!doc.exists) {
