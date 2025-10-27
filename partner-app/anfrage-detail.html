@@ -677,7 +677,7 @@
         // NEU: Fahrzeug per Kennzeichen laden
         async function loadFahrzeugByKennzeichen(kennzeichen) {
             try {
-                const snapshot = await db.collection('fahrzeuge')
+                const snapshot = await window.getCollection('fahrzeuge')
                     .where('kennzeichen', '==', kennzeichen.toUpperCase())
                     .limit(1)
                     .get();
@@ -725,7 +725,7 @@
         // NEU: Fahrzeug per Auftragsnummer laden (Fallback)
         async function loadFahrzeugByAuftragsnummer(auftragsnummer) {
             try {
-                const snapshot = await db.collection('fahrzeuge')
+                const snapshot = await window.getCollection('fahrzeuge')
                     .where('auftragsnummer', '==', auftragsnummer)
                     .limit(1)
                     .get();
@@ -757,7 +757,7 @@
             try {
                 console.log('🔍 DEBUG: Suche Fahrzeug per partnerAnfrageId:', anfrageId);
 
-                const snapshot = await db.collection('fahrzeuge')
+                const snapshot = await window.getCollection('fahrzeuge')
                     .where('partnerAnfrageId', '==', anfrageId)
                     .limit(1)
                     .get();
@@ -802,7 +802,7 @@
             // Alte Listener entfernen falls vorhanden
             if (window.unsubscribeFahrzeug) window.unsubscribeFahrzeug();
 
-            window.unsubscribeFahrzeug = db.collection('fahrzeuge')
+            window.unsubscribeFahrzeug = window.getCollection('fahrzeuge')
                 .where('kennzeichen', '==', kennzeichen.toUpperCase())
                 .limit(1)
                 .onSnapshot((snapshot) => {
@@ -860,7 +860,7 @@
             // Alte Listener entfernen falls vorhanden
             if (window.unsubscribeFahrzeug) window.unsubscribeFahrzeug();
 
-            window.unsubscribeFahrzeug = db.collection('fahrzeuge')
+            window.unsubscribeFahrzeug = window.getCollection('fahrzeuge')
                 .where('partnerAnfrageId', '==', anfrageId)
                 .limit(1)
                 .onSnapshot((snapshot) => {
@@ -2330,7 +2330,7 @@
                 // Check 1: Auftragsnummer (wenn vorhanden)
                 if (anfrage.auftragsnummer) {
                     try {
-                        existingVehicle = await db.collection('fahrzeuge')
+                        existingVehicle = await window.getCollection('fahrzeuge')
                             .where('auftragsnummer', '==', anfrage.auftragsnummer)
                             .limit(1)
                             .get();
@@ -2343,7 +2343,7 @@
                 // Check 2: Kennzeichen (Fallback)
                 if ((!existingVehicle || existingVehicle.empty) && anfrage.kennzeichen) {
                     try {
-                        existingVehicle = await db.collection('fahrzeuge')
+                        existingVehicle = await window.getCollection('fahrzeuge')
                             .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
                             .limit(1)
                             .get();
@@ -2397,7 +2397,7 @@
 
                 // 6. FIRESTORE TRANSACTION (Optimistic Locking)
                 const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
-                const fahrzeugRef = db.collection('fahrzeuge').doc(dataForFirestore.id);
+                const fahrzeugRef = window.getCollection('fahrzeuge').doc(dataForFirestore.id);
 
                 console.log('🔒 Starte Transaction mit Optimistic Locking...');
 
@@ -2449,7 +2449,7 @@
 
                 // 7. VERIFIKATION
                 console.log('🔍 Verifiziere Firestore-Speicherung...');
-                const verifyDoc = await db.collection('fahrzeuge').doc(fahrzeugData.id).get();
+                const verifyDoc = await window.getCollection('fahrzeuge').doc(fahrzeugData.id).get();
                 if (!verifyDoc.exists) {
                     throw new Error('❌ KRITISCHER FEHLER: Fahrzeug wurde NICHT in Firestore gespeichert!');
                 }
@@ -2467,7 +2467,7 @@
 
                         // Fahrzeug mit Flag markieren
                         try {
-                            await db.collection('fahrzeuge').doc(fahrzeugData.id).update({
+                            await window.getCollection('fahrzeuge').doc(fahrzeugData.id).update({
                                 fotosFehlgeschlagen: true,
                                 fotosFehlerMeldung: photoError.message,
                                 fotosAnzahl: schadenfotos.length
@@ -2558,7 +2558,7 @@
 
                 if (kennzeichen) {
                     // VERSUCH 1: Mit quelle-Filter (Standard-Fall)
-                    fahrzeugSnapshot = await db.collection('fahrzeuge')
+                    fahrzeugSnapshot = await window.getCollection('fahrzeuge')
                         .where('kennzeichen', '==', kennzeichen.toUpperCase())
                         .where('quelle', '==', 'Partner-Portal')
                         .limit(1)
@@ -2569,7 +2569,7 @@
                     // VERSUCH 2: Ohne quelle-Filter (Fallback, falls quelle-Field fehlt)
                     if (fahrzeugSnapshot.empty) {
                         console.log('   ⚠️ Kein Fahrzeug mit quelle=Partner-Portal gefunden, suche OHNE quelle-Filter...');
-                        fahrzeugSnapshot = await db.collection('fahrzeuge')
+                        fahrzeugSnapshot = await window.getCollection('fahrzeuge')
                             .where('kennzeichen', '==', kennzeichen.toUpperCase())
                             .limit(1)
                             .get();
@@ -2602,7 +2602,7 @@
                 let fotosCount = 0;
                 if (fahrzeugId) {
                     // Fotos Subcollection löschen
-                    const fotosSnapshot = await db.collection('fahrzeuge')
+                    const fotosSnapshot = await window.getCollection('fahrzeuge')
                         .doc(fahrzeugId)
                         .collection('fotos')
                         .get();
@@ -2614,7 +2614,7 @@
                     console.log(`   📸 Batch Operation 2-${1 + fotosCount}: ${fotosCount} Foto-Dokumente markiert`);
 
                     // Hauptdokument löschen
-                    const fahrzeugRef = db.collection('fahrzeuge').doc(fahrzeugId);
+                    const fahrzeugRef = window.getCollection('fahrzeuge').doc(fahrzeugId);
                     batch.delete(fahrzeugRef);
                     console.log(`   🗑️ Batch Operation ${2 + fotosCount}: fahrzeuge.delete()`);
                 }
@@ -2627,7 +2627,7 @@
                 if (fahrzeugId) {
                     try {
                         console.log('🔍 AFTER-DELETE CHECK: Prüfe auf verwaiste Fotos...');
-                        const remainingFotosSnapshot = await db.collection('fahrzeuge')
+                        const remainingFotosSnapshot = await window.getCollection('fahrzeuge')
                             .doc(fahrzeugId)
                             .collection('fotos')
                             .get();
