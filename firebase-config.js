@@ -91,9 +91,10 @@ window.firebaseApp = {
   // Impact: Fahrzeuge konnten NICHT gespeichert werden → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .set() operation
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
+  // 🐛 BUG FIX: Document ID muss String sein (Firestore erwartet String, nicht Number!)
   saveFahrzeug: async (data) => {
     try {
-      await window.getCollection('fahrzeuge').doc(data.id).set(data);
+      await window.getCollection('fahrzeuge').doc(String(data.id)).set(data);
       console.log('✅ Fahrzeug in Firestore gespeichert:', data.id);
       return data.id;
     } catch (error) {
@@ -107,9 +108,10 @@ window.firebaseApp = {
   // Impact: Nachannahme (Partner-Portal Updates) konnten NICHT funktionieren → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .update() operation
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
+  // 🐛 BUG FIX: Document ID muss String sein
   updateFahrzeug: async (id, updates) => {
     try {
-      await window.getCollection('fahrzeuge').doc(id).update({
+      await window.getCollection('fahrzeuge').doc(String(id)).update({
         ...updates,
         lastModified: Date.now()
       });
@@ -126,9 +128,10 @@ window.firebaseApp = {
   // Impact: Neue Kunden konnten NICHT in Firebase gespeichert werden → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .set() operation
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
+  // 🐛 BUG FIX: Document ID muss String sein
   saveKunde: async (data) => {
     try {
-      await window.getCollection('kunden').doc(data.id).set(data);
+      await window.getCollection('kunden').doc(String(data.id)).set(data);
       console.log('✅ Kunde in Firestore gespeichert:', data.id);
       return data.id;
     } catch (error) {
@@ -142,9 +145,10 @@ window.firebaseApp = {
   // Impact: Kunden konnten NICHT bearbeitet werden, Rabatt-Konditionen nicht gespeichert → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .update() operation
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
+  // 🐛 BUG FIX: Document ID muss String sein
   updateKunde: async (id, updates) => {
     try {
-      await window.getCollection('kunden').doc(id).update({
+      await window.getCollection('kunden').doc(String(id)).update({
         ...updates,
         lastModified: Date.now()
       });
@@ -170,13 +174,15 @@ window.firebaseApp = {
   },
 
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
+  // 🐛 BUG FIX: Document ID muss String sein
   deleteFahrzeug: async (id) => {
-    await window.getCollection('fahrzeuge').doc(id).delete();
+    await window.getCollection('fahrzeuge').doc(String(id)).delete();
   },
 
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
+  // 🐛 BUG FIX: Document ID muss String sein
   deleteKunde: async (id) => {
-    await window.getCollection('kunden').doc(id).delete();
+    await window.getCollection('kunden').doc(String(id)).delete();
   },
 
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
@@ -302,7 +308,7 @@ window.firebaseApp = {
           }
         }
 
-        await window.getCollection('kunden').doc(kundeId).update(updates);
+        await window.getCollection('kunden').doc(String(kundeId)).update(updates);
         console.log(`✅ Besuch registriert für: ${kundenname} (${updates.anzahlBesuche}. Besuch)`);
         return kundeId;
       } else {
