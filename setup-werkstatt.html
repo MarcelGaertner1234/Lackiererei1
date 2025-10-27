@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 Setup-Assistent - Fahrzeugannahme App</title>
+
+    <!-- Design System CSS -->
+    <link rel="stylesheet" href="design-system.css">
+    <link rel="stylesheet" href="components.css">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js?v=4412ea9"></script>
+
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background: var(--color-background);
+        }
+
+        .setup-container {
+            max-width: 600px;
+            width: 100%;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 20px;
+            padding: 40px;
+            backdrop-filter: blur(25px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            margin: 0 0 10px 0;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: var(--color-text-secondary);
+            margin: 0;
+        }
+
+        .step {
+            display: none;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .step-header {
+            background: rgba(52, 199, 89, 0.1);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 30px;
+        }
+
+        .step-header h2 {
+            color: #34c759;
+            margin: 0 0 5px 0;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .step-header p {
+            color: var(--color-text-secondary);
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 10px;
+            color: var(--color-text-primary);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(46, 200, 255, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(46, 200, 255, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+            color: #ff3b30;
+            font-size: 14px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .success-box {
+            background: rgba(52, 199, 89, 0.1);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .success-box h3 {
+            color: #34c759;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .login-data {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.8;
+            margin-bottom: 15px;
+        }
+
+        .login-data-title {
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 8px;
+        }
+
+        .login-data-item {
+            color: var(--color-text-secondary);
+        }
+
+        .warning {
+            background: rgba(255, 149, 0, 0.1);
+            border: 1px solid rgba(255, 149, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            color: #ff9500;
+            font-size: 13px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-icon">🚀</div>
+            <h1>Setup-Assistent</h1>
+            <p>Automatische Einrichtung der Multi-Tenant App</p>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SCHRITT 1: Super-Admin erstellen -->
+        <!-- ============================================ -->
+        <div id="step1" class="step active">
+            <div class="step-header">
+                <h2>
+                    <i data-feather="shield" style="width: 20px; height: 20px;"></i>
+                    Schritt 1: Super-Admin Account
+                </h2>
+                <p>Erstellen Sie den Super-Admin Account für die Verwaltung aller Werkstätten</p>
+            </div>
+
+            <form id="adminForm">
+                <div class="form-group">
+                    <label for="adminEmail">📧 E-Mail</label>
+                    <input type="email" id="adminEmail" required value="admin@auto-lackierzentrum.de">
+                </div>
+
+                <div class="form-group">
+                    <label for="adminPassword">🔑 Passwort</label>
+                    <input type="password" id="adminPassword" required minlength="8" placeholder="Mindestens 8 Zeichen">
+                </div>
+
+                <div class="form-group">
+                    <label for="adminName">👤 Name</label>
+                    <input type="text" id="adminName" required value="Marcel Gärtner">
+                </div>
+
+                <div id="adminError" class="error-message"></div>
+
+                <button type="submit" class="btn" id="adminSubmitBtn">
+                    <i data-feather="shield"></i>
+                    Super-Admin erstellen
+                </button>
+            </form>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SCHRITT 2: Werkstatt erstellen -->
+        <!-- ============================================ -->
+        <div id="step2" class="step">
+            <div class="step-header">
+                <h2>
+                    <i data-feather="home" style="width: 20px; height: 20px;"></i>
+                    Schritt 2: Werkstatt Mosbach
+                </h2>
+                <p>Erstellen Sie den ersten Werkstatt-Account</p>
+            </div>
+
+            <form id="werkstattForm">
+                <div class="form-group">
+                    <label for="werkstattEmail">📧 E-Mail</label>
+                    <input type="email" id="werkstattEmail" required value="werkstatt-mosbach@auto-lackierzentrum.de">
+                </div>
+
+                <div class="form-group">
+                    <label for="werkstattPassword">🔑 Passwort</label>
+                    <input type="password" id="werkstattPassword" required minlength="8" placeholder="Mindestens 8 Zeichen">
+                </div>
+
+                <div class="form-group">
+                    <label for="werkstattName">🏢 Werkstatt-Name</label>
+                    <input type="text" id="werkstattName" required value="Werkstatt Mosbach">
+                </div>
+
+                <div class="form-group">
+                    <label for="werkstattId">🔖 Werkstatt-ID</label>
+                    <input type="text" id="werkstattId" required pattern="[a-z0-9\-]+" value="mosbach">
+                    <small style="color: var(--color-text-secondary); font-size: 12px; display: block; margin-top: 5px;">
+                        Nur Kleinbuchstaben, Zahlen und Bindestriche
+                    </small>
+                </div>
+
+                <div id="werkstattError" class="error-message"></div>
+
+                <button type="submit" class="btn" id="werkstattSubmitBtn">
+                    <i data-feather="home"></i>
+                    Werkstatt erstellen
+                </button>
+            </form>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SCHRITT 3: Fertig! -->
+        <!-- ============================================ -->
+        <div id="step3" class="step">
+            <div class="success-box">
+                <h3>
+                    <i data-feather="check-circle" style="width: 24px; height: 24px;"></i>
+                    Setup erfolgreich abgeschlossen!
+                </h3>
+                <p style="color: var(--color-text-secondary); margin: 0;">
+                    Alle Accounts wurden erfolgreich erstellt. Sie können sich jetzt einloggen!
+                </p>
+            </div>
+
+            <div class="login-data">
+                <div class="login-data-title">🔑 Super-Admin Login:</div>
+                <div class="login-data-item" id="adminLoginData"></div>
+            </div>
+
+            <div class="login-data">
+                <div class="login-data-title">🏢 Werkstatt Mosbach Login:</div>
+                <div class="login-data-item" id="werkstattLoginData"></div>
+            </div>
+
+            <button type="button" class="btn" onclick="window.location.href='index.html'">
+                <i data-feather="arrow-right"></i>
+                Zur App
+            </button>
+
+            <div class="warning">
+                <strong>⚠️ Wichtig:</strong> Notieren Sie sich diese Login-Daten! Diese Seite kann nach dem Setup gelöscht werden.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Warte auf Firebase
+        let adminUid = null;
+        let adminData = {};
+        let werkstattData = {};
+
+        // Initialize Feather Icons
+        feather.replace();
+
+        // ============================================
+        // SCHRITT 1: Super-Admin erstellen
+        // ============================================
+        document.getElementById('adminForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('adminSubmitBtn');
+            const errorDiv = document.getElementById('adminError');
+
+            const email = document.getElementById('adminEmail').value.trim();
+            const password = document.getElementById('adminPassword').value;
+            const name = document.getElementById('adminName').value.trim();
+
+            // Validation
+            if (!email || !password || !name) {
+                showError('adminError', 'Bitte alle Felder ausfüllen!');
+                return;
+            }
+
+            if (password.length < 8) {
+                showError('adminError', 'Passwort muss mindestens 8 Zeichen lang sein!');
+                return;
+            }
+
+            // Disable button
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i data-feather="loader"></i> Erstelle Super-Admin...';
+            feather.replace();
+            errorDiv.style.display = 'none';
+
+            try {
+                console.log('🔐 Erstelle Super-Admin:', email);
+
+                // Warte auf Firebase
+                await window.initFirebase();
+
+                // 1. Create Firebase Auth account
+                const userCredential = await window.auth.createUserWithEmailAndPassword(email, password);
+                adminUid = userCredential.user.uid;
+
+                console.log('✅ Firebase Auth Account erstellt:', adminUid);
+
+                // 2. Create Firestore document
+                await window.db.collection('users').doc(adminUid).set({
+                    uid: adminUid,
+                    email: email,
+                    name: name,
+                    role: 'superadmin',
+                    status: 'active',
+                    createdAt: new Date().toISOString()
+                });
+
+                console.log('✅ Firestore Dokument erstellt');
+
+                // Save for later
+                adminData = { email, password, name };
+
+                // Logout (wir müssen ausloggen um Werkstatt-Account zu erstellen)
+                await window.auth.signOut();
+
+                // Go to Step 2
+                document.getElementById('step1').classList.remove('active');
+                document.getElementById('step2').classList.add('active');
+                feather.replace();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen des Super-Admins:', error);
+
+                let errorMsg = '❌ Fehler: ' + error.message;
+                if (error.code === 'auth/email-already-in-use') {
+                    errorMsg = '✅ Super-Admin existiert bereits! Fahre fort mit Schritt 2...';
+
+                    // Auto-advance to step 2 after 2 seconds
+                    setTimeout(() => {
+                        document.getElementById('step1').classList.remove('active');
+                        document.getElementById('step2').classList.add('active');
+                        feather.replace();
+                    }, 2000);
+                }
+
+                showError('adminError', errorMsg);
+
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i data-feather="shield"></i> Super-Admin erstellen';
+                feather.replace();
+            }
+        });
+
+        // ============================================
+        // SCHRITT 2: Werkstatt erstellen
+        // ============================================
+        document.getElementById('werkstattForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('werkstattSubmitBtn');
+            const errorDiv = document.getElementById('werkstattError');
+
+            const email = document.getElementById('werkstattEmail').value.trim();
+            const password = document.getElementById('werkstattPassword').value;
+            const name = document.getElementById('werkstattName').value.trim();
+            const werkstattId = document.getElementById('werkstattId').value.trim().toLowerCase();
+
+            // Validation
+            if (!email || !password || !name || !werkstattId) {
+                showError('werkstattError', 'Bitte alle Felder ausfüllen!');
+                return;
+            }
+
+            if (password.length < 8) {
+                showError('werkstattError', 'Passwort muss mindestens 8 Zeichen lang sein!');
+                return;
+            }
+
+            // Disable button
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i data-feather="loader"></i> Erstelle Werkstatt...';
+            feather.replace();
+            errorDiv.style.display = 'none';
+
+            try {
+                console.log('🏢 Erstelle Werkstatt:', name);
+
+                // 1. Create Firebase Auth account
+                const userCredential = await window.auth.createUserWithEmailAndPassword(email, password);
+                const uid = userCredential.user.uid;
+
+                console.log('✅ Firebase Auth Account erstellt:', uid);
+
+                // 2. Create Firestore document
+                await window.db.collection('users').doc(uid).set({
+                    uid: uid,
+                    email: email,
+                    name: name,
+                    werkstattId: werkstattId,
+                    role: 'werkstatt',
+                    status: 'active',
+                    createdAt: new Date().toISOString(),
+                    createdBy: adminUid || 'setup-tool'
+                });
+
+                console.log('✅ Firestore Dokument erstellt');
+
+                // 3. Create mitarbeiter collection (init document)
+                const mitarbeiterCollectionName = `mitarbeiter_${werkstattId}`;
+                await window.db.collection(mitarbeiterCollectionName).doc('_init').set({
+                    info: 'Collection für Mitarbeiter der Werkstatt ' + name,
+                    createdAt: new Date().toISOString()
+                });
+
+                console.log('✅ Mitarbeiter-Collection erstellt:', mitarbeiterCollectionName);
+
+                // Save for later
+                werkstattData = { email, password, name, werkstattId };
+
+                // Go to Step 3
+                document.getElementById('step2').classList.remove('active');
+                document.getElementById('step3').classList.add('active');
+
+                // Show login data
+                document.getElementById('adminLoginData').innerHTML =
+                    `E-Mail: ${adminData.email}<br>Passwort: ${adminData.password}<br>Name: ${adminData.name}`;
+
+                document.getElementById('werkstattLoginData').innerHTML =
+                    `E-Mail: ${werkstattData.email}<br>Passwort: ${werkstattData.password}<br>Name: ${werkstattData.name}<br>Werkstatt-ID: ${werkstattData.werkstattId}`;
+
+                feather.replace();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der Werkstatt:', error);
+
+                let errorMsg = '❌ Fehler: ' + error.message;
+                if (error.code === 'auth/email-already-in-use') {
+                    errorMsg = '❌ Diese Email ist bereits registriert!';
+                }
+
+                showError('werkstattError', errorMsg);
+
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i data-feather="home"></i> Werkstatt erstellen';
+                feather.replace();
+            }
+        });
+
+        // ============================================
+        // Helper Functions
+        // ============================================
+        function showError(divId, message) {
+            const errorDiv = document.getElementById(divId);
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+
+            // Auto-hide after 7 seconds
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 7000);
+        }
+    </script>
+</body>
+</html>

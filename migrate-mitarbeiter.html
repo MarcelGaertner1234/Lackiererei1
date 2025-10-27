@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mitarbeiter Migration - localStorage → Firebase</title>
+
+    <!-- Design System CSS -->
+    <link rel="stylesheet" href="design-system.css">
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="animations.css">
+    <link rel="stylesheet" href="mobile-first.css">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js?v=4412ea9"></script>
+
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <style>
+        body {
+            min-height: 100vh;
+            background: var(--color-background);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            margin: 20px 0 10px 0;
+        }
+
+        .header p {
+            color: var(--color-text-secondary);
+            font-size: 16px;
+        }
+
+        .warning-box {
+            background: rgba(255, 159, 10, 0.1);
+            border: 2px solid rgba(255, 159, 10, 0.3);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .warning-box h3 {
+            color: #ff9f0a;
+            margin: 0 0 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .warning-box ul {
+            margin: 10px 0 0 0;
+            padding-left: 20px;
+            color: var(--color-text-secondary);
+        }
+
+        .step-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .step-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .step-card h3 {
+            color: var(--color-text-primary);
+            margin: 0 0 10px 0;
+        }
+
+        .step-card p {
+            color: var(--color-text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .migration-section {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .migration-section h2 {
+            color: var(--color-text-primary);
+            margin: 0 0 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--color-text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        td {
+            padding: 12px;
+            border-top: 1px solid var(--color-border-glass);
+            color: var(--color-text-primary);
+        }
+
+        input[type="email"] {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 8px;
+            color: var(--color-text-primary);
+            font-size: 14px;
+        }
+
+        input[type="email"]:focus {
+            outline: none;
+            border-color: var(--color-primary);
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(46, 200, 255, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--color-text-primary);
+        }
+
+        .success-box {
+            background: rgba(52, 199, 89, 0.1);
+            border: 2px solid rgba(52, 199, 89, 0.3);
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            display: none;
+        }
+
+        .success-box.show {
+            display: block;
+        }
+
+        .success-box i {
+            color: #34c759;
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+        }
+
+        .success-box h2 {
+            color: #34c759;
+            margin: 0 0 20px 0;
+        }
+
+        .credentials-list {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .credential-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            font-family: monospace;
+        }
+
+        .credential-item strong {
+            color: var(--color-primary);
+        }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+            color: #ff3b30;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <i data-feather="database" style="width: 60px; height: 60px; color: var(--color-primary);"></i>
+            <h1>Mitarbeiter Migration</h1>
+            <p>Von localStorage zu Firebase Authentication</p>
+        </div>
+
+        <!-- Warning Box -->
+        <div class="warning-box">
+            <h3>
+                <i data-feather="alert-triangle"></i>
+                Wichtige Hinweise
+            </h3>
+            <ul>
+                <li><strong>Backup:</strong> Alle localStorage Daten werden als Backup in Firestore gespeichert</li>
+                <li><strong>E-Mail erforderlich:</strong> Jeder Mitarbeiter braucht eine gültige E-Mail-Adresse</li>
+                <li><strong>Temporäre Passwörter:</strong> Nach Migration erhalten Mitarbeiter temporäre Passwörter</li>
+                <li><strong>Internet erforderlich:</strong> Migration funktioniert nur mit aktiver Internetverbindung</li>
+            </ul>
+        </div>
+
+        <!-- Steps -->
+        <div class="step-cards">
+            <div class="step-card">
+                <div class="step-number">1</div>
+                <h3>localStorage auslesen</h3>
+                <p>Alle Mitarbeiter aus localStorage werden geladen und angezeigt.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-number">2</div>
+                <h3>E-Mails eingeben</h3>
+                <p>Für jeden Mitarbeiter eine gültige E-Mail-Adresse eingeben.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-number">3</div>
+                <h3>Migration starten</h3>
+                <p>Firebase Auth Accounts werden erstellt und Daten kopiert.</p>
+            </div>
+        </div>
+
+        <!-- Migration Section -->
+        <div id="migrationSection" class="migration-section">
+            <h2>
+                <i data-feather="users"></i>
+                Mitarbeiter in localStorage
+            </h2>
+
+            <div id="noUsersMessage" style="display: none; text-align: center; padding: 40px; color: var(--color-text-secondary);">
+                <i data-feather="info"></i>
+                <p>Keine Mitarbeiter in localStorage gefunden.</p>
+                <p>Entweder wurden bereits alle migriert oder es gibt keine Mitarbeiter.</p>
+            </div>
+
+            <div id="usersTableContainer" style="display: none;">
+                <table id="usersTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Berechtigungen</th>
+                            <th>E-Mail (neu)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <!-- Filled by JavaScript -->
+                    </tbody>
+                </table>
+
+                <div style="display: flex; gap: 15px; justify-content: center;">
+                    <button class="btn btn-primary" onclick="startMigration()" id="migrateBtn">
+                        <i data-feather="database"></i>
+                        Jetzt migrieren
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.location.href='index.html'">
+                        <i data-feather="arrow-left"></i>
+                        Abbrechen
+                    </button>
+                </div>
+
+                <div id="errorMessage" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Success Message (hidden initially) -->
+        <div id="successBox" class="success-box">
+            <i data-feather="check-circle"></i>
+            <h2>Migration erfolgreich!</h2>
+            <p>Alle Mitarbeiter wurden erfolgreich zu Firebase migriert.</p>
+
+            <div class="credentials-list" id="credentialsList">
+                <!-- Filled by JavaScript -->
+            </div>
+
+            <p style="margin-top: 20px; color: var(--color-text-secondary);">
+                <strong>Wichtig:</strong> Kopieren oder drucken Sie diese Login-Daten und geben Sie sie an die Mitarbeiter weiter.
+                <br>
+                Mitarbeiter können nach dem ersten Login das Passwort ändern.
+            </p>
+
+            <button class="btn btn-primary" onclick="copyCredentials()" style="margin-top: 20px;">
+                <i data-feather="copy"></i>
+                Login-Daten kopieren
+            </button>
+
+            <button class="btn btn-secondary" onclick="window.location.href='index.html'" style="margin-top: 10px;">
+                <i data-feather="home"></i>
+                Zur Startseite
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Feather Icons
+        feather.replace();
+
+        let localStorageUsers = [];
+
+        // Load localStorage users
+        async function loadLocalStorageUsers() {
+            console.log('📂 Lade localStorage Mitarbeiter...');
+
+            // Wait for Firebase
+            await window.firebaseInitialized;
+
+            // Get all localStorage keys starting with "user_"
+            const keys = Object.keys(localStorage);
+            const userKeys = keys.filter(key => key === 'currentUser' || key.startsWith('user_'));
+
+            console.log('🔍 Gefundene Keys:', userKeys);
+
+            // Load each user
+            for (const key of userKeys) {
+                try {
+                    const userData = JSON.parse(localStorage.getItem(key));
+
+                    // Check if it's a user object with berechtigungen (= Mitarbeiter)
+                    if (userData && userData.berechtigungen && userData.passwordHash) {
+                        localStorageUsers.push({
+                            id: userData.id || key,
+                            name: userData.name || 'Unbekannt',
+                            berechtigungen: userData.berechtigungen,
+                            passwordHash: userData.passwordHash,
+                            localStorageKey: key
+                        });
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Konnte Key nicht parsen:', key, e);
+                }
+            }
+
+            console.log('✅ Gefundene Mitarbeiter:', localStorageUsers.length);
+
+            renderUsers();
+        }
+
+        // Render users table
+        function renderUsers() {
+            if (localStorageUsers.length === 0) {
+                document.getElementById('noUsersMessage').style.display = 'block';
+                document.getElementById('usersTableContainer').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('noUsersMessage').style.display = 'none';
+            document.getElementById('usersTableContainer').style.display = 'block';
+
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = localStorageUsers.map((user, index) => {
+                const permissionCount = Object.values(user.berechtigungen).filter(v => v === true).length;
+
+                return `
+                    <tr>
+                        <td><strong>${user.name}</strong></td>
+                        <td>${permissionCount} Berechtigungen</td>
+                        <td>
+                            <input
+                                type="email"
+                                id="email_${index}"
+                                placeholder="${user.name.toLowerCase().replace(' ', '.')}@werkstatt.de"
+                                required
+                            >
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            feather.replace();
+        }
+
+        // Generate random password
+        function generatePassword() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+            let password = '';
+            for (let i = 0; i < 10; i++) {
+                password += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return password;
+        }
+
+        // Start migration
+        async function startMigration() {
+            const migrateBtn = document.getElementById('migrateBtn');
+            const errorMessage = document.getElementById('errorMessage');
+
+            // Collect emails
+            const migrations = [];
+            let hasError = false;
+
+            for (let i = 0; i < localStorageUsers.length; i++) {
+                const emailInput = document.getElementById(`email_${i}`);
+                const email = emailInput.value.trim();
+
+                if (!email) {
+                    showError(`Bitte E-Mail für ${localStorageUsers[i].name} eingeben!`);
+                    emailInput.focus();
+                    return;
+                }
+
+                if (!email.includes('@')) {
+                    showError(`Ungültige E-Mail für ${localStorageUsers[i].name}!`);
+                    emailInput.focus();
+                    return;
+                }
+
+                migrations.push({
+                    user: localStorageUsers[i],
+                    email: email,
+                    password: generatePassword()
+                });
+            }
+
+            // Disable button
+            migrateBtn.disabled = true;
+            migrateBtn.innerHTML = '<i data-feather="loader"></i> Migriere...';
+            feather.replace();
+
+            // Perform migration
+            const results = [];
+
+            for (const migration of migrations) {
+                try {
+                    console.log('🔄 Migriere:', migration.user.name);
+
+                    // Create Firebase Auth account
+                    const userCredential = await window.auth.createUserWithEmailAndPassword(
+                        migration.email,
+                        migration.password
+                    );
+
+                    const firebaseUser = userCredential.user;
+                    console.log('✅ Firebase Auth erstellt:', firebaseUser.uid);
+
+                    // Create Firestore document
+                    await window.db.collection('users').doc(firebaseUser.uid).set({
+                        uid: firebaseUser.uid,
+                        email: migration.email,
+                        name: migration.user.name,
+                        role: 'mitarbeiter',
+                        berechtigungen: migration.user.berechtigungen,
+                        status: 'active',
+                        createdAt: new Date().toISOString(),
+                        migratedFrom: 'localStorage',
+                        migratedAt: new Date().toISOString(),
+                        oldLocalStorageId: migration.user.id
+                    });
+
+                    console.log('✅ Firestore Dokument erstellt');
+
+                    results.push({
+                        name: migration.user.name,
+                        email: migration.email,
+                        password: migration.password,
+                        success: true
+                    });
+
+                    // Remove from localStorage (cleanup)
+                    localStorage.removeItem(migration.user.localStorageKey);
+
+                } catch (error) {
+                    console.error('❌ Migration fehlgeschlagen für', migration.user.name, error);
+
+                    results.push({
+                        name: migration.user.name,
+                        email: migration.email,
+                        password: migration.password,
+                        success: false,
+                        error: error.message
+                    });
+
+                    showError(`Fehler bei ${migration.user.name}: ${error.message}`);
+                }
+            }
+
+            // Show results
+            if (results.every(r => r.success)) {
+                showSuccess(results);
+            } else {
+                migrateBtn.disabled = false;
+                migrateBtn.innerHTML = '<i data-feather="database"></i> Jetzt migrieren';
+                feather.replace();
+            }
+        }
+
+        // Show success
+        function showSuccess(results) {
+            document.getElementById('migrationSection').style.display = 'none';
+
+            const credentialsList = document.getElementById('credentialsList');
+            credentialsList.innerHTML = results.map(r => `
+                <div class="credential-item">
+                    <strong>${r.name}</strong><br>
+                    E-Mail: ${r.email}<br>
+                    Passwort: ${r.password}
+                </div>
+            `).join('');
+
+            document.getElementById('successBox').classList.add('show');
+            feather.replace();
+        }
+
+        // Copy credentials to clipboard
+        function copyCredentials() {
+            const credentials = Array.from(document.querySelectorAll('.credential-item'))
+                .map(el => el.textContent.trim())
+                .join('\n\n');
+
+            navigator.clipboard.writeText(credentials).then(() => {
+                alert('✅ Login-Daten wurden in die Zwischenablage kopiert!');
+            }).catch(err => {
+                console.error('❌ Kopieren fehlgeschlagen:', err);
+                alert('❌ Kopieren fehlgeschlagen. Bitte manuell kopieren.');
+            });
+        }
+
+        // Show error
+        function showError(message) {
+            const errorMessage = document.getElementById('errorMessage');
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+
+            setTimeout(() => {
+                errorMessage.classList.remove('show');
+            }, 5000);
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            loadLocalStorageUsers();
+        });
+    </script>
+</body>
+</html>
