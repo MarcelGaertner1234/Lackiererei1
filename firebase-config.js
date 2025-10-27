@@ -90,9 +90,10 @@ window.firebaseApp = {
   // Problem: annahme.html ruft firebaseApp.saveFahrzeug() auf, aber Funktion existierte nicht
   // Impact: Fahrzeuge konnten NICHT gespeichert werden → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .set() operation
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   saveFahrzeug: async (data) => {
     try {
-      await db.collection('fahrzeuge').doc(data.id).set(data);
+      await window.getCollection('fahrzeuge').doc(data.id).set(data);
       console.log('✅ Fahrzeug in Firestore gespeichert:', data.id);
       return data.id;
     } catch (error) {
@@ -105,9 +106,10 @@ window.firebaseApp = {
   // Problem: annahme.html ruft firebaseApp.updateFahrzeug() auf, aber Funktion existierte nicht
   // Impact: Nachannahme (Partner-Portal Updates) konnten NICHT funktionieren → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .update() operation
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   updateFahrzeug: async (id, updates) => {
     try {
-      await db.collection('fahrzeuge').doc(id).update({
+      await window.getCollection('fahrzeuge').doc(id).update({
         ...updates,
         lastModified: Date.now()
       });
@@ -123,9 +125,10 @@ window.firebaseApp = {
   // Problem: kunden.html ruft firebaseApp.saveKunde() auf, aber Funktion existierte nicht
   // Impact: Neue Kunden konnten NICHT in Firebase gespeichert werden → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .set() operation
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   saveKunde: async (data) => {
     try {
-      await db.collection('kunden').doc(data.id).set(data);
+      await window.getCollection('kunden').doc(data.id).set(data);
       console.log('✅ Kunde in Firestore gespeichert:', data.id);
       return data.id;
     } catch (error) {
@@ -138,9 +141,10 @@ window.firebaseApp = {
   // Problem: kunden.html ruft firebaseApp.updateKunde() auf, aber Funktion existierte nicht
   // Impact: Kunden konnten NICHT bearbeitet werden, Rabatt-Konditionen nicht gespeichert → CRITICAL BUG
   // Fix: Funktion hinzugefügt mit Firestore .update() operation
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   updateKunde: async (id, updates) => {
     try {
-      await db.collection('kunden').doc(id).update({
+      await window.getCollection('kunden').doc(id).update({
         ...updates,
         lastModified: Date.now()
       });
@@ -153,26 +157,31 @@ window.firebaseApp = {
   },
 
   // Helper Functions - CHANGED TO ARROW FUNCTIONS for closure access to `db`
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   getAllFahrzeuge: async () => {
-    const snapshot = await db.collection('fahrzeuge').get();
+    const snapshot = await window.getCollection('fahrzeuge').get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   },
 
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   getAllKunden: async () => {
-    const snapshot = await db.collection('kunden').get();
+    const snapshot = await window.getCollection('kunden').get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   },
 
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   deleteFahrzeug: async (id) => {
-    await db.collection('fahrzeuge').doc(id).delete();
+    await window.getCollection('fahrzeuge').doc(id).delete();
   },
 
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   deleteKunde: async (id) => {
-    await db.collection('kunden').doc(id).delete();
+    await window.getCollection('kunden').doc(id).delete();
   },
 
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   savePhotosToFirestore: async (fahrzeugId, photos, type = 'vorher') => {
-    const photosRef = db.collection('fahrzeuge')
+    const photosRef = window.getCollection('fahrzeuge')
       .doc(String(fahrzeugId))
       .collection('fotos')
       .doc(type);
@@ -188,9 +197,10 @@ window.firebaseApp = {
   // Problem: abnahme.html Line 1062 ruft firebaseApp.loadPhotosFromFirestore() auf, aber Funktion existierte nicht
   // Impact: PDF-Erstellung schlägt fehl, weil "vorher" Fotos nicht geladen werden können → CRITICAL BUG
   // Fix: Funktion hinzugefügt zum Laden von Fotos aus Firestore Subcollection
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   loadPhotosFromFirestore: async (fahrzeugId, type = 'vorher') => {
     try {
-      const photosRef = db.collection('fahrzeuge')
+      const photosRef = window.getCollection('fahrzeuge')
         .doc(String(fahrzeugId))
         .collection('fotos')
         .doc(type);
@@ -209,15 +219,16 @@ window.firebaseApp = {
     }
   },
 
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   loadAllPhotosFromFirestore: async (fahrzeugId) => {
     try {
-      const vorherDoc = await db.collection('fahrzeuge')
+      const vorherDoc = await window.getCollection('fahrzeuge')
         .doc(String(fahrzeugId))
         .collection('fotos')
         .doc('vorher')
         .get();
 
-      const nachherDoc = await db.collection('fahrzeuge')
+      const nachherDoc = await window.getCollection('fahrzeuge')
         .doc(String(fahrzeugId))
         .collection('fotos')
         .doc('nachher')
@@ -239,8 +250,9 @@ window.firebaseApp = {
     console.log(`✅ Fotos in LocalStorage gespeichert: ${key} (${photos.length} Fotos)`);
   },
 
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   listenToFahrzeuge: (callback) => {
-    return db.collection('fahrzeuge')
+    return window.getCollection('fahrzeuge')
       .onSnapshot(snapshot => {
         const fahrzeuge = [];
         snapshot.forEach(doc => {
@@ -253,6 +265,7 @@ window.firebaseApp = {
   // CRITICAL FIX RUN #15: Add registriereKundenbesuch function
   // CRITICAL FIX RUN #17: Convert to arrow function for closure access
   // CRITICAL FIX RUN #43: Fixed all references in HTML files (firebaseApp → window.firebaseApp)
+  // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   registriereKundenbesuch: async (kundeData) => {
     try {
       // Backward compatibility: Accept string or object
@@ -264,7 +277,7 @@ window.firebaseApp = {
       }
 
       // Check if customer exists
-      const snapshot = await db.collection('kunden')
+      const snapshot = await window.getCollection('kunden')
         .where('name', '==', kundenname)
         .limit(1)
         .get();
@@ -289,7 +302,7 @@ window.firebaseApp = {
           }
         }
 
-        await db.collection('kunden').doc(kundeId).update(updates);
+        await window.getCollection('kunden').doc(kundeId).update(updates);
         console.log(`✅ Besuch registriert für: ${kundenname} (${updates.anzahlBesuche}. Besuch)`);
         return kundeId;
       } else {
@@ -306,7 +319,7 @@ window.firebaseApp = {
           anzahlBesuche: 1
         };
 
-        await db.collection('kunden').doc(neuerKunde.id).set(neuerKunde);
+        await window.getCollection('kunden').doc(neuerKunde.id).set(neuerKunde);
         console.log(`✅ Neuer Kunde erstellt: ${kundenname} (ID: ${neuerKunde.id})`);
         console.log(`   📧 Email: ${neuerKunde.email || 'N/A'}`);
         console.log(`   📞 Telefon: ${neuerKunde.telefon || 'N/A'}`);
