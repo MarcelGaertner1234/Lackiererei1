@@ -1401,6 +1401,8 @@
     <!-- Firebase Konfiguration -->
     <script src="firebase-config.js?v=4412ea9"></script>
 
+    <!-- Auth Manager für Multi-Tenant Support -->
+    <script src="js/auth-manager.js"></script>
     <!-- Global Chat Notifications -->
     <link rel="stylesheet" href="global-chat-notifications.css">
     <script src="global-chat-notifications.js"></script>
@@ -1564,6 +1566,29 @@
                         firebaseApp = window.firebaseApp;
                         firebaseInitialized = true;
                         console.log('✅ Firebase für Kalender initialisiert');
+
+                        // Auth-Check für Multi-Tenant Support (Race Condition Fix)
+                        console.log('🔐 [KALENDER] Prüfe Auth State für Multi-Tenant...');
+                        let currentUser = null;
+                        let attempts = 0;
+                        const maxAttempts = 20;
+
+                        while (!currentUser && attempts < maxAttempts) {
+                            currentUser = window.authManager?.getCurrentUser();
+                            if (!currentUser) {
+                                console.log(\`⏳ [KALENDER] Warte auf Auth State (\${attempts + 1}/\${maxAttempts})...\`);
+                                await new Promise(resolve => setTimeout(resolve, 250));
+                                attempts++;
+                            }
+                        }
+
+                        if (!currentUser) {
+                            console.warn('⚠️ [KALENDER] Kein User eingeloggt - verwende globale Collections');
+                        } else {
+                            console.log('✅ [KALENDER] Auth State geladen');
+                            console.log('   User:', currentUser.name);
+                            console.log('   WerkstattId:', currentUser.werkstattId);
+                        }
                         await loadData();
                     } else {
                         await loadData();

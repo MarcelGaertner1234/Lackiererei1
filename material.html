@@ -961,6 +961,8 @@
 
     <script src="firebase-config.js?v=4412ea9"></script>
     <script>
+    <!-- Auth Manager für Multi-Tenant Support -->
+    <script src="js/auth-manager.js"></script>
         // Initialize Feather Icons
         feather.replace();
 
@@ -990,6 +992,31 @@
         // Firebase initialisieren beim Laden
         window.addEventListener('DOMContentLoaded', () => {
             initFirebase();
+
+            // Auth-Check für Multi-Tenant Support (Race Condition Fix)
+            (async function checkAuth() {
+                console.log('🔐 [MATERIAL] Prüfe Auth State für Multi-Tenant...');
+                let currentUser = null;
+                let attempts = 0;
+                const maxAttempts = 20;
+
+                while (!currentUser && attempts < maxAttempts) {
+                    currentUser = window.authManager?.getCurrentUser();
+                    if (!currentUser) {
+                        console.log(\`⏳ [MATERIAL] Warte auf Auth State (\${attempts + 1}/\${maxAttempts})...\`);
+                        await new Promise(resolve => setTimeout(resolve, 250));
+                        attempts++;
+                    }
+                }
+
+                if (!currentUser) {
+                    console.warn('⚠️ [MATERIAL] Kein User eingeloggt - verwende globale Collections');
+                } else {
+                    console.log('✅ [MATERIAL] Auth State geladen');
+                    console.log('   User:', currentUser.name);
+                    console.log('   WerkstattId:', currentUser.werkstattId);
+                }
+            })();
             setupMaterialRequestsListener();
             feather.replace(); // Icons nochmal rendern
         });
