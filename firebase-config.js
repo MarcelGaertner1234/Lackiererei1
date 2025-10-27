@@ -256,6 +256,11 @@ window.firebaseApp = {
     console.log(`✅ Fotos in LocalStorage gespeichert: ${key} (${photos.length} Fotos)`);
   },
 
+  // ✅ ALIAS: getFahrzeugFotos() → loadAllPhotosFromFirestore() (für liste.html Kompatibilität)
+  getFahrzeugFotos: async (fahrzeugId) => {
+    return await window.firebaseApp.loadAllPhotosFromFirestore(fahrzeugId);
+  },
+
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   listenToFahrzeuge: (callback) => {
     return window.getCollection('fahrzeuge')
