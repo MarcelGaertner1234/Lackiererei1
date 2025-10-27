@@ -14,6 +14,9 @@
     <!-- Firebase Config -->
     <script src="firebase-config.js?v=4412ea9"></script>
 
+    <!-- Auth Manager für Multi-Tenant Support -->
+    <script src="js/auth-manager.js"></script>
+
     <!-- Design System -->
     <link rel="stylesheet" href="design-system.css?v=af6b90f">
     <link rel="stylesheet" href="components.css?v=af6b90f">
@@ -1648,6 +1651,29 @@
                         firebaseApp = window.firebaseApp;
                         firebaseInitialized = true;
                         console.log('✅ [LISTE] Firebase initialisiert');
+
+                        // Auth-Check für Multi-Tenant Support (Race Condition Fix)
+                        console.log('🔐 [LISTE] Prüfe Auth State für Multi-Tenant...');
+                        let currentUser = null;
+                        let attempts = 0;
+                        const maxAttempts = 20;
+
+                        while (!currentUser && attempts < maxAttempts) {
+                            currentUser = window.authManager?.getCurrentUser();
+                            if (!currentUser) {
+                                console.log(`⏳ [LISTE] Warte auf Auth State (${attempts + 1}/${maxAttempts})...`);
+                                await new Promise(resolve => setTimeout(resolve, 250));
+                                attempts++;
+                            }
+                        }
+
+                        if (!currentUser) {
+                            console.warn('⚠️ [LISTE] Kein User eingeloggt - verwende globale Collections');
+                        } else {
+                            console.log('✅ [LISTE] Auth State geladen');
+                            console.log('   User:', currentUser.name);
+                            console.log('   WerkstattId:', currentUser.werkstattId);
+                        }
 
                         // Load customers
                         await loadKunden();

@@ -1461,6 +1461,9 @@
     <!-- Firebase Konfiguration -->
     <script src="firebase-config.js?v=4412ea9"></script>
 
+    <!-- Auth Manager für Multi-Tenant Support -->
+    <script src="js/auth-manager.js"></script>
+
     <!-- Global Chat Notifications -->
     <link rel="stylesheet" href="global-chat-notifications.css">
     <script src="global-chat-notifications.js"></script>
@@ -1686,6 +1689,29 @@
                         firebaseInitialized = true;
                         console.log('✅ Firebase initialisiert für Kanban');
                         console.log('   firebaseApp.listenToFahrzeuge:', typeof firebaseApp.listenToFahrzeuge);
+
+                        // Auth-Check für Multi-Tenant Support (Race Condition Fix)
+                        console.log('🔐 [KANBAN] Prüfe Auth State für Multi-Tenant...');
+                        let currentUser = null;
+                        let attempts = 0;
+                        const maxAttempts = 20;
+
+                        while (!currentUser && attempts < maxAttempts) {
+                            currentUser = window.authManager?.getCurrentUser();
+                            if (!currentUser) {
+                                console.log(`⏳ [KANBAN] Warte auf Auth State (${attempts + 1}/${maxAttempts})...`);
+                                await new Promise(resolve => setTimeout(resolve, 250));
+                                attempts++;
+                            }
+                        }
+
+                        if (!currentUser) {
+                            console.warn('⚠️ [KANBAN] Kein User eingeloggt - verwende globale Collections');
+                        } else {
+                            console.log('✅ [KANBAN] Auth State geladen');
+                            console.log('   User:', currentUser.name);
+                            console.log('   WerkstattId:', currentUser.werkstattId);
+                        }
                     } else {
                         console.warn('⚠️ Firebase Initialisierung fehlgeschlagen');
                         console.warn('   window.firebaseInitialized:', window.firebaseInitialized);
