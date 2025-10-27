@@ -13,7 +13,8 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // Initialize SendGrid with API Key from environment variable
-const SENDGRID_API_KEY = functions.config().sendgrid.key;
+// Uses process.env instead of deprecated functions.config()
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 sgMail.setApiKey(SENDGRID_API_KEY);
 
 // Sender Email (MUST be verified in SendGrid!)
