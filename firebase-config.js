@@ -37,14 +37,19 @@ if (isNodeEnvironment) {
 } else if (isBrowserEnvironment) {
   // Browser environment (normal case)
   const isPlaywrightTest = navigator.webdriver === true;
+  const forceEmulator = window.location.search.includes('useEmulator=true');
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const isEmulatorPort = window.location.port === '8000'; // Playwright http-server port
 
-  useEmulator = isPlaywrightTest || (isLocalhost && isEmulatorPort);
+  // NEW LOGIC: Only use emulator if:
+  // 1. Playwright test (automated testing)
+  // 2. Explicitly requested via ?useEmulator=true URL parameter
+  useEmulator = isPlaywrightTest || forceEmulator;
 
   console.log('🔥 Firebase Config Loading (Browser)...');
   console.log('  Environment Detection:');
   console.log('    - Playwright Test (navigator.webdriver):', isPlaywrightTest);
+  console.log('    - Force Emulator (URL param ?useEmulator=true):', forceEmulator);
   console.log('    - Localhost:', isLocalhost);
   console.log('    - Emulator Port (8000):', isEmulatorPort);
   console.log('    - Current Hostname:', window.location.hostname);
@@ -69,6 +74,7 @@ const firebaseConfig = {
 let firebaseApp;
 let db;
 let storage;
+let auth;
 
 // CRITICAL FIX RUN #17: Define window.firebaseApp IMMEDIATELY with Arrow Functions (Closure)
 // Problem (Run #16): Functions used `db` at DEFINITION time → db was undefined
@@ -78,6 +84,7 @@ window.firebaseApp = {
   app: null,
   db: () => db,
   storage: () => storage,
+  auth: () => auth,
 
   // ✅ BUG FIX #1: saveFahrzeug() function (gefunden durch Bug Hunter Workflow)
   // Problem: annahme.html ruft firebaseApp.saveFahrzeug() auf, aber Funktion existierte nicht
@@ -313,6 +320,72 @@ window.firebaseApp = {
   }
 };
 
+// ============================================
+// MULTI-TENANT SUPPORT (Phase 2)
+// ============================================
+
+/**
+ * Get collection name with werkstattId suffix
+ * @param {string} baseCollection - Base collection name (e.g., 'fahrzeuge', 'kunden')
+ * @returns {string} Collection name with werkstattId (e.g., 'fahrzeuge_mosbach')
+ *
+ * Example Usage:
+ *   const collectionName = window.getCollectionName('fahrzeuge'); // 'fahrzeuge_mosbach'
+ */
+window.getCollectionName = function(baseCollection) {
+  // Get current user from auth-manager
+  const currentUser = window.authManager?.getCurrentUser();
+
+  if (!currentUser) {
+    console.warn('⚠️ getCollectionName: Kein User eingeloggt, verwende BaseCollection:', baseCollection);
+    return baseCollection;
+  }
+
+  // Check for werkstattId (set after workshop login)
+  const werkstattId = currentUser.werkstattId;
+
+  if (!werkstattId) {
+    console.warn('⚠️ getCollectionName: User hat keine werkstattId, verwende BaseCollection:', baseCollection);
+    return baseCollection;
+  }
+
+  const collectionName = `${baseCollection}_${werkstattId}`;
+  console.log(`🏢 getCollectionName: ${baseCollection} → ${collectionName}`);
+  return collectionName;
+};
+
+/**
+ * Get Firestore collection with automatic werkstattId suffix
+ * @param {string} baseCollection - Base collection name (e.g., 'fahrzeuge', 'kunden')
+ * @returns {firebase.firestore.CollectionReference} Firestore collection reference
+ *
+ * Example Usage:
+ *   const fahrzeugeRef = window.getCollection('fahrzeuge'); // db.collection('fahrzeuge_mosbach')
+ *   const snapshot = await fahrzeugeRef.get();
+ */
+window.getCollection = function(baseCollection) {
+  const collectionName = window.getCollectionName(baseCollection);
+
+  if (!db) {
+    console.error('❌ getCollection: Firebase db not initialized!');
+    throw new Error('Firebase db not initialized');
+  }
+
+  return db.collection(collectionName);
+};
+
+/**
+ * Get current werkstattId from logged-in user
+ * @returns {string|null} werkstattId or null if not logged in
+ *
+ * Example Usage:
+ *   const werkstattId = window.getWerkstattId(); // 'mosbach'
+ */
+window.getWerkstattId = function() {
+  const currentUser = window.authManager?.getCurrentUser();
+  return currentUser?.werkstattId || null;
+};
+
 // Define initFirebase() helper for compatibility
 window.initFirebase = async function() {
   console.log('🔧 RUN #68: [1/3] initFirebase() called');
@@ -372,6 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       db = firebaseApp.firestore();
       storage = firebase.storage();  // ✅ FIX: Use firebase.storage() instead of firebaseApp.storage()
+      auth = firebase.auth();  // Initialize Auth
 
       // Connect Firestore to Emulator
       try {
@@ -389,23 +463,35 @@ document.addEventListener('DOMContentLoaded', () => {
         console.warn('⚠️ Storage Emulator connection:', e.message);
       }
 
-      // CRITICAL FIX: Expose db and storage IMMEDIATELY (not 50 lines later!)
+      // Connect Auth to Emulator
+      try {
+        auth.useEmulator('http://localhost:9099');
+        console.log('✅ Auth connected to Emulator (localhost:9099)');
+      } catch (e) {
+        console.warn('⚠️ Auth Emulator connection:', e.message);
+      }
+
+      // CRITICAL FIX: Expose db, storage, and auth IMMEDIATELY (not 50 lines later!)
       // Problem: initFirebase() returns BEFORE window.db is set (Lines 100-104 vs 158)
       // Solution: Set window.db RIGHT AFTER creation
       window.db = db;
       window.storage = storage;
-      console.log('✅ IMMEDIATE: window.db and window.storage exposed');
+      window.auth = auth;
+      console.log('✅ IMMEDIATE: window.db, window.storage, and window.auth exposed');
     } else {
       // Use real Firebase (Production/Staging)
       db = firebaseApp.firestore();
       storage = firebase.storage();  // ✅ FIX: Use firebase.storage() instead of firebaseApp.storage()
+      auth = firebase.auth();  // Initialize Auth
       console.log('✅ Firestore connected (Production)');
       console.log('✅ Storage connected (Production)');
+      console.log('✅ Auth connected (Production)');
 
-      // CRITICAL FIX: Expose db and storage IMMEDIATELY
+      // CRITICAL FIX: Expose db, storage, and auth IMMEDIATELY
       window.db = db;
       window.storage = storage;
-      console.log('✅ IMMEDIATE: window.db and window.storage exposed');
+      window.auth = auth;
+      console.log('✅ IMMEDIATE: window.db, window.storage, and window.auth exposed');
     }
 
     // Update window.firebaseApp.app with initialized instance
