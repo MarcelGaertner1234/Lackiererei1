@@ -1034,14 +1034,28 @@
             }
 
             // Check if user is logged in as werkstatt
-            const currentUser = window.authManager.getCurrentUser();
+            // ⚠️ WICHTIG: Warte auf Auth State Listener (Race Condition Fix)
+            let currentUser = null;
+            let attempts = 0;
+            const maxAttempts = 20; // 20 * 250ms = 5 Sekunden max
+
+            while (!currentUser && attempts < maxAttempts) {
+                currentUser = window.authManager.getCurrentUser();
+                if (!currentUser) {
+                    console.log(`⏳ Warte auf Auth State Listener (Versuch ${attempts + 1}/${maxAttempts})...`);
+                    await new Promise(resolve => setTimeout(resolve, 250)); // 250ms warten
+                    attempts++;
+                }
+            }
 
             if (!currentUser) {
-                console.error('❌ Kein User eingeloggt!');
+                console.error('❌ Auth Timeout: Kein User eingeloggt nach 5 Sekunden');
                 alert('⚠️ Bitte zuerst als Werkstatt einloggen!');
                 window.location.href = 'index.html';
                 return;
             }
+
+            console.log('✅ Auth State erfolgreich geladen nach', attempts * 250, 'ms');
 
             currentWerkstattId = currentUser.werkstattId;
             currentWerkstattName = currentUser.werkstattName || currentUser.name;
