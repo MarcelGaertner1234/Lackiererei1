@@ -2701,18 +2701,32 @@
         }
 
         // Load Current User from Firebase Auth
-        function loadCurrentUser() {
-            // Check if user is logged in via Firebase Auth
-            const user = window.authManager.getCurrentUser();
+        async function loadCurrentUser() {
+            // ⚠️ WICHTIG: Warte auf Auth State Listener (Race Condition Fix)
+            // Identisch mit mitarbeiter-verwaltung.html Polling-Mechanismus
+            let user = null;
+            let attempts = 0;
+            const maxAttempts = 20; // 20 * 250ms = 5 Sekunden max
+
+            while (!user && attempts < maxAttempts) {
+                user = window.authManager.getCurrentUser();
+                if (!user) {
+                    console.log(`⏳ Warte auf Auth State Listener (Versuch ${attempts + 1}/${maxAttempts})...`);
+                    await new Promise(resolve => setTimeout(resolve, 250)); // 250ms warten
+                    attempts++;
+                }
+            }
 
             if (user) {
                 currentUser = user;
                 console.log('✅ Firebase Auth User geladen:', currentUser.name);
+                console.log('   Rolle:', currentUser.role);
+                console.log('   Login Stage:', currentUser.loginStage);
                 updateWelcomeBanner();
                 lockTiles();
             } else {
-                // No user logged in → open login modal
-                console.log('⚠️ Kein Benutzer eingeloggt → öffne Login-Modal');
+                // Nach 5 Sekunden: Timeout → kein User eingeloggt
+                console.log('⚠️ Kein Benutzer eingeloggt nach 5 Sekunden → öffne Login-Modal');
                 setTimeout(() => {
                     openLoginModal();
                 }, 500);
