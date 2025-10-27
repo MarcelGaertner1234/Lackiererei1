@@ -555,6 +555,97 @@
                 font-size: 10px;
             }
         }
+
+        /* ========================================
+           QUICKVIEW MODE BANNER
+           ======================================== */
+
+        .quickview-banner {
+            background: linear-gradient(135deg,
+                rgba(0, 122, 255, 0.08) 0%,
+                rgba(0, 122, 255, 0.04) 100%);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 2px solid rgba(0, 122, 255, 0.2);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            box-shadow: 0 8px 24px rgba(0, 122, 255, 0.12),
+                        0 2px 8px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="dark"] .quickview-banner {
+            background: linear-gradient(135deg,
+                rgba(46, 200, 255, 0.12) 0%,
+                rgba(46, 200, 255, 0.06) 100%);
+            border-color: rgba(46, 200, 255, 0.3);
+            box-shadow: 0 8px 24px rgba(46, 200, 255, 0.15),
+                        0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .quickview-banner:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(0, 122, 255, 0.18),
+                        0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+
+        [data-theme="dark"] .quickview-banner:hover {
+            box-shadow: 0 12px 32px rgba(46, 200, 255, 0.22),
+                        0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .quickview-banner-icon {
+            font-size: 32px;
+            line-height: 1;
+            flex-shrink: 0;
+            filter: drop-shadow(0 2px 4px rgba(0, 122, 255, 0.3));
+        }
+
+        .quickview-banner-content {
+            flex: 1;
+        }
+
+        .quickview-banner-content strong {
+            display: block;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 8px;
+            letter-spacing: -0.3px;
+        }
+
+        .quickview-banner-content p {
+            font-size: 14px;
+            color: var(--color-text-secondary);
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        /* Mobile responsive for QuickView banner */
+        @media (max-width: 768px) {
+            .quickview-banner {
+                padding: 16px 18px;
+                gap: 12px;
+                margin-bottom: 20px;
+            }
+
+            .quickview-banner-icon {
+                font-size: 24px;
+            }
+
+            .quickview-banner-content strong {
+                font-size: 16px;
+                margin-bottom: 6px;
+            }
+
+            .quickview-banner-content p {
+                font-size: 13px;
+            }
+        }
     </style>
 
     <!-- Mobile-Responsive CSS Framework -->
@@ -1043,23 +1134,56 @@
             document.getElementById('loading').style.display = 'none';
             document.getElementById('content').style.display = 'block';
 
+            // ✅ QUICKVIEW MODE: Info-Banner + Hide Sensitive Data
+            if (anfrage.isQuickView) {
+                console.log('🔍 QuickView Mode aktiv - verstecke sensitive Daten');
+
+                // Info-Banner einfügen
+                const contentDiv = document.getElementById('content');
+                let banner = document.getElementById('quickviewBanner');
+
+                if (!banner) {
+                    banner = document.createElement('div');
+                    banner.id = 'quickviewBanner';
+                    banner.className = 'quickview-banner';
+                    banner.innerHTML = `
+                        <div class="quickview-banner-icon">ℹ️</div>
+                        <div class="quickview-banner-content">
+                            <strong>Eingeschränkte Ansicht</strong>
+                            <p>Sie sehen nur Statusinformationen. Für vollständige Details und Interaktion bitte als Partner einloggen.</p>
+                        </div>
+                    `;
+                    contentDiv.insertBefore(banner, contentDiv.firstChild);
+                }
+            }
+
             const serviceTyp = anfrage.serviceTyp || 'lackier';
             const badge = getServiceBadge(serviceTyp);
             const status = getStatusBadge(anfrage.status || 'offen');
 
             document.getElementById('title').innerHTML = `${anfrage.kennzeichen || anfrage.auftragsnummer || 'Anfrage'} ${badge}`;
-            document.getElementById('subtitle').innerHTML = `${anfrage.partnerName} • ${status}`;
+            document.getElementById('subtitle').innerHTML = `${anfrage.partnerName || 'Kunde'} • ${status}`;
 
             // Button-Visibility: Nur bei Status 'kva_gesendet' anzeigen
+            // ⚠️ QUICKVIEW: Keine Action-Buttons in QuickView Mode!
             const btnAnnehmen = document.getElementById('btnAnnehmen');
             if (btnAnnehmen) {
-                btnAnnehmen.style.display = anfrage.status === 'kva_gesendet' ? 'inline-block' : 'none';
+                if (anfrage.isQuickView) {
+                    btnAnnehmen.style.display = 'none';
+                } else {
+                    btnAnnehmen.style.display = anfrage.status === 'kva_gesendet' ? 'inline-block' : 'none';
+                }
             }
 
             // Stornieren-Button: Nur bei Status 'beauftragt' anzeigen
+            // ⚠️ QUICKVIEW: Keine Action-Buttons in QuickView Mode!
             const btnStornieren = document.getElementById('btnStornieren');
             if (btnStornieren) {
-                btnStornieren.style.display = anfrage.status === 'beauftragt' ? 'inline-block' : 'none';
+                if (anfrage.isQuickView) {
+                    btnStornieren.style.display = 'none';
+                } else {
+                    btnStornieren.style.display = anfrage.status === 'beauftragt' ? 'inline-block' : 'none';
+                }
             }
 
             const detailsContainer = document.getElementById('details');
@@ -1189,7 +1313,8 @@
             }
 
             // KVA-Daten (Kostenvoranschlag) - NEU!
-            if (anfrage.kva && anfrage.kva.varianten) {
+            // ⚠️ QUICKVIEW: Preise & Kosten sind SENSITIV - nicht anzeigen!
+            if (!anfrage.isQuickView && anfrage.kva && anfrage.kva.varianten) {
                 const gewaehlte = anfrage.kva.gewaehlteVariante || 'original';
                 const varianteData = anfrage.kva.varianten[gewaehlte] || anfrage.kva.varianten.original || {};
 
@@ -1309,7 +1434,8 @@
             }
 
             // Anmerkungen
-            if (anfrage.anmerkungen) {
+            // ⚠️ QUICKVIEW: Anmerkungen können SENSITIVE Daten enthalten - nicht anzeigen!
+            if (!anfrage.isQuickView && anfrage.anmerkungen) {
                 html += `
                     <div class="detail-section">
                         <h2>💬 Anmerkungen</h2>
