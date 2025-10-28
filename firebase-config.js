@@ -470,6 +470,326 @@ window.compareIds = function(id1, id2) {
   return String(id1) === String(id2);
 };
 
+/**
+ * ============================================
+ * LOADING STATES (UX Enhancement)
+ * ============================================
+ * Centralized loading indicator for async operations
+ */
+
+let currentLoader = null;
+
+/**
+ * Show loading overlay with custom message
+ * @param {string} message - Loading message to display
+ * @returns {HTMLElement} Loader element (for manual removal if needed)
+ *
+ * @example
+ * const loader = showLoading('Fahrzeuge werden geladen...');
+ * const data = await fetchData();
+ * hideLoading();
+ */
+window.showLoading = function(message = 'Lädt...') {
+  // Remove existing loader if any
+  if (currentLoader) {
+    currentLoader.remove();
+  }
+
+  const loader = document.createElement('div');
+  loader.className = 'loading-overlay';
+  loader.innerHTML = `
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <p class="loading-message">${message}</p>
+    </div>
+  `;
+
+  // Add CSS if not already present
+  if (!document.getElementById('loading-states-css')) {
+    const style = document.createElement('style');
+    style.id = 'loading-states-css';
+    style.textContent = `
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        animation: fadeIn 0.2s ease;
+      }
+
+      .loading-content {
+        background: white;
+        padding: 32px 48px;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007aff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      .loading-message {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+        color: #333;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(loader);
+  currentLoader = loader;
+  return loader;
+};
+
+/**
+ * Hide currently displayed loading overlay
+ */
+window.hideLoading = function() {
+  if (currentLoader) {
+    currentLoader.style.animation = 'fadeOut 0.2s ease';
+    setTimeout(() => {
+      if (currentLoader) {
+        currentLoader.remove();
+        currentLoader = null;
+      }
+    }, 200);
+  }
+};
+
+/**
+ * Show loading, execute async function, hide loading
+ * @param {Function} asyncFn - Async function to execute
+ * @param {string} message - Loading message
+ * @returns {Promise<any>} Result of async function
+ *
+ * @example
+ * const data = await withLoading(
+ *   () => firebaseApp.getAllFahrzeuge(),
+ *   'Fahrzeuge werden geladen...'
+ * );
+ */
+window.withLoading = async function(asyncFn, message = 'Lädt...') {
+  showLoading(message);
+  try {
+    const result = await asyncFn();
+    return result;
+  } finally {
+    hideLoading();
+  }
+};
+
+/**
+ * ============================================
+ * INPUT VALIDATION (Data Quality)
+ * ============================================
+ * Validation functions for user inputs
+ */
+
+/**
+ * Validate Farbnummer (Paint Code)
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validateFarbnummer('A1B');
+ * if (!result.valid) alert(result.error);
+ */
+window.validateFarbnummer = function(value) {
+  if (!value || value.trim() === '') {
+    return { valid: true, error: null, value: '' }; // Optional field
+  }
+
+  const trimmed = value.trim().toUpperCase();
+
+  // Farbnummer: 2-6 Zeichen, nur A-Z und 0-9
+  const pattern = /^[A-Z0-9]{2,6}$/;
+
+  if (!pattern.test(trimmed)) {
+    return {
+      valid: false,
+      error: 'Ungültige Farbnummer! Format: 2-6 Zeichen (A-Z, 0-9). Beispiel: A1B, LC9Z, C7A',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
+
+/**
+ * Validate VIN/FIN (Vehicle Identification Number)
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validateVIN('WVWZZZ1JZYW123456');
+ * if (!result.valid) alert(result.error);
+ */
+window.validateVIN = function(value) {
+  if (!value || value.trim() === '') {
+    return { valid: true, error: null, value: '' }; // Optional field
+  }
+
+  const trimmed = value.trim().toUpperCase();
+
+  // VIN must be exactly 17 characters
+  if (trimmed.length !== 17) {
+    return {
+      valid: false,
+      error: 'VIN/FIN muss exakt 17 Zeichen lang sein!',
+      value: trimmed
+    };
+  }
+
+  // VIN cannot contain I, O, Q (to avoid confusion with 1, 0)
+  if (/[IOQ]/i.test(trimmed)) {
+    return {
+      valid: false,
+      error: 'VIN/FIN darf keine Buchstaben I, O oder Q enthalten!',
+      value: trimmed
+    };
+  }
+
+  // VIN must be alphanumeric
+  if (!/^[A-Z0-9]{17}$/.test(trimmed)) {
+    return {
+      valid: false,
+      error: 'VIN/FIN darf nur Buchstaben und Zahlen enthalten!',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
+
+/**
+ * Validate Email Address
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validateEmail('kunde@example.de');
+ * if (!result.valid) alert(result.error);
+ */
+window.validateEmail = function(value) {
+  if (!value || value.trim() === '') {
+    return { valid: true, error: null, value: '' }; // Optional field
+  }
+
+  const trimmed = value.trim().toLowerCase();
+
+  // RFC 5322 simplified email regex
+  const pattern = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+
+  if (!pattern.test(trimmed)) {
+    return {
+      valid: false,
+      error: 'Ungültige E-Mail-Adresse! Beispiel: kunde@example.de',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
+
+/**
+ * Validate Phone Number (German format)
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validatePhone('+49 6261 123456');
+ * if (!result.valid) alert(result.error);
+ */
+window.validatePhone = function(value) {
+  if (!value || value.trim() === '') {
+    return { valid: true, error: null, value: '' }; // Optional field
+  }
+
+  const trimmed = value.trim();
+
+  // Allow: +49, 0049, 0, spaces, dashes, parentheses
+  // Minimum 6 digits (local number), maximum 15 digits (international format)
+  const digitsOnly = trimmed.replace(/[^\d]/g, '');
+
+  if (digitsOnly.length < 6 || digitsOnly.length > 15) {
+    return {
+      valid: false,
+      error: 'Ungültige Telefonnummer! Beispiel: +49 6261 123456 oder 06261 123456',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
+
+/**
+ * Validate Kennzeichen (License Plate - German format)
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validateKennzeichen('MOS-CG 123');
+ * if (!result.valid) alert(result.error);
+ */
+window.validateKennzeichen = function(value) {
+  if (!value || value.trim() === '') {
+    return {
+      valid: false,
+      error: 'Kennzeichen ist ein Pflichtfeld!',
+      value: ''
+    };
+  }
+
+  const trimmed = value.trim().toUpperCase();
+
+  // German license plate: 1-3 letters (city), optional dash/space, 1-2 letters, space, 1-4 digits
+  // Examples: MOS-CG 123, HD AB 1234, B MW 9999
+  const pattern = /^[A-Z]{1,3}[\s-]?[A-Z]{1,2}\s?\d{1,4}$/;
+
+  if (!pattern.test(trimmed)) {
+    return {
+      valid: false,
+      error: 'Ungültiges Kennzeichen! Format: MOS-CG 123 oder HD AB 1234',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
+
 // Define initFirebase() helper for compatibility
 window.initFirebase = async function() {
   console.log('🔧 RUN #68: [1/3] initFirebase() called');
