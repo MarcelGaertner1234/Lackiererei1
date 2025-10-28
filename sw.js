@@ -36,24 +36,33 @@ const STATIC_ASSETS = [
     './mitarbeiter-verwaltung.html',
     './offline.html', // Fallback-Seite
 
-    // CSS Files
+    // CSS Files (Root)
     './design-system.css',
     './components.css',
     './animations.css',
     './mobile-first.css',
-    './css/chat-widget.css',
+    './liquid-glass.css',
+    './mobile-responsive.css',
+    './global-chat-notifications.css',
 
-    // JavaScript Files
+    // CSS Files (css/ Verzeichnis)
+    './css/ai-chat-widget.css',
+
+    // JavaScript Files (Root)
     './firebase-config.js',
+    './error-handler.js',
+    './storage-monitor.js',
+    './image-optimizer.js',
+    './dark-mode-toggle.js',
+    './global-chat-notifications.js',
+
+    // JavaScript Files (js/ Verzeichnis)
     './js/auth-manager.js',
-    './js/error-handler.js',
-    './js/migration-helper.js',
     './js/settings-manager.js',
     './js/ai-agent-tools.js',
     './js/app-events.js',
-    './js/chat-widget.js',
-    './image-optimizer.js',
-    './storage-monitor.js'
+    './js/ai-chat-widget.js',
+    './js/ai-agent-engine.js'
 ];
 
 // Firebase SDK URLs (extern, sollen gecacht werden)
