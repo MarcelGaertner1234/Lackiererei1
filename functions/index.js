@@ -1,8 +1,11 @@
 /**
  * Firebase Cloud Functions for Email Notifications & AI Agent
  * Deployed via GitHub Actions
+ *
+ * Uses Google Cloud Secret Manager for API Keys (defineSecret)
  */
 const functions = require("firebase-functions");
+const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const sgMail = require("@sendgrid/mail");
 const { OpenAI } = require("openai");
@@ -13,53 +16,57 @@ const path = require("path");
 admin.initializeApp();
 const db = admin.firestore();
 
+// ============================================
+// SECRET DEFINITIONS (Google Cloud Secret Manager)
+// ============================================
+
+// Define secrets (will be loaded from Google Cloud Secret Manager)
+const openaiApiKey = defineSecret('OPENAI_API_KEY');
+const sendgridApiKey = defineSecret('SENDGRID_API_KEY');
+
 // Helper function: Get and validate SendGrid API Key
-// Called lazily at runtime, not at module load time
 function getSendGridApiKey() {
-  const apiKey = functions.config().sendgrid?.api_key || process.env.SENDGRID_API_KEY;
+  const apiKey = sendgridApiKey.value();
 
   if (!apiKey) {
-    console.error("❌ FATAL: SENDGRID_API_KEY ist nicht konfiguriert!");
-    console.error("Fix: firebase functions:config:set sendgrid.api_key=\"SG.xxx\" --project auto-lackierzentrum-mosbach");
-    throw new Error("Missing SENDGRID_API_KEY environment variable");
+    throw new Error("Missing SENDGRID_API_KEY - run: firebase functions:secrets:set SENDGRID_API_KEY");
   }
 
   if (!apiKey.startsWith("SG.")) {
     console.warn("⚠️ WARNING: SENDGRID_API_KEY startet nicht mit 'SG.' - möglicherweise ungültig!");
   }
 
+  console.log("✅ SendGrid API Key loaded from Secret Manager");
   return apiKey;
 }
 
-// Sender Email (MUST be verified in SendGrid!)
-const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
-
 // Helper function: Get and validate OpenAI API Key
-// Called lazily at runtime, not at module load time
-// Priority: process.env (GitHub Actions) > functions.config (Firebase CLI)
 function getOpenAIApiKey() {
-  const apiKey = process.env.OPENAI_API_KEY || functions.config().openai?.api_key;
+  const apiKey = openaiApiKey.value();
 
   if (!apiKey) {
-    console.error("❌ FATAL: OPENAI_API_KEY ist nicht konfiguriert!");
-    console.error("GitHub Actions: Setze OPENAI_API_KEY Secret");
-    console.error("Oder Firebase CLI: firebase functions:config:set openai.api_key=\"sk-xxx\"");
-    throw new Error("Missing OPENAI_API_KEY environment variable");
+    throw new Error("Missing OPENAI_API_KEY - run: firebase functions:secrets:set OPENAI_API_KEY");
   }
 
   if (!apiKey.startsWith("sk-")) {
     console.warn("⚠️ WARNING: OPENAI_API_KEY startet nicht mit 'sk-' - möglicherweise ungültig!");
   }
 
-  console.log("✅ OpenAI API Key loaded from:", process.env.OPENAI_API_KEY ? "process.env (GitHub Actions)" : "functions.config (Firebase CLI)");
+  console.log("✅ OpenAI API Key loaded from Secret Manager");
   return apiKey;
 }
+
+// Sender Email (MUST be verified in SendGrid!)
+const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
 
 // ============================================
 // FUNCTION 1: Status-Änderung → Email an Kunde
 // ============================================
 exports.onStatusChange = functions
     .region("europe-west3") // Frankfurt für DSGVO
+    .runWith({
+      secrets: [sendgridApiKey] // Bind SendGrid API Key from Secret Manager
+    })
     .firestore
     .document("{collectionId}/{vehicleId}") // Collection Group Pattern - fängt ALLE Collections
     .onUpdate(async (change, context) => {
@@ -173,6 +180,9 @@ exports.onStatusChange = functions
 // ============================================
 exports.onNewPartnerAnfrage = functions
     .region("europe-west3")
+    .runWith({
+      secrets: [sendgridApiKey] // Bind SendGrid API Key from Secret Manager
+    })
     .firestore
     .document("partnerAnfragen/{anfrageId}")
     .onCreate(async (snap, context) => {
@@ -260,6 +270,9 @@ exports.onNewPartnerAnfrage = functions
 // ============================================
 exports.onUserApproved = functions
     .region("europe-west3")
+    .runWith({
+      secrets: [sendgridApiKey] // Bind SendGrid API Key from Secret Manager
+    })
     .firestore
     .document("users/{userId}")
     .onUpdate(async (change, context) => {
@@ -391,6 +404,9 @@ function getServiceLabel(serviceTyp) {
  */
 exports.aiAgentExecute = functions
     .region("europe-west3")
+    .runWith({
+      secrets: [openaiApiKey] // Bind OpenAI API Key from Secret Manager
+    })
     .https
     .onCall(async (data, context) => {
       try {
