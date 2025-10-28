@@ -65,6 +65,7 @@ test.describe('Admin-Einstellungen Tests', () => {
    */
   test('Alle 7 Tabs sind vorhanden', async ({ page }) => {
     await page.goto('/admin-einstellungen.html');
+    await waitForFirebase(page);
 
     const tabs = [
       'Werkstatt-Profil',
@@ -162,8 +163,8 @@ test.describe('Admin-Einstellungen Tests', () => {
     await page.goto('/admin-einstellungen.html');
     await waitForFirebase(page);
 
-    // Switch to System-Konfiguration tab
-    const systemTab = page.locator('.tab:has-text("System-Konfiguration")');
+    // Switch to System-Config tab
+    const systemTab = page.locator('.tab:has-text("System-Config")');
     await systemTab.click();
     await page.waitForTimeout(500);
 
@@ -185,8 +186,8 @@ test.describe('Admin-Einstellungen Tests', () => {
     await page.goto('/admin-einstellungen.html');
     await waitForFirebase(page);
 
-    // Switch to System-Konfiguration tab
-    await page.locator('.tab:has-text("System-Konfiguration")').click();
+    // Switch to System-Config tab
+    await page.locator('.tab:has-text("System-Config")').click();
     await page.waitForTimeout(500);
 
     // Enter invalid API key
@@ -218,8 +219,8 @@ test.describe('Admin-Einstellungen Tests', () => {
     await page.goto('/admin-einstellungen.html');
     await waitForFirebase(page);
 
-    // Switch to System-Konfiguration tab
-    await page.locator('.tab:has-text("System-Konfiguration")').click();
+    // Switch to System-Config tab
+    await page.locator('.tab:has-text("System-Config")').click();
     await page.waitForTimeout(500);
 
     // Enter mock valid API key
@@ -442,12 +443,12 @@ test.describe('Admin-Einstellungen Tests', () => {
     // Initially Werkstatt-Profil should be active
     await expect(page.locator('.tab.active')).toContainText('Werkstatt-Profil');
 
-    // Click on System-Konfiguration
-    await page.locator('.tab:has-text("System-Konfiguration")').click();
+    // Click on System-Config
+    await page.locator('.tab:has-text("System-Config")').click();
     await page.waitForTimeout(300);
 
-    // System-Konfiguration should now be active
-    await expect(page.locator('.tab.active')).toContainText('System-Konfiguration');
+    // System-Config should now be active
+    await expect(page.locator('.tab.active')).toContainText('System-Config');
 
     // Click on Backup & Export
     await page.locator('.tab:has-text("Backup & Export")').click();
