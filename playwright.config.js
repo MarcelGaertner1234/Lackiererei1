@@ -83,19 +83,17 @@ module.exports = defineConfig({
       },
     },
 
-    /* ❌ DEAKTIVIERT: Firefox nicht installiert
+    /* ✅ Firefox aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
     },
-    */
 
-    /* ❌ DEAKTIVIERT: WebKit nicht installiert
+    /* ✅ WebKit/Safari aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },
-    */
 
     /* Mobile Tests */
     {
@@ -103,19 +101,17 @@ module.exports = defineConfig({
       use: { ...devices['Pixel 5'] },
     },
 
-    /* ❌ DEAKTIVIERT: Mobile Safari (WebKit) nicht installiert
+    /* ✅ Mobile Safari aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
     {
       name: 'mobile-safari',
       use: { ...devices['iPhone 13'] },
     },
-    */
 
-    /* ❌ DEAKTIVIERT: Tablet Tests (WebKit nicht installiert)
+    /* ✅ iPad Tests aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
     {
       name: 'tablet-ipad',
       use: { ...devices['iPad Pro'] },
     }
-    */
   ],
 
   /* Web Server starten vor Tests */
