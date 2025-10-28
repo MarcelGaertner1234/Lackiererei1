@@ -36,12 +36,14 @@ const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
 
 // Helper function: Get and validate OpenAI API Key
 // Called lazily at runtime, not at module load time
+// Priority: process.env (GitHub Actions) > functions.config (Firebase CLI)
 function getOpenAIApiKey() {
-  const apiKey = functions.config().openai?.api_key || process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || functions.config().openai?.api_key;
 
   if (!apiKey) {
     console.error("❌ FATAL: OPENAI_API_KEY ist nicht konfiguriert!");
-    console.error("Fix: firebase functions:config:set openai.api_key=\"sk-xxx\" --project auto-lackierzentrum-mosbach");
+    console.error("GitHub Actions: Setze OPENAI_API_KEY Secret");
+    console.error("Oder Firebase CLI: firebase functions:config:set openai.api_key=\"sk-xxx\"");
     throw new Error("Missing OPENAI_API_KEY environment variable");
   }
 
@@ -49,6 +51,7 @@ function getOpenAIApiKey() {
     console.warn("⚠️ WARNING: OPENAI_API_KEY startet nicht mit 'sk-' - möglicherweise ungültig!");
   }
 
+  console.log("✅ OpenAI API Key loaded from:", process.env.OPENAI_API_KEY ? "process.env (GitHub Actions)" : "functions.config (Firebase CLI)");
   return apiKey;
 }
 
