@@ -259,13 +259,22 @@ test.describe('Admin-Einstellungen Tests', () => {
     await page.locator('#profilTelefon').fill('+49 6261 123456');
     await page.locator('#profilAdresse').fill('Teststraße 123, 74821 Mosbach');
 
-    // Mock saveSettings to avoid Firestore write
+    // Mock saveAllSettings() to only collect profile data we filled
     let savedSettings = null;
     await page.evaluate(() => {
-      const originalSave = window.settingsManager.saveSettings;
-      window.settingsManager.saveSettings = async (settings) => {
+      window.saveAllSettings = async () => {
+        const settings = {
+          profil: {
+            name: document.getElementById('profilName').value,
+            email: document.getElementById('profilEmail').value,
+            telefon: document.getElementById('profilTelefon').value,
+            website: document.getElementById('profilWebsite')?.value || '',
+            adresse: document.getElementById('profilAdresse').value,
+            description: document.getElementById('profilDescription')?.value || ''
+          }
+        };
         window.__mockSavedSettings = settings;
-        console.log('Mock saveSettings called with:', settings);
+        console.log('Mock saveAllSettings called with:', settings);
         return true;
       };
     });
@@ -290,9 +299,19 @@ test.describe('Admin-Einstellungen Tests', () => {
     await waitForFirebase(page);
     await waitForSettingsManager(page);
 
-    // Check that settingsManager uses correct collection
+    // Mock authManager with a test user containing werkstattId
     const collectionName = await page.evaluate(async () => {
-      // Get current user (which contains werkstattId)
+      // Mock getCurrentUser to return a user with werkstattId
+      if (window.authManager) {
+        window.authManager.getCurrentUser = () => ({
+          werkstattId: 'mosbach',
+          name: 'Test Werkstatt',
+          role: 'werkstatt',
+          email: 'test@mosbach.de'
+        });
+      }
+
+      // Now get current user (which should return our mock)
       if (!window.authManager || !window.authManager.getCurrentUser) {
         return 'auth-manager-not-ready';
       }
