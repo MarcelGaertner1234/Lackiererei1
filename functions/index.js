@@ -3,6 +3,7 @@
  * Deployed via GitHub Actions
  *
  * Uses Google Cloud Secret Manager for API Keys (defineSecret)
+ * Secrets configured: OPENAI_API_KEY, SENDGRID_API_KEY
  */
 const functions = require("firebase-functions");
 const { defineSecret } = require("firebase-functions/params");
