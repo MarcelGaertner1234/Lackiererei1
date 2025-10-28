@@ -69,6 +69,7 @@ async function registerUser(userData) {
       lastLogin: null
     };
 
+    // GLOBAL collection (not werkstatt-specific) → use db.collection() directly
     await window.db.collection('users').doc(firebaseUser.uid).set(userDoc);
     console.log('✅ User-Dokument in Firestore erstellt');
 
@@ -111,6 +112,7 @@ async function loginWerkstatt(email, password) {
     console.log('✅ Firebase Auth erfolgreich:', firebaseUser.uid);
 
     // 2. Get workshop document from Firestore
+    // GLOBAL collection (not werkstatt-specific) → use db.collection() directly
     const userDoc = await window.db.collection('users').doc(firebaseUser.uid).get();
 
     if (!userDoc.exists) {
@@ -130,6 +132,7 @@ async function loginWerkstatt(email, password) {
     }
 
     // 5. Update last login timestamp
+    // GLOBAL collection (not werkstatt-specific) → use db.collection() directly
     await window.db.collection('users').doc(firebaseUser.uid).update({
       lastLogin: new Date().toISOString()
     });
@@ -376,6 +379,7 @@ window.addEventListener('firebaseReady', () => {
 
       // Load user data from Firestore
       try {
+        // GLOBAL collection (not werkstatt-specific) → use db.collection() directly
         const userDoc = await window.db.collection('users').doc(firebaseUser.uid).get();
 
         if (userDoc.exists) {

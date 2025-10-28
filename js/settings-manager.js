@@ -123,7 +123,8 @@ class SettingsManager {
             }
 
             this.werkstattId = currentUser.werkstattId;
-            this.settingsRef = window.db.collection(`einstellungen_${this.werkstattId}`);
+            // Use getCollection for consistency (though hardcoded werkstattId works too)
+            this.settingsRef = window.getCollection('einstellungen');
 
             console.log('✅ Settings Manager initialisiert für Werkstatt:', this.werkstattId);
             return true;
@@ -351,8 +352,8 @@ class SettingsManager {
             const kundenSnap = await window.getCollection('kunden').get();
             exportData.kunden = kundenSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // Export Mitarbeiter
-            const mitarbeiterSnap = await window.db.collection(`mitarbeiter_${this.werkstattId}`).get();
+            // Export Mitarbeiter (use getCollection for consistency)
+            const mitarbeiterSnap = await window.getCollection('mitarbeiter').get();
             exportData.mitarbeiter = mitarbeiterSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             console.log('✅ Daten exportiert:', {
@@ -399,7 +400,7 @@ class SettingsManager {
 
             const fahrzeugeSnap = await window.getCollection('fahrzeuge').get();
             const kundenSnap = await window.getCollection('kunden').get();
-            const mitarbeiterSnap = await window.db.collection(`mitarbeiter_${this.werkstattId}`).get();
+            const mitarbeiterSnap = await window.getCollection('mitarbeiter').get();
 
             const stats = {
                 fahrzeuge: {
