@@ -513,11 +513,24 @@ document.addEventListener('DOMContentLoaded', () => {
       db = firebaseApp.firestore();
       storage = firebase.storage();  // ✅ FIX: Use firebase.storage() instead of firebaseApp.storage()
       auth = firebase.auth();  // Initialize Auth
-      functions = firebase.functions();  // Initialize Functions
+
+      // Initialize Functions with error handling (SDK might not be loaded)
+      try {
+        if (firebase.functions) {
+          functions = firebase.functions();
+          console.log('✅ Functions connected (Production)');
+        } else {
+          console.warn('⚠️ Functions SDK not available (optional)');
+          functions = null;
+        }
+      } catch (e) {
+        console.warn('⚠️ Functions initialization failed:', e.message);
+        functions = null;
+      }
+
       console.log('✅ Firestore connected (Production)');
       console.log('✅ Storage connected (Production)');
       console.log('✅ Auth connected (Production)');
-      console.log('✅ Functions connected (Production)');
 
       // CRITICAL FIX: Expose db, storage, auth, and functions IMMEDIATELY
       window.db = db;
