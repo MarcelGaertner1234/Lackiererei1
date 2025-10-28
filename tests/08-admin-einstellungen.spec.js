@@ -259,10 +259,11 @@ test.describe('Admin-Einstellungen Tests', () => {
     await page.locator('#profilTelefon').fill('+49 6261 123456');
     await page.locator('#profilAdresse').fill('Teststraße 123, 74821 Mosbach');
 
-    // Mock saveAllSettings() to only collect profile data we filled
+    // Mock saveSection('profil') - this is what the first "Speichern" button actually calls
     let savedSettings = null;
     await page.evaluate(() => {
-      window.saveAllSettings = async () => {
+      window.saveSection = async (sectionName) => {
+        console.log('Mock saveSection called with:', sectionName);
         const settings = {
           profil: {
             name: document.getElementById('profilName').value,
@@ -274,12 +275,12 @@ test.describe('Admin-Einstellungen Tests', () => {
           }
         };
         window.__mockSavedSettings = settings;
-        console.log('Mock saveAllSettings called with:', settings);
+        console.log('Mock saved settings:', settings);
         return true;
       };
     });
 
-    // Click save button
+    // Click save button (calls saveSection('profil'), NOT saveAllSettings())
     await page.locator('button.btn-primary:has-text("Speichern")').first().click();
     await page.waitForTimeout(1000);
 
@@ -295,23 +296,29 @@ test.describe('Admin-Einstellungen Tests', () => {
    * Test 10: Multi-Tenant Isolation
    */
   test('Multi-Tenant Isolation: Werkstatt-spezifische Collection', async ({ page }) => {
-    await page.goto('/admin-einstellungen.html');
-    await waitForFirebase(page);
-    await waitForSettingsManager(page);
-
-    // Mock authManager with a test user containing werkstattId
-    const collectionName = await page.evaluate(async () => {
-      // Mock getCurrentUser to return a user with werkstattId
-      if (window.authManager) {
-        window.authManager.getCurrentUser = () => ({
+    // Mock authManager BEFORE page loads (using addInitScript)
+    await page.addInitScript(() => {
+      // Set up mock authManager that will be available when page loads
+      window.authManager = {
+        getCurrentUser: () => ({
           werkstattId: 'mosbach',
           name: 'Test Werkstatt',
           role: 'werkstatt',
           email: 'test@mosbach.de'
-        });
-      }
+        }),
+        isLoggedIn: () => true,
+        hasRole: () => true,
+        hasPermission: () => true
+      };
+    });
 
-      // Now get current user (which should return our mock)
+    await page.goto('/admin-einstellungen.html');
+    await waitForFirebase(page);
+    await waitForSettingsManager(page);
+
+    // Now check if the app uses werkstatt-specific collection
+    const collectionName = await page.evaluate(async () => {
+      // Get current user from our mock
       if (!window.authManager || !window.authManager.getCurrentUser) {
         return 'auth-manager-not-ready';
       }
