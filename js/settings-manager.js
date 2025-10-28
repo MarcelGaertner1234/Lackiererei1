@@ -110,19 +110,19 @@ class SettingsManager {
             }
 
             // Check if Auth Manager is available
-            if (!window.authManager || typeof window.authManager.getCurrentWerkstatt !== 'function') {
+            if (!window.authManager || typeof window.authManager.getCurrentUser !== 'function') {
                 console.error('❌ Auth Manager ist nicht verfügbar oder nicht initialisiert!');
                 return false;
             }
 
-            // Get current werkstatt
-            const currentWerkstatt = window.authManager.getCurrentWerkstatt();
-            if (!currentWerkstatt || !currentWerkstatt.werkstattId) {
+            // Get current user (contains werkstattId)
+            const currentUser = window.authManager.getCurrentUser();
+            if (!currentUser || !currentUser.werkstattId) {
                 console.error('❌ Keine Werkstatt eingeloggt!');
                 return false;
             }
 
-            this.werkstattId = currentWerkstatt.werkstattId;
+            this.werkstattId = currentUser.werkstattId;
             this.settingsRef = window.db.collection(`einstellungen_${this.werkstattId}`);
 
             console.log('✅ Settings Manager initialisiert für Werkstatt:', this.werkstattId);
