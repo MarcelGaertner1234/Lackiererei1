@@ -168,11 +168,17 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Ignoriere Firestore/Storage Requests (müssen IMMER aktuell sein)
+    // Ignoriere alle Nicht-GET Requests (Cache API unterstützt nur GET)
+    if (request.method !== 'GET') {
+        return;
+    }
+
+    // Ignoriere Firebase Data/Auth Requests (müssen IMMER aktuell sein)
     if (url.hostname.includes('firebaseio.com') ||
         url.hostname.includes('firebasestorage.googleapis.com') ||
-        url.hostname.includes('firestore.googleapis.com')) {
-        return; // Network-Only für Firebase Data
+        url.hostname.includes('firestore.googleapis.com') ||
+        url.hostname.includes('identitytoolkit.googleapis.com')) {
+        return; // Network-Only für Firebase Data/Auth
     }
 
     // Route zu passender Cache-Strategie
