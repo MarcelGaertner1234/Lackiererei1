@@ -40,7 +40,8 @@ class AIAgentEngine {
             }
 
             // Get callable function reference (europe-west3 for DSGVO compliance)
-            this.callableFunction = firebase.functions('europe-west3').httpsCallable('aiAgentExecute');
+            // Compat API requires firebase.app().functions('region')
+            this.callableFunction = firebase.app().functions('europe-west3').httpsCallable('aiAgentExecute');
             console.log('✅ AI Agent callable function ready (europe-west3)');
 
             // Initialize Speech Recognition (if available)
