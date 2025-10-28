@@ -20,39 +20,40 @@ const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;
 
 // Statische Assets die IMMER gecacht werden sollen
+// ✅ Relative Pfade für GitHub Pages Compatibility
 const STATIC_ASSETS = [
-    '/',
-    '/index.html',
-    '/annahme.html',
-    '/abnahme.html',
-    '/liste.html',
-    '/kanban.html',
-    '/kunden.html',
-    '/kalender.html',
-    '/material.html',
-    '/admin-einstellungen.html',
-    '/admin-dashboard.html',
-    '/mitarbeiter-verwaltung.html',
-    '/offline.html', // Fallback-Seite
+    './',
+    './index.html',
+    './annahme.html',
+    './abnahme.html',
+    './liste.html',
+    './kanban.html',
+    './kunden.html',
+    './kalender.html',
+    './material.html',
+    './admin-einstellungen.html',
+    './admin-dashboard.html',
+    './mitarbeiter-verwaltung.html',
+    './offline.html', // Fallback-Seite
 
     // CSS Files
-    '/design-system.css',
-    '/components.css',
-    '/animations.css',
-    '/mobile-first.css',
-    '/css/chat-widget.css',
+    './design-system.css',
+    './components.css',
+    './animations.css',
+    './mobile-first.css',
+    './css/chat-widget.css',
 
     // JavaScript Files
-    '/firebase-config.js',
-    '/js/auth-manager.js',
-    '/js/error-handler.js',
-    '/js/migration-helper.js',
-    '/js/settings-manager.js',
-    '/js/ai-agent-tools.js',
-    '/js/app-events.js',
-    '/js/chat-widget.js',
-    '/image-optimizer.js',
-    '/storage-monitor.js'
+    './firebase-config.js',
+    './js/auth-manager.js',
+    './js/error-handler.js',
+    './js/migration-helper.js',
+    './js/settings-manager.js',
+    './js/ai-agent-tools.js',
+    './js/app-events.js',
+    './js/chat-widget.js',
+    './image-optimizer.js',
+    './storage-monitor.js'
 ];
 
 // Firebase SDK URLs (extern, sollen gecacht werden)
