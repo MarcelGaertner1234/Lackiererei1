@@ -75,6 +75,7 @@ let firebaseApp;
 let db;
 let storage;
 let auth;
+let functions;
 
 // CRITICAL FIX RUN #17: Define window.firebaseApp IMMEDIATELY with Arrow Functions (Closure)
 // Problem (Run #16): Functions used `db` at DEFINITION time → db was undefined
@@ -497,25 +498,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // CRITICAL FIX: Expose db, storage, and auth IMMEDIATELY (not 50 lines later!)
       // Problem: initFirebase() returns BEFORE window.db is set (Lines 100-104 vs 158)
-      // Solution: Set window.db RIGHT AFTER creation
+      // Initialize Functions
+      functions = firebase.functions();
+      console.log('✅ Functions connected (Emulator)');
+
+      // Solution: Set window.db, storage, auth, and functions RIGHT AFTER creation
       window.db = db;
       window.storage = storage;
       window.auth = auth;
-      console.log('✅ IMMEDIATE: window.db, window.storage, and window.auth exposed');
+      window.functions = functions;
+      console.log('✅ IMMEDIATE: window.db, window.storage, window.auth, and window.functions exposed');
     } else {
       // Use real Firebase (Production/Staging)
       db = firebaseApp.firestore();
       storage = firebase.storage();  // ✅ FIX: Use firebase.storage() instead of firebaseApp.storage()
       auth = firebase.auth();  // Initialize Auth
+      functions = firebase.functions();  // Initialize Functions
       console.log('✅ Firestore connected (Production)');
       console.log('✅ Storage connected (Production)');
       console.log('✅ Auth connected (Production)');
+      console.log('✅ Functions connected (Production)');
 
-      // CRITICAL FIX: Expose db, storage, and auth IMMEDIATELY
+      // CRITICAL FIX: Expose db, storage, auth, and functions IMMEDIATELY
       window.db = db;
       window.storage = storage;
       window.auth = auth;
-      console.log('✅ IMMEDIATE: window.db, window.storage, and window.auth exposed');
+      window.functions = functions;
+      console.log('✅ IMMEDIATE: window.db, window.storage, window.auth, and window.functions exposed');
     }
 
     // Update window.firebaseApp.app with initialized instance
