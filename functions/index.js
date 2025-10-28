@@ -39,11 +39,20 @@ const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
 exports.onStatusChange = functions
     .region("europe-west3") // Frankfurt für DSGVO
     .firestore
-    .document("fahrzeuge_{werkstatt}/{vehicleId}") // Multi-Tenant: Wildcard für alle Werkstätten
+    .document("{collectionId}/{vehicleId}") // Collection Group Pattern - fängt ALLE Collections
     .onUpdate(async (change, context) => {
-      const werkstatt = context.params.werkstatt; // z.B. "mosbach", "heidelberg"
+      const collectionId = context.params.collectionId; // z.B. "fahrzeuge_mosbach"
       const vehicleId = context.params.vehicleId;
-      console.log(`📧 Status-Änderung in Werkstatt: ${werkstatt}, Fahrzeug: ${vehicleId}`);
+
+      // FILTER: Nur fahrzeuge_* Collections verarbeiten
+      if (!collectionId.startsWith("fahrzeuge_")) {
+        console.log(`⏭️ Skipping non-vehicle collection: ${collectionId}`);
+        return null;
+      }
+
+      // Werkstatt-ID aus Collection-Name extrahieren
+      const werkstatt = collectionId.replace("fahrzeuge_", ""); // "mosbach"
+      console.log(`📧 Vehicle status change in: ${collectionId} (Werkstatt: ${werkstatt}, Fahrzeug: ${vehicleId})`);
 
       const before = change.before.data();
       const after = change.after.data();
@@ -105,8 +114,9 @@ exports.onStatusChange = functions
           to: kundenEmail,
           subject: msg.subject,
           trigger: "status_change",
-          vehicleId: context.params.vehicleId,
-          werkstatt: werkstatt, // Multi-Tenant Info
+          vehicleId: vehicleId,
+          collectionId: collectionId, // z.B. "fahrzeuge_mosbach"
+          werkstatt: werkstatt, // z.B. "mosbach"
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
           status: "sent",
         });
@@ -119,8 +129,9 @@ exports.onStatusChange = functions
           to: kundenEmail,
           subject: msg.subject,
           trigger: "status_change",
-          vehicleId: context.params.vehicleId,
-          werkstatt: werkstatt, // Multi-Tenant Info
+          vehicleId: vehicleId,
+          collectionId: collectionId, // z.B. "fahrzeuge_mosbach"
+          werkstatt: werkstatt, // z.B. "mosbach"
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
           status: "failed",
           error: error.message,
