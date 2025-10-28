@@ -396,6 +396,46 @@
                 height: 20px;
             }
         }
+
+        /* ============================================
+           REALTIME UPDATES ANIMATIONS
+           ============================================ */
+
+        /* Pulse Animation for Badge */
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
+            }
+            50% {
+                transform: scale(1.05);
+                box-shadow: 0 6px 16px rgba(255, 59, 48, 0.6);
+            }
+        }
+
+        /* Slide-In Animation */
+        @keyframes slideInUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* Slide-Out Animation */
+        @keyframes slideOutDown {
+            from {
+                transform: translateY(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+        }
     </style>
 
     <!-- Firebase SDK -->
@@ -403,6 +443,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
 
     <!-- Firebase Konfiguration -->
     <script src="firebase-config.js?v=4412ea9"></script>
@@ -1099,6 +1140,187 @@
             console.log('✅ Quick Actions gerendert');
         }
 
+        // ============================================
+        // REALTIME UPDATES - Phase 4 (Optional)
+        // ============================================
+
+        let realtimeListeners = [];
+
+        function setupRealtimeListeners() {
+            console.log('🔄 Richte Realtime-Listeners ein...');
+
+            // Stop existing listeners
+            realtimeListeners.forEach(unsubscribe => unsubscribe());
+            realtimeListeners = [];
+
+            // Listener 1: Fahrzeuge
+            const fahrzeugeUnsubscribe = window.getCollection('fahrzeuge').onSnapshot(snapshot => {
+                console.log('🔄 Realtime Update: Fahrzeuge');
+
+                const fahrzeuge = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+
+                // Update stats (nur Fahrzeug-bezogene)
+                updateFahrzeugStats(fahrzeuge);
+
+                // Update charts
+                updateCharts(fahrzeuge);
+
+                // Visual feedback
+                showUpdateNotification('Fahrzeuge aktualisiert');
+            });
+            realtimeListeners.push(fahrzeugeUnsubscribe);
+
+            // Listener 2: Users (pending registrations)
+            const usersUnsubscribe = window.db.collection('users')
+                .where('status', '==', 'pending')
+                .onSnapshot(snapshot => {
+                    console.log('🔄 Realtime Update: Pending Users');
+
+                    const pendingCount = snapshot.size;
+                    document.getElementById('pendingUsers').textContent = pendingCount;
+
+                    // Show notification badge
+                    if (pendingCount > 0) {
+                        showPendingBadge(pendingCount);
+                    } else {
+                        hidePendingBadge();
+                    }
+                });
+            realtimeListeners.push(usersUnsubscribe);
+
+            // Listener 3: Mitarbeiter
+            const mitarbeiterUnsubscribe = window.getCollection('mitarbeiter').onSnapshot(snapshot => {
+                console.log('🔄 Realtime Update: Mitarbeiter');
+
+                const aktiveMitarbeiter = snapshot.docs.filter(doc =>
+                    doc.id !== '_init' && doc.data().status === 'active'
+                ).length;
+
+                document.getElementById('aktiveMitarbeiter').textContent = aktiveMitarbeiter;
+            });
+            realtimeListeners.push(mitarbeiterUnsubscribe);
+
+            // Listener 4: Material Requests
+            const materialUnsubscribe = window.getCollection('materialRequests').onSnapshot(snapshot => {
+                console.log('🔄 Realtime Update: Material-Bestellungen');
+
+                const offeneMaterialBestellungen = snapshot.docs.filter(doc =>
+                    doc.id !== '_init' && ['pending', 'ordered'].includes(doc.data().status)
+                ).length;
+
+                document.getElementById('offeneMaterialBestellungen').textContent = offeneMaterialBestellungen;
+            });
+            realtimeListeners.push(materialUnsubscribe);
+
+            console.log('✅ Realtime-Listeners eingerichtet');
+        }
+
+        // Helper: Update Fahrzeug-bezogene Stats
+        function updateFahrzeugStats(fahrzeuge) {
+            const offeneFahrzeuge = fahrzeuge.filter(f =>
+                f.status !== 'abgeschlossen' && f.status !== 'abgeholt'
+            ).length;
+
+            const inBearbeitung = fahrzeuge.filter(f =>
+                ['in_arbeit', 'lackierung', 'mechanik', 'reifen', 'pflege', 'tuev'].includes(f.status)
+            ).length;
+
+            const heute = new Date();
+            heute.setHours(0, 0, 0, 0);
+            const abgeschlossenHeute = fahrzeuge.filter(f => {
+                if (f.status !== 'abgeschlossen' && f.status !== 'abgeholt') return false;
+                if (!f.abschlussDatum) return false;
+
+                const abschlussDatum = f.abschlussDatum.toDate ? f.abschlussDatum.toDate() : new Date(f.abschlussDatum);
+                abschlussDatum.setHours(0, 0, 0, 0);
+
+                return abschlussDatum.getTime() === heute.getTime();
+            }).length;
+
+            document.getElementById('offeneFahrzeuge').textContent = offeneFahrzeuge;
+            document.getElementById('inBearbeitung').textContent = inBearbeitung;
+            document.getElementById('abgeschlossenHeute').textContent = abgeschlossenHeute;
+        }
+
+        // Helper: Update All Charts
+        async function updateCharts(fahrzeuge) {
+            // Destroy old charts
+            if (charts.statusChart) charts.statusChart.destroy();
+            if (charts.serviceTypChart) charts.serviceTypChart.destroy();
+            if (charts.trendChart) charts.trendChart.destroy();
+            if (charts.topKundenChart) charts.topKundenChart.destroy();
+
+            // Re-render charts
+            renderFahrzeugeStatusChart(fahrzeuge);
+            renderServiceTypChart(fahrzeuge);
+            renderFahrzeugeTrendChart(fahrzeuge);
+            await renderTopKundenChart(fahrzeuge);
+        }
+
+        // Helper: Show notification badge
+        function showPendingBadge(count) {
+            const badge = document.getElementById('pendingBadge');
+            if (!badge) {
+                // Create badge element
+                const newBadge = document.createElement('div');
+                newBadge.id = 'pendingBadge';
+                newBadge.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 80px;
+                    background: #ff3b30;
+                    color: white;
+                    padding: 4px 12px;
+                    border-radius: 12px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
+                    z-index: 9999;
+                    animation: pulse 2s infinite;
+                    cursor: pointer;
+                `;
+                newBadge.textContent = `${count} pending`;
+                newBadge.onclick = () => window.location.href = 'nutzer-verwaltung.html';
+                document.body.appendChild(newBadge);
+            } else {
+                badge.textContent = `${count} pending`;
+            }
+        }
+
+        function hidePendingBadge() {
+            const badge = document.getElementById('pendingBadge');
+            if (badge) {
+                badge.remove();
+            }
+        }
+
+        // Helper: Show update notification
+        function showUpdateNotification(message) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: var(--color-surface);
+                color: var(--color-text-primary);
+                padding: 12px 20px;
+                border-radius: 8px;
+                box-shadow: var(--shadow-lg);
+                font-size: 14px;
+                z-index: 10000;
+                animation: slideInUp 0.3s ease;
+                border: 1px solid var(--color-border-glass);
+            `;
+            notification.textContent = `🔄 ${message}`;
+            document.body.appendChild(notification);
+
+            // Remove after 2 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOutDown 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 2000);
+        }
+
         // Refresh Dashboard
         function refreshDashboard() {
             console.log('🔄 Dashboard wird aktualisiert...');
@@ -1112,6 +1334,7 @@
             await loadDashboardStats();
             await loadCharts();
             renderQuickActions();
+            setupRealtimeListeners();
         });
 
         console.log('✅ Admin-Dashboard Script geladen');
