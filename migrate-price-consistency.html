@@ -196,6 +196,13 @@
     <script src="firebase-config.js?v=4412ea9"></script>
 
     <script>
+        // ============================================
+        // DRY-RUN MODE
+        // ============================================
+        // Set to true to preview changes without writing to Firestore
+        // Set to false to actually perform the migration
+        const DRY_RUN = true;
+
         let firebaseInitialized = false;
         let problemFahrzeuge = [];
 
@@ -215,6 +222,35 @@
             if (window.firebaseInitialized && window.firebaseApp) {
                 firebaseInitialized = true;
                 log('✅ Firebase verbunden', 'success');
+
+                // ============================================
+                // ADMIN AUTH-CHECK
+                // ============================================
+                log('🔐 Prüfe Admin-Berechtigung...', 'info');
+                const currentUser = window.authManager?.getCurrentUser();
+
+                if (!currentUser) {
+                    log('❌ FEHLER: Nicht eingeloggt!', 'error');
+                    log('⚠️ Diese Seite ist nur für Admins zugänglich.', 'warning');
+                    log('🔙 Weiterleitung zu index.html in 3 Sekunden...', 'warning');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 3000);
+                    return;
+                }
+
+                if (currentUser.role !== 'admin') {
+                    log(`❌ FEHLER: Keine Admin-Rechte! (Rolle: ${currentUser.role})`, 'error');
+                    log('⚠️ Diese Seite ist nur für Admins zugänglich.', 'warning');
+                    log('🔙 Weiterleitung zu index.html in 3 Sekunden...', 'warning');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 3000);
+                    return;
+                }
+
+                log(`✅ Admin-Berechtigung bestätigt: ${currentUser.name}`, 'success');
+
             } else {
                 log('❌ Firebase Fehler - kann nicht fortfahren!', 'error');
             }
@@ -442,10 +478,14 @@
 
             log('🚀 Starte Migration...', 'info');
 
-            // Auto-Backup BEFORE Migration
-            log('💾 Erstelle Backup vor Migration...', 'info');
-            await createBackup();
-            log('✅ Backup erstellt - Migration kann starten', 'success');
+            if (DRY_RUN) {
+                log('⚠️ DRY-RUN MODE AKTIV - Keine Änderungen werden gespeichert!', 'warning');
+            } else {
+                // Auto-Backup BEFORE Migration
+                log('💾 Erstelle Backup vor Migration...', 'info');
+                await createBackup();
+                log('✅ Backup erstellt - Migration kann starten', 'success');
+            }
 
             const db = firebase.firestore();
             let successCount = 0;
@@ -453,33 +493,43 @@
 
             for (const problem of problemFahrzeuge) {
                 try {
-                    const fahrzeugRef = window.getCollection('fahrzeuge').doc(problem.id);
-
-                    await db.runTransaction(async (transaction) => {
-                        const doc = await transaction.get(fahrzeugRef);
-
-                        if (!doc.exists) {
-                            throw new Error(`Fahrzeug ${problem.id} nicht gefunden!`);
+                    if (DRY_RUN) {
+                        // DRY-RUN: Only log what WOULD be done
+                        log(`🔍 [DRY-RUN] ${problem.kennzeichen}: ${problem.currentPrice.toFixed(2)} € → ${problem.correctedPrice.toFixed(2)} € (${problem.source})`, 'info');
+                        if (problem.kva) {
+                            log(`   📦 [DRY-RUN] kva-Objekt würde ebenfalls übertragen`, 'info');
                         }
+                        successCount++;
+                    } else {
+                        // PRODUCTION: Actually perform the update
+                        const fahrzeugRef = window.getCollection('fahrzeuge').doc(problem.id);
 
-                        // Atomic Update
-                        const updateData = {
-                            vereinbarterPreis: problem.correctedPrice,
-                            lastModified: Date.now(),
-                            migrationNote: `Preis korrigiert von ${problem.currentPrice.toFixed(2)} € zu ${problem.correctedPrice.toFixed(2)} € (Quelle: ${problem.source}, Migration: ${new Date().toISOString()})`
-                        };
+                        await db.runTransaction(async (transaction) => {
+                            const doc = await transaction.get(fahrzeugRef);
 
-                        // Falls kva-Objekt gefunden wurde UND es im Fahrzeug noch nicht vorhanden ist
-                        if (problem.kva && !doc.data().kva) {
-                            updateData.kva = problem.kva;
-                            log(`   📦 kva-Objekt wird ebenfalls übertragen`, 'info');
-                        }
+                            if (!doc.exists) {
+                                throw new Error(`Fahrzeug ${problem.id} nicht gefunden!`);
+                            }
 
-                        transaction.update(fahrzeugRef, updateData);
-                    });
+                            // Atomic Update
+                            const updateData = {
+                                vereinbarterPreis: problem.correctedPrice,
+                                lastModified: Date.now(),
+                                migrationNote: `Preis korrigiert von ${problem.currentPrice.toFixed(2)} € zu ${problem.correctedPrice.toFixed(2)} € (Quelle: ${problem.source}, Migration: ${new Date().toISOString()})`
+                            };
 
-                    log(`✅ ${problem.kennzeichen}: ${problem.currentPrice.toFixed(2)} € → ${problem.correctedPrice.toFixed(2)} € (${problem.source})`, 'success');
-                    successCount++;
+                            // Falls kva-Objekt gefunden wurde UND es im Fahrzeug noch nicht vorhanden ist
+                            if (problem.kva && !doc.data().kva) {
+                                updateData.kva = problem.kva;
+                                log(`   📦 kva-Objekt wird ebenfalls übertragen`, 'info');
+                            }
+
+                            transaction.update(fahrzeugRef, updateData);
+                        });
+
+                        log(`✅ ${problem.kennzeichen}: ${problem.currentPrice.toFixed(2)} € → ${problem.correctedPrice.toFixed(2)} € (${problem.source})`, 'success');
+                        successCount++;
+                    }
 
                 } catch (error) {
                     log(`❌ ${problem.kennzeichen}: Fehler - ${error.message}`, 'error');
@@ -489,7 +539,11 @@
 
             log('', 'info');
             log('═══════════════════════════════════════', 'info');
-            log(`✅ Migration abgeschlossen!`, 'success');
+            if (DRY_RUN) {
+                log(`✅ DRY-RUN abgeschlossen! (Keine Änderungen gespeichert)`, 'success');
+            } else {
+                log(`✅ Migration abgeschlossen!`, 'success');
+            }
             log(`   Erfolgreich: ${successCount}`, 'success');
             if (errorCount > 0) {
                 log(`   Fehler: ${errorCount}`, 'error');

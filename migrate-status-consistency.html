@@ -194,6 +194,12 @@
     <script src="firebase-config.js?v=4412ea9"></script>
 
     <script>
+        // ============================================
+        // DRY-RUN MODE
+        // ============================================
+        // Set to true to preview changes without writing to Firestore
+        // Set to false to actually perform the migration
+        const DRY_RUN = true;
         let firebaseInitialized = false;
         let problemFahrzeuge = [];
 
@@ -390,10 +396,14 @@
 
             log('🚀 Starte Migration...', 'info');
 
-            // ✅ IMPROVEMENT #3: Auto-Backup BEFORE Migration (Rollback möglich!)
-            log('💾 Erstelle Backup vor Migration...', 'info');
-            await createBackup();
-            log('✅ Backup erstellt - Migration kann starten', 'success');
+            if (DRY_RUN) {
+                log('⚠️ DRY-RUN MODE AKTIV - Keine Änderungen werden gespeichert!', 'warning');
+            } else {
+                // ✅ IMPROVEMENT #3: Auto-Backup BEFORE Migration (Rollback möglich!)
+                log('💾 Erstelle Backup vor Migration...', 'info');
+                await createBackup();
+                log('✅ Backup erstellt - Migration kann starten', 'success');
+            }
 
             const db = firebase.firestore();
             let successCount = 0;
@@ -401,26 +411,33 @@
 
             for (const problem of problemFahrzeuge) {
                 try {
-                    // ✅ IMPROVEMENT #4: Nutze Transaction statt simples update (Atomicity garantiert)
-                    const fahrzeugRef = window.getCollection('fahrzeuge').doc(problem.id);
+                    if (DRY_RUN) {
+                        // DRY-RUN: Only log what WOULD be done
+                        log(`🔍 [DRY-RUN] ${problem.kennzeichen}: "${problem.currentStatus}" → "${problem.correctedStatus}"`, 'info');
+                        successCount++;
+                    } else {
+                        // PRODUCTION: Actually perform the update
+                        // ✅ IMPROVEMENT #4: Nutze Transaction statt simples update (Atomicity garantiert)
+                        const fahrzeugRef = window.getCollection('fahrzeuge').doc(problem.id);
 
-                    await db.runTransaction(async (transaction) => {
-                        const doc = await transaction.get(fahrzeugRef);
+                        await db.runTransaction(async (transaction) => {
+                            const doc = await transaction.get(fahrzeugRef);
 
-                        if (!doc.exists) {
-                            throw new Error(`Fahrzeug ${problem.id} nicht gefunden!`);
-                        }
+                            if (!doc.exists) {
+                                throw new Error(`Fahrzeug ${problem.id} nicht gefunden!`);
+                            }
 
-                        // Atomic Update
-                        transaction.update(fahrzeugRef, {
-                            prozessStatus: problem.correctedStatus,
-                            lastModified: Date.now(),
-                            migrationNote: `Status korrigiert von "${problem.currentStatus}" zu "${problem.correctedStatus}" (Migration: ${new Date().toISOString()})`
+                            // Atomic Update
+                            transaction.update(fahrzeugRef, {
+                                prozessStatus: problem.correctedStatus,
+                                lastModified: Date.now(),
+                                migrationNote: `Status korrigiert von "${problem.currentStatus}" zu "${problem.correctedStatus}" (Migration: ${new Date().toISOString()})`
+                            });
                         });
-                    });
 
-                    log(`✅ ${problem.kennzeichen}: "${problem.currentStatus}" → "${problem.correctedStatus}"`, 'success');
-                    successCount++;
+                        log(`✅ ${problem.kennzeichen}: "${problem.currentStatus}" → "${problem.correctedStatus}"`, 'success');
+                        successCount++;
+                    }
 
                 } catch (error) {
                     log(`❌ ${problem.kennzeichen}: Fehler - ${error.message}`, 'error');

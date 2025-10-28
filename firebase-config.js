@@ -10,6 +10,41 @@
  *
  * Projekt: auto-lackierzentrum-mosbach
  * Location: europe-west3 (Frankfurt) - DSGVO-konform
+ *
+ * @fileoverview Firebase configuration and Multi-Tenant helper functions
+ */
+
+/**
+ * ============================================
+ * TYPE DEFINITIONS (JSDoc)
+ * ============================================
+ */
+
+/**
+ * Firestore document ID (always a string in Firebase)
+ * @typedef {string} FahrzeugId
+ */
+
+/**
+ * Firestore document ID for customers
+ * @typedef {string} KundeId
+ */
+
+/**
+ * Firestore document ID for employees
+ * @typedef {string} MitarbeiterId
+ */
+
+/**
+ * Workshop ID used for Multi-Tenant isolation
+ * @typedef {string} WerkstattId
+ * @example 'mosbach', 'heidelberg', 'mannheim'
+ */
+
+/**
+ * Collection name without werkstatt suffix
+ * @typedef {string} BaseCollection
+ * @example 'fahrzeuge', 'kunden', 'mitarbeiter', 'kalender'
  */
 
 // CRITICAL FIX RUN #46: Auto-detect CI/Test Environment
@@ -409,6 +444,30 @@ window.getCollection = function(baseCollection) {
 window.getWerkstattId = function() {
   const currentUser = window.authManager?.getCurrentUser();
   return currentUser?.werkstattId || null;
+};
+
+/**
+ * ============================================
+ * ID COMPARISON UTILITY (DRY Pattern)
+ * ============================================
+ * Centralized ID comparison function to handle String/Number type inconsistencies.
+ *
+ * @param {string|number|null|undefined} id1 - First ID to compare
+ * @param {string|number|null|undefined} id2 - Second ID to compare
+ * @returns {boolean} True if IDs are equal (after String conversion)
+ *
+ * @example
+ * // Firestore IDs are strings, but JS might have numbers
+ * compareIds('1761584927579', 1761584927579) // → true
+ * compareIds('123', '123') // → true
+ * compareIds(null, 123) // → false
+ */
+window.compareIds = function(id1, id2) {
+  // Handle null/undefined
+  if (id1 == null || id2 == null) return false;
+
+  // Convert both to strings and compare
+  return String(id1) === String(id2);
 };
 
 // Define initFirebase() helper for compatibility
