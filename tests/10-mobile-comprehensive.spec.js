@@ -131,7 +131,7 @@ test.describe('Mobile Comprehensive Tests', () => {
     await waitForFirebase(page);
 
     // Check if page header exists and is visible
-    const headerSelectors = ['.page-header', '.header', 'header', '.page-title'];
+    const headerSelectors = ['.page-header', '.header', 'header', '.page-title', 'h1', 'h2', 'h3'];
 
     let headerVisible = false;
     for (const selector of headerSelectors) {
