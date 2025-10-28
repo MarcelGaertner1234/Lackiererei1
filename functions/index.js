@@ -806,6 +806,10 @@ User ID: ${userId || "unbekannt"}`
                 result = await executeGetBestellungen(functionArgs, werkstatt);
               } else if (functionName === "updateBestellung") {
                 result = await executeUpdateBestellung(functionArgs, werkstatt);
+              } else if (functionName === "getDashboardOverview") {
+                result = await executeGetDashboardOverview(functionArgs, werkstatt);
+              } else if (functionName === "getStatistiken") {
+                result = await executeGetStatistiken(functionArgs, werkstatt);
               } else {
                 result = {
                   success: false,
@@ -1438,4 +1442,198 @@ async function executeUpdateBestellung(params, werkstatt) {
     requestId: requestId,
     updates: updateData
   };
+}
+
+/**
+ * Execute getDashboardOverview tool on server
+ */
+async function executeGetDashboardOverview(params, werkstatt) {
+  console.log(`📊 getDashboardOverview called for werkstatt: ${werkstatt}`);
+
+  try {
+    // Multi-Tenant Collections
+    const fahrzeugeCollection = `fahrzeuge_${werkstatt}`;
+    const kundenCollection = `kunden_${werkstatt}`;
+    const kalenderCollection = `kalender_${werkstatt}`;
+    const materialCollection = `materialRequests_${werkstatt}`;
+
+    // Parallel alle Daten laden
+    const [fahrzeugeSnap, kundenSnap, termineSnap, materialSnap] = await Promise.all([
+      db.collection(fahrzeugeCollection).get(),
+      db.collection(kundenCollection).get(),
+      db.collection(kalenderCollection).get(),
+      db.collection(materialCollection).get()
+    ]);
+
+    // Fahrzeuge auswerten
+    const fahrzeuge = [];
+    fahrzeugeSnap.forEach(doc => fahrzeuge.push(doc.data()));
+
+    const fahrzeugStats = {
+      total: fahrzeuge.length,
+      offen: fahrzeuge.filter(f => f.status === "Offen").length,
+      in_arbeit: fahrzeuge.filter(f => f.status === "In Bearbeitung").length,
+      abgeschlossen: fahrzeuge.filter(f => f.status === "Abgeschlossen").length
+    };
+
+    // Kunden auswerten
+    const kunden = [];
+    kundenSnap.forEach(doc => kunden.push(doc.data()));
+
+    const kundenStats = {
+      total: kunden.length,
+      stammkunden: kunden.filter(k => k.anzahlBesuche >= 2).length,
+      neukunden: kunden.filter(k => k.anzahlBesuche === 1).length
+    };
+
+    // Termine auswerten
+    const termine = [];
+    termineSnap.forEach(doc => termine.push(doc.data()));
+
+    const heute = new Date();
+    heute.setHours(0, 0, 0, 0);
+    const naechsteWoche = new Date(heute);
+    naechsteWoche.setDate(heute.getDate() + 7);
+
+    const terminStats = {
+      total: termine.length,
+      heute: termine.filter(t => {
+        if (!t.datum) return false;
+        const tDate = new Date(t.datum);
+        tDate.setHours(0, 0, 0, 0);
+        return tDate.getTime() === heute.getTime();
+      }).length,
+      diese_woche: termine.filter(t => {
+        if (!t.datum) return false;
+        const tDate = new Date(t.datum);
+        return tDate >= heute && tDate < naechsteWoche;
+      }).length
+    };
+
+    // Material auswerten
+    const materialRequests = [];
+    materialSnap.forEach(doc => materialRequests.push(doc.data()));
+
+    const materialStats = {
+      total: materialRequests.length,
+      pending: materialRequests.filter(m => m.status === "pending").length,
+      ordered: materialRequests.filter(m => m.status === "ordered").length,
+      delivered: materialRequests.filter(m => m.status === "delivered").length
+    };
+
+    const overview = {
+      fahrzeuge: fahrzeugStats,
+      kunden: kundenStats,
+      termine: terminStats,
+      material: materialStats,
+      timestamp: new Date().toISOString()
+    };
+
+    console.log(`✅ Dashboard overview loaded for ${werkstatt}`, overview);
+
+    return {
+      success: true,
+      message: "Dashboard-Übersicht erfolgreich geladen",
+      data: overview
+    };
+
+  } catch (error) {
+    console.error("❌ Error in executeGetDashboardOverview:", error);
+    return {
+      success: false,
+      message: `Fehler beim Laden der Dashboard-Übersicht: ${error.message}`,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Execute getStatistiken tool on server
+ */
+async function executeGetStatistiken(params, werkstatt) {
+  const { zeitraum = "gesamt", serviceTyp = null } = params;
+
+  console.log(`📊 getStatistiken called for werkstatt: ${werkstatt}, zeitraum: ${zeitraum}, serviceTyp: ${serviceTyp}`);
+
+  try {
+    // Multi-Tenant Collection
+    const fahrzeugeCollection = `fahrzeuge_${werkstatt}`;
+    let query = db.collection(fahrzeugeCollection);
+
+    // Filter nach Service-Typ
+    if (serviceTyp) {
+      query = query.where("serviceTyp", "==", serviceTyp);
+    }
+
+    // Daten laden
+    const snapshot = await query.get();
+    const fahrzeuge = [];
+    snapshot.forEach(doc => fahrzeuge.push(doc.data()));
+
+    // Zeitraum-Filter anwenden
+    let filteredFahrzeuge = fahrzeuge;
+    const heute = new Date();
+
+    if (zeitraum === "heute") {
+      heute.setHours(0, 0, 0, 0);
+      const morgen = new Date(heute);
+      morgen.setDate(heute.getDate() + 1);
+      filteredFahrzeuge = fahrzeuge.filter(f => {
+        if (!f.timestamp) return false;
+        const fDate = new Date(f.timestamp);
+        return fDate >= heute && fDate < morgen;
+      });
+    } else if (zeitraum === "woche") {
+      const wochenStart = new Date(heute);
+      wochenStart.setDate(heute.getDate() - heute.getDay());
+      wochenStart.setHours(0, 0, 0, 0);
+      filteredFahrzeuge = fahrzeuge.filter(f => {
+        if (!f.timestamp) return false;
+        return new Date(f.timestamp) >= wochenStart;
+      });
+    } else if (zeitraum === "monat") {
+      const monatsStart = new Date(heute.getFullYear(), heute.getMonth(), 1);
+      filteredFahrzeuge = fahrzeuge.filter(f => {
+        if (!f.timestamp) return false;
+        return new Date(f.timestamp) >= monatsStart;
+      });
+    }
+
+    // Statistiken berechnen
+    const stats = {
+      zeitraum,
+      serviceTyp: serviceTyp || "alle",
+      anzahl: filteredFahrzeuge.length,
+      status_verteilung: {
+        offen: filteredFahrzeuge.filter(f => f.status === "Offen").length,
+        in_arbeit: filteredFahrzeuge.filter(f => f.status === "In Bearbeitung").length,
+        abgeschlossen: filteredFahrzeuge.filter(f => f.status === "Abgeschlossen").length
+      },
+      service_verteilung: {}
+    };
+
+    // Service-Typ Verteilung (nur wenn kein Service-Filter)
+    if (!serviceTyp) {
+      const serviceTypen = ["Lackierung", "Reifen", "Mechanik", "Pflege", "TÜV", "Versicherung"];
+      serviceTypen.forEach(typ => {
+        stats.service_verteilung[typ] = filteredFahrzeuge.filter(f => f.serviceTyp === typ).length;
+      });
+    }
+
+    console.log(`✅ Statistiken loaded for ${werkstatt}`, stats);
+
+    return {
+      success: true,
+      message: `Statistiken für ${zeitraum} erfolgreich geladen`,
+      data: stats
+    };
+
+  } catch (error) {
+    console.error("❌ Error in executeGetStatistiken:", error);
+    return {
+      success: false,
+      message: `Fehler beim Laden der Statistiken: ${error.message}`,
+      error: error.message
+    };
+  }
 }

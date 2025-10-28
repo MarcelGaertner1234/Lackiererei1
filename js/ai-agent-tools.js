@@ -1149,6 +1149,44 @@ const AI_TOOLS = [
                 required: ["bestellungId"]
             }
         }
+    },
+    // ========================================
+    // DASHBOARD TOOLS (Phase 5)
+    // ========================================
+    {
+        type: "function",
+        function: {
+            name: "getDashboardOverview",
+            description: "Gibt eine vollständige Übersicht aller wichtigen Dashboard-Kennzahlen zurück (Fahrzeuge, Kunden, Termine, Material). Verwende dies für allgemeine Status-Abfragen.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: []
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "getStatistiken",
+            description: "Gibt detaillierte Statistiken basierend auf Zeitraum und Service-Typ zurück. Verwende dies für spezifische Analysen.",
+            parameters: {
+                type: "object",
+                properties: {
+                    zeitraum: {
+                        type: "string",
+                        enum: ["gesamt", "heute", "woche", "monat"],
+                        description: "Zeitraum für die Statistik (Standard: gesamt)"
+                    },
+                    serviceTyp: {
+                        type: "string",
+                        enum: ["Lackierung", "Reifen", "Mechanik", "Pflege", "TÜV", "Versicherung"],
+                        description: "Filter nach Service-Typ (optional)"
+                    }
+                },
+                required: []
+            }
+        }
     }
 ];
 
@@ -1377,6 +1415,211 @@ async function updateBestellung(params) {
 }
 
 // ============================================
+// TOOL 13: GET DASHBOARD OVERVIEW (Dashboard-Übersicht)
+// ============================================
+
+/**
+ * Gibt eine vollständige Übersicht aller wichtigen Dashboard-Kennzahlen
+ * @returns {Promise<Object>} Dashboard-Daten mit allen Kennzahlen
+ */
+async function getDashboardOverview() {
+    try {
+        console.log('🤖 KI-Agent: Dashboard-Übersicht wird geladen...');
+
+        // Multi-Tenant Collections
+        const fahrzeugeCollection = window.getCollection('fahrzeuge');
+        const kundenCollection = window.getCollection('kunden');
+        const kalenderCollection = window.getCollection('kalender');
+        const materialCollection = window.getCollection('materialRequests');
+
+        // Parallel alle Daten laden
+        const [fahrzeugeSnap, kundenSnap, termineSnap, materialSnap] = await Promise.all([
+            fahrzeugeCollection.get(),
+            kundenCollection.get(),
+            kalenderCollection.get(),
+            materialCollection.get()
+        ]);
+
+        // Fahrzeuge auswerten
+        const fahrzeuge = [];
+        fahrzeugeSnap.forEach(doc => fahrzeuge.push(doc.data()));
+
+        const fahrzeugStats = {
+            total: fahrzeuge.length,
+            offen: fahrzeuge.filter(f => f.status === 'Offen').length,
+            in_arbeit: fahrzeuge.filter(f => f.status === 'In Bearbeitung').length,
+            abgeschlossen: fahrzeuge.filter(f => f.status === 'Abgeschlossen').length
+        };
+
+        // Kunden auswerten
+        const kunden = [];
+        kundenSnap.forEach(doc => kunden.push(doc.data()));
+
+        const kundenStats = {
+            total: kunden.length,
+            stammkunden: kunden.filter(k => k.anzahlBesuche >= 2).length,
+            neukunden: kunden.filter(k => k.anzahlBesuche === 1).length
+        };
+
+        // Termine auswerten
+        const termine = [];
+        termineSnap.forEach(doc => termine.push(doc.data()));
+
+        const heute = new Date();
+        heute.setHours(0, 0, 0, 0);
+        const naechsteWoche = new Date(heute);
+        naechsteWoche.setDate(heute.getDate() + 7);
+
+        const terminStats = {
+            total: termine.length,
+            heute: termine.filter(t => {
+                if (!t.datum) return false;
+                const tDate = new Date(t.datum);
+                tDate.setHours(0, 0, 0, 0);
+                return tDate.getTime() === heute.getTime();
+            }).length,
+            diese_woche: termine.filter(t => {
+                if (!t.datum) return false;
+                const tDate = new Date(t.datum);
+                return tDate >= heute && tDate < naechsteWoche;
+            }).length
+        };
+
+        // Material auswerten
+        const materialRequests = [];
+        materialSnap.forEach(doc => materialRequests.push(doc.data()));
+
+        const materialStats = {
+            total: materialRequests.length,
+            pending: materialRequests.filter(m => m.status === 'pending').length,
+            ordered: materialRequests.filter(m => m.status === 'ordered').length,
+            delivered: materialRequests.filter(m => m.status === 'delivered').length
+        };
+
+        const overview = {
+            fahrzeuge: fahrzeugStats,
+            kunden: kundenStats,
+            termine: terminStats,
+            material: materialStats,
+            timestamp: new Date().toISOString()
+        };
+
+        console.log('✅ KI-Agent: Dashboard-Übersicht geladen', overview);
+
+        return {
+            success: true,
+            message: 'Dashboard-Übersicht erfolgreich geladen',
+            data: overview
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei getDashboardOverview:', error);
+        return {
+            success: false,
+            message: `Fehler beim Laden der Dashboard-Übersicht: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+// ============================================
+// TOOL 14: GET STATISTIKEN (Erweiterte Statistiken)
+// ============================================
+
+/**
+ * Gibt detaillierte Statistiken basierend auf Zeitraum und Filter
+ * @param {Object} params - Filter-Parameter
+ * @returns {Promise<Object>} Detaillierte Statistiken
+ */
+async function getStatistiken(params) {
+    try {
+        const { zeitraum = 'gesamt', serviceTyp = null } = params;
+
+        console.log(`🤖 KI-Agent: Statistiken werden geladen (${zeitraum}, ${serviceTyp || 'alle'})`);
+
+        // Multi-Tenant Collection
+        const fahrzeugeCollection = window.getCollection('fahrzeuge');
+        let query = fahrzeugeCollection;
+
+        // Filter nach Service-Typ
+        if (serviceTyp) {
+            query = query.where('serviceTyp', '==', serviceTyp);
+        }
+
+        // Daten laden
+        const snapshot = await query.get();
+        const fahrzeuge = [];
+        snapshot.forEach(doc => fahrzeuge.push(doc.data()));
+
+        // Zeitraum-Filter anwenden
+        let filteredFahrzeuge = fahrzeuge;
+        const heute = new Date();
+
+        if (zeitraum === 'heute') {
+            heute.setHours(0, 0, 0, 0);
+            const morgen = new Date(heute);
+            morgen.setDate(heute.getDate() + 1);
+            filteredFahrzeuge = fahrzeuge.filter(f => {
+                if (!f.timestamp) return false;
+                const fDate = new Date(f.timestamp);
+                return fDate >= heute && fDate < morgen;
+            });
+        } else if (zeitraum === 'woche') {
+            const wochenStart = new Date(heute);
+            wochenStart.setDate(heute.getDate() - heute.getDay());
+            wochenStart.setHours(0, 0, 0, 0);
+            filteredFahrzeuge = fahrzeuge.filter(f => {
+                if (!f.timestamp) return false;
+                return new Date(f.timestamp) >= wochenStart;
+            });
+        } else if (zeitraum === 'monat') {
+            const monatsStart = new Date(heute.getFullYear(), heute.getMonth(), 1);
+            filteredFahrzeuge = fahrzeuge.filter(f => {
+                if (!f.timestamp) return false;
+                return new Date(f.timestamp) >= monatsStart;
+            });
+        }
+
+        // Statistiken berechnen
+        const stats = {
+            zeitraum,
+            serviceTyp: serviceTyp || 'alle',
+            anzahl: filteredFahrzeuge.length,
+            status_verteilung: {
+                offen: filteredFahrzeuge.filter(f => f.status === 'Offen').length,
+                in_arbeit: filteredFahrzeuge.filter(f => f.status === 'In Bearbeitung').length,
+                abgeschlossen: filteredFahrzeuge.filter(f => f.status === 'Abgeschlossen').length
+            },
+            service_verteilung: {}
+        };
+
+        // Service-Typ Verteilung (nur wenn kein Service-Filter)
+        if (!serviceTyp) {
+            const serviceTypen = ['Lackierung', 'Reifen', 'Mechanik', 'Pflege', 'TÜV', 'Versicherung'];
+            serviceTypen.forEach(typ => {
+                stats.service_verteilung[typ] = filteredFahrzeuge.filter(f => f.serviceTyp === typ).length;
+            });
+        }
+
+        console.log('✅ KI-Agent: Statistiken geladen', stats);
+
+        return {
+            success: true,
+            message: `Statistiken für ${zeitraum} erfolgreich geladen`,
+            data: stats
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei getStatistiken:', error);
+        return {
+            success: false,
+            message: `Fehler beim Laden der Statistiken: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+// ============================================
 // TOOL EXECUTOR
 // ============================================
 
@@ -1402,7 +1645,10 @@ async function executeAITool(toolName, args) {
         // Material-Bestellungen Tools (Phase 4)
         'createBestellung': createBestellung,
         'getBestellungen': getBestellungen,
-        'updateBestellung': updateBestellung
+        'updateBestellung': updateBestellung,
+        // Dashboard Tools (Phase 5)
+        'getDashboardOverview': getDashboardOverview,
+        'getStatistiken': getStatistiken
     };
 
     const tool = tools[toolName];
