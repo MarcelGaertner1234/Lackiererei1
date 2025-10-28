@@ -39,9 +39,9 @@ class AIAgentEngine {
                 throw new Error('Firebase Functions not loaded');
             }
 
-            // Get callable function reference
-            this.callableFunction = firebase.functions().httpsCallable('aiAgentExecute');
-            console.log('✅ AI Agent callable function ready');
+            // Get callable function reference (europe-west3 for DSGVO compliance)
+            this.callableFunction = firebase.functions('europe-west3').httpsCallable('aiAgentExecute');
+            console.log('✅ AI Agent callable function ready (europe-west3)');
 
             // Initialize Speech Recognition (if available)
             this.initializeSpeechRecognition();
