@@ -69,6 +69,14 @@ async function createFahrzeug(params) {
 
         console.log(`✅ KI-Agent: Fahrzeug erstellt - ID: ${docRef.id}, Kennzeichen: ${kennzeichen}`);
 
+        // Dispatch event for real-time UI updates
+        if (window.appEvents) {
+            window.appEvents.fahrzeugCreated({
+                id: docRef.id,
+                ...vehicleData
+            });
+        }
+
         return {
             success: true,
             message: `Fahrzeug ${kennzeichen} wurde erfolgreich erstellt!`,
@@ -141,6 +149,11 @@ async function updateFahrzeugStatus(params) {
         await fahrzeugeCollection.doc(String(vehicleId)).update(updateData);
 
         console.log(`✅ KI-Agent: Status aktualisiert - ID: ${vehicleId}`, updateData);
+
+        // Dispatch event for real-time UI updates
+        if (window.appEvents) {
+            window.appEvents.fahrzeugUpdated(vehicleId, updateData);
+        }
 
         return {
             success: true,
@@ -381,6 +394,14 @@ async function createKunde(params) {
 
         console.log(`✅ KI-Agent: Kunde erstellt - ID: ${docRef.id}, Name: ${name}`);
 
+        // Dispatch event for real-time UI updates
+        if (window.appEvents) {
+            window.appEvents.kundeCreated({
+                id: docRef.id,
+                ...kundeData
+            });
+        }
+
         return {
             success: true,
             message: `Kunde ${name} wurde erfolgreich erstellt!`,
@@ -456,6 +477,14 @@ async function createTermin(params) {
         const docRef = await kalenderCollection.add(terminData);
 
         console.log(`✅ KI-Agent: Termin erstellt - ID: ${docRef.id}, Datum: ${terminData.datum} ${terminData.uhrzeit}`);
+
+        // Dispatch event for real-time UI updates
+        if (window.appEvents) {
+            window.appEvents.terminCreated({
+                id: docRef.id,
+                ...terminData
+            });
+        }
 
         return {
             success: true,
@@ -704,6 +733,11 @@ async function updateTermin(params) {
         await kalenderCollection.doc(terminId).update(updateData);
 
         console.log(`✅ KI-Agent: Termin aktualisiert - ID: ${terminId}`);
+
+        // Dispatch event for real-time UI updates
+        if (window.appEvents) {
+            window.appEvents.terminUpdated(terminId, updateData);
+        }
 
         return {
             success: true,
