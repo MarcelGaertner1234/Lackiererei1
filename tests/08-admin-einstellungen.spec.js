@@ -253,11 +253,11 @@ test.describe('Admin-Einstellungen Tests', () => {
     await waitForFirebase(page);
     await waitForSettingsManager(page);
 
-    // Fill in Werkstatt profile data
-    await page.locator('#werkstattName').fill('Test Werkstatt Mosbach');
-    await page.locator('#strasse').fill('Teststraße 123');
-    await page.locator('#plz').fill('74821');
-    await page.locator('#ort').fill('Mosbach');
+    // Fill in Werkstatt profile data (using correct field IDs from admin-einstellungen.html)
+    await page.locator('#profilName').fill('Test Werkstatt Mosbach');
+    await page.locator('#profilEmail').fill('test@mosbach.de');
+    await page.locator('#profilTelefon').fill('+49 6261 123456');
+    await page.locator('#profilAdresse').fill('Teststraße 123, 74821 Mosbach');
 
     // Mock saveSettings to avoid Firestore write
     let savedSettings = null;
@@ -277,7 +277,7 @@ test.describe('Admin-Einstellungen Tests', () => {
     // Verify settings were "saved"
     savedSettings = await page.evaluate(() => window.__mockSavedSettings);
     expect(savedSettings).toBeTruthy();
-    expect(savedSettings.profil.werkstattName).toBe('Test Werkstatt Mosbach');
+    expect(savedSettings.profil.name).toBe('Test Werkstatt Mosbach');
 
     console.log('✅ Settings save test passed');
   });
@@ -292,17 +292,17 @@ test.describe('Admin-Einstellungen Tests', () => {
 
     // Check that settingsManager uses correct collection
     const collectionName = await page.evaluate(async () => {
-      // Get current werkstatt
-      if (!window.authManager || !window.authManager.getCurrentWerkstatt) {
+      // Get current user (which contains werkstattId)
+      if (!window.authManager || !window.authManager.getCurrentUser) {
         return 'auth-manager-not-ready';
       }
 
-      const werkstatt = window.authManager.getCurrentWerkstatt();
-      if (!werkstatt) {
+      const user = window.authManager.getCurrentUser();
+      if (!user || !user.werkstattId) {
         return 'no-werkstatt';
       }
 
-      const expectedCollection = `einstellungen_${werkstatt.werkstattId}`;
+      const expectedCollection = `einstellungen_${user.werkstattId}`;
       return expectedCollection;
     });
 
