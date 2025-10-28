@@ -1,0 +1,107 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - button "Zurück" [ref=e5] [cursor=pointer]:
+          - img
+        - generic [ref=e7]:
+          - heading "Admin-Einstellungen" [level=1] [ref=e8]
+          - paragraph [ref=e9]: Werkstatt-Profil, Benachrichtigungen, System-Konfiguration
+      - generic [ref=e10]:
+        - button "Neu laden" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+        - button "Speichern" [active] [ref=e16] [cursor=pointer]:
+          - img [ref=e17]
+          - text: Speichern
+    - generic [ref=e22]:
+      - button "Werkstatt-Profil" [ref=e23] [cursor=pointer]:
+        - img [ref=e24]
+        - text: Werkstatt-Profil
+      - button "Benachrichtigungen" [ref=e27] [cursor=pointer]:
+        - img [ref=e28]
+        - text: Benachrichtigungen
+      - button "Standard-Werte" [ref=e31] [cursor=pointer]:
+        - img [ref=e32]
+        - text: Standard-Werte
+      - button "E-Mail-Vorlagen" [ref=e35] [cursor=pointer]:
+        - img [ref=e36]
+        - text: E-Mail-Vorlagen
+      - button "System-Config" [ref=e39] [cursor=pointer]:
+        - img [ref=e40]
+        - text: System-Config
+      - button "Backup & Export" [ref=e43] [cursor=pointer]:
+        - img [ref=e44]
+        - text: Backup & Export
+      - button "Datenbank-Wartung" [ref=e47] [cursor=pointer]:
+        - img [ref=e48]
+        - text: Datenbank-Wartung
+    - generic [ref=e53]:
+      - heading "Werkstatt-Profil" [level=2] [ref=e54]:
+        - img [ref=e55]
+        - text: Werkstatt-Profil
+      - paragraph [ref=e58]: Grundlegende Informationen über Ihre Werkstatt. Diese Daten werden in E-Mails, PDFs und der Website angezeigt.
+      - generic [ref=e59]:
+        - generic [ref=e60]: Logo *
+        - generic [ref=e61]:
+          - img [ref=e63]
+          - generic [ref=e67]:
+            - button "Logo hochladen" [ref=e68] [cursor=pointer]:
+              - img [ref=e69]
+              - text: Logo hochladen
+            - paragraph [ref=e72]: PNG, JPG, SVG | Maximal 2MB
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - generic [ref=e75]: Werkstatt-Name *
+          - textbox "Werkstatt-Name *" [ref=e76]:
+            - /placeholder: Auto-Lackierzentrum Mosbach
+            - text: Test Werkstatt Mosbach
+        - generic [ref=e77]:
+          - generic [ref=e78]: E-Mail *
+          - textbox "E-Mail *" [ref=e79]:
+            - /placeholder: info@werkstatt.de
+            - text: test@mosbach.de
+        - generic [ref=e80]:
+          - generic [ref=e81]: Telefon
+          - textbox "Telefon" [ref=e82]:
+            - /placeholder: +49 6261 123456
+            - text: +49 6261 123456
+        - generic [ref=e83]:
+          - generic [ref=e84]: Website
+          - textbox "Website" [ref=e85]:
+            - /placeholder: https://werkstatt.de
+      - generic [ref=e86]:
+        - generic [ref=e87]: Adresse
+        - textbox "Adresse" [ref=e88]:
+          - /placeholder: Musterstraße 1, 74821 Mosbach
+          - text: Teststraße 123, 74821 Mosbach
+      - generic [ref=e89]:
+        - generic [ref=e90]: Beschreibung
+        - textbox "Beschreibung" [ref=e91]:
+          - /placeholder: Kurze Beschreibung Ihrer Werkstatt...
+      - button "Speichern" [ref=e93] [cursor=pointer]:
+        - img [ref=e94]
+        - text: Speichern
+  - paragraph [ref=e98]: Running in emulator mode. Do not use with production credentials.
+  - generic [ref=e99]:
+    - img [ref=e100]
+    - generic [ref=e102]: Speichere Einstellungen...
+  - generic [ref=e103]:
+    - img [ref=e104]
+    - generic [ref=e108]: "Fehler beim Speichern: Cannot read properties of null (reading 'profil')"
+  - generic:
+    - button "🤖" [ref=e109] [cursor=pointer]
+    - generic [ref=e110]:
+      - generic [ref=e111]:
+        - heading "🤖 KI-Assistent" [level=3] [ref=e112]
+        - button "×" [ref=e113] [cursor=pointer]
+      - generic [ref=e115]:
+        - generic [ref=e116]: 🤖
+        - generic [ref=e117]: Hallo! Ich bin dein KI-Assistent. Wie kann ich dir helfen?
+      - generic [ref=e119]:
+        - textbox "Schreibe eine Nachricht..." [ref=e120]
+        - button "🎤" [ref=e121] [cursor=pointer]
+        - button "➤" [ref=e122] [cursor=pointer]
+```
