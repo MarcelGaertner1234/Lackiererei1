@@ -168,6 +168,55 @@ service cloud.firestore {
     }
 
     // ============================================
+    // EMAIL_LOGS COLLECTION (Cloud Functions only)
+    // ============================================
+
+    match /email_logs/{logId} {
+      // Admins can read email logs for debugging
+      allow read: if isAdmin();
+
+      // ONLY Cloud Functions can write (deny all user writes)
+      allow write: if false;
+    }
+
+    // ============================================
+    // MULTI-TENANT COLLECTIONS (werkstatt-specific)
+    // ============================================
+
+    match /fahrzeuge_{werkstatt}/{vehicleId} {
+      // Admins: Full access to all werkstätten
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Full access (same pattern as fahrzeuge)
+      allow read, write: if isMitarbeiter() && isActive();
+
+      // Subcollections: Fotos
+      match /fotos/{photoId} {
+        allow read, write: if isAdmin() || (isMitarbeiter() && isActive());
+      }
+    }
+
+    match /kunden_{werkstatt}/{kundeId} {
+      allow read, write: if isAdmin() || (isMitarbeiter() && isActive());
+    }
+
+    // ============================================
+    // PARTNER ANFRAGEN (global collection)
+    // ============================================
+
+    match /partnerAnfragen/{anfrageId} {
+      // Admins: Full access
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Full access
+      allow read, write: if isMitarbeiter() && isActive();
+
+      // Partners: Can create and read their own
+      allow create: if isPartner() && isActive();
+      allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
+    }
+
+    // ============================================
     // DEFAULT DENY
     // ============================================
 

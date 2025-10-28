@@ -13,9 +13,23 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // Initialize SendGrid with API Key from environment variable
-// Uses process.env instead of deprecated functions.config()
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+// Priority: firebase functions:config → process.env (fallback)
+const SENDGRID_API_KEY = functions.config().sendgrid?.api_key || process.env.SENDGRID_API_KEY;
+
+// Validation: API Key MUSS gesetzt sein
+if (!SENDGRID_API_KEY) {
+  console.error("❌ FATAL: SENDGRID_API_KEY ist nicht konfiguriert!");
+  console.error("Fix: firebase functions:config:set sendgrid.api_key=\"SG.xxx\" --project auto-lackierzentrum-mosbach");
+  throw new Error("Missing SENDGRID_API_KEY environment variable");
+}
+
+// Validation: API Key Format prüfen
+if (!SENDGRID_API_KEY.startsWith("SG.")) {
+  console.warn("⚠️ WARNING: SENDGRID_API_KEY startet nicht mit 'SG.' - möglicherweise ungültig!");
+}
+
 sgMail.setApiKey(SENDGRID_API_KEY);
+console.log("✅ SendGrid initialized successfully");
 
 // Sender Email (MUST be verified in SendGrid!)
 const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
@@ -26,8 +40,12 @@ const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
 exports.onStatusChange = functions
     .region("europe-west3") // Frankfurt für DSGVO
     .firestore
-    .document("fahrzeuge_mosbach/{vehicleId}")
+    .document("fahrzeuge_{werkstatt}/{vehicleId}") // Multi-Tenant: Wildcard für alle Werkstätten
     .onUpdate(async (change, context) => {
+      const werkstatt = context.params.werkstatt; // z.B. "mosbach", "heidelberg"
+      const vehicleId = context.params.vehicleId;
+      console.log(`📧 Status-Änderung in Werkstatt: ${werkstatt}, Fahrzeug: ${vehicleId}`);
+
       const before = change.before.data();
       const after = change.after.data();
 
@@ -84,22 +102,30 @@ exports.onStatusChange = functions
           subject: msg.subject,
           trigger: "status_change",
           vehicleId: context.params.vehicleId,
+          werkstatt: werkstatt, // Multi-Tenant Info
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
           status: "sent",
         });
       } catch (error) {
         console.error("❌ SendGrid error:", error.message);
+        console.error("Error details:", error.response ? error.response.body : "No response body");
 
-        // Log error
+        // Log error mit mehr Details
         await db.collection("email_logs").add({
           to: kundenEmail,
           subject: msg.subject,
           trigger: "status_change",
           vehicleId: context.params.vehicleId,
+          werkstatt: werkstatt, // Multi-Tenant Info
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
           status: "failed",
           error: error.message,
+          errorCode: error.code || null,
+          errorResponse: error.response ? JSON.stringify(error.response.body) : null,
         });
+
+        // Throw error um Function als "failed" zu markieren
+        throw new Error(`Email sending failed: ${error.message}`);
       }
 
       return null;
