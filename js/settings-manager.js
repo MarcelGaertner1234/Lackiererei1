@@ -109,8 +109,14 @@ class SettingsManager {
                 return false;
             }
 
+            // Check if Auth Manager is available
+            if (!window.authManager || typeof window.authManager.getCurrentWerkstatt !== 'function') {
+                console.error('❌ Auth Manager ist nicht verfügbar oder nicht initialisiert!');
+                return false;
+            }
+
             // Get current werkstatt
-            const currentWerkstatt = window.authManager?.getCurrentWerkstatt();
+            const currentWerkstatt = window.authManager.getCurrentWerkstatt();
             if (!currentWerkstatt || !currentWerkstatt.werkstattId) {
                 console.error('❌ Keine Werkstatt eingeloggt!');
                 return false;
