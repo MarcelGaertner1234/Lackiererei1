@@ -1069,8 +1069,312 @@ const AI_TOOLS = [
                 required: ["terminId"]
             }
         }
+    },
+    // ========================================
+    // MATERIAL-BESTELLUNGEN TOOLS (Phase 4)
+    // ========================================
+    {
+        type: "function",
+        function: {
+            name: "createBestellung",
+            description: "Erstellt eine neue Material-Bestellung. Verwende dies, wenn Material nachbestellt werden muss (z.B. Lack, Reifen, Ersatzteile).",
+            parameters: {
+                type: "object",
+                properties: {
+                    beschreibung: {
+                        type: "string",
+                        description: "Beschreibung des benötigten Materials (z.B. 'Lack RAL 9016 weiss, 5 Liter', 'Winterreifen 225/45 R17')"
+                    },
+                    mitarbeiter: {
+                        type: "string",
+                        description: "Name des Mitarbeiters der die Bestellung aufgibt (optional, Standard: KI-Agent)"
+                    },
+                    notizen: {
+                        type: "string",
+                        description: "Zusätzliche Notizen zur Bestellung (optional)"
+                    }
+                },
+                required: ["beschreibung"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "getBestellungen",
+            description: "Ruft Material-Bestellungen ab. Kann nach Status oder Mitarbeiter gefiltert werden.",
+            parameters: {
+                type: "object",
+                properties: {
+                    status: {
+                        type: "string",
+                        enum: ["pending", "ordered", "delivered"],
+                        description: "Filter nach Bestellstatus: pending (ausstehend), ordered (bestellt), delivered (geliefert)"
+                    },
+                    mitarbeiter: {
+                        type: "string",
+                        description: "Filter nach Mitarbeiter-Name"
+                    },
+                    limit: {
+                        type: "number",
+                        description: "Maximale Anzahl der Bestellungen (Standard: alle)"
+                    }
+                },
+                required: []
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "updateBestellung",
+            description: "Aktualisiert eine Material-Bestellung (z.B. Status ändern von 'pending' auf 'ordered' oder 'delivered').",
+            parameters: {
+                type: "object",
+                properties: {
+                    bestellungId: {
+                        type: "string",
+                        description: "ID der Bestellung (Format: req_TIMESTAMP)"
+                    },
+                    status: {
+                        type: "string",
+                        enum: ["pending", "ordered", "delivered"],
+                        description: "Neuer Status: pending (ausstehend), ordered (bestellt), delivered (geliefert)"
+                    },
+                    notizen: {
+                        type: "string",
+                        description: "Aktualisierte Notizen"
+                    }
+                },
+                required: ["bestellungId"]
+            }
+        }
     }
 ];
+
+// ============================================
+// TOOL 10: CREATE BESTELLUNG (Material-Bestellung erstellen)
+// ============================================
+
+/**
+ * Erstellt eine neue Material-Bestellung in Firestore
+ * @param {Object} params - Bestellungs-Parameter
+ * @returns {Promise<Object>} Result mit Erfolgs-Status und Bestellungs-ID
+ */
+async function createBestellung(params) {
+    try {
+        const {
+            beschreibung,
+            mitarbeiter,
+            notizen
+        } = params;
+
+        // Validation
+        if (!beschreibung) {
+            throw new Error('Beschreibung ist erforderlich (z.B. "Lack RAL 9016 weiss, 5 Liter")');
+        }
+
+        // Request-ID generieren
+        const requestId = 'req_' + Date.now();
+
+        // Material-Request Daten
+        const requestData = {
+            id: requestId,
+            photo: null, // KI kann kein Foto erstellen, wird später manuell hinzugefügt
+            description: beschreibung,
+            requestedBy: mitarbeiter || 'KI-Agent',
+            timestamp: new Date().toISOString(),
+            status: 'pending', // pending, ordered, delivered
+            notizen: notizen || '',
+            createdBy: 'KI-Agent'
+        };
+
+        // In Firestore speichern (Multi-Tenant: materialRequests_mosbach)
+        const materialCollection = window.getCollection('materialRequests');
+        await materialCollection.doc(requestId).set(requestData);
+
+        console.log(`✅ KI-Agent: Material-Bestellung erstellt - ID: ${requestId}`);
+
+        // Event dispatchen für Real-Time UI Updates
+        if (window.appEvents) {
+            window.appEvents.materialBestellt({
+                requestId: requestId,
+                ...requestData
+            });
+        }
+
+        return {
+            success: true,
+            message: `Material-Bestellung "${beschreibung}" wurde erfolgreich erstellt!`,
+            requestId: requestId,
+            data: requestData,
+            hinweis: 'Foto kann später manuell in material.html hinzugefügt werden.'
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei createBestellung:', error);
+        return {
+            success: false,
+            message: `Fehler beim Erstellen der Bestellung: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+// ============================================
+// TOOL 11: GET BESTELLUNGEN (Material-Bestellungen abrufen)
+// ============================================
+
+/**
+ * Ruft Material-Bestellungen aus Firestore ab
+ * @param {Object} params - Query-Parameter
+ * @returns {Promise<Object>} Result mit Bestellungen
+ */
+async function getBestellungen(params) {
+    try {
+        const {
+            status,     // 'pending', 'ordered', 'delivered'
+            mitarbeiter,
+            limit
+        } = params;
+
+        // Firestore Query (Multi-Tenant: materialRequests_mosbach)
+        let query = window.getCollection('materialRequests');
+
+        // Filter nach Status
+        if (status) {
+            query = query.where('status', '==', status);
+        }
+
+        // Filter nach Mitarbeiter
+        if (mitarbeiter) {
+            query = query.where('requestedBy', '==', mitarbeiter);
+        }
+
+        // Sortierung nach timestamp (neueste zuerst)
+        query = query.orderBy('timestamp', 'desc');
+
+        // Limit
+        if (limit && limit > 0) {
+            query = query.limit(parseInt(limit));
+        }
+
+        const snapshot = await query.get();
+
+        // Bestellungen in Array umwandeln
+        const bestellungen = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            bestellungen.push({
+                id: doc.id,
+                ...data,
+                // Foto nicht an AI senden (zu groß)
+                photo: data.photo ? '[Foto vorhanden]' : null
+            });
+        });
+
+        console.log(`✅ KI-Agent: ${bestellungen.length} Material-Bestellungen gefunden`);
+
+        return {
+            success: true,
+            count: bestellungen.length,
+            bestellungen: bestellungen,
+            filter: {
+                status: status || 'alle',
+                mitarbeiter: mitarbeiter || 'alle'
+            }
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei getBestellungen:', error);
+        return {
+            success: false,
+            message: `Fehler beim Abrufen der Bestellungen: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+// ============================================
+// TOOL 12: UPDATE BESTELLUNG (Material-Bestellung aktualisieren)
+// ============================================
+
+/**
+ * Aktualisiert eine Material-Bestellung in Firestore
+ * @param {Object} params - Update-Parameter
+ * @returns {Promise<Object>} Result mit Erfolgs-Status
+ */
+async function updateBestellung(params) {
+    try {
+        const {
+            bestellungId,  // req_TIMESTAMP
+            status,        // 'pending', 'ordered', 'delivered'
+            notizen
+        } = params;
+
+        // Validation
+        if (!bestellungId) {
+            throw new Error('bestellungId ist erforderlich (Format: req_TIMESTAMP)');
+        }
+
+        // Prüfe ob Bestellung existiert
+        const materialCollection = window.getCollection('materialRequests');
+        const docRef = materialCollection.doc(bestellungId);
+        const doc = await docRef.get();
+
+        if (!doc.exists) {
+            throw new Error(`Material-Bestellung mit ID ${bestellungId} wurde nicht gefunden`);
+        }
+
+        // Update-Daten vorbereiten
+        const updateData = {
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'KI-Agent'
+        };
+
+        // Status aktualisieren (wenn angegeben)
+        if (status) {
+            const validStatuses = ['pending', 'ordered', 'delivered'];
+            if (!validStatuses.includes(status)) {
+                throw new Error(`Ungültiger Status: ${status}. Erlaubt: ${validStatuses.join(', ')}`);
+            }
+            updateData.status = status;
+        }
+
+        // Notizen aktualisieren (wenn angegeben)
+        if (notizen !== undefined) {
+            updateData.notizen = notizen;
+        }
+
+        // In Firestore aktualisieren
+        await docRef.update(updateData);
+
+        console.log(`✅ KI-Agent: Material-Bestellung ${bestellungId} aktualisiert`);
+
+        // Event dispatchen für Real-Time UI Updates
+        if (window.appEvents) {
+            window.appEvents.materialUpdated({
+                requestId: bestellungId,
+                updates: updateData
+            });
+        }
+
+        return {
+            success: true,
+            message: `Material-Bestellung ${bestellungId} wurde erfolgreich aktualisiert!`,
+            bestellungId: bestellungId,
+            updates: updateData
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei updateBestellung:', error);
+        return {
+            success: false,
+            message: `Fehler beim Aktualisieren: ${error.message}`,
+            error: error.message
+        };
+    }
+}
 
 // ============================================
 // TOOL EXECUTOR
@@ -1094,7 +1398,11 @@ async function executeAITool(toolName, args) {
         'createKunde': createKunde,
         'createTermin': createTermin,
         'getTermine': getTermine,
-        'updateTermin': updateTermin
+        'updateTermin': updateTermin,
+        // Material-Bestellungen Tools (Phase 4)
+        'createBestellung': createBestellung,
+        'getBestellungen': getBestellungen,
+        'updateBestellung': updateBestellung
     };
 
     const tool = tools[toolName];

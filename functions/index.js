@@ -645,6 +645,86 @@ exports.aiAgentExecute = functions
                 required: ["terminId"]
               }
             }
+          },
+          // ========================================
+          // MATERIAL-BESTELLUNGEN TOOLS (Phase 4)
+          // ========================================
+          {
+            type: "function",
+            function: {
+              name: "createBestellung",
+              description: "Erstellt eine neue Material-Bestellung. Verwende dies, wenn Material nachbestellt werden muss (z.B. Lack, Reifen, Ersatzteile).",
+              parameters: {
+                type: "object",
+                properties: {
+                  beschreibung: {
+                    type: "string",
+                    description: "Beschreibung des benötigten Materials (z.B. 'Lack RAL 9016 weiss, 5 Liter', 'Winterreifen 225/45 R17')"
+                  },
+                  mitarbeiter: {
+                    type: "string",
+                    description: "Name des Mitarbeiters der die Bestellung aufgibt (optional, Standard: KI-Agent)"
+                  },
+                  notizen: {
+                    type: "string",
+                    description: "Zusätzliche Notizen zur Bestellung (optional)"
+                  }
+                },
+                required: ["beschreibung"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "getBestellungen",
+              description: "Ruft Material-Bestellungen ab. Kann nach Status oder Mitarbeiter gefiltert werden.",
+              parameters: {
+                type: "object",
+                properties: {
+                  status: {
+                    type: "string",
+                    enum: ["pending", "ordered", "delivered"],
+                    description: "Filter nach Bestellstatus: pending (ausstehend), ordered (bestellt), delivered (geliefert)"
+                  },
+                  mitarbeiter: {
+                    type: "string",
+                    description: "Filter nach Mitarbeiter-Name"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximale Anzahl der Bestellungen (Standard: alle)"
+                  }
+                },
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "updateBestellung",
+              description: "Aktualisiert eine Material-Bestellung (z.B. Status ändern von 'pending' auf 'ordered' oder 'delivered').",
+              parameters: {
+                type: "object",
+                properties: {
+                  bestellungId: {
+                    type: "string",
+                    description: "ID der Bestellung (Format: req_TIMESTAMP)"
+                  },
+                  status: {
+                    type: "string",
+                    enum: ["pending", "ordered", "delivered"],
+                    description: "Neuer Status: pending (ausstehend), ordered (bestellt), delivered (geliefert)"
+                  },
+                  notizen: {
+                    type: "string",
+                    description: "Aktualisierte Notizen"
+                  }
+                },
+                required: ["bestellungId"]
+              }
+            }
           }
         ];
 
@@ -720,6 +800,12 @@ User ID: ${userId || "unbekannt"}`
                 result = await executeGetTermine(functionArgs, werkstatt);
               } else if (functionName === "updateTermin") {
                 result = await executeUpdateTermin(functionArgs, werkstatt);
+              } else if (functionName === "createBestellung") {
+                result = await executeCreateBestellung(functionArgs, werkstatt);
+              } else if (functionName === "getBestellungen") {
+                result = await executeGetBestellungen(functionArgs, werkstatt);
+              } else if (functionName === "updateBestellung") {
+                result = await executeUpdateBestellung(functionArgs, werkstatt);
               } else {
                 result = {
                   success: false,
@@ -1225,6 +1311,130 @@ async function executeUpdateTermin(params, werkstatt) {
     success: true,
     message: "Termin wurde erfolgreich aktualisiert!",
     terminId: terminId,
+    updates: updateData
+  };
+}
+
+/**
+ * Execute createBestellung tool on server
+ */
+async function executeCreateBestellung(params, werkstatt) {
+  const { beschreibung, mitarbeiter, notizen } = params;
+
+  // Validation
+  if (!beschreibung) {
+    throw new Error("beschreibung ist erforderlich");
+  }
+
+  // Generate unique ID
+  const requestId = "req_" + Date.now();
+
+  // Prepare request data
+  const requestData = {
+    id: requestId,
+    photo: null,
+    description: beschreibung,
+    requestedBy: mitarbeiter || "KI-Agent",
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    status: "pending",
+    notizen: notizen || "",
+    createdBy: "KI-Agent"
+  };
+
+  // Use multi-tenant collection
+  const collectionName = `materialRequests_${werkstatt}`;
+  await db.collection(collectionName).doc(requestId).set(requestData);
+
+  console.log(`✅ Created material request ${requestId} in ${collectionName}`);
+
+  return {
+    success: true,
+    message: `Material-Bestellung "${beschreibung}" wurde erfolgreich erstellt!`,
+    requestId: requestId,
+    data: requestData
+  };
+}
+
+/**
+ * Execute getBestellungen tool on server
+ */
+async function executeGetBestellungen(params, werkstatt) {
+  const { status, limit = 50 } = params;
+
+  // Use multi-tenant collection
+  const collectionName = `materialRequests_${werkstatt}`;
+  let query = db.collection(collectionName);
+
+  // Filter by status if provided
+  if (status) {
+    query = query.where("status", "==", status);
+  }
+
+  // Order by timestamp (newest first) and limit
+  query = query.orderBy("timestamp", "desc").limit(limit);
+
+  const snapshot = await query.get();
+  const bestellungen = [];
+
+  snapshot.forEach(doc => {
+    bestellungen.push({
+      id: doc.id,
+      ...doc.data()
+    });
+  });
+
+  console.log(`✅ Found ${bestellungen.length} material requests in ${collectionName}`);
+
+  return {
+    success: true,
+    message: `${bestellungen.length} Material-Bestellung(en) gefunden`,
+    count: bestellungen.length,
+    bestellungen: bestellungen
+  };
+}
+
+/**
+ * Execute updateBestellung tool on server
+ */
+async function executeUpdateBestellung(params, werkstatt) {
+  const { requestId, status, notizen } = params;
+
+  // Validation
+  if (!requestId) {
+    throw new Error("requestId ist erforderlich");
+  }
+
+  if (!status) {
+    throw new Error("status ist erforderlich");
+  }
+
+  // Validate status value
+  const validStatuses = ["pending", "ordered", "delivered"];
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Ungültiger Status. Erlaubte Werte: ${validStatuses.join(", ")}`);
+  }
+
+  // Prepare update data
+  const updateData = {
+    status: status,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: "KI-Agent"
+  };
+
+  if (notizen !== undefined) {
+    updateData.notizen = notizen;
+  }
+
+  // Use multi-tenant collection
+  const collectionName = `materialRequests_${werkstatt}`;
+  await db.collection(collectionName).doc(requestId).update(updateData);
+
+  console.log(`✅ Updated material request ${requestId} in ${collectionName} to status: ${status}`);
+
+  return {
+    success: true,
+    message: `Material-Bestellung wurde erfolgreich auf Status "${status}" aktualisiert!`,
+    requestId: requestId,
     updates: updateData
   };
 }

@@ -273,6 +273,28 @@ window.appEvents.kundeCreated = (kunde) => {
 };
 
 /**
+ * Convenience function: Dispatch material bestellt event
+ * @param {Object} data - Material order data (includes requestId, description, etc.)
+ */
+window.appEvents.materialBestellt = (data) => {
+    window.appEvents.dispatch(APP_EVENTS.MATERIAL_BESTELLT, {
+        ...data,
+        action: 'bestellt'
+    });
+};
+
+/**
+ * Convenience function: Dispatch material updated event
+ * @param {Object} data - Update data (includes requestId, updates)
+ */
+window.appEvents.materialUpdated = (data) => {
+    window.appEvents.dispatch(APP_EVENTS.MATERIAL_UPDATED, {
+        ...data,
+        action: 'updated'
+    });
+};
+
+/**
  * Convenience function: Trigger UI refresh
  * @param {string} component - Component name to refresh
  */
