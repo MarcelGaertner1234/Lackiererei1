@@ -71,7 +71,7 @@ test.describe('Admin-Einstellungen Tests', () => {
       'Benachrichtigungen',
       'Standard-Werte',
       'E-Mail-Vorlagen',
-      'System-Konfiguration',
+      'System-Config',
       'Backup & Export',
       'Datenbank-Wartung'
     ];
