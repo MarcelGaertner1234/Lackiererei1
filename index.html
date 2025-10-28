@@ -2707,6 +2707,88 @@
             }
         }
 
+        // ============================================
+        // SWITCH USER (Mitarbeiter wechseln, Werkstatt bleibt eingeloggt)
+        // ============================================
+
+        async function switchUser() {
+            console.log('🔄 User-Wechsel initiiert...');
+
+            // 1. Check if logged in
+            if (!currentUser) {
+                console.log('❌ Kein User eingeloggt → öffne Login-Modal');
+                openLoginModal();
+                return;
+            }
+
+            // 2. Werkstatt-User ohne Mitarbeiter → Stage 2 Login
+            if (currentUser.role === 'werkstatt' && !currentUser.mitarbeiterId) {
+                console.log('👤 Werkstatt-User ohne Mitarbeiter → öffne Mitarbeiter-Auswahl');
+                openMitarbeiterModal();
+                return;
+            }
+
+            // 3. Werkstatt-User MIT Mitarbeiter → Mitarbeiter wechseln
+            if (currentUser.role === 'werkstatt' && currentUser.mitarbeiterId) {
+                console.log('🔄 Werkstatt-User mit Mitarbeiter → Mitarbeiter wechseln');
+
+                const mitarbeiterName = currentUser.mitarbeiterName || currentUser.name;
+
+                if (!confirm(`Mitarbeiter wechseln?\n\nAktuell angemeldet: ${mitarbeiterName}\n\nDie Werkstatt bleibt eingeloggt.`)) {
+                    return;
+                }
+
+                // ✅ Nur Mitarbeiter ausloggen (Werkstatt bleibt eingeloggt!)
+                window.authManager.logoutMitarbeiter();
+
+                console.log('👋 Mitarbeiter ausgeloggt - Werkstatt bleibt eingeloggt');
+
+                // Reset Welcome Banner
+                document.getElementById('welcomeTitle').textContent = 'Willkommen im Dashboard';
+                document.getElementById('welcomeSubtitle').textContent = 'Bitte wählen Sie einen Mitarbeiter aus';
+                document.getElementById('userActions').style.display = 'none';
+
+                // Reset all tiles to locked state
+                resetTiles();
+
+                // Öffne Mitarbeiter-Modal neu (Stage 2)
+                setTimeout(() => {
+                    openMitarbeiterModal();
+                }, 300);
+
+                return;
+            }
+
+            // 4. Alle anderen Rollen (admin, partner, kunde) → Full Re-Login
+            console.log('🔐 Admin/Partner/Kunde → Full Re-Login erforderlich');
+
+            if (confirm(`Möchtest du dich als ${currentUser.name} abmelden und einen anderen User anmelden?`)) {
+                try {
+                    await window.authManager.logout();
+                    currentUser = null;
+
+                    console.log('👋 User abgemeldet');
+
+                    // Reset Welcome Banner
+                    document.getElementById('welcomeTitle').textContent = 'Willkommen im Dashboard';
+                    document.getElementById('welcomeSubtitle').textContent = 'Verwalten Sie Fahrzeuge, Kunden und Partner-Anfragen professionell und effizient';
+                    document.getElementById('userActions').style.display = 'none';
+
+                    // Reset all tiles to locked state
+                    resetTiles();
+
+                    // Open login modal
+                    setTimeout(() => {
+                        openLoginModal();
+                    }, 300);
+
+                } catch (error) {
+                    console.error('❌ Logout fehlgeschlagen:', error);
+                    alert('⚠️ Fehler beim Abmelden!');
+                }
+            }
+        }
+
         // Load Current User from Firebase Auth
         async function loadCurrentUser() {
             // ⚠️ WICHTIG: Warte auf Auth State Listener (Race Condition Fix)
@@ -2895,7 +2977,7 @@
                 btnSwitchUser.addEventListener('click', function(e) {
                     e.preventDefault();
                     console.log('🖱️ Benutzer-wechseln-Button geklickt!');
-                    logoutUser(); // Logout current user and open login modal
+                    switchUser(); // ✅ Switch employee only (workshop stays logged in)
                 });
                 console.log('✅ Switch-User-Button Event Listener attached');
             }
