@@ -41,7 +41,7 @@ const DEFAULT_SETTINGS = {
         emailEnabled: true,
         pushEnabled: true,
         inAppEnabled: true,
-        neuesF ahrzeug: true,
+        neuesFahrzeug: true,
         statusChange: true,
         abnahmeTermin: true,
         materialBestellung: true,
