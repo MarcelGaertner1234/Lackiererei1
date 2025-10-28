@@ -399,6 +399,330 @@ async function createKunde(params) {
 }
 
 // ============================================
+// TOOL 7: CREATE TERMIN
+// ============================================
+
+/**
+ * Creates a new calendar appointment in Firestore
+ * @param {Object} params - Appointment parameters
+ * @returns {Promise<Object>} Result with success status and appointment ID
+ */
+async function createTermin(params) {
+    try {
+        const {
+            fahrzeugId,
+            kennzeichen,
+            datum,
+            uhrzeit,
+            typ,
+            notizen
+        } = params;
+
+        // Validation
+        if (!datum) {
+            throw new Error('Datum ist erforderlich');
+        }
+
+        // Parse date (accepts multiple formats)
+        let terminDate;
+        if (typeof datum === 'string') {
+            // Try to parse German date formats
+            terminDate = parseGermanDate(datum);
+        } else if (datum instanceof Date) {
+            terminDate = datum;
+        } else {
+            throw new Error('Ungültiges Datumsformat');
+        }
+
+        // Parse time if provided
+        let terminZeit = uhrzeit || '09:00';
+
+        // Create appointment data
+        const terminData = {
+            fahrzeugId: fahrzeugId || null,
+            kennzeichen: kennzeichen ? kennzeichen.toUpperCase() : '',
+            datum: terminDate.toISOString().split('T')[0], // YYYY-MM-DD
+            uhrzeit: terminZeit,
+            typ: typ || 'abnahme',
+            notizen: notizen || '',
+            status: 'geplant',
+            timestamp: Date.now(),
+            createdBy: 'KI-Agent',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        // Use multi-tenant collection
+        const kalenderCollection = window.getCollection('kalender');
+        const docRef = await kalenderCollection.add(terminData);
+
+        console.log(`✅ KI-Agent: Termin erstellt - ID: ${docRef.id}, Datum: ${terminData.datum} ${terminData.uhrzeit}`);
+
+        return {
+            success: true,
+            message: `Termin am ${terminData.datum} um ${terminData.uhrzeit} wurde erstellt!`,
+            terminId: docRef.id,
+            data: terminData
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei createTermin:', error);
+        return {
+            success: false,
+            message: `Fehler beim Erstellen des Termins: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * Parse German date string to Date object
+ * Supports formats: "morgen", "übermorgen", "Freitag", "28.10.", "28.10.2025"
+ */
+function parseGermanDate(dateStr) {
+    const str = dateStr.toLowerCase().trim();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Relative dates
+    if (str === 'heute') {
+        return today;
+    }
+    if (str === 'morgen') {
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow;
+    }
+    if (str === 'übermorgen' || str === 'uebermorgen') {
+        const dayAfter = new Date(today);
+        dayAfter.setDate(dayAfter.getDate() + 2);
+        return dayAfter;
+    }
+
+    // Weekdays
+    const weekdays = {
+        'montag': 1, 'dienstag': 2, 'mittwoch': 3, 'donnerstag': 4,
+        'freitag': 5, 'samstag': 6, 'sonntag': 0
+    };
+    if (weekdays.hasOwnProperty(str)) {
+        const targetDay = weekdays[str];
+        const currentDay = today.getDay();
+        let daysToAdd = targetDay - currentDay;
+        if (daysToAdd <= 0) daysToAdd += 7; // Next occurrence
+        const result = new Date(today);
+        result.setDate(result.getDate() + daysToAdd);
+        return result;
+    }
+
+    // DD.MM. format
+    const ddmmMatch = str.match(/(\d{1,2})\.(\d{1,2})\.?$/);
+    if (ddmmMatch) {
+        const day = parseInt(ddmmMatch[1]);
+        const month = parseInt(ddmmMatch[2]) - 1;
+        const year = today.getFullYear();
+        return new Date(year, month, day);
+    }
+
+    // DD.MM.YYYY format
+    const ddmmyyyyMatch = str.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (ddmmyyyyMatch) {
+        const day = parseInt(ddmmyyyyMatch[1]);
+        const month = parseInt(ddmmyyyyMatch[2]) - 1;
+        const year = parseInt(ddmmyyyyMatch[3]);
+        return new Date(year, month, day);
+    }
+
+    // ISO format
+    const isoDate = new Date(dateStr);
+    if (!isNaN(isoDate.getTime())) {
+        return isoDate;
+    }
+
+    throw new Error(`Konnte Datum nicht parsen: ${dateStr}`);
+}
+
+// ============================================
+// TOOL 8: GET TERMINE
+// ============================================
+
+/**
+ * Retrieves calendar appointments with optional filters
+ * @param {Object} params - Filter parameters
+ * @returns {Promise<Object>} Result with appointments list
+ */
+async function getTermine(params) {
+    try {
+        const {
+            fahrzeugId,
+            kennzeichen,
+            datum,
+            zeitraum,
+            status,
+            limit
+        } = params;
+
+        // Use multi-tenant collection
+        const kalenderCollection = window.getCollection('kalender');
+        let query = kalenderCollection;
+
+        // Apply filters
+        if (fahrzeugId) {
+            query = query.where('fahrzeugId', '==', fahrzeugId);
+        }
+
+        if (kennzeichen) {
+            query = query.where('kennzeichen', '==', kennzeichen.toUpperCase());
+        }
+
+        if (status) {
+            query = query.where('status', '==', status);
+        }
+
+        // Date range filter
+        if (zeitraum) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (zeitraum === 'heute') {
+                const dateStr = today.toISOString().split('T')[0];
+                query = query.where('datum', '==', dateStr);
+            } else if (zeitraum === 'diese_woche') {
+                const startOfWeek = new Date(today);
+                startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Monday
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6); // Sunday
+
+                const startStr = startOfWeek.toISOString().split('T')[0];
+                const endStr = endOfWeek.toISOString().split('T')[0];
+
+                query = query.where('datum', '>=', startStr).where('datum', '<=', endStr);
+            } else if (zeitraum === 'naechste_woche') {
+                const nextWeekStart = new Date(today);
+                nextWeekStart.setDate(today.getDate() + (8 - today.getDay())); // Next Monday
+                const nextWeekEnd = new Date(nextWeekStart);
+                nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+
+                const startStr = nextWeekStart.toISOString().split('T')[0];
+                const endStr = nextWeekEnd.toISOString().split('T')[0];
+
+                query = query.where('datum', '>=', startStr).where('datum', '<=', endStr);
+            }
+        } else if (datum) {
+            // Specific date
+            const parsedDate = parseGermanDate(datum);
+            const dateStr = parsedDate.toISOString().split('T')[0];
+            query = query.where('datum', '==', dateStr);
+        }
+
+        // Order by date and time
+        query = query.orderBy('datum', 'asc').orderBy('uhrzeit', 'asc');
+
+        // Limit results
+        if (limit && limit > 0) {
+            query = query.limit(limit);
+        } else {
+            query = query.limit(50); // Default limit
+        }
+
+        const snapshot = await query.get();
+        const termine = [];
+
+        snapshot.forEach(doc => {
+            termine.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+
+        console.log(`✅ KI-Agent: ${termine.length} Termin(e) gefunden`);
+
+        return {
+            success: true,
+            message: `${termine.length} Termin(e) gefunden`,
+            count: termine.length,
+            termine: termine
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei getTermine:', error);
+        return {
+            success: false,
+            message: `Fehler beim Abrufen der Termine: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+// ============================================
+// TOOL 9: UPDATE TERMIN
+// ============================================
+
+/**
+ * Updates an existing calendar appointment
+ * @param {Object} params - Update parameters
+ * @returns {Promise<Object>} Result with success status
+ */
+async function updateTermin(params) {
+    try {
+        const {
+            terminId,
+            datum,
+            uhrzeit,
+            status,
+            notizen
+        } = params;
+
+        // Validation
+        if (!terminId) {
+            throw new Error('terminId ist erforderlich');
+        }
+
+        // Prepare update data
+        const updateData = {
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: 'KI-Agent'
+        };
+
+        if (datum) {
+            const parsedDate = parseGermanDate(datum);
+            updateData.datum = parsedDate.toISOString().split('T')[0];
+        }
+
+        if (uhrzeit) {
+            updateData.uhrzeit = uhrzeit;
+        }
+
+        if (status) {
+            updateData.status = status;
+        }
+
+        if (notizen !== undefined) {
+            updateData.notizen = notizen;
+        }
+
+        // Use multi-tenant collection
+        const kalenderCollection = window.getCollection('kalender');
+        await kalenderCollection.doc(terminId).update(updateData);
+
+        console.log(`✅ KI-Agent: Termin aktualisiert - ID: ${terminId}`);
+
+        return {
+            success: true,
+            message: 'Termin wurde erfolgreich aktualisiert!',
+            terminId: terminId,
+            updates: updateData
+        };
+
+    } catch (error) {
+        console.error('❌ KI-Agent: Fehler bei updateTermin:', error);
+        return {
+            success: false,
+            message: `Fehler beim Aktualisieren des Termins: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+// ============================================
 // OPENAI FUNCTION SCHEMAS
 // ============================================
 
@@ -600,6 +924,117 @@ const AI_TOOLS = [
                 required: ["name", "telefon"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "createTermin",
+            description: "Erstellt einen neuen Abnahme-Termin im Kalender. Verwende dies, wenn ein Termin vereinbart werden soll.",
+            parameters: {
+                type: "object",
+                properties: {
+                    fahrzeugId: {
+                        type: "string",
+                        description: "Firestore ID des Fahrzeugs (optional)"
+                    },
+                    kennzeichen: {
+                        type: "string",
+                        description: "Kfz-Kennzeichen (optional, wenn fahrzeugId angegeben)"
+                    },
+                    datum: {
+                        type: "string",
+                        description: "Datum des Termins. Akzeptiert: 'heute', 'morgen', 'Freitag', '28.10.', '28.10.2025'"
+                    },
+                    uhrzeit: {
+                        type: "string",
+                        description: "Uhrzeit des Termins (Format: HH:MM, z.B. '14:00'). Standard: 09:00"
+                    },
+                    typ: {
+                        type: "string",
+                        enum: ["abnahme", "annahme", "beratung", "sonstiges"],
+                        description: "Art des Termins. Standard: abnahme"
+                    },
+                    notizen: {
+                        type: "string",
+                        description: "Zusätzliche Notizen zum Termin (optional)"
+                    }
+                },
+                required: ["datum"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "getTermine",
+            description: "Zeigt Termine an. Kann nach verschiedenen Kriterien gefiltert werden.",
+            parameters: {
+                type: "object",
+                properties: {
+                    fahrzeugId: {
+                        type: "string",
+                        description: "Filter nach Fahrzeug-ID (optional)"
+                    },
+                    kennzeichen: {
+                        type: "string",
+                        description: "Filter nach Kennzeichen (optional)"
+                    },
+                    datum: {
+                        type: "string",
+                        description: "Filtere nach spezifischem Datum (z.B. 'heute', 'morgen', '28.10.')"
+                    },
+                    zeitraum: {
+                        type: "string",
+                        enum: ["heute", "diese_woche", "naechste_woche"],
+                        description: "Zeitraum-Filter: heute, diese_woche, naechste_woche"
+                    },
+                    status: {
+                        type: "string",
+                        enum: ["geplant", "bestaetigt", "abgeschlossen", "abgesagt"],
+                        description: "Status-Filter"
+                    },
+                    limit: {
+                        type: "number",
+                        description: "Maximale Anzahl Ergebnisse (Standard: 50)"
+                    }
+                },
+                required: []
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "updateTermin",
+            description: "Aktualisiert einen bestehenden Termin (Datum, Uhrzeit, Status, Notizen).",
+            parameters: {
+                type: "object",
+                properties: {
+                    terminId: {
+                        type: "string",
+                        description: "Firestore Document ID des Termins"
+                    },
+                    datum: {
+                        type: "string",
+                        description: "Neues Datum (Format siehe createTermin)"
+                    },
+                    uhrzeit: {
+                        type: "string",
+                        description: "Neue Uhrzeit (Format: HH:MM)"
+                    },
+                    status: {
+                        type: "string",
+                        enum: ["geplant", "bestaetigt", "abgeschlossen", "abgesagt"],
+                        description: "Neuer Status"
+                    },
+                    notizen: {
+                        type: "string",
+                        description: "Aktualisierte Notizen"
+                    }
+                },
+                required: ["terminId"]
+            }
+        }
     }
 ];
 
@@ -622,7 +1057,10 @@ async function executeAITool(toolName, args) {
         'getFahrzeuge': getFahrzeuge,
         'navigateToPage': navigateToPage,
         'searchYouTube': searchYouTube,
-        'createKunde': createKunde
+        'createKunde': createKunde,
+        'createTermin': createTermin,
+        'getTermine': getTermine,
+        'updateTermin': updateTermin
     };
 
     const tool = tools[toolName];
@@ -662,6 +1100,9 @@ window.aiTools = {
     navigateToPage,
     searchYouTube,
     createKunde,
+    createTermin,
+    getTermine,
+    updateTermin,
     executeAITool,
     AI_TOOLS
 };

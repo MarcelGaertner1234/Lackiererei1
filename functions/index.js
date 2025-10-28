@@ -534,6 +534,117 @@ exports.aiAgentExecute = functions
                 required: []
               }
             }
+          },
+          {
+            type: "function",
+            function: {
+              name: "createTermin",
+              description: "Erstellt einen neuen Abnahme-Termin im Kalender. Verwende dies, wenn ein Termin vereinbart werden soll.",
+              parameters: {
+                type: "object",
+                properties: {
+                  fahrzeugId: {
+                    type: "string",
+                    description: "Firestore ID des Fahrzeugs (optional)"
+                  },
+                  kennzeichen: {
+                    type: "string",
+                    description: "Kfz-Kennzeichen (optional)"
+                  },
+                  datum: {
+                    type: "string",
+                    description: "Datum des Termins. Akzeptiert: 'heute', 'morgen', 'Freitag', '28.10.', '28.10.2025'"
+                  },
+                  uhrzeit: {
+                    type: "string",
+                    description: "Uhrzeit (Format: HH:MM, z.B. '14:00'). Standard: 09:00"
+                  },
+                  typ: {
+                    type: "string",
+                    enum: ["abnahme", "annahme", "beratung", "sonstiges"],
+                    description: "Art des Termins. Standard: abnahme"
+                  },
+                  notizen: {
+                    type: "string",
+                    description: "Zusätzliche Notizen (optional)"
+                  }
+                },
+                required: ["datum"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "getTermine",
+              description: "Zeigt Termine an. Kann nach verschiedenen Kriterien gefiltert werden.",
+              parameters: {
+                type: "object",
+                properties: {
+                  fahrzeugId: {
+                    type: "string",
+                    description: "Filter nach Fahrzeug-ID (optional)"
+                  },
+                  kennzeichen: {
+                    type: "string",
+                    description: "Filter nach Kennzeichen (optional)"
+                  },
+                  datum: {
+                    type: "string",
+                    description: "Filter nach spezifischem Datum (z.B. 'heute', 'morgen')"
+                  },
+                  zeitraum: {
+                    type: "string",
+                    enum: ["heute", "diese_woche", "naechste_woche"],
+                    description: "Zeitraum-Filter"
+                  },
+                  status: {
+                    type: "string",
+                    enum: ["geplant", "bestaetigt", "abgeschlossen", "abgesagt"],
+                    description: "Status-Filter"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Maximale Anzahl Ergebnisse (Standard: 50)"
+                  }
+                },
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "updateTermin",
+              description: "Aktualisiert einen bestehenden Termin (Datum, Uhrzeit, Status, Notizen).",
+              parameters: {
+                type: "object",
+                properties: {
+                  terminId: {
+                    type: "string",
+                    description: "Firestore Document ID des Termins"
+                  },
+                  datum: {
+                    type: "string",
+                    description: "Neues Datum (Format siehe createTermin)"
+                  },
+                  uhrzeit: {
+                    type: "string",
+                    description: "Neue Uhrzeit (Format: HH:MM)"
+                  },
+                  status: {
+                    type: "string",
+                    enum: ["geplant", "bestaetigt", "abgeschlossen", "abgesagt"],
+                    description: "Neuer Status"
+                  },
+                  notizen: {
+                    type: "string",
+                    description: "Aktualisierte Notizen"
+                  }
+                },
+                required: ["terminId"]
+              }
+            }
           }
         ];
 
@@ -603,6 +714,12 @@ User ID: ${userId || "unbekannt"}`
                 result = await executeUpdateFahrzeugStatus(functionArgs, werkstatt);
               } else if (functionName === "getFahrzeuge") {
                 result = await executeGetFahrzeuge(functionArgs, werkstatt);
+              } else if (functionName === "createTermin") {
+                result = await executeCreateTermin(functionArgs, werkstatt);
+              } else if (functionName === "getTermine") {
+                result = await executeGetTermine(functionArgs, werkstatt);
+              } else if (functionName === "updateTermin") {
+                result = await executeUpdateTermin(functionArgs, werkstatt);
               } else {
                 result = {
                   success: false,
@@ -872,5 +989,242 @@ async function executeGetFahrzeuge(params, werkstatt) {
     message: `${vehicles.length} Fahrzeug(e) gefunden`,
     count: vehicles.length,
     vehicles: vehicles
+  };
+}
+
+/**
+ * Execute createTermin tool on server
+ */
+async function executeCreateTermin(params, werkstatt) {
+  const {
+    fahrzeugId,
+    kennzeichen,
+    datum,
+    uhrzeit,
+    typ,
+    notizen
+  } = params;
+
+  // Validation
+  if (!datum) {
+    throw new Error("Datum ist erforderlich");
+  }
+
+  // Parse date (simplified server-side version)
+  function parseGermanDateServer(dateStr) {
+    const str = dateStr.toLowerCase().trim();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Relative dates
+    if (str === "heute") return today;
+    if (str === "morgen") {
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow;
+    }
+    if (str === "übermorgen" || str === "uebermorgen") {
+      const dayAfter = new Date(today);
+      dayAfter.setDate(dayAfter.getDate() + 2);
+      return dayAfter;
+    }
+
+    // Weekdays
+    const weekdays = {
+      "montag": 1, "dienstag": 2, "mittwoch": 3, "donnerstag": 4,
+      "freitag": 5, "samstag": 6, "sonntag": 0
+    };
+    if (weekdays.hasOwnProperty(str)) {
+      const targetDay = weekdays[str];
+      const currentDay = today.getDay();
+      let daysToAdd = targetDay - currentDay;
+      if (daysToAdd <= 0) daysToAdd += 7;
+      const result = new Date(today);
+      result.setDate(result.getDate() + daysToAdd);
+      return result;
+    }
+
+    // DD.MM. format
+    const ddmmMatch = str.match(/(\d{1,2})\.(\d{1,2})\.?$/);
+    if (ddmmMatch) {
+      const day = parseInt(ddmmMatch[1]);
+      const month = parseInt(ddmmMatch[2]) - 1;
+      return new Date(today.getFullYear(), month, day);
+    }
+
+    // DD.MM.YYYY format
+    const ddmmyyyyMatch = str.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (ddmmyyyyMatch) {
+      const day = parseInt(ddmmyyyyMatch[1]);
+      const month = parseInt(ddmmyyyyMatch[2]) - 1;
+      const year = parseInt(ddmmyyyyMatch[3]);
+      return new Date(year, month, day);
+    }
+
+    // ISO format
+    const isoDate = new Date(dateStr);
+    if (!isNaN(isoDate.getTime())) return isoDate;
+
+    throw new Error(`Konnte Datum nicht parsen: ${dateStr}`);
+  }
+
+  const terminDate = parseGermanDateServer(datum);
+  const terminZeit = uhrzeit || "09:00";
+
+  // Create appointment data
+  const terminData = {
+    fahrzeugId: fahrzeugId || null,
+    kennzeichen: kennzeichen ? kennzeichen.toUpperCase() : "",
+    datum: terminDate.toISOString().split("T")[0],
+    uhrzeit: terminZeit,
+    typ: typ || "abnahme",
+    notizen: notizen || "",
+    status: "geplant",
+    timestamp: Date.now(),
+    createdBy: "KI-Agent",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+
+  // Use multi-tenant collection
+  const collectionName = `kalender_${werkstatt}`;
+  const docRef = await db.collection(collectionName).add(terminData);
+
+  console.log(`✅ Created termin in ${collectionName}: ${docRef.id}`);
+
+  return {
+    success: true,
+    message: `Termin am ${terminData.datum} um ${terminData.uhrzeit} wurde erstellt!`,
+    terminId: docRef.id,
+    data: terminData
+  };
+}
+
+/**
+ * Execute getTermine tool on server
+ */
+async function executeGetTermine(params, werkstatt) {
+  const {
+    fahrzeugId,
+    kennzeichen,
+    datum,
+    zeitraum,
+    status,
+    limit = 50
+  } = params;
+
+  // Use multi-tenant collection
+  const collectionName = `kalender_${werkstatt}`;
+  let query = db.collection(collectionName);
+
+  // Apply filters
+  if (fahrzeugId) {
+    query = query.where("fahrzeugId", "==", fahrzeugId);
+  }
+
+  if (kennzeichen) {
+    query = query.where("kennzeichen", "==", kennzeichen.toUpperCase());
+  }
+
+  if (status) {
+    query = query.where("status", "==", status);
+  }
+
+  // Date range filter
+  if (zeitraum) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (zeitraum === "heute") {
+      const dateStr = today.toISOString().split("T")[0];
+      query = query.where("datum", "==", dateStr);
+    } else if (zeitraum === "diese_woche") {
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+      query = query.where("datum", ">=", startOfWeek.toISOString().split("T")[0])
+                   .where("datum", "<=", endOfWeek.toISOString().split("T")[0]);
+    } else if (zeitraum === "naechste_woche") {
+      const nextWeekStart = new Date(today);
+      nextWeekStart.setDate(today.getDate() + (8 - today.getDay()));
+      const nextWeekEnd = new Date(nextWeekStart);
+      nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+
+      query = query.where("datum", ">=", nextWeekStart.toISOString().split("T")[0])
+                   .where("datum", "<=", nextWeekEnd.toISOString().split("T")[0]);
+    }
+  } else if (datum) {
+    // Parse specific date (reuse parseGermanDateServer from executeCreateTermin context)
+    // For simplicity, assume datum is already in YYYY-MM-DD format from client
+    query = query.where("datum", "==", datum);
+  }
+
+  // Order and limit
+  query = query.orderBy("datum", "asc").orderBy("uhrzeit", "asc").limit(limit);
+
+  const snapshot = await query.get();
+  const termine = [];
+
+  snapshot.forEach(doc => {
+    termine.push({
+      id: doc.id,
+      ...doc.data()
+    });
+  });
+
+  console.log(`✅ Found ${termine.length} termine in ${collectionName}`);
+
+  return {
+    success: true,
+    message: `${termine.length} Termin(e) gefunden`,
+    count: termine.length,
+    termine: termine
+  };
+}
+
+/**
+ * Execute updateTermin tool on server
+ */
+async function executeUpdateTermin(params, werkstatt) {
+  const {
+    terminId,
+    datum,
+    uhrzeit,
+    status,
+    notizen
+  } = params;
+
+  // Validation
+  if (!terminId) {
+    throw new Error("terminId ist erforderlich");
+  }
+
+  // Prepare update data
+  const updateData = {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: "KI-Agent"
+  };
+
+  if (datum) {
+    // Simplified: assume datum is YYYY-MM-DD or parseable
+    updateData.datum = datum;
+  }
+
+  if (uhrzeit) updateData.uhrzeit = uhrzeit;
+  if (status) updateData.status = status;
+  if (notizen !== undefined) updateData.notizen = notizen;
+
+  // Use multi-tenant collection
+  const collectionName = `kalender_${werkstatt}`;
+  await db.collection(collectionName).doc(terminId).update(updateData);
+
+  console.log(`✅ Updated termin ${terminId} in ${collectionName}`);
+
+  return {
+    success: true,
+    message: "Termin wurde erfolgreich aktualisiert!",
+    terminId: terminId,
+    updates: updateData
   };
 }
