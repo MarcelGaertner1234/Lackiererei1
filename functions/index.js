@@ -12,24 +12,23 @@ const path = require("path");
 admin.initializeApp();
 const db = admin.firestore();
 
-// Initialize SendGrid with API Key from environment variable
-// Priority: firebase functions:config → process.env (fallback)
-const SENDGRID_API_KEY = functions.config().sendgrid?.api_key || process.env.SENDGRID_API_KEY;
+// Helper function: Get and validate SendGrid API Key
+// Called lazily at runtime, not at module load time
+function getSendGridApiKey() {
+  const apiKey = functions.config().sendgrid?.api_key || process.env.SENDGRID_API_KEY;
 
-// Validation: API Key MUSS gesetzt sein
-if (!SENDGRID_API_KEY) {
-  console.error("❌ FATAL: SENDGRID_API_KEY ist nicht konfiguriert!");
-  console.error("Fix: firebase functions:config:set sendgrid.api_key=\"SG.xxx\" --project auto-lackierzentrum-mosbach");
-  throw new Error("Missing SENDGRID_API_KEY environment variable");
+  if (!apiKey) {
+    console.error("❌ FATAL: SENDGRID_API_KEY ist nicht konfiguriert!");
+    console.error("Fix: firebase functions:config:set sendgrid.api_key=\"SG.xxx\" --project auto-lackierzentrum-mosbach");
+    throw new Error("Missing SENDGRID_API_KEY environment variable");
+  }
+
+  if (!apiKey.startsWith("SG.")) {
+    console.warn("⚠️ WARNING: SENDGRID_API_KEY startet nicht mit 'SG.' - möglicherweise ungültig!");
+  }
+
+  return apiKey;
 }
-
-// Validation: API Key Format prüfen
-if (!SENDGRID_API_KEY.startsWith("SG.")) {
-  console.warn("⚠️ WARNING: SENDGRID_API_KEY startet nicht mit 'SG.' - möglicherweise ungültig!");
-}
-
-sgMail.setApiKey(SENDGRID_API_KEY);
-console.log("✅ SendGrid initialized successfully");
 
 // Sender Email (MUST be verified in SendGrid!)
 const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
@@ -83,6 +82,11 @@ exports.onStatusChange = functions
       Object.keys(variables).forEach((key) => {
         template = template.replace(new RegExp(`{{${key}}}`, "g"), variables[key]);
       });
+
+      // Initialize SendGrid (lazy - only when needed)
+      const apiKey = getSendGridApiKey();
+      sgMail.setApiKey(apiKey);
+      console.log("✅ SendGrid initialized for status change email");
 
       // Send email
       const msg = {
@@ -175,6 +179,11 @@ exports.onNewPartnerAnfrage = functions
         template = template.replace(new RegExp(`{{${key}}}`, "g"), variables[key]);
       });
 
+      // Initialize SendGrid (lazy - only when needed)
+      const apiKey = getSendGridApiKey();
+      sgMail.setApiKey(apiKey);
+      console.log("✅ SendGrid initialized for partner anfrage email");
+
       // Send email to all admins
       const msg = {
         to: adminEmails,
@@ -247,6 +256,11 @@ exports.onUserApproved = functions
       });
 
       // Send email
+      // Initialize SendGrid (lazy - only when needed)
+      const apiKey = getSendGridApiKey();
+      sgMail.setApiKey(apiKey);
+      console.log("✅ SendGrid initialized for user approved email");
+
       const msg = {
         to: after.email,
         from: SENDER_EMAIL,
