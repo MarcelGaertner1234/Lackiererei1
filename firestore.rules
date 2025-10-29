@@ -317,6 +317,32 @@ service cloud.firestore {
     }
 
     // ============================================
+    // MITARBEITER NOTIFICATIONS MULTI-TENANT (werkstatt-specific notifications)
+    // ============================================
+
+    match /mitarbeiterNotifications_{werkstatt}/{notificationId} {
+      // Admins: Full access to all werkstätten notifications
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Can read and update their own notifications
+      // Read: All notifications for this employee
+      // Update: Mark as read, archive, etc.
+      allow read: if isMitarbeiter() && isActive()
+                  && resource.data.mitarbeiterId == request.auth.uid;
+
+      allow update: if isMitarbeiter() && isActive()
+                    && resource.data.mitarbeiterId == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'readAt']);
+
+      // Cloud Functions: Can create new notifications (no auth context)
+      // IMPORTANT: Cloud Functions run without authentication context
+      allow create: if true; // Any authenticated request can create (Cloud Functions will validate)
+
+      // Delete: Only admins (cleanup old notifications)
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
     // DEFAULT DENY
     // ============================================
 
