@@ -1187,6 +1187,42 @@ const AI_TOOLS = [
                 required: []
             }
         }
+    },
+    // TOOL 11: Get Mitarbeiter Notifications
+    {
+        type: "function",
+        function: {
+            name: "getMitarbeiterNotifications",
+            description: "Zeigt ungelesene Benachrichtigungen des eingeloggten Mitarbeiters an. Nutze dies wenn der Benutzer nach Benachrichtigungen, Aufgaben oder To-Dos fragt.",
+            parameters: {
+                type: "object",
+                properties: {
+                    limit: {
+                        type: "number",
+                        description: "Maximale Anzahl der anzuzeigenden Benachrichtigungen (Standard: 5)"
+                    }
+                },
+                required: []
+            }
+        }
+    },
+    // TOOL 12: Speak Notifications
+    {
+        type: "function",
+        function: {
+            name: "speakNotifications",
+            description: "Liest alle ungelesenen Benachrichtigungen laut vor (Text-to-Speech). Nutze dies wenn der Benutzer fragt 'Was ist heute zu tun?' oder 'Was gibt es neues?'",
+            parameters: {
+                type: "object",
+                properties: {
+                    includeAll: {
+                        type: "boolean",
+                        description: "true = Alle Benachrichtigungen vorlesen, false = Nur high/urgent priority (Standard: false)"
+                    }
+                },
+                required: []
+            }
+        }
     }
 ];
 
@@ -1620,6 +1656,147 @@ async function getStatistiken(params) {
 }
 
 // ============================================
+// TOOL 11: GET MITARBEITER NOTIFICATIONS
+// ============================================
+
+/**
+ * Get unread notifications for the current employee
+ * @param {Object} args - { limit: number }
+ * @returns {Object} { success, count, notifications }
+ */
+async function getMitarbeiterNotifications(args = {}) {
+    try {
+        console.log('📥 AI Agent Tool: getMitarbeiterNotifications');
+
+        // Check if notification manager is available
+        if (!window.mitarbeiterNotifications) {
+            return {
+                success: false,
+                message: 'Benachrichtigungs-System ist nicht verfügbar',
+                count: 0,
+                notifications: []
+            };
+        }
+
+        // Load notifications
+        const notifications = await window.mitarbeiterNotifications.loadNotifications();
+        const limit = args.limit || 5;
+        const limitedNotifications = notifications.slice(0, limit);
+
+        // Format for AI response
+        const formattedNotifications = limitedNotifications.map((notif, index) => ({
+            nr: index + 1,
+            type: notif.type,
+            title: notif.title,
+            message: notif.message,
+            priority: notif.priority,
+            timeAgo: window.mitarbeiterNotifications.getTimeAgo(notif.createdAt)
+        }));
+
+        console.log(`✅ ${notifications.length} Benachrichtigungen gefunden (zeige ${limitedNotifications.length})`);
+
+        return {
+            success: true,
+            count: notifications.length,
+            limit: limit,
+            notifications: formattedNotifications,
+            message: notifications.length === 0
+                ? 'Du hast keine neuen Benachrichtigungen.'
+                : `Du hast ${notifications.length} neue Benachrichtigung${notifications.length > 1 ? 'en' : ''}.`
+        };
+
+    } catch (error) {
+        console.error('❌ Error getting notifications:', error);
+        return {
+            success: false,
+            message: `Fehler beim Laden der Benachrichtigungen: ${error.message}`,
+            count: 0,
+            notifications: []
+        };
+    }
+}
+
+// ============================================
+// TOOL 12: SPEAK NOTIFICATIONS
+// ============================================
+
+/**
+ * Speak all unread notifications aloud using AI Agent TTS
+ * @param {Object} args - { includeAll: boolean }
+ * @returns {Object} { success, message, spoken }
+ */
+async function speakNotifications(args = {}) {
+    try {
+        console.log('🔊 AI Agent Tool: speakNotifications');
+
+        // Check if notification manager is available
+        if (!window.mitarbeiterNotifications) {
+            return {
+                success: false,
+                message: 'Benachrichtigungs-System ist nicht verfügbar',
+                spoken: 0
+            };
+        }
+
+        // Check if AI Agent is available
+        if (!window.aiAgent) {
+            return {
+                success: false,
+                message: 'AI Agent ist nicht verfügbar',
+                spoken: 0
+            };
+        }
+
+        // Load notifications
+        const notifications = await window.mitarbeiterNotifications.loadNotifications();
+
+        if (notifications.length === 0) {
+            const message = 'Du hast keine neuen Benachrichtigungen.';
+            await window.aiAgent.speak(message);
+            return {
+                success: true,
+                message: message,
+                spoken: 0
+            };
+        }
+
+        // Build speech text
+        let speechText = `Du hast ${notifications.length} neue Benachrichtigung${notifications.length > 1 ? 'en' : ''}. `;
+
+        // Include all notifications or only high priority?
+        const includeAll = args.includeAll || false;
+        const notificationsToSpeak = includeAll
+            ? notifications
+            : notifications.filter(n => ['high', 'urgent'].includes(n.priority));
+
+        notificationsToSpeak.forEach((notif, index) => {
+            if (index > 0) speechText += ' ';
+            speechText += `${index + 1}. ${notif.sprachausgabe || notif.title}. `;
+        });
+
+        // Speak
+        await window.aiAgent.speak(speechText);
+
+        console.log(`✅ ${notificationsToSpeak.length} Benachrichtigungen vorgelesen`);
+
+        return {
+            success: true,
+            message: `${notificationsToSpeak.length} Benachrichtigungen vorgelesen`,
+            spoken: notificationsToSpeak.length,
+            total: notifications.length
+        };
+
+    } catch (error) {
+        console.error('❌ Error speaking notifications:', error);
+        return {
+            success: false,
+            message: `Fehler beim Vorlesen: ${error.message}`,
+            spoken: 0
+        };
+    }
+}
+
+// ============================================
 // TOOL EXECUTOR
 // ============================================
 
@@ -1648,7 +1825,10 @@ async function executeAITool(toolName, args) {
         'updateBestellung': updateBestellung,
         // Dashboard Tools (Phase 5)
         'getDashboardOverview': getDashboardOverview,
-        'getStatistiken': getStatistiken
+        'getStatistiken': getStatistiken,
+        // Notification Tools (Phase 3.2.4)
+        'getMitarbeiterNotifications': getMitarbeiterNotifications,
+        'speakNotifications': speakNotifications
     };
 
     const tool = tools[toolName];
@@ -1691,6 +1871,8 @@ window.aiTools = {
     createTermin,
     getTermine,
     updateTermin,
+    getMitarbeiterNotifications,
+    speakNotifications,
     executeAITool,
     AI_TOOLS
 };
