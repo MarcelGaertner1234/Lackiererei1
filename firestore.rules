@@ -250,7 +250,8 @@ service cloud.firestore {
     }
 
     // ============================================
-    // PARTNER ANFRAGEN (global collection)
+    // PARTNER ANFRAGEN (global collection - DEPRECATED)
+    // ⚠️ Kept for backward compatibility - use partnerAnfragen_{werkstatt} instead
     // ============================================
 
     match /partnerAnfragen/{anfrageId} {
@@ -279,6 +280,43 @@ service cloud.firestore {
         // Kunde: Read-only access to messages in their anfragen
         allow read: if isKunde() && isActive()
                     && isOwner(get(/databases/$(database)/documents/partnerAnfragen/$(anfrageId)).data.partnerId);
+      }
+    }
+
+    // ============================================
+    // PARTNER ANFRAGEN MULTI-TENANT (werkstatt-specific collections) 🆕
+    // Using wildcard pattern: partnerAnfragen_mosbach, partnerAnfragen_heilbronn, etc.
+    // ============================================
+
+    match /{anfrageCollection}/{anfrageId} {
+      // Admins: Full access to all werkstätten anfragen
+      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*') && isAdmin();
+
+      // Mitarbeiter: Full access to werkstatt-specific anfragen
+      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+                         && isMitarbeiter() && isActive();
+
+      // Partners: Can create and read their own anfragen
+      allow create: if anfrageCollection.matches('partnerAnfragen_.*')
+                    && isPartner() && isActive();
+
+      allow read: if anfrageCollection.matches('partnerAnfragen_.*')
+                  && isPartner() && isActive()
+                  && isOwner(resource.data.partnerId);
+
+      // Subcollection: Chat Messages
+      match /chat/{messageId} {
+        // Admins: Full access
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*') && isAdmin();
+
+        // Mitarbeiter: Full access
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+                           && isMitarbeiter() && isActive();
+
+        // Partner: Can read/write messages in their own anfragen
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+                           && isPartner() && isActive()
+                           && isOwner(get(/databases/$(database)/documents/$(anfrageCollection)/$(anfrageId)).data.partnerId);
       }
     }
 
