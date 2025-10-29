@@ -46,7 +46,8 @@ class MitarbeiterNotificationManager {
                 return false;
             }
 
-            this.userId = currentUser.uid;
+            // Use mitarbeiterId (not uid) - getCurrentUser() returns { mitarbeiterId, werkstattId, ... }
+            this.userId = currentUser.mitarbeiterId;
             this.werkstatt = currentUser.werkstattId || 'mosbach';
 
             console.log(`🔔 Initializing notifications for user: ${currentUser.name} (${this.werkstatt})`);
