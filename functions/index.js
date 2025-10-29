@@ -1969,3 +1969,295 @@ exports.synthesizeSpeech = functions
         throw new functions.https.HttpsError("internal", `TTS Fehler: ${error.message}`);
       }
     });
+
+// ============================================
+// FUNCTION 7: CREATE MITARBEITER NOTIFICATIONS
+// ============================================
+
+/**
+ * Triggered when a new vehicle is created - sends notifications to all employees of the workshop
+ *
+ * Trigger: firestore.document('fahrzeuge_{werkstatt}/{fahrzeugId}').onCreate()
+ *
+ * Creates notification documents in mitarbeiterNotifications_{werkstatt} for each employee
+ */
+exports.createMitarbeiterNotifications = functions
+    .region("europe-west3")
+    .firestore
+    .document("fahrzeuge_{werkstatt}/{fahrzeugId}")
+    .onCreate(async (snap, context) => {
+      try {
+        const fahrzeug = snap.data();
+        const werkstatt = context.params.werkstatt;
+        const fahrzeugId = context.params.fahrzeugId;
+
+        console.log(`🔔 Creating notifications for new vehicle: ${fahrzeug.kennzeichen} (Werkstatt: ${werkstatt})`);
+
+        // 1. Get all employees of this workshop
+        const mitarbeiterRef = admin.firestore().collection(`mitarbeiter_${werkstatt}`);
+        const mitarbeiterSnapshot = await mitarbeiterRef.get();
+
+        if (mitarbeiterSnapshot.empty) {
+          console.log(`⚠️ No employees found for werkstatt ${werkstatt}`);
+          return null;
+        }
+
+        console.log(`👥 Found ${mitarbeiterSnapshot.size} employees`);
+
+        // 2. Create notification for each employee (batch write for performance)
+        const batch = admin.firestore().batch();
+        let notificationCount = 0;
+
+        mitarbeiterSnapshot.docs.forEach((doc) => {
+          const mitarbeiter = doc.data();
+          const notificationRef = admin.firestore()
+              .collection(`mitarbeiterNotifications_${werkstatt}`)
+              .doc();
+
+          // Determine priority based on service type
+          let priority = "normal";
+          if (fahrzeug.serviceTyp === "versicherung") priority = "high";
+          if (fahrzeug.serviceTyp === "tuev") priority = "high";
+
+          // Create sprachausgabe text
+          const sprachausgabe = `Neue ${getServiceLabel(fahrzeug.serviceTyp)} Anfrage eingegangen. ` +
+            `${fahrzeug.partnerName || "Kunde"} hat ein ${fahrzeug.marke} ${fahrzeug.modell} angemeldet.`;
+
+          batch.set(notificationRef, {
+            mitarbeiterId: doc.id,
+            type: "neue_anfrage",
+            title: `Neue Anfrage von ${fahrzeug.partnerName || "Kunde"}`,
+            message: `${fahrzeug.marke} ${fahrzeug.modell} (${fahrzeug.kennzeichen})`,
+            fahrzeugId: fahrzeugId,
+            serviceTyp: fahrzeug.serviceTyp || "lackier",
+            status: "unread",
+            priority: priority,
+            sprachausgabe: sprachausgabe,
+            createdAt: admin.firestore.Timestamp.now(),
+            readAt: null,
+          });
+
+          notificationCount++;
+        });
+
+        // 3. Commit batch write
+        await batch.commit();
+
+        console.log(`✅ Created ${notificationCount} notifications for vehicle ${fahrzeug.kennzeichen}`);
+
+        return {success: true, notificationCount};
+      } catch (error) {
+        console.error("❌ Error creating notifications:", error);
+        // Don't throw - we don't want to block vehicle creation if notifications fail
+        return {success: false, error: error.message};
+      }
+    });
+
+// ============================================
+// FUNCTION 8: FAHRZEUG STATUS CHANGED
+// ============================================
+
+/**
+ * Triggered when vehicle status changes - sends notifications when vehicle is ready for pickup
+ *
+ * Trigger: firestore.document('fahrzeuge_{werkstatt}/{fahrzeugId}').onUpdate()
+ *
+ * Sends notification to employees when:
+ * - Status changes to 'bereit_abnahme' (ready for pickup)
+ * - Status changes to 'fertig' (completed)
+ */
+exports.fahrzeugStatusChanged = functions
+    .region("europe-west3")
+    .firestore
+    .document("fahrzeuge_{werkstatt}/{fahrzeugId}")
+    .onUpdate(async (change, context) => {
+      try {
+        const before = change.before.data();
+        const after = change.after.data();
+        const werkstatt = context.params.werkstatt;
+        const fahrzeugId = context.params.fahrzeugId;
+
+        // Check if status changed to bereit_abnahme or fertig
+        const notifyStatuses = ["bereit_abnahme", "fertig"];
+        const statusChanged = before.status !== after.status;
+        const shouldNotify = statusChanged && notifyStatuses.includes(after.status);
+
+        if (!shouldNotify) {
+          return null; // No notification needed
+        }
+
+        console.log(`🔔 Vehicle ${after.kennzeichen} status changed: ${before.status} → ${after.status}`);
+
+        // Get all employees of this workshop
+        const mitarbeiterRef = admin.firestore().collection(`mitarbeiter_${werkstatt}`);
+        const mitarbeiterSnapshot = await mitarbeiterRef.get();
+
+        if (mitarbeiterSnapshot.empty) {
+          console.log(`⚠️ No employees found for werkstatt ${werkstatt}`);
+          return null;
+        }
+
+        // Create notification for each employee
+        const batch = admin.firestore().batch();
+        let notificationCount = 0;
+
+        mitarbeiterSnapshot.docs.forEach((doc) => {
+          const notificationRef = admin.firestore()
+              .collection(`mitarbeiterNotifications_${werkstatt}`)
+              .doc();
+
+          // Determine notification text based on status
+          let title, message, sprachausgabe, type;
+
+          if (after.status === "bereit_abnahme") {
+            title = `Fahrzeug bereit zur Abnahme`;
+            message = `${after.marke} ${after.modell} (${after.kennzeichen})`;
+            sprachausgabe = `Fahrzeug ${after.marke} ${after.modell} ist bereit zur Abnahme. ` +
+              `Kunde ${after.partnerName || "unbekannt"} kann benachrichtigt werden.`;
+            type = "fahrzeug_bereit";
+          } else { // fertig
+            title = `Fahrzeug fertiggestellt`;
+            message = `${after.marke} ${after.modell} (${after.kennzeichen})`;
+            sprachausgabe = `Fahrzeug ${after.marke} ${after.modell} wurde fertiggestellt.`;
+            type = "fahrzeug_fertig";
+          }
+
+          batch.set(notificationRef, {
+            mitarbeiterId: doc.id,
+            type: type,
+            title: title,
+            message: message,
+            fahrzeugId: fahrzeugId,
+            serviceTyp: after.serviceTyp || "lackier",
+            status: "unread",
+            priority: "high", // Status changes are high priority
+            sprachausgabe: sprachausgabe,
+            createdAt: admin.firestore.Timestamp.now(),
+            readAt: null,
+          });
+
+          notificationCount++;
+        });
+
+        await batch.commit();
+
+        console.log(`✅ Created ${notificationCount} notifications for status change: ${after.status}`);
+
+        return {success: true, notificationCount};
+      } catch (error) {
+        console.error("❌ Error creating status change notifications:", error);
+        return {success: false, error: error.message};
+      }
+    });
+
+// ============================================
+// FUNCTION 9: MATERIAL ORDER OVERDUE (Scheduled)
+// ============================================
+
+/**
+ * Scheduled function (runs daily) - sends notifications for overdue material orders
+ *
+ * Schedule: Every day at 9 AM (Europe/Berlin timezone)
+ *
+ * Checks materialRequests_{werkstatt} collections for orders with:
+ * - status: 'bestellt' (ordered)
+ * - liefertermin < today
+ *
+ * Sends notifications to employees of the affected workshop
+ */
+exports.materialOrderOverdue = functions
+    .region("europe-west3")
+    .pubsub
+    .schedule("0 9 * * *") // Every day at 9 AM
+    .timeZone("Europe/Berlin")
+    .onRun(async (context) => {
+      try {
+        console.log("🔔 Running daily material order check...");
+
+        const db = admin.firestore();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Start of today
+        const todayTimestamp = admin.firestore.Timestamp.fromDate(today);
+
+        // Get all werkstätten (we need to check each one)
+        // For now, hardcoded to mosbach (can be extended to query users collection)
+        const werkstaetten = ["mosbach"]; // TODO: Query from users collection where role='werkstatt'
+
+        let totalNotifications = 0;
+
+        for (const werkstatt of werkstaetten) {
+          console.log(`📦 Checking material orders for werkstatt: ${werkstatt}`);
+
+          // Query overdue material requests
+          const materialRef = db.collection(`materialRequests_${werkstatt}`);
+          const overdueSnapshot = await materialRef
+              .where("status", "==", "bestellt")
+              .where("liefertermin", "<", todayTimestamp)
+              .get();
+
+          if (overdueSnapshot.empty) {
+            console.log(`✅ No overdue orders for ${werkstatt}`);
+            continue;
+          }
+
+          console.log(`⚠️ Found ${overdueSnapshot.size} overdue orders for ${werkstatt}`);
+
+          // Get all employees of this workshop
+          const mitarbeiterRef = db.collection(`mitarbeiter_${werkstatt}`);
+          const mitarbeiterSnapshot = await mitarbeiterRef.get();
+
+          if (mitarbeiterSnapshot.empty) {
+            console.log(`⚠️ No employees found for werkstatt ${werkstatt}`);
+            continue;
+          }
+
+          // Create notifications for each employee
+          const batch = db.batch();
+          let notificationCount = 0;
+
+          overdueSnapshot.docs.forEach((orderDoc) => {
+            const order = orderDoc.data();
+
+            mitarbeiterSnapshot.docs.forEach((mitarbeiterDoc) => {
+              const notificationRef = db
+                  .collection(`mitarbeiterNotifications_${werkstatt}`)
+                  .doc();
+
+              const daysOverdue = Math.floor(
+                  (today - order.liefertermin.toDate()) / (1000 * 60 * 60 * 24)
+              );
+
+              const sprachausgabe = `Material-Bestellung überfällig. ` +
+                `${order.artikel || "Artikel unbekannt"} hätte vor ${daysOverdue} Tagen geliefert werden sollen.`;
+
+              batch.set(notificationRef, {
+                mitarbeiterId: mitarbeiterDoc.id,
+                type: "material_overdue",
+                title: `Material-Bestellung überfällig`,
+                message: `${order.artikel || "Artikel"} (${daysOverdue} Tage überfällig)`,
+                materialRequestId: orderDoc.id,
+                status: "unread",
+                priority: "urgent", // Overdue orders are urgent
+                sprachausgabe: sprachausgabe,
+                createdAt: admin.firestore.Timestamp.now(),
+                readAt: null,
+              });
+
+              notificationCount++;
+            });
+          });
+
+          await batch.commit();
+          totalNotifications += notificationCount;
+
+          console.log(`✅ Created ${notificationCount} notifications for ${werkstatt}`);
+        }
+
+        console.log(`✅ Material order check complete. Total notifications: ${totalNotifications}`);
+
+        return {success: true, totalNotifications};
+      } catch (error) {
+        console.error("❌ Error checking overdue material orders:", error);
+        return {success: false, error: error.message};
+      }
+    });
