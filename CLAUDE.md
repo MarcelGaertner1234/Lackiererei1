@@ -184,6 +184,51 @@ npm test
 
 ## 📊 Session History (Latest Only)
 
+### Session 2025-10-29 (Evening): KI Chat Spracherkennung - Race Condition Fix
+**Agent:** Claude Code (Sonnet 4.5)
+**Duration:** ~3 hours
+**Status:** ✅ Partially Completed (Race Condition behoben, Web Speech API issue identifiziert)
+
+**Problem:**
+- KI Chat Spracherkennung funktioniert nicht
+- Console: `❌ initAIAgent function not found`
+- Console: `❌ getCollection: Firebase db not initialized!` (3x)
+- Console: `❌ No Firebase App '[DEFAULT]' has been created`
+
+**Root Causes gefunden:**
+1. **Script Loading Order falsch** - AI Agent scripts loaded AFTER initAIAgent() call
+2. **Firebase Race Condition** - `window.firebaseInitialized` war Boolean, nicht Promise
+3. **Web Speech API "network" Error** - Google's Speech Server connection fails (externes Problem)
+
+**Durchgeführt:**
+1. ✅ **Fix 1: Script-Reihenfolge** (Commit b0a8990):
+   - index.html: AI Agent scripts VOR initAIAgent() Call verschoben
+   - ai-agent-engine.js: Retry-Mechanismus (exponential backoff: 1s, 2s, 3s)
+   - ai-chat-widget.js: formatErrorMessage() + onListeningError callback
+
+2. ✅ **Fix 2: Firebase Promise** (Commit 08a8f57):
+   - firebase-config.js: Promise VOR DOMContentLoaded erstellen (Zeilen 115-123)
+   - firebase-config.js: Promise resolven NACH Firebase init (Zeilen 938-942)
+   - firebase-config.js: Promise resolven bei Error (Zeilen 961-965)
+
+**Dateien geändert:** 4 Dateien
+- `index.html` (Script-Reihenfolge)
+- `js/ai-agent-engine.js` (Retry-Mechanismus, 61 Zeilen geändert)
+- `js/ai-chat-widget.js` (Error Messages, 24 Zeilen hinzugefügt)
+- `firebase-config.js` (Promise-based init, 25 Zeilen hinzugefügt)
+
+**Result:**
+- ✅ Race Condition behoben - Firebase init BEVOR AI Agent startet
+- ✅ Keine "db not initialized" Errors mehr
+- ✅ Retry-Mechanismus funktioniert (3 Versuche mit benutzerfreundlichen Nachrichten)
+- ⚠️ Web Speech API "network" Error bleibt (externes Problem, nicht unser Code)
+
+**Next Steps:**
+- Alternative Speech Library testen (vosk.js offline oder Azure Speech SDK)
+- Firestore "Missing permissions" Error in global-chat-notifications.js fixen
+
+---
+
 ### Session 2025-10-29 (Afternoon): Firestore Security Rules Fix
 **Agent:** Claude Code (Sonnet 4.5)
 **Duration:** ~30 minutes
