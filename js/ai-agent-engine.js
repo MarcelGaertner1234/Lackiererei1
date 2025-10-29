@@ -25,6 +25,10 @@ class AIAgentEngine {
         this.userId = this.getUserId();
         this.callableFunction = null;
 
+        // Speech Recognition Retry Logic
+        this.recognitionRetries = 0;
+        this.MAX_RECOGNITION_RETRIES = 3;
+
         console.log('🤖 AI Agent Engine initialized');
         console.log(`Werkstatt: ${this.werkstatt}, User: ${this.userId || 'anonym'}`);
     }
@@ -125,6 +129,10 @@ class AIAgentEngine {
             this.recognition.onresult = (event) => {
                 const transcript = event.results[0][0].transcript;
                 console.log('🎤 Heard:', transcript);
+
+                // Reset retry counter on success
+                this.recognitionRetries = 0;
+
                 this.onVoiceInput && this.onVoiceInput(transcript);
 
                 // Automatically send the message
@@ -134,7 +142,50 @@ class AIAgentEngine {
             this.recognition.onerror = (event) => {
                 console.error('❌ Speech recognition error:', event.error);
                 this.isListening = false;
-                this.onListeningError && this.onListeningError(event.error);
+
+                // Handle specific errors
+                switch(event.error) {
+                    case 'network':
+                        if (this.recognitionRetries < this.MAX_RECOGNITION_RETRIES) {
+                            this.recognitionRetries++;
+                            const retryDelay = 1000 * this.recognitionRetries; // Exponential backoff
+                            console.warn(`⚠️ Network error - Retrying (${this.recognitionRetries}/${this.MAX_RECOGNITION_RETRIES}) in ${retryDelay}ms...`);
+
+                            setTimeout(() => {
+                                try {
+                                    console.log('🔄 Retrying speech recognition...');
+                                    this.recognition.start();
+                                } catch(e) {
+                                    console.error('❌ Retry failed:', e);
+                                    this.onListeningError && this.onListeningError('netzwerk_fehler');
+                                }
+                            }, retryDelay);
+                        } else {
+                            console.error('❌ Max retries reached for network error');
+                            this.recognitionRetries = 0;
+                            this.onListeningError && this.onListeningError('netzwerk_fehler');
+                        }
+                        break;
+
+                    case 'no-speech':
+                        console.warn('⚠️ No speech detected');
+                        this.onListeningError && this.onListeningError('keine_sprache');
+                        break;
+
+                    case 'audio-capture':
+                        console.error('❌ No microphone found or permission denied');
+                        this.onListeningError && this.onListeningError('kein_mikrofon');
+                        break;
+
+                    case 'not-allowed':
+                        console.error('❌ Microphone permission denied');
+                        this.onListeningError && this.onListeningError('berechtigung_verweigert');
+                        break;
+
+                    default:
+                        console.error(`❌ Speech recognition error: ${event.error}`);
+                        this.onListeningError && this.onListeningError(event.error);
+                }
             };
 
             this.recognition.onend = () => {

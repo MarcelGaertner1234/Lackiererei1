@@ -166,6 +166,11 @@ class AIChatWidget {
                     this.elements.input.value = transcript;
                 };
 
+                window.aiAgent.onListeningError = (error) => {
+                    this.elements.voiceButton.classList.remove('listening');
+                    this.addMessage(this.formatErrorMessage(error), 'ai');
+                };
+
                 console.log('✅ AI Agent integration ready');
 
                 // Welcome message
@@ -368,6 +373,22 @@ class AIChatWidget {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Format error messages for display
+     */
+    formatErrorMessage(errorCode) {
+        const messages = {
+            'netzwerk_fehler': '🌐 Netzwerkfehler: Die Spracherkennung konnte sich nicht mit dem Server verbinden. Bitte überprüfe deine Internetverbindung oder tippe deine Nachricht ein.',
+            'keine_sprache': '🔇 Keine Sprache erkannt. Bitte sprich deutlicher und versuche es nochmal.',
+            'kein_mikrofon': '🎤 Kein Mikrofon gefunden. Bitte stelle sicher, dass ein Mikrofon angeschlossen ist.',
+            'berechtigung_verweigert': '🔐 Mikrofon-Berechtigung verweigert. Klicke auf das Mikrofon-Icon in der Adressleiste und erteile Zugriff.',
+            'aborted': '⏸️ Spracherkennung abgebrochen.',
+            'service-not-allowed': '🚫 Spracherkennung nicht verfügbar. Bitte verwende einen unterstützten Browser (Chrome, Edge, Safari).'
+        };
+
+        return messages[errorCode] || `❌ Spracherkennung fehlgeschlagen: ${errorCode}. Bitte tippe deine Nachricht ein.`;
     }
 
     /**
