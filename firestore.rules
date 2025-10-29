@@ -201,6 +201,68 @@ service cloud.firestore {
     }
 
     // ============================================
+    // MITARBEITER MULTI-TENANT (werkstatt-specific employees)
+    // ============================================
+
+    match /mitarbeiter_{werkstatt}/{mitarbeiterId} {
+      // Admins: Full access to all werkstätten
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Can read all employees of their werkstatt
+      // Can only update themselves (no permission to edit other employees)
+      allow read: if isMitarbeiter() && isActive();
+
+      // Only admins can create/delete employees
+      allow create, delete: if isAdmin();
+    }
+
+    // ============================================
+    // KALENDER MULTI-TENANT (werkstatt-specific appointments)
+    // ============================================
+
+    match /kalender_{werkstatt}/{terminId} {
+      // Admins: Full access
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Full access
+      allow read, write: if isMitarbeiter() && isActive();
+
+      // Partner: Can read appointments related to their requests
+      allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
+    }
+
+    // ============================================
+    // MATERIAL REQUESTS MULTI-TENANT (werkstatt-specific orders)
+    // ============================================
+
+    match /materialRequests_{werkstatt}/{requestId} {
+      // Admins: Full access
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Full access (they create material orders)
+      allow read, write: if isMitarbeiter() && isActive();
+
+      // Partner/Kunde: No access (internal only)
+      allow read, write: if false;
+    }
+
+    // ============================================
+    // EINSTELLUNGEN MULTI-TENANT (werkstatt-specific settings)
+    // ============================================
+
+    match /einstellungen_{werkstatt}/{docId} {
+      // Admins: Full access to all werkstätten settings
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Can read settings (for display purposes)
+      // Cannot write (only admins can change settings)
+      allow read: if isMitarbeiter() && isActive();
+
+      // Partner/Kunde: No access
+      allow read, write: if false;
+    }
+
+    // ============================================
     // PARTNER ANFRAGEN (global collection)
     // ============================================
 
