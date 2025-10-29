@@ -3116,6 +3116,346 @@
     </script>
 
     <!-- ============================================
+         ADMIN PROTECTION MODAL
+         ============================================ -->
+    <div id="adminPasswordModal" class="admin-modal">
+        <div class="admin-modal__content">
+            <div class="admin-modal__header">
+                <i data-feather="shield"></i>
+                <h3>Admin-Bereich</h3>
+            </div>
+            <p class="admin-modal__desc">Bitte geben Sie das Admin-Passwort ein:</p>
+            <input type="password" id="adminPasswordInput" class="admin-modal__input" placeholder="Passwort eingeben...">
+            <div class="admin-modal__error" id="adminPasswordError"></div>
+            <div class="admin-modal__actions">
+                <button onclick="closeAdminModal()" class="btn-secondary">Abbrechen</button>
+                <button onclick="validateAdminPassword()" class="btn-primary">Bestätigen</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Admin Modal Styles */
+        .admin-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            z-index: 10000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .admin-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .admin-modal__content {
+            background: var(--color-surface, white);
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+
+        .admin-modal__header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .admin-modal__header i {
+            color: var(--color-primary, #007aff);
+            width: 24px;
+            height: 24px;
+        }
+
+        .admin-modal__header h3 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--color-text-primary, #1d1d1f);
+        }
+
+        .admin-modal__desc {
+            margin-bottom: 20px;
+            color: var(--color-text-secondary, #6e6e73);
+            font-size: 14px;
+        }
+
+        .admin-modal__input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--color-border, #d2d2d7);
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .admin-modal__input:focus {
+            outline: none;
+            border-color: var(--color-primary, #007aff);
+            box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+        }
+
+        .admin-modal__error {
+            color: #ff3b30;
+            font-size: 13px;
+            margin-bottom: 16px;
+            min-height: 18px;
+        }
+
+        .admin-modal__actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .admin-modal__actions button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary {
+            background: var(--color-surface-secondary, #f5f5f7);
+            color: var(--color-text-primary, #1d1d1f);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-surface-tertiary, #e8e8ed);
+        }
+
+        .btn-primary {
+            background: var(--color-primary, #007aff);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-primary-hover, #0051d5);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Dark Mode Support */
+        [data-theme="dark"] .admin-modal__content {
+            background: var(--color-surface, #1c1c1e);
+        }
+
+        [data-theme="dark"] .admin-modal__header h3 {
+            color: var(--color-text-primary, rgba(255, 255, 255, 0.9));
+        }
+
+        [data-theme="dark"] .admin-modal__input {
+            background: var(--color-surface-secondary, #2c2c2e);
+            border-color: var(--color-border, #3a3a3c);
+            color: var(--color-text-primary, rgba(255, 255, 255, 0.9));
+        }
+
+        [data-theme="dark"] .btn-secondary {
+            background: var(--color-surface-secondary, #2c2c2e);
+            color: var(--color-text-primary, rgba(255, 255, 255, 0.9));
+        }
+
+        [data-theme="dark"] .btn-secondary:hover {
+            background: var(--color-surface-tertiary, #3a3a3c);
+        }
+    </style>
+
+    <!-- ============================================
+         ADMIN PROTECTION SCRIPT
+         ============================================ -->
+    <script>
+        /**
+         * Admin Protection System
+         * Schützt Admin-Bereiche mit Passwort-Dialog
+         * Session-Token wird in localStorage gespeichert (1 Stunde gültig)
+         */
+
+        // Admin password (TODO: Move to Firebase Config or Environment Variable)
+        const ADMIN_PASSWORD = 'admin123'; // CHANGE THIS IN PRODUCTION!
+        const SESSION_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+
+        let pendingAdminLink = null;
+
+        /**
+         * Check if admin session is valid
+         */
+        function isAdminSessionValid() {
+            const session = localStorage.getItem('adminSession');
+            if (!session) return false;
+
+            try {
+                const sessionData = JSON.parse(session);
+                const now = Date.now();
+
+                // Check if session is still valid
+                if (sessionData.expiresAt > now) {
+                    console.log('✅ Admin session valid until:', new Date(sessionData.expiresAt).toLocaleString());
+                    return true;
+                } else {
+                    console.log('⏰ Admin session expired');
+                    localStorage.removeItem('adminSession');
+                    return false;
+                }
+            } catch (error) {
+                console.error('❌ Error parsing admin session:', error);
+                localStorage.removeItem('adminSession');
+                return false;
+            }
+        }
+
+        /**
+         * Create admin session
+         */
+        function createAdminSession() {
+            const expiresAt = Date.now() + SESSION_DURATION;
+            const sessionData = {
+                createdAt: Date.now(),
+                expiresAt: expiresAt
+            };
+            localStorage.setItem('adminSession', JSON.stringify(sessionData));
+            console.log('✅ Admin session created, expires:', new Date(expiresAt).toLocaleString());
+        }
+
+        /**
+         * Open admin password modal
+         */
+        function openAdminModal(targetUrl) {
+            pendingAdminLink = targetUrl;
+            const modal = document.getElementById('adminPasswordModal');
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminPasswordError');
+
+            modal.classList.add('active');
+            input.value = '';
+            error.textContent = '';
+
+            // Focus input
+            setTimeout(() => input.focus(), 100);
+
+            // Enter key listener
+            input.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    validateAdminPassword();
+                }
+            };
+        }
+
+        /**
+         * Close admin password modal
+         */
+        function closeAdminModal() {
+            const modal = document.getElementById('adminPasswordModal');
+            modal.classList.remove('active');
+            pendingAdminLink = null;
+        }
+
+        /**
+         * Validate admin password
+         */
+        function validateAdminPassword() {
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminPasswordError');
+            const password = input.value;
+
+            if (!password) {
+                error.textContent = '⚠️ Bitte Passwort eingeben';
+                return;
+            }
+
+            // Check password
+            if (password === ADMIN_PASSWORD) {
+                console.log('✅ Admin password correct');
+                createAdminSession();
+                closeAdminModal();
+
+                // Navigate to admin page
+                if (pendingAdminLink) {
+                    window.location.href = pendingAdminLink;
+                }
+            } else {
+                console.log('❌ Admin password incorrect');
+                error.textContent = '❌ Falsches Passwort';
+                input.value = '';
+                input.focus();
+            }
+        }
+
+        /**
+         * Setup admin protection on page load
+         */
+        function setupAdminProtection() {
+            console.log('🔒 Setting up admin protection...');
+
+            // Find all admin links
+            const adminLinks = document.querySelectorAll('[data-permission]');
+
+            console.log(`🔍 Found ${adminLinks.length} admin links`);
+
+            adminLinks.forEach(link => {
+                const permission = link.getAttribute('data-permission');
+
+                // Only protect admin-related permissions
+                const adminPermissions = ['adminDashboard', 'mitarbeiterVerwaltung', 'adminEinstellungen', 'nutzerVerwaltung', 'setupWerkstatt'];
+
+                if (adminPermissions.includes(permission)) {
+                    console.log(`🔒 Protecting: ${permission}`);
+
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+
+                        // Check if admin session is valid
+                        if (isAdminSessionValid()) {
+                            console.log('✅ Admin session valid, allowing access');
+                            window.location.href = link.href;
+                        } else {
+                            console.log('🔐 No valid session, showing password modal');
+                            openAdminModal(link.href);
+                        }
+                    });
+                }
+            });
+
+            console.log('✅ Admin protection setup complete');
+        }
+
+        // Initialize admin protection when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupAdminProtection);
+        } else {
+            setupAdminProtection();
+        }
+    </script>
+
+    <!-- ============================================
          SERVICE WORKER REGISTRATION - Offline-Funktionalität
          ============================================ -->
     <script>
