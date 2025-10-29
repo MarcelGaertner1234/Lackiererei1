@@ -112,6 +112,16 @@ let storage;
 let auth;
 let functions;
 
+// ============================================
+// FIX: AI Agent Race Condition (Session 2025-10-29)
+// ============================================
+// Problem: window.firebaseInitialized war ein Boolean, kein Promise
+// Result: AI Agent startete VOR Firebase-Initialisierung → "db not initialized" Error
+// Lösung: Echtes Promise erstellen, das in DOMContentLoaded resolved wird
+window.firebaseInitialized = new Promise((resolve) => {
+    window._resolveFirebaseReady = resolve; // Resolver speichern
+});
+
 // CRITICAL FIX RUN #17: Define window.firebaseApp IMMEDIATELY with Arrow Functions (Closure)
 // Problem (Run #16): Functions used `db` at DEFINITION time → db was undefined
 // Solution: Arrow Functions evaluate `db` at EXECUTION time (closure over outer scope)
@@ -922,8 +932,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update window.firebaseApp.app with initialized instance
     window.firebaseApp.app = firebaseApp;
 
-    // Mark as initialized
+    // Mark as initialized & resolve Promise
     window.firebaseInitialized = true;
+
+    // ✅ FIX: Resolve Promise for AI Agent (Session 2025-10-29)
+    if (window._resolveFirebaseReady) {
+        window._resolveFirebaseReady(true);
+        console.log('✅ Firebase initialization Promise resolved');
+    }
+
     console.log('✅ Firebase fully initialized');
 
     // Dispatch custom event for tests
@@ -940,6 +957,13 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (error) {
     console.error('❌ Firebase initialization error:', error);
     window.firebaseInitialized = false;
+
+    // ✅ FIX: Reject Promise on error (Session 2025-10-29)
+    if (window._resolveFirebaseReady) {
+        window._resolveFirebaseReady(false); // Resolve with false instead of reject (prevents unhandled rejection)
+        console.error('❌ Firebase initialization Promise resolved with false');
+    }
+
     throw error;
   }
 });
