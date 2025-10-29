@@ -551,12 +551,54 @@
                         // Für Testing: Jeder eingeloggte Firebase Auth User kann ins Portal
 
                         // Partner-Daten für LocalStorage (vereinfacht)
-                        const partner = {
-                            id: user.email.split('@')[0], // z.B. "marcel" von "marcel@test.de"
+                        const partnerId = user.email.split('@')[0]; // z.B. "marcel" von "marcel@test.de"
+                        let partner = {
+                            id: partnerId,
                             name: user.email,
                             email: user.email,
                             uid: user.uid
                         };
+
+                        // 🆕 MULTI-TENANT: Fetch werkstattId from Firestore partner collection
+                        try {
+                            const db = firebase.firestore();
+                            const partnerDoc = await db.collection('partner').doc(partnerId).get();
+
+                            if (partnerDoc.exists) {
+                                const firestoreData = partnerDoc.data();
+                                console.log('✅ Partner-Dokument aus Firestore geladen:', firestoreData);
+
+                                // Merge Firestore-Daten in partner object
+                                partner = {
+                                    ...partner,
+                                    ...firestoreData,
+                                    werkstattId: firestoreData.werkstattId || 'mosbach' // Default: mosbach
+                                };
+                            } else {
+                                console.warn('⚠️ Partner-Dokument nicht gefunden in Firestore - erstelle neues Dokument');
+                                // Create new partner document with default werkstattId
+                                partner.werkstattId = 'mosbach'; // Default werkstatt
+                                await db.collection('partner').doc(partnerId).set({
+                                    email: user.email,
+                                    name: user.email,
+                                    werkstattId: 'mosbach',
+                                    createdAt: new Date().toISOString(),
+                                    bonusPunkte: 0
+                                });
+                                console.log('✅ Neues Partner-Dokument erstellt mit werkstattId:', partner.werkstattId);
+                            }
+
+                            // Set window.werkstattId (CRITICAL for window.getCollection()!)
+                            window.werkstattId = partner.werkstattId;
+                            console.log('✅ window.werkstattId gesetzt:', window.werkstattId);
+
+                        } catch (firestoreError) {
+                            console.error('❌ Fehler beim Laden von Partner-Daten aus Firestore:', firestoreError);
+                            // Fallback: Default werkstattId
+                            partner.werkstattId = 'mosbach';
+                            window.werkstattId = 'mosbach';
+                            console.warn('⚠️ Fallback: werkstattId = mosbach');
+                        }
 
                         // LocalStorage für Abwärtskompatibilität
                         localStorage.setItem('partner', JSON.stringify(partner));
@@ -763,14 +805,14 @@
                 const db = firebase.firestore();
 
                 // Try mosbach first (main location)
-                let snapshot = await db.collection('fahrzeuge_mosbach')
+                let snapshot = await window.getCollection('fahrzeuge')
                     .where('kennzeichen', '==', kennzeichen)
                     .limit(1)
                     .get();
 
                 if (snapshot.empty) {
                     // Try global fahrzeuge collection (fallback)
-                    snapshot = await db.collection('fahrzeuge')
+                    snapshot = await window.getCollection('fahrzeuge')
                         .where('kennzeichen', '==', kennzeichen)
                         .limit(1)
                         .get();

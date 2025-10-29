@@ -698,6 +698,12 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
+
+            // 🆕 MULTI-TENANT: Set werkstattId (detail view - default to 'mosbach')
+            // TODO: In production, fetch from partner object in localStorage or admin user
+            window.werkstattId = 'mosbach';
+            console.log('✅ [ANFRAGE-DETAIL] werkstattId initialized:', window.werkstattId);
+
             await loadAnfrage();
         });
 
@@ -721,12 +727,12 @@
 
                     // ✅ Multi-Collection Search (funktioniert OHNE Login!)
                     // 1. Versuche fahrzeuge_mosbach
-                    let fahrzeugDoc = await db.collection('fahrzeuge_mosbach').doc(String(anfrageId)).get();
+                    let fahrzeugDoc = await window.getCollection('fahrzeuge').doc(String(anfrageId)).get();
 
                     // 2. Falls nicht gefunden: Versuche fahrzeuge (Global)
                     if (!fahrzeugDoc.exists) {
                         console.log('⚠️ Nicht in fahrzeuge_mosbach gefunden, versuche fahrzeuge (Global)');
-                        fahrzeugDoc = await db.collection('fahrzeuge').doc(String(anfrageId)).get();
+                        fahrzeugDoc = await window.getCollection('fahrzeuge').doc(String(anfrageId)).get();
                     }
 
                     // 3. Falls immer noch nicht gefunden: ERROR
@@ -763,7 +769,7 @@
                 }
 
                 // ✅ NORMAL Mode: Load from partnerAnfragen Collection
-                const doc = await db.collection('partnerAnfragen').doc(anfrageId).get();
+                const doc = await window.getCollection('partnerAnfragen').doc(anfrageId).get();
 
                 if (!doc.exists) {
                     showError('Anfrage nicht gefunden');
@@ -1058,7 +1064,7 @@
             if (window.unsubscribe) window.unsubscribe();
 
             // Firebase Echtzeit-Listener
-            window.unsubscribe = db.collection('partnerAnfragen').doc(anfrageId)
+            window.unsubscribe = window.getCollection('partnerAnfragen').doc(anfrageId)
                 .onSnapshot((doc) => {
                     if (doc.exists) {
                         const newData = { id: doc.id, ...doc.data() };
@@ -2368,7 +2374,7 @@
             try {
                 console.log(`🔄 Aktualisiere Variante für Anfrage ${anfrageId} → ${variante}`);
 
-                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                     'kva.gewaehlteVariante': variante,
                     status: 'beauftragt',  // Auto-Status-Update: Partner hat gewählt
                     lastModified: Date.now()
@@ -2543,7 +2549,7 @@
                     if (!anfrage.fahrzeugAngelegt) {
                         console.log('🔧 Setze fahrzeugAngelegt Flag nachträglich...');
                         try {
-                            await db.collection('partnerAnfragen').doc(anfrageId).update({
+                            await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                                 fahrzeugAngelegt: true,
                                 fahrzeugAngelegtAm: vehicle.data().datum || new Date().toISOString(),
                                 fahrzeugId: vehicle.id,
@@ -2573,7 +2579,7 @@
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
 
                 // 6. FIRESTORE TRANSACTION (Optimistic Locking)
-                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
                 const fahrzeugRef = window.getCollection('fahrzeuge').doc(dataForFirestore.id);
 
                 console.log('🔒 Starte Transaction mit Optimistic Locking...');
@@ -2675,7 +2681,7 @@
                 // Verhindert Realtime Listener Race Condition (Flag-Update triggert Listener während Transaction läuft)
                 console.log('🏷️ Setze fahrzeugAngelegt Flag (FINAL STEP)...');
                 try {
-                    await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                         fahrzeugAngelegt: true,
                         fahrzeugAngelegtAm: new Date().toISOString(),
                         fahrzeugId: fahrzeugData.id,  // Verknüpfung zum Fahrzeug
@@ -2767,7 +2773,7 @@
                 const batch = db.batch();
 
                 // Operation 1: partnerAnfragen UPDATE
-                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
                 batch.update(anfrageRef, {
                     status: 'storniert',
                     storniertAm: new Date().toISOString(),
