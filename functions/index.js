@@ -1984,11 +1984,21 @@ exports.synthesizeSpeech = functions
 exports.createMitarbeiterNotifications = functions
     .region("europe-west3")
     .firestore
-    .document("fahrzeuge_{werkstatt}/{fahrzeugId}")
+    .document("{collectionId}/{fahrzeugId}")
     .onCreate(async (snap, context) => {
       try {
+        const collectionId = context.params.collectionId;
+
+        // Only trigger for fahrzeuge_* collections
+        if (!collectionId.startsWith("fahrzeuge_")) {
+          console.log(`⏭️  Skipping collection: ${collectionId}`);
+          return null;
+        }
+
+        // Extract werkstatt from collection name (fahrzeuge_mosbach → mosbach)
+        const werkstatt = collectionId.replace("fahrzeuge_", "");
+
         const fahrzeug = snap.data();
-        const werkstatt = context.params.werkstatt;
         const fahrzeugId = context.params.fahrzeugId;
 
         console.log(`🔔 Creating notifications for new vehicle: ${fahrzeug.kennzeichen} (Werkstatt: ${werkstatt})`);
@@ -2069,12 +2079,22 @@ exports.createMitarbeiterNotifications = functions
 exports.fahrzeugStatusChanged = functions
     .region("europe-west3")
     .firestore
-    .document("fahrzeuge_{werkstatt}/{fahrzeugId}")
+    .document("{collectionId}/{fahrzeugId}")
     .onUpdate(async (change, context) => {
       try {
+        const collectionId = context.params.collectionId;
+
+        // Only trigger for fahrzeuge_* collections
+        if (!collectionId.startsWith("fahrzeuge_")) {
+          console.log(`⏭️  Skipping collection: ${collectionId}`);
+          return null;
+        }
+
+        // Extract werkstatt from collection name (fahrzeuge_mosbach → mosbach)
+        const werkstatt = collectionId.replace("fahrzeuge_", "");
+
         const before = change.before.data();
         const after = change.after.data();
-        const werkstatt = context.params.werkstatt;
         const fahrzeugId = context.params.fahrzeugId;
 
         // Check if status changed to bereit_abnahme or fertig

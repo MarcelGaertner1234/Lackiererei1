@@ -202,85 +202,51 @@ service cloud.firestore {
 
     // ============================================
     // MULTI-TENANT COLLECTIONS (werkstatt-specific)
+    // Using wildcard pattern: /{collection}_{werkstatt}/{docId}
     // ============================================
 
-    match /fahrzeuge_{werkstatt}/{vehicleId} {
-      // Admins: Full access to all werkstätten
-      allow read, write: if isAdmin();
-
-      // Mitarbeiter: Full access (same pattern as fahrzeuge)
-      allow read, write: if isMitarbeiter() && isActive();
+    // Fahrzeuge Collections: fahrzeuge_mosbach, fahrzeuge_heidelberg, etc.
+    match /{fahrzeugeCollection}/{vehicleId} {
+      allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
 
       // Subcollections: Fotos
       match /fotos/{photoId} {
-        allow read, write: if isAdmin() || (isMitarbeiter() && isActive());
+        allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
+                           && (isAdmin() || (isMitarbeiter() && isActive()));
       }
     }
 
-    match /kunden_{werkstatt}/{kundeId} {
-      allow read, write: if isAdmin() || (isMitarbeiter() && isActive());
+    // Kunden Collections: kunden_mosbach, kunden_heidelberg, etc.
+    match /{kundenCollection}/{kundeId} {
+      allow read, write: if kundenCollection.matches('kunden_.*')
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
     }
 
-    // ============================================
-    // MITARBEITER MULTI-TENANT (werkstatt-specific employees)
-    // ============================================
-
-    match /mitarbeiter_{werkstatt}/{mitarbeiterId} {
-      // Admins: Full access to all werkstätten
-      allow read, write: if isAdmin();
-
-      // Mitarbeiter: Can read all employees of their werkstatt
-      // Can only update themselves (no permission to edit other employees)
-      allow read: if isMitarbeiter() && isActive();
-
-      // Only admins can create/delete employees
-      allow create, delete: if isAdmin();
+    // Mitarbeiter Collections: mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.
+    match /{mitarbeiterCollection}/{mitarbeiterId} {
+      allow read, write: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
+      allow read: if mitarbeiterCollection.matches('mitarbeiter_.*') && isMitarbeiter() && isActive();
+      allow create, delete: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
     }
 
-    // ============================================
-    // KALENDER MULTI-TENANT (werkstatt-specific appointments)
-    // ============================================
-
-    match /kalender_{werkstatt}/{terminId} {
-      // Admins: Full access
-      allow read, write: if isAdmin();
-
-      // Mitarbeiter: Full access
-      allow read, write: if isMitarbeiter() && isActive();
-
-      // Partner: Can read appointments related to their requests
-      allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
+    // Kalender Collections: kalender_mosbach, kalender_heidelberg, etc.
+    match /{kalenderCollection}/{terminId} {
+      allow read, write: if kalenderCollection.matches('kalender_.*')
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
+      allow read: if kalenderCollection.matches('kalender_.*') && isPartner() && isActive() && isOwner(resource.data.partnerId);
     }
 
-    // ============================================
-    // MATERIAL REQUESTS MULTI-TENANT (werkstatt-specific orders)
-    // ============================================
-
-    match /materialRequests_{werkstatt}/{requestId} {
-      // Admins: Full access
-      allow read, write: if isAdmin();
-
-      // Mitarbeiter: Full access (they create material orders)
-      allow read, write: if isMitarbeiter() && isActive();
-
-      // Partner/Kunde: No access (internal only)
-      allow read, write: if false;
+    // Material Requests Collections: materialRequests_mosbach, etc.
+    match /{materialCollection}/{requestId} {
+      allow read, write: if materialCollection.matches('materialRequests_.*')
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
     }
 
-    // ============================================
-    // EINSTELLUNGEN MULTI-TENANT (werkstatt-specific settings)
-    // ============================================
-
-    match /einstellungen_{werkstatt}/{docId} {
-      // Admins: Full access to all werkstätten settings
-      allow read, write: if isAdmin();
-
-      // Mitarbeiter: Can read settings (for display purposes)
-      // Cannot write (only admins can change settings)
-      allow read: if isMitarbeiter() && isActive();
-
-      // Partner/Kunde: No access
-      allow read, write: if false;
+    // Einstellungen Collections: einstellungen_mosbach, etc.
+    match /{einstellungenCollection}/{docId} {
+      allow read, write: if einstellungenCollection.matches('einstellungen_.*') && isAdmin();
+      allow read: if einstellungenCollection.matches('einstellungen_.*') && isMitarbeiter() && isActive();
     }
 
     // ============================================
@@ -318,28 +284,31 @@ service cloud.firestore {
 
     // ============================================
     // MITARBEITER NOTIFICATIONS MULTI-TENANT (werkstatt-specific notifications)
+    // Using wildcard pattern: mitarbeiterNotifications_mosbach, etc.
     // ============================================
 
-    match /mitarbeiterNotifications_{werkstatt}/{notificationId} {
+    match /{notificationsCollection}/{notificationId} {
       // Admins: Full access to all werkstätten notifications
-      allow read, write: if isAdmin();
+      allow read, write: if notificationsCollection.matches('mitarbeiterNotifications_.*') && isAdmin();
 
       // Mitarbeiter: Can read and update their own notifications
       // Read: All notifications for this employee
       // Update: Mark as read, archive, etc.
-      allow read: if isMitarbeiter() && isActive()
+      allow read: if notificationsCollection.matches('mitarbeiterNotifications_.*')
+                  && isMitarbeiter() && isActive()
                   && resource.data.mitarbeiterId == request.auth.uid;
 
-      allow update: if isMitarbeiter() && isActive()
+      allow update: if notificationsCollection.matches('mitarbeiterNotifications_.*')
+                    && isMitarbeiter() && isActive()
                     && resource.data.mitarbeiterId == request.auth.uid
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'readAt']);
 
       // Cloud Functions: Can create new notifications (no auth context)
       // IMPORTANT: Cloud Functions run without authentication context
-      allow create: if true; // Any authenticated request can create (Cloud Functions will validate)
+      allow create: if notificationsCollection.matches('mitarbeiterNotifications_.*'); // Cloud Functions will validate
 
       // Delete: Only admins (cleanup old notifications)
-      allow delete: if isAdmin();
+      allow delete: if notificationsCollection.matches('mitarbeiterNotifications_.*') && isAdmin();
     }
 
     // ============================================
