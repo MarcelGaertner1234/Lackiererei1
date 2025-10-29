@@ -1777,3 +1777,195 @@ exports.whisperTranscribe = functions
         throw new functions.https.HttpsError("internal", `Whisper Fehler: ${error.message}`);
       }
     });
+
+// ============================================
+// OPENAI TEXT-TO-SPEECH (TTS)
+// ============================================
+
+/**
+ * Text-to-Speech mit OpenAI TTS API
+ *
+ * Konvertiert Text zu natürlicher Sprache (Audio).
+ * Verwendet OpenAI TTS-1-HD für bessere Qualität.
+ *
+ * @param {string} text - Text zum Sprechen (max 4096 Zeichen)
+ * @param {string} voice - Stimme (alloy, echo, fable, onyx, nova, shimmer, ash, ballad, coral, sage, verse)
+ * @param {string} model - TTS Model (tts-1 oder tts-1-hd)
+ * @param {string} format - Audio Format (mp3, opus, aac, flac, wav, pcm)
+ *
+ * @returns {Object} { success: true, audio: base64String, format: string }
+ *
+ * Models:
+ * - tts-1: Standard Qualität ($15/1M Zeichen)
+ * - tts-1-hd: Höhere Qualität ($30/1M Zeichen)
+ *
+ * Beste Stimmen für Deutsch:
+ * - fable: Ausdrucksvoll, warm
+ * - nova: Klar, freundlich
+ *
+ * Limits:
+ * - Max 4096 Zeichen pro Request
+ * - Rate Limit: 50 requests/min (Standard)
+ */
+exports.synthesizeSpeech = functions
+    .region("europe-west3") // DSGVO compliance
+    .runWith({
+      secrets: [openaiApiKey], // Bind OpenAI API Key from Secret Manager
+      timeoutSeconds: 30,
+      memory: "512MB"
+    })
+    .https
+    .onCall(async (data, context) => {
+      const startTime = Date.now();
+
+      try {
+        console.log("🔊 synthesizeSpeech called");
+
+        // ============================================
+        // 1. VALIDATION
+        // ============================================
+
+        const {
+          text,
+          voice = "fable", // Default: Beste Stimme für Deutsch
+          model = "tts-1-hd", // Default: HD Qualität
+          format = "mp3" // Default: MP3 (beste Browser-Kompatibilität)
+        } = data;
+
+        // Validate text
+        if (!text || typeof text !== "string" || text.trim() === "") {
+          throw new functions.https.HttpsError("invalid-argument", "Text ist erforderlich");
+        }
+
+        // Validate text length (OpenAI limit: 4096 characters)
+        if (text.length > 4096) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              `Text zu lang (${text.length} Zeichen). Maximum: 4096 Zeichen. Bitte kürzen Sie den Text.`
+          );
+        }
+
+        // Validate voice
+        const validVoices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer", "ash", "ballad", "coral", "sage", "verse"];
+        if (!validVoices.includes(voice)) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              `Ungültige Stimme: ${voice}. Erlaubt: ${validVoices.join(", ")}`
+          );
+        }
+
+        // Validate model
+        const validModels = ["tts-1", "tts-1-hd"];
+        if (!validModels.includes(model)) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              `Ungültiges Model: ${model}. Erlaubt: ${validModels.join(", ")}`
+          );
+        }
+
+        // Validate format
+        const validFormats = ["mp3", "opus", "aac", "flac", "wav", "pcm"];
+        if (!validFormats.includes(format)) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              `Ungültiges Format: ${format}. Erlaubt: ${validFormats.join(", ")}`
+          );
+        }
+
+        console.log(`✅ Validation passed: ${text.length} chars, voice=${voice}, model=${model}, format=${format}`);
+
+        // ============================================
+        // 2. INITIALIZE OPENAI
+        // ============================================
+
+        const apiKey = getOpenAIApiKey();
+        if (!apiKey) {
+          throw new functions.https.HttpsError("internal", "OpenAI API Key nicht verfügbar");
+        }
+
+        const openai = new OpenAI({ apiKey });
+        console.log("✅ OpenAI initialized");
+
+        // ============================================
+        // 3. CALL OPENAI TTS API
+        // ============================================
+
+        console.log(`🚀 Calling OpenAI TTS API (model: ${model}, voice: ${voice})...`);
+
+        const response = await openai.audio.speech.create({
+          model: model,
+          voice: voice,
+          input: text,
+          response_format: format
+        });
+
+        console.log("✅ TTS API response received");
+
+        // ============================================
+        // 4. CONVERT AUDIO TO BASE64
+        // ============================================
+
+        // response.body is a ReadableStream
+        const audioBuffer = await response.arrayBuffer();
+        const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+
+        const audioSizeMB = (audioBuffer.byteLength / (1024 * 1024)).toFixed(2);
+        console.log(`📦 Audio generated: ${audioSizeMB} MB (${format})`);
+
+        // ============================================
+        // 5. RETURN RESULT
+        // ============================================
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`✅ synthesizeSpeech completed in ${duration}s`);
+
+        return {
+          success: true,
+          audio: audioBase64,
+          format: format,
+          voice: voice,
+          model: model,
+          textLength: text.length,
+          audioSizeBytes: audioBuffer.byteLength,
+          duration: parseFloat(duration)
+        };
+
+      } catch (error) {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.error(`❌ synthesizeSpeech failed after ${duration}s:`, error);
+
+        // Log error details
+        console.error("Error details:", {
+          message: error.message,
+          code: error.code,
+          status: error.status,
+          type: error.type
+        });
+
+        // Return user-friendly error
+        if (error.message.includes("Text zu lang")) {
+          throw error; // Re-throw length error as-is
+        }
+
+        if (error.message.includes("Ungültige")) {
+          throw error; // Re-throw validation errors as-is
+        }
+
+        // Handle OpenAI API errors
+        if (error.status === 429) {
+          throw new functions.https.HttpsError(
+              "resource-exhausted",
+              "Zu viele Anfragen. Bitte warten Sie einen Moment."
+          );
+        }
+
+        if (error.status === 401) {
+          throw new functions.https.HttpsError(
+              "permission-denied",
+              "OpenAI API Key ungültig"
+          );
+        }
+
+        throw new functions.https.HttpsError("internal", `TTS Fehler: ${error.message}`);
+      }
+    });

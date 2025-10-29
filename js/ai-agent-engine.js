@@ -26,8 +26,11 @@ class AIAgentEngine {
         this.userId = this.getUserId();
         this.callableFunction = null;
         this.whisperCallableFunction = null;
+        this.ttsCallableFunction = null;
+        this.currentAudio = null; // Current playing audio element
+        this.useBrowserTTS = false; // Fallback flag
 
-        console.log('🤖 AI Agent Engine initialized (OpenAI Whisper)');
+        console.log('🤖 AI Agent Engine initialized (OpenAI Whisper + TTS)');
         console.log(`Werkstatt: ${this.werkstatt}, User: ${this.userId || 'anonym'}`);
     }
 
@@ -45,7 +48,8 @@ class AIAgentEngine {
             // Compat API requires firebase.app().functions('region')
             this.callableFunction = firebase.app().functions('europe-west3').httpsCallable('aiAgentExecute');
             this.whisperCallableFunction = firebase.app().functions('europe-west3').httpsCallable('whisperTranscribe');
-            console.log('✅ AI Agent callable functions ready (aiAgentExecute, whisperTranscribe)');
+            this.ttsCallableFunction = firebase.app().functions('europe-west3').httpsCallable('synthesizeSpeech');
+            console.log('✅ AI Agent callable functions ready (aiAgentExecute, whisperTranscribe, synthesizeSpeech)');
 
             // Initialize Audio Recording (MediaRecorder API)
             this.initializeAudioRecording();
@@ -306,15 +310,90 @@ class AIAgentEngine {
     }
 
     /**
-     * Speak text using Speech Synthesis API
+     * Speak text using OpenAI TTS API (with fallback to Browser TTS)
      * @param {string} text - Text to speak
      * @param {Object} options - Voice options
      */
-    speak(text, options = {}) {
+    async speak(text, options = {}) {
+        // Stop any ongoing speech
+        this.stopSpeaking();
+
+        // Try OpenAI TTS first (unless explicitly disabled or fallback mode)
+        if (!this.useBrowserTTS && this.ttsCallableFunction) {
+            try {
+                await this.speakWithOpenAI(text, options);
+                return true;
+            } catch (error) {
+                console.warn('⚠️ OpenAI TTS failed, falling back to Browser TTS:', error.message);
+                // Don't set useBrowserTTS permanently - retry next time
+            }
+        }
+
+        // Fallback: Browser Speech Synthesis API
+        return this.speakWithBrowser(text, options);
+    }
+
+    /**
+     * Speak text using OpenAI TTS API
+     * @param {string} text - Text to speak
+     * @param {Object} options - Voice options
+     */
+    async speakWithOpenAI(text, options = {}) {
+        try {
+            console.log('🔊 Speaking with OpenAI TTS:', text);
+
+            // Mark as speaking
+            this.isSpeaking = true;
+            this.onSpeakingStart && this.onSpeakingStart(text);
+
+            // Call Cloud Function
+            if (!this.ttsCallableFunction) {
+                throw new Error('TTS Cloud Function nicht initialisiert');
+            }
+
+            const result = await this.ttsCallableFunction({
+                text: text,
+                voice: options.voice || 'fable', // Default: fable (best for German)
+                model: options.model || 'tts-1-hd', // Default: HD quality
+                format: 'mp3' // MP3 best for browser
+            });
+
+            const data = result.data;
+
+            if (!data || !data.success) {
+                throw new Error(data?.message || 'TTS fehlgeschlagen');
+            }
+
+            console.log(`✅ TTS Audio received: ${(data.audioSizeBytes / 1024).toFixed(2)} KB, duration: ${data.duration}s`);
+
+            // Convert base64 to audio blob
+            const audioBlob = this.base64ToAudioBlob(data.audio, data.format);
+
+            // Play audio
+            await this.playAudioBlob(audioBlob);
+
+            console.log('🔊 Finished speaking (OpenAI TTS)');
+
+        } catch (error) {
+            this.isSpeaking = false;
+            console.error('❌ OpenAI TTS error:', error);
+            this.onSpeakingError && this.onSpeakingError(error);
+            throw error;
+        }
+    }
+
+    /**
+     * Speak text using Browser Speech Synthesis API (Fallback)
+     * @param {string} text - Text to speak
+     * @param {Object} options - Voice options
+     */
+    speakWithBrowser(text, options = {}) {
         if (!this.synthesis) {
             console.warn('⚠️ Speech Synthesis not supported');
             return false;
         }
+
+        console.log('🔊 Speaking with Browser TTS (fallback):', text);
 
         // Cancel any ongoing speech
         this.synthesis.cancel();
@@ -334,13 +413,12 @@ class AIAgentEngine {
 
         utterance.onstart = () => {
             this.isSpeaking = true;
-            console.log('🔊 Speaking:', text);
             this.onSpeakingStart && this.onSpeakingStart(text);
         };
 
         utterance.onend = () => {
             this.isSpeaking = false;
-            console.log('🔊 Finished speaking');
+            console.log('🔊 Finished speaking (Browser TTS)');
             this.onSpeakingEnd && this.onSpeakingEnd();
         };
 
@@ -355,14 +433,88 @@ class AIAgentEngine {
     }
 
     /**
-     * Stop speaking
+     * Convert Base64 string to Audio Blob
+     * @param {string} base64 - Base64-encoded audio
+     * @param {string} format - Audio format (mp3, opus, etc.)
+     * @returns {Blob} Audio blob
+     */
+    base64ToAudioBlob(base64, format = 'mp3') {
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return new Blob([bytes], { type: `audio/${format}` });
+    }
+
+    /**
+     * Play Audio Blob using HTML5 Audio API
+     * @param {Blob} audioBlob - Audio blob to play
+     * @returns {Promise<void>} Resolves when audio finishes playing
+     */
+    playAudioBlob(audioBlob) {
+        return new Promise((resolve, reject) => {
+            // Stop current audio if playing
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio = null;
+            }
+
+            // Create audio element
+            const audio = new Audio();
+            audio.src = URL.createObjectURL(audioBlob);
+            this.currentAudio = audio;
+
+            // Event: Audio starts playing
+            audio.onplay = () => {
+                console.log('▶️ Audio playback started');
+            };
+
+            // Event: Audio ends
+            audio.onended = () => {
+                this.isSpeaking = false;
+                this.currentAudio = null;
+                URL.revokeObjectURL(audio.src); // Clean up
+                this.onSpeakingEnd && this.onSpeakingEnd();
+                resolve();
+            };
+
+            // Event: Audio error
+            audio.onerror = (error) => {
+                this.isSpeaking = false;
+                this.currentAudio = null;
+                URL.revokeObjectURL(audio.src); // Clean up
+                console.error('❌ Audio playback error:', error);
+                this.onSpeakingError && this.onSpeakingError(error);
+                reject(error);
+            };
+
+            // Start playback
+            audio.play().catch((error) => {
+                this.isSpeaking = false;
+                this.currentAudio = null;
+                URL.revokeObjectURL(audio.src);
+                console.error('❌ Audio play() failed:', error);
+                reject(error);
+            });
+        });
+    }
+
+    /**
+     * Stop speaking (both OpenAI TTS and Browser TTS)
      */
     stopSpeaking() {
-        if (!this.synthesis) {
-            return false;
+        // Stop OpenAI TTS audio
+        if (this.currentAudio) {
+            this.currentAudio.pause();
+            this.currentAudio = null;
         }
 
-        this.synthesis.cancel();
+        // Stop Browser TTS
+        if (this.synthesis) {
+            this.synthesis.cancel();
+        }
+
         this.isSpeaking = false;
         return true;
     }
