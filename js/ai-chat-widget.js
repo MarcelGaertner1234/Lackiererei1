@@ -326,12 +326,22 @@ class AIChatWidget {
      */
     toggleVoice() {
         if (!window.aiAgent) {
-            alert('AI Agent nicht verfügbar');
+            console.error('❌ AI Agent not available');
+            this.addMessage('⚠️ KI-Agent wird noch geladen... Bitte warten Sie einen Moment.', 'ai');
+
+            // Try to initialize AI Agent now
+            if (window.initAIAgent) {
+                window.initAIAgent().then(() => {
+                    this.addMessage('✅ KI-Agent ist jetzt bereit! Bitte versuchen Sie es nochmal.', 'ai');
+                }).catch(error => {
+                    this.addMessage('❌ KI-Agent konnte nicht initialisiert werden: ' + error.message, 'ai');
+                });
+            }
             return;
         }
 
         if (!window.aiAgent.isVoiceInputSupported()) {
-            alert('Spracherkennung wird in diesem Browser nicht unterstützt');
+            this.addMessage('⚠️ Spracherkennung wird in diesem Browser nicht unterstützt. Bitte verwenden Sie Chrome, Edge oder Safari.', 'ai');
             return;
         }
 
@@ -387,9 +397,21 @@ if (document.readyState === 'loading') {
 }
 
 function initChatWidget() {
-    // Wait a bit for Firebase and AI Agent to initialize
+    // Wait for AI Agent to be ready (polling mechanism)
+    const checkAIAgent = setInterval(() => {
+        if (window.aiAgent && typeof window.aiAgent.isReady === 'function' && window.aiAgent.isReady()) {
+            clearInterval(checkAIAgent);
+            window.aiChatWidget = new AIChatWidget();
+            console.log('✅ Chat Widget ready (window.aiChatWidget)');
+        }
+    }, 200); // Check every 200ms
+
+    // Timeout after 10 seconds (fallback)
     setTimeout(() => {
-        window.aiChatWidget = new AIChatWidget();
-        console.log('✅ Chat Widget ready (window.aiChatWidget)');
-    }, 1000);
+        clearInterval(checkAIAgent);
+        if (!window.aiChatWidget) {
+            console.warn('⚠️ AI Agent not ready after 10s, starting widget anyway');
+            window.aiChatWidget = new AIChatWidget();
+        }
+    }, 10000);
 }
