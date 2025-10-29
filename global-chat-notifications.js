@@ -176,8 +176,10 @@
     function startFirebaseListener() {
         const db = firebase.firestore();
 
-        // Höre auf neue Nachrichten in allen Partner-Anfragen
-        firebaseListener = db.collectionGroup('chat')
+        // Höre auf neue Nachrichten in globalChat (Werkstatt-Benachrichtigungen)
+        // CHANGED: collectionGroup('chat') → collection('globalChat')
+        // Reason: Permission Error mit collectionGroup (versucht auf alle chat Subcollections zuzugreifen)
+        firebaseListener = db.collection('globalChat')
             .where('sender', '==', 'partner')
             .orderBy('timestamp', 'desc')
             .limit(10)
