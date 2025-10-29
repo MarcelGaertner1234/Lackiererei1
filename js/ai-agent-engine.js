@@ -6,30 +6,28 @@
  * Manages AI Agent interactions on the frontend:
  * - Calls Firebase Cloud Function aiAgentExecute
  * - Handles conversation history
- * - Voice input (Web Speech API)
+ * - Voice input (MediaRecorder API + OpenAI Whisper)
  * - Voice output (Speech Synthesis API)
  * - UI integration
  *
- * Architecture: Client → Cloud Function → OpenAI GPT-4 → Tools
+ * Architecture: Client → Cloud Function → OpenAI Whisper/GPT-4 → Tools
  * Language: German
  */
 
 class AIAgentEngine {
     constructor() {
         this.conversationHistory = [];
-        this.isListening = false;
+        this.isRecording = false;
         this.isSpeaking = false;
-        this.recognition = null;
+        this.recorder = null;
+        this.audioChunks = [];
         this.synthesis = window.speechSynthesis;
         this.werkstatt = this.detectWerkstatt();
         this.userId = this.getUserId();
         this.callableFunction = null;
+        this.whisperCallableFunction = null;
 
-        // Speech Recognition Retry Logic
-        this.recognitionRetries = 0;
-        this.MAX_RECOGNITION_RETRIES = 3;
-
-        console.log('🤖 AI Agent Engine initialized');
+        console.log('🤖 AI Agent Engine initialized (OpenAI Whisper)');
         console.log(`Werkstatt: ${this.werkstatt}, User: ${this.userId || 'anonym'}`);
     }
 
@@ -43,13 +41,14 @@ class AIAgentEngine {
                 throw new Error('Firebase Functions not loaded');
             }
 
-            // Get callable function reference (europe-west3 for DSGVO compliance)
+            // Get callable function references (europe-west3 for DSGVO compliance)
             // Compat API requires firebase.app().functions('region')
             this.callableFunction = firebase.app().functions('europe-west3').httpsCallable('aiAgentExecute');
-            console.log('✅ AI Agent callable function ready (europe-west3)');
+            this.whisperCallableFunction = firebase.app().functions('europe-west3').httpsCallable('whisperTranscribe');
+            console.log('✅ AI Agent callable functions ready (aiAgentExecute, whisperTranscribe)');
 
-            // Initialize Speech Recognition (if available)
-            this.initializeSpeechRecognition();
+            // Initialize Audio Recording (MediaRecorder API)
+            this.initializeAudioRecording();
 
             return true;
         } catch (error) {
@@ -103,141 +102,207 @@ class AIAgentEngine {
     }
 
     /**
-     * Initialize Web Speech API for voice input
+     * Initialize MediaRecorder API for audio recording
      */
-    initializeSpeechRecognition() {
+    async initializeAudioRecording() {
         try {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-            if (!SpeechRecognition) {
-                console.warn('⚠️ Speech Recognition not supported in this browser');
+            // Check MediaRecorder support
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.warn('⚠️ MediaRecorder not supported in this browser');
                 return;
             }
 
-            this.recognition = new SpeechRecognition();
-            this.recognition.lang = 'de-DE';
-            this.recognition.continuous = false;
-            this.recognition.interimResults = false;
-            this.recognition.maxAlternatives = 1;
+            // Request microphone permission
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            this.recognition.onstart = () => {
-                this.isListening = true;
-                console.log('🎤 Listening...');
+            // Create MediaRecorder with WebM format (widely supported)
+            const options = { mimeType: 'audio/webm;codecs=opus' };
+            this.recorder = new MediaRecorder(stream, options);
+
+            // Event: Recording starts
+            this.recorder.onstart = () => {
+                this.isRecording = true;
+                this.audioChunks = [];
+                console.log('🎤 Recording started...');
                 this.onListeningStart && this.onListeningStart();
             };
 
-            this.recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                console.log('🎤 Heard:', transcript);
-
-                // Reset retry counter on success
-                this.recognitionRetries = 0;
-
-                this.onVoiceInput && this.onVoiceInput(transcript);
-
-                // Automatically send the message
-                this.sendMessage(transcript);
-            };
-
-            this.recognition.onerror = (event) => {
-                console.error('❌ Speech recognition error:', event.error);
-                this.isListening = false;
-
-                // Handle specific errors
-                switch(event.error) {
-                    case 'network':
-                        if (this.recognitionRetries < this.MAX_RECOGNITION_RETRIES) {
-                            this.recognitionRetries++;
-                            const retryDelay = 1000 * this.recognitionRetries; // Exponential backoff
-                            console.warn(`⚠️ Network error - Retrying (${this.recognitionRetries}/${this.MAX_RECOGNITION_RETRIES}) in ${retryDelay}ms...`);
-
-                            setTimeout(() => {
-                                try {
-                                    console.log('🔄 Retrying speech recognition...');
-                                    this.recognition.start();
-                                } catch(e) {
-                                    console.error('❌ Retry failed:', e);
-                                    this.onListeningError && this.onListeningError('netzwerk_fehler');
-                                }
-                            }, retryDelay);
-                        } else {
-                            console.error('❌ Max retries reached for network error');
-                            this.recognitionRetries = 0;
-                            this.onListeningError && this.onListeningError('netzwerk_fehler');
-                        }
-                        break;
-
-                    case 'no-speech':
-                        console.warn('⚠️ No speech detected');
-                        this.onListeningError && this.onListeningError('keine_sprache');
-                        break;
-
-                    case 'audio-capture':
-                        console.error('❌ No microphone found or permission denied');
-                        this.onListeningError && this.onListeningError('kein_mikrofon');
-                        break;
-
-                    case 'not-allowed':
-                        console.error('❌ Microphone permission denied');
-                        this.onListeningError && this.onListeningError('berechtigung_verweigert');
-                        break;
-
-                    default:
-                        console.error(`❌ Speech recognition error: ${event.error}`);
-                        this.onListeningError && this.onListeningError(event.error);
+            // Event: Data available (during recording)
+            this.recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                    console.log(`📊 Audio chunk received: ${event.data.size} bytes`);
                 }
             };
 
-            this.recognition.onend = () => {
-                this.isListening = false;
-                console.log('🎤 Stopped listening');
+            // Event: Recording stops
+            this.recorder.onstop = async () => {
+                this.isRecording = false;
+                console.log('🎤 Recording stopped');
                 this.onListeningEnd && this.onListeningEnd();
+
+                // Process recorded audio
+                await this.handleRecordingStop();
             };
 
-            console.log('✅ Speech Recognition initialized');
+            // Event: Recording error
+            this.recorder.onerror = (event) => {
+                console.error('❌ MediaRecorder error:', event.error);
+                this.isRecording = false;
+                this.onListeningError && this.onListeningError('aufnahme_fehler');
+            };
+
+            console.log('✅ Audio Recording initialized (MediaRecorder + OpenAI Whisper)');
         } catch (error) {
-            console.error('❌ Speech Recognition initialization failed:', error);
+            console.error('❌ Audio Recording initialization failed:', error);
+
+            if (error.name === 'NotAllowedError') {
+                this.onListeningError && this.onListeningError('berechtigung_verweigert');
+            } else if (error.name === 'NotFoundError') {
+                this.onListeningError && this.onListeningError('kein_mikrofon');
+            } else {
+                this.onListeningError && this.onListeningError('aufnahme_fehler');
+            }
         }
     }
 
     /**
-     * Start listening for voice input
+     * Start recording audio
      */
-    startListening() {
-        if (!this.recognition) {
-            console.error('❌ Speech Recognition not available');
+    startRecording() {
+        if (!this.recorder) {
+            console.error('❌ Audio Recorder not available');
             return false;
         }
 
-        if (this.isListening) {
-            console.warn('⚠️ Already listening');
+        if (this.isRecording) {
+            console.warn('⚠️ Already recording');
             return false;
         }
 
         try {
-            this.recognition.start();
+            this.recorder.start();
+            console.log('🎤 Recording started...');
             return true;
         } catch (error) {
-            console.error('❌ Could not start listening:', error);
+            console.error('❌ Could not start recording:', error);
             return false;
         }
     }
 
     /**
-     * Stop listening for voice input
+     * Stop recording audio
      */
-    stopListening() {
-        if (!this.recognition || !this.isListening) {
+    stopRecording() {
+        if (!this.recorder || !this.isRecording) {
             return false;
         }
 
         try {
-            this.recognition.stop();
+            this.recorder.stop();
+            console.log('⏸️ Stopping recording...');
             return true;
         } catch (error) {
-            console.error('❌ Could not stop listening:', error);
+            console.error('❌ Could not stop recording:', error);
             return false;
         }
+    }
+
+    /**
+     * Handle recording stop event - process audio and send to Whisper
+     */
+    async handleRecordingStop() {
+        try {
+            // Check if we have audio chunks
+            if (this.audioChunks.length === 0) {
+                console.warn('⚠️ No audio recorded');
+                this.onListeningError && this.onListeningError('keine_sprache');
+                return;
+            }
+
+            // Create audio blob from chunks
+            const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+            const audioSizeMB = (audioBlob.size / (1024 * 1024)).toFixed(2);
+            console.log(`📦 Audio blob created: ${audioSizeMB} MB`);
+
+            // Check size (OpenAI Whisper limit: 25 MB)
+            if (audioBlob.size > 25 * 1024 * 1024) {
+                console.error('❌ Audio too large (>25 MB)');
+                this.onListeningError && this.onListeningError('audio_zu_gross');
+                return;
+            }
+
+            // Send to Whisper API
+            await this.sendAudioToWhisper(audioBlob);
+
+        } catch (error) {
+            console.error('❌ Error processing recorded audio:', error);
+            this.onListeningError && this.onListeningError('verarbeitung_fehler');
+        }
+    }
+
+    /**
+     * Send audio blob to OpenAI Whisper via Firebase Cloud Function
+     * @param {Blob} audioBlob - Recorded audio blob
+     */
+    async sendAudioToWhisper(audioBlob) {
+        try {
+            console.log('🚀 Sending audio to Whisper API...');
+
+            // Show loading state
+            this.onMessageSending && this.onMessageSending('🎤 Transkribiere Sprache...');
+
+            // Convert blob to base64
+            const base64Audio = await this.blobToBase64(audioBlob);
+
+            // Call Cloud Function
+            if (!this.whisperCallableFunction) {
+                throw new Error('Whisper Cloud Function nicht initialisiert');
+            }
+
+            const result = await this.whisperCallableFunction({
+                audio: base64Audio,
+                language: 'de'
+            });
+
+            const data = result.data;
+
+            if (!data || !data.success) {
+                throw new Error(data?.message || 'Whisper Transkription fehlgeschlagen');
+            }
+
+            console.log('✅ Whisper transcription:', data.text);
+            console.log(`⏱️ Duration: ${data.duration}s`);
+
+            // Trigger voice input callback
+            this.onVoiceInput && this.onVoiceInput(data.text);
+
+            // Automatically send the transcribed message
+            await this.sendMessage(data.text);
+
+        } catch (error) {
+            console.error('❌ Whisper transcription error:', error);
+            this.onListeningError && this.onListeningError('transkription_fehler');
+            this.onMessageError && this.onMessageError(error);
+        }
+    }
+
+    /**
+     * Convert Blob to Base64 string
+     * @param {Blob} blob - Audio blob
+     * @returns {Promise<string>} Base64-encoded audio
+     */
+    async blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                // Remove data URL prefix (data:audio/webm;base64,)
+                const base64 = reader.result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     /**
@@ -411,7 +476,7 @@ class AIAgentEngine {
      * Check if voice input is supported
      */
     isVoiceInputSupported() {
-        return this.recognition !== null;
+        return this.recorder !== null;
     }
 
     /**

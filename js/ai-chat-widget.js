@@ -155,11 +155,11 @@ class AIChatWidget {
                 };
 
                 window.aiAgent.onListeningStart = () => {
-                    this.elements.voiceButton.classList.add('listening');
+                    this.elements.voiceButton.classList.add('recording');
                 };
 
                 window.aiAgent.onListeningEnd = () => {
-                    this.elements.voiceButton.classList.remove('listening');
+                    this.elements.voiceButton.classList.remove('recording');
                 };
 
                 window.aiAgent.onVoiceInput = (transcript) => {
@@ -167,7 +167,7 @@ class AIChatWidget {
                 };
 
                 window.aiAgent.onListeningError = (error) => {
-                    this.elements.voiceButton.classList.remove('listening');
+                    this.elements.voiceButton.classList.remove('recording');
                     this.addMessage(this.formatErrorMessage(error), 'ai');
                 };
 
@@ -346,14 +346,14 @@ class AIChatWidget {
         }
 
         if (!window.aiAgent.isVoiceInputSupported()) {
-            this.addMessage('⚠️ Spracherkennung wird in diesem Browser nicht unterstützt. Bitte verwenden Sie Chrome, Edge oder Safari.', 'ai');
+            this.addMessage('⚠️ Audioaufnahme wird in diesem Browser nicht unterstützt. Bitte verwenden Sie Chrome, Edge oder Safari.', 'ai');
             return;
         }
 
-        if (window.aiAgent.isListening) {
-            window.aiAgent.stopListening();
+        if (window.aiAgent.isRecording) {
+            window.aiAgent.stopRecording();
         } else {
-            window.aiAgent.startListening();
+            window.aiAgent.startRecording();
         }
     }
 
@@ -385,7 +385,11 @@ class AIChatWidget {
             'kein_mikrofon': '🎤 Kein Mikrofon gefunden. Bitte stelle sicher, dass ein Mikrofon angeschlossen ist.',
             'berechtigung_verweigert': '🔐 Mikrofon-Berechtigung verweigert. Klicke auf das Mikrofon-Icon in der Adressleiste und erteile Zugriff.',
             'aborted': '⏸️ Spracherkennung abgebrochen.',
-            'service-not-allowed': '🚫 Spracherkennung nicht verfügbar. Bitte verwende einen unterstützten Browser (Chrome, Edge, Safari).'
+            'service-not-allowed': '🚫 Spracherkennung nicht verfügbar. Bitte verwende einen unterstützten Browser (Chrome, Edge, Safari).',
+            'aufnahme_fehler': '🎙️ Fehler bei der Audioaufnahme. Bitte überprüfe dein Mikrofon und versuche es nochmal.',
+            'audio_zu_gross': '📦 Audio zu groß (>25 MB). Bitte sprich kürzer (max. 1-2 Minuten).',
+            'verarbeitung_fehler': '⚙️ Fehler bei der Audio-Verarbeitung. Bitte versuche es nochmal.',
+            'transkription_fehler': '🤖 Fehler bei der Transkription. Bitte überprüfe deine Internetverbindung oder tippe deine Nachricht ein.'
         };
 
         return messages[errorCode] || `❌ Spracherkennung fehlgeschlagen: ${errorCode}. Bitte tippe deine Nachricht ein.`;
