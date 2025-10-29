@@ -228,6 +228,28 @@ async function loginMitarbeiter(mitarbeiterId, password) {
     console.log('✅ STAGE 2 erfolgreich - Mitarbeiter eingeloggt:', currentMitarbeiter);
     console.log('   Berechtigungen:', currentMitarbeiter.berechtigungen);
 
+    // Initialize Mitarbeiter Notifications (Phase 3.2.3)
+    if (window.mitarbeiterNotifications) {
+      try {
+        await window.mitarbeiterNotifications.initialize();
+        const notifications = await window.mitarbeiterNotifications.loadNotifications();
+
+        // Show all unread notifications
+        notifications.forEach(notif => {
+          window.mitarbeiterNotifications.showNotificationToast(notif);
+
+          // Speak high/urgent priority notifications
+          if (['high', 'urgent'].includes(notif.priority)) {
+            window.mitarbeiterNotifications.speakNotification(notif);
+          }
+        });
+
+        console.log(`✅ ${notifications.length} Benachrichtigungen geladen und angezeigt`);
+      } catch (error) {
+        console.error('❌ Error loading notifications:', error);
+      }
+    }
+
     return currentMitarbeiter;
 
   } catch (error) {
