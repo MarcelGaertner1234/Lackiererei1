@@ -40,13 +40,36 @@
         createFloatingBell();
         createToastContainer();
 
-        // Unread Count laden
-        loadUnreadCount();
-
-        // Firebase Listener starten
-        startFirebaseListener();
-
         console.log('✅ Chat-Notifications initialisiert');
+
+        // Warte auf Auth State bevor Listener gestartet werden
+        waitForAuthAndStartListeners();
+    }
+
+    function waitForAuthAndStartListeners() {
+        // Prüfe ob Auth Manager und User verfügbar sind
+        if (window.authManager && window.authManager.getCurrentUser()) {
+            console.log('✅ Auth ready - starte Chat-Listeners');
+            loadUnreadCount();
+            startFirebaseListener();
+        } else {
+            console.log('⏳ Warte auf Auth State...');
+            // Warte max 10 Sekunden auf Auth
+            let attempts = 0;
+            const maxAttempts = 20;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (window.authManager && window.authManager.getCurrentUser()) {
+                    clearInterval(checkInterval);
+                    console.log('✅ Auth ready - starte Chat-Listeners');
+                    loadUnreadCount();
+                    startFirebaseListener();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    console.warn('⚠️ Auth Timeout - Chat-Listeners nicht gestartet');
+                }
+            }, 500);
+        }
     }
 
     // ========================================
