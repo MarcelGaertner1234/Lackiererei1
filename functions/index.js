@@ -1637,3 +1637,143 @@ async function executeGetStatistiken(params, werkstatt) {
     };
   }
 }
+
+// ============================================
+// FUNCTION 5: WHISPER TRANSCRIBE (Speech-to-Text)
+// ============================================
+
+/**
+ * OpenAI Whisper Speech-to-Text Cloud Function
+ *
+ * Receives audio from browser, transcribes it using OpenAI Whisper API
+ *
+ * Request:
+ * {
+ *   audio: "base64_encoded_audio_data",
+ *   language: "de" (optional, defaults to "de")
+ * }
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   text: "Transkribierter Text",
+ *   duration: 3.5
+ * }
+ */
+exports.whisperTranscribe = functions
+    .region("europe-west3") // DSGVO compliance
+    .runWith({
+      secrets: [openaiApiKey], // Bind OpenAI API Key from Secret Manager
+      timeoutSeconds: 60, // Whisper kann bis zu 60s brauchen für lange Audios
+      memory: "512MB" // Mehr Memory für Audio-Processing
+    })
+    .https
+    .onCall(async (data, context) => {
+      try {
+        const { audio, language = "de" } = data;
+
+        // Validation
+        if (!audio) {
+          throw new functions.https.HttpsError("invalid-argument", "Audio data ist erforderlich");
+        }
+
+        // Authentication check (optional - entferne wenn alle User nutzen dürfen)
+        if (!context.auth) {
+          console.warn("⚠️ Whisper called without authentication - allowing for testing");
+          // throw new functions.https.HttpsError("unauthenticated", "User muss eingeloggt sein");
+        }
+
+        const userId = context.auth?.uid || "anonym";
+        console.log(`🎤 Whisper Transcribe Request von User ${userId}`);
+
+        // Check audio size (OpenAI limit: 25 MB)
+        const audioSizeBytes = Buffer.byteLength(audio, "base64");
+        const audioSizeMB = audioSizeBytes / (1024 * 1024);
+
+        if (audioSizeMB > 25) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              `Audio zu groß (${audioSizeMB.toFixed(2)} MB). Maximum: 25 MB`
+          );
+        }
+
+        console.log(`📊 Audio size: ${audioSizeMB.toFixed(2)} MB`);
+
+        // Initialize OpenAI
+        const apiKey = getOpenAIApiKey();
+        const openai = new OpenAI({ apiKey });
+
+        // Convert base64 to Buffer
+        const audioBuffer = Buffer.from(audio, "base64");
+
+        // Create a File-like object for OpenAI API
+        // OpenAI expects a File or Blob, we create a temporary file
+        const fs = require("fs");
+        const os = require("os");
+        const path = require("path");
+
+        const tmpDir = os.tmpdir();
+        const tmpFilePath = path.join(tmpDir, `whisper_${Date.now()}.webm`);
+
+        // Write audio to temporary file
+        fs.writeFileSync(tmpFilePath, audioBuffer);
+        console.log(`✅ Audio written to temp file: ${tmpFilePath}`);
+
+        // Call OpenAI Whisper API
+        console.log("🎤 Calling OpenAI Whisper API...");
+        const startTime = Date.now();
+
+        const transcription = await openai.audio.transcriptions.create({
+          file: fs.createReadStream(tmpFilePath),
+          model: "whisper-1",
+          language: language, // "de" für Deutsch
+          response_format: "json"
+        });
+
+        const duration = (Date.now() - startTime) / 1000;
+        console.log(`✅ Whisper transcription completed in ${duration}s`);
+        console.log(`📝 Transcribed text: "${transcription.text}"`);
+
+        // Cleanup temp file
+        try {
+          fs.unlinkSync(tmpFilePath);
+          console.log("🗑️ Temp file cleaned up");
+        } catch (cleanupError) {
+          console.warn("⚠️ Failed to cleanup temp file:", cleanupError.message);
+        }
+
+        // Log to Firestore
+        await db.collection("whisper_logs").add({
+          userId: userId,
+          text: transcription.text,
+          language: language,
+          audioSizeMB: audioSizeMB,
+          durationSeconds: duration,
+          timestamp: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return {
+          success: true,
+          text: transcription.text,
+          duration: duration
+        };
+
+      } catch (error) {
+        console.error("❌ Whisper Transcribe Error:", error);
+
+        // Log error to Firestore
+        await db.collection("whisper_logs").add({
+          userId: context.auth?.uid || "anonym",
+          error: error.message,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          status: "failed"
+        });
+
+        // Return user-friendly error
+        if (error.message.includes("Audio zu groß")) {
+          throw error; // Re-throw size error as-is
+        }
+
+        throw new functions.https.HttpsError("internal", `Whisper Fehler: ${error.message}`);
+      }
+    });
