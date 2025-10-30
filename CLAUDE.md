@@ -1,8 +1,8 @@
 # 🚗 Fahrzeugannahme-App - Claude Code Dokumentation
 
-**Version:** 3.2.1 (Security Rules Fix - COMPLETED!)
+**Version:** 3.3.0 (9 Services + Badge-Konsistenz)
 **Status:** ✅ Production-Ready + SECURE
-**Letzte Aktualisierung:** 29.10.2025
+**Letzte Aktualisierung:** 30.10.2025
 **Live-URL:** https://marcelgaertner1234.github.io/Lackiererei1/
 
 ---
@@ -58,7 +58,7 @@ firebase emulators:start --only firestore,storage --project demo-test
 - ✅ **Loading States** - `window.showLoading()`, `window.hideLoading()`, `window.withLoading()`
 - ✅ **Input Validation** - 5 Funktionen: Kennzeichen, Farbnummer, VIN, Email, Telefon
 - ✅ **Safari-Fix** - Fotos in Firestore Subcollections (kein LocalStorage mehr)
-- ✅ **Multi-Prozess Kanban** - 6 Service-Typen (Lackierung, Reifen, Mechanik, Pflege, TÜV, Versicherung)
+- ✅ **Multi-Prozess Kanban** - 9 Service-Typen (Lackierung, Reifen, Mechanik, Pflege, TÜV, Versicherung, Glas-Reparatur, Klima-Service, Dellen-Drückung)
 - ✅ **Firebase Security Rules** - 100% der Collections geschützt (Role-based Access Control)
 
 ### Known Issues:
@@ -223,6 +223,60 @@ npm test
 ---
 
 ## 📊 Session History (Latest Only)
+
+### Session 2025-10-30: Badge-Konsistenz für 3 neue Services
+**Agent:** Claude Code (Sonnet 4.5)
+**Duration:** ~30 Minuten
+**Status:** ✅ COMPLETED
+
+**Ziel:** Badge-Unterstützung für Glas, Klima, Dellen in kanban.html + meine-anfragen.html
+
+#### Problem entdeckt:
+User fragte: "werden auch die baged vom jeden servies hier richtig angezeigt: kanban.html und hier?: meine-anfragen.html"
+
+**Analyse ergab:**
+- ❌ **kanban.html**: NUR 6/9 Services - Filter + serviceTypeLabels fehlten
+- ❌ **meine-anfragen.html**: NUR 6/9 Services - 3× serviceIcons fehlten
+
+#### Lösung implementiert (Commit ed16d0e → f4af20d):
+
+**kanban.html (2 Änderungen):**
+1. **Filter-Dropdown** (Zeilen 1594-1596): +3 Options
+   ```html
+   <option value="glas">🔍 Glas-Reparatur</option>
+   <option value="klima">❄️ Klima-Service</option>
+   <option value="dellen">🔨 Dellen-Drückung</option>
+   ```
+
+2. **serviceTypeLabels** (Zeilen 2343-2345): +3 Einträge
+   ```javascript
+   'glas': '🔍 Glas',
+   'klima': '❄️ Klima',
+   'dellen': '🔨 Dellen'
+   ```
+
+**meine-anfragen.html (3 Änderungen):**
+1. Kanban-View serviceIcons (Zeilen 4122-4124)
+2. Listen-View serviceIcons (Zeilen 4419-4421)
+3. Kompakt-View serviceIcons (Zeilen 4521-4523)
+
+Alle 3 mit:
+```javascript
+glas: { icon: '🔍', bg: '#0288d1', label: 'Glas' },
+klima: { icon: '❄️', bg: '#00bcd4', label: 'Klima' },
+dellen: { icon: '🔨', bg: '#757575', label: 'Dellen' }
+```
+
+#### Resultat:
+✅ **Alle 9 Services haben jetzt konsistente Badges in allen 3 Dateien:**
+- admin-anfragen.html (Session 2025-10-29)
+- kanban.html (diese Session)
+- meine-anfragen.html (diese Session)
+
+**Files Changed:** 2 files, 19 insertions(+), 4 deletions(-)
+**Pushed:** ✅ Erfolgreich zu GitHub
+
+---
 
 ### Session 2025-10-29 (Evening): KI Chat - Whisper + TTS Integration
 **Agent:** Claude Code (Sonnet 4.5)
