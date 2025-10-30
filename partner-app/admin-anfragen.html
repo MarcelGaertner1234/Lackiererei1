@@ -1169,6 +1169,7 @@
     </div>
 
     <script src="../firebase-config.js?v=a4192c4"></script>
+    <script src="../js/auth-manager.js"></script>
     <script>
         let allAnfragen = [];
         let allPartner = [];
@@ -1211,27 +1212,38 @@
             });
         }
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            await initFirebase();
+        // AUTH-CHECK POLLING
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 20;
 
-            // 🆕 PHASE 2.3.2: Check Admin Authentication
-            await checkAdminAuth();
+        const authCheckInterval = setInterval(async () => {
+            authCheckAttempts++;
 
-            // 🆕 PHASE 2.3.1: Load werkstattId from localStorage or default
-            const savedWerkstatt = localStorage.getItem('selectedWerkstatt') || 'mosbach';
-            window.werkstattId = savedWerkstatt;
+            if (window.firebaseInitialized && window.werkstattId) {
+                clearInterval(authCheckInterval);
+                console.log('✅ [ADMIN-ANFRAGEN] Firebase + werkstattId ready');
 
-            // Set dropdown to saved value
-            const selector = document.getElementById('werkstattSelector');
-            if (selector) {
-                selector.value = savedWerkstatt;
+                await initFirebase();
+                await checkAdminAuth();
+
+                // Set dropdown to saved value
+                const selector = document.getElementById('werkstattSelector');
+                if (selector) {
+                    selector.value = window.werkstattId;
+                }
+
+                await loadAnfragen();
+                setupFilters();
+                return;
             }
 
-            console.log('✅ [ADMIN-ANFRAGEN] werkstattId initialized:', window.werkstattId);
-
-            await loadAnfragen();
-            setupFilters();
-        });
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.error('❌ [ADMIN-ANFRAGEN] Firebase timeout');
+                alert('Fehler: Werkstatt-Initialisierung fehlgeschlagen. Bitte neu einloggen.');
+                window.location.href = '../index.html';
+            }
+        }, 250);
 
         async function loadAnfragen() {
             const loading = document.getElementById('loading');

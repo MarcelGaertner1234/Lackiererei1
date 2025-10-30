@@ -1283,6 +1283,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 
     <script src="../firebase-config.js?v=a4192c4"></script>
+    <script src="../js/auth-manager.js"></script>
     <script>
         // Global Variables
         let currentStep = 1;
@@ -1291,15 +1292,43 @@
         let photos = [];
         let fahrzeugscheinPhotos = [];
 
-        // Initialize
-        window.addEventListener('DOMContentLoaded', async () => {
-            await initFirebase();
-            checkLogin();
-            setupPhotoUpload();
-            setupFahrzeugscheinUpload();
-            await ladeSmartetermine();
-            updateProgress();
-        });
+        // ============================================
+        // PRE-INITIALIZE werkstattId from localStorage
+        // ============================================
+        // CRITICAL: Set werkstattId BEFORE auth-check polling!
+        const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+        window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+        console.log('✅ [PFLEGE-ANFRAGE] werkstattId pre-initialized:', window.werkstattId);
+
+        // ============================================
+        // AUTH-CHECK POLLING (20 Versuche × 250ms)
+        // ============================================
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 20;
+
+        const authCheckInterval = setInterval(async () => {
+            authCheckAttempts++;
+
+            if (window.firebaseInitialized && window.werkstattId) {
+                clearInterval(authCheckInterval);
+                console.log('✅ [PFLEGE-ANFRAGE] Firebase + werkstattId ready');
+
+                await initFirebase();
+                checkLogin();
+                setupPhotoUpload();
+                setupFahrzeugscheinUpload();
+                await ladeSmartetermine();
+                updateProgress();
+                return;
+            }
+
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.error('❌ [PFLEGE-ANFRAGE] Firebase timeout');
+                alert('Fehler: Werkstatt-Initialisierung fehlgeschlagen. Bitte neu einloggen.');
+                window.location.href = 'index.html';
+            }
+        }, 250);
 
         function checkLogin() {
             partner = JSON.parse(localStorage.getItem('partner') || 'null');
@@ -1308,8 +1337,11 @@
                 return;
             }
 
-            // 🆕 MULTI-TENANT: Set werkstattId from partner object
-            if (!partner || !partner.werkstattId) { throw new Error('Partner-Daten unvollständig - werkstattId fehlt!'); } window.werkstattId = partner.werkstattId;
+            // 🆕 MULTI-TENANT: Set werkstattId from partner object (with fallback)
+            window.werkstattId = (partner && partner.werkstattId) || 'mosbach';
+            if (!partner || !partner.werkstattId) {
+                console.warn('⚠️ [PFLEGE-ANFRAGE] partner.werkstattId missing, using fallback: mosbach');
+            }
             console.log('✅ [PFLEGE-ANFRAGE] werkstattId initialized:', window.werkstattId);
 
             document.getElementById('partnerName').textContent = partner.name;
