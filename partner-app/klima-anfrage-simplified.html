@@ -249,6 +249,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 
     <script src="../firebase-config.js?v=a4192c4"></script>
+    <script src="../js/auth-manager.js"></script>
     <script>
         // Global Variables
         let currentStep = 1;
@@ -257,14 +258,40 @@
         let photos = [];
         let selectedTermin = null;
 
-        // Initialize
-        window.addEventListener('DOMContentLoaded', async () => {
-            await initFirebase();
-            checkLogin();
-            loadTermine();
-            setupPhotoUpload();
-            updateProgress();
-        });
+        // ============================================
+        // PRE-INITIALIZE werkstattId from localStorage
+        // ============================================
+        // CRITICAL: Set werkstattId BEFORE auth-check polling!
+        const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+        window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+        console.log('✅ [KLIMA-ANFRAGE] werkstattId pre-initialized:', window.werkstattId);
+
+        // AUTH-CHECK POLLING
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 20;
+
+        const authCheckInterval = setInterval(async () => {
+            authCheckAttempts++;
+
+            if (window.firebaseInitialized && window.werkstattId) {
+                clearInterval(authCheckInterval);
+                console.log('✅ [KLIMA-ANFRAGE] Firebase ready');
+
+                await initFirebase();
+                checkLogin();
+                loadTermine();
+                setupPhotoUpload();
+                updateProgress();
+                return;
+            }
+
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.error('❌ [KLIMA-ANFRAGE] Firebase timeout');
+                alert('Fehler: Werkstatt-Initialisierung fehlgeschlagen. Bitte neu einloggen.');
+                window.location.href = 'index.html';
+            }
+        }, 250);
 
         // Check Login
         function checkLogin() {
@@ -281,7 +308,8 @@
                 window.location.href = 'index.html';
                 return;
             }
-            window.werkstattId = partner.werkstattId;
+            window.werkstattId = partner.werkstattId || 'mosbach'; // Fallback to 'mosbach'
+            console.log('✅ [KLIMA-ANFRAGE] werkstattId initialized:', window.werkstattId);
 
             // Display partner name
             document.getElementById('partnerName').textContent = `Partner: ${partner.name}`;

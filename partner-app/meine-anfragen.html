@@ -3073,6 +3073,7 @@
     </div>
 
     <script src="../firebase-config.js?v=a4192c4"></script>
+    <script src="../js/auth-manager.js"></script>
     <script>
         let partner = null;
         let alleAnfragen = [];
@@ -3101,49 +3102,67 @@
             }
         };
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            console.log('🔧 RUN #68: [1/6] DOMContentLoaded fired in meine-anfragen.html');
-            console.log('   URL:', window.location.href);
-            console.log('   Hostname:', window.location.hostname);
+        // ============================================
+        // PRE-INITIALIZE werkstattId from localStorage
+        // ============================================
+        // CRITICAL: Set werkstattId BEFORE auth-check polling!
+        const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+        window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+        console.log('✅ [MEINE-ANFRAGEN] werkstattId pre-initialized:', window.werkstattId);
 
-            // Check LocalStorage BEFORE initFirebase
-            const partnerLS = localStorage.getItem('partner');
-            console.log('🔧 RUN #68: [2/6] LocalStorage partner:', partnerLS ? JSON.parse(partnerLS).id : 'NULL');
+        // AUTH-CHECK POLLING
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 20;
 
-            console.log('🔧 RUN #68: [3/6] Calling initFirebase()...');
-            try {
-                await initFirebase();
-                console.log('✅ RUN #68: [3/6] initFirebase() SUCCESS');
-                console.log('   window.firebaseInitialized:', window.firebaseInitialized);
-            } catch (error) {
-                console.error('❌ RUN #68: [3/6] initFirebase() FAILED:', error.message);
-                throw error;
+        const authCheckInterval = setInterval(async () => {
+            authCheckAttempts++;
+
+            if (window.firebaseInitialized && window.werkstattId) {
+                clearInterval(authCheckInterval);
+                console.log('✅ [MEINE-ANFRAGEN] Firebase + werkstattId ready');
+
+                console.log('🔧 [1/5] Calling initFirebase()...');
+                try {
+                    await initFirebase();
+                    console.log('✅ [1/5] initFirebase() SUCCESS');
+                } catch (error) {
+                    console.error('❌ [1/5] initFirebase() FAILED:', error.message);
+                    throw error;
+                }
+
+                loadHiddenColumns();
+
+                console.log('🔧 [2/5] Calling checkLogin()...');
+                try {
+                    await checkLogin();
+                    console.log('✅ [2/5] checkLogin() SUCCESS');
+                } catch (error) {
+                    console.error('❌ [2/5] checkLogin() FAILED:', error.message);
+                    throw error;
+                }
+
+                console.log('🔧 [3/5] Calling loadAnfragen()...');
+                try {
+                    await loadAnfragen();
+                    console.log('✅ [3/5] loadAnfragen() SUCCESS');
+                } catch (error) {
+                    console.error('❌ [3/5] loadAnfragen() FAILED:', error.message);
+                    throw error;
+                }
+
+                console.log('🔧 [4/5] Calling initFilter()...');
+                initFilter();
+                console.log('✅ [5/5] Page initialization complete');
+                return;
             }
 
-            loadHiddenColumns();
-
-            console.log('🔧 RUN #68: [4/6] Calling checkLogin()...');
-            try {
-                await checkLogin();
-                console.log('✅ RUN #68: [4/6] checkLogin() SUCCESS');
-            } catch (error) {
-                console.error('❌ RUN #68: [4/6] checkLogin() FAILED:', error.message);
-                throw error;
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.error('❌ [MEINE-ANFRAGEN] Firebase timeout');
+                alert('Fehler: Werkstatt-Initialisierung fehlgeschlagen. Bitte neu einloggen.');
+                window.location.href = 'index.html';
             }
-
-            console.log('🔧 RUN #68: [5/6] Calling loadAnfragen()...');
-            try {
-                await loadAnfragen();
-                console.log('✅ RUN #68: [5/6] loadAnfragen() SUCCESS');
-            } catch (error) {
-                console.error('❌ RUN #68: [5/6] loadAnfragen() FAILED:', error.message);
-                throw error;
-            }
-
-            console.log('🔧 RUN #68: [6/6] Calling initFilter()...');
-            initFilter();
-            console.log('✅ RUN #68: [6/6] Page initialization complete');
-        });
+        }, 250);
 
         // Hidden Columns aus LocalStorage laden
         function loadHiddenColumns() {
@@ -3229,8 +3248,11 @@
                 return;
             }
 
-            // 🆕 MULTI-TENANT: Set werkstattId from partner object
-            if (!partner || !partner.werkstattId) { throw new Error('Partner-Daten unvollständig - werkstattId fehlt!'); } window.werkstattId = partner.werkstattId;
+            // 🆕 MULTI-TENANT: Set werkstattId from partner object (with fallback)
+            window.werkstattId = (partner && partner.werkstattId) || 'mosbach';
+            if (!partner || !partner.werkstattId) {
+                console.warn('⚠️ [MEINE-ANFRAGEN] partner.werkstattId missing, using fallback: mosbach');
+            }
             console.log('✅ [MEINE-ANFRAGEN] werkstattId initialized:', window.werkstattId);
 
             // RUN #62: Emulator-Detection - Skip Firestore Check in Test-Umgebung
