@@ -2,8 +2,8 @@
 
 **Rolle:** Lead Developer & Technical CEO der Fahrzeugannahme-App
 **Verantwortung:** Vollständige technische Ownership & Production-Ready Implementierung
-**Version:** 3.3 (KI Chat LIVE! 🎙️)
-**Letzte Aktualisierung:** 29.10.2025 (Evening - KI Chat Whisper + TTS Integration)
+**Version:** 3.4 (9 Services + Badge-Konsistenz ✅)
+**Letzte Aktualisierung:** 30.10.2025 (Badge-Konsistenz für Glas, Klima, Dellen)
 
 ---
 
@@ -21,7 +21,7 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 
 ---
 
-## 📊 AKTUELLER APP-STATUS (Version 3.3 - KI Chat LIVE!)
+## 📊 AKTUELLER APP-STATUS (Version 3.4 - 9 Services + Badge-Konsistenz)
 
 ### ✅ Was KOMPLETT funktioniert:
 
@@ -35,7 +35,7 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
   - Kosten: ~$0.029/Minute (~€0.027) - sehr günstig!
 - ✅ Fahrzeug-Annahme/Abnahme (annahme.html, abnahme.html)
 - ✅ Fahrzeug-Übersicht (liste.html) - Lazy Loading, Detail-Ansicht
-- ✅ Multi-Prozess Kanban (kanban.html) - 6 Service-Workflows, Drag & Drop
+- ✅ Multi-Prozess Kanban (kanban.html) - 9 Service-Workflows (Lackierung, Reifen, Mechanik, Pflege, TÜV, Versicherung, Glas, Klima, Dellen), Drag & Drop
 - ✅ Kundenverwaltung (kunden.html)
 - ✅ Kalender + Material-Bestellungen (kalender.html, material.html)
 - ✅ Partner Portal (partner-app/) - 7 Service-Seiten, Dark Mode
@@ -65,6 +65,16 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 - ✅ Loading States Komponente (UX +40%)
 - ✅ Input Validation (5 Funktionen: Kennzeichen, Farbnummer, VIN, Email, Telefon)
 - ✅ Code Quality: 10/10 ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
+
+**Recent Improvements (Session 2025-10-30):**
+- ✅ **Badge-Konsistenz** - 3 neue Services (Glas, Klima, Dellen) in allen Badge-Systemen
+- ✅ **kanban.html** - Filter-Dropdown + serviceTypeLabels erweitert (2 Locations)
+- ✅ **meine-anfragen.html** - serviceIcons in allen 3 Views erweitert (Kanban, Liste, Kompakt)
+- ✅ **9 Service-Typen komplett** - Konsistente Badges über 3 Dateien (admin-anfragen.html, kanban.html, meine-anfragen.html)
+
+**Commits (Session 2025-10-30):**
+- `ed16d0e` - Badge-Konsistenz für Glas, Klima, Dellen (kanban.html + meine-anfragen.html)
+- `7fa307c` - CLAUDE.md Update (Version 3.3.0 → 3.4.0)
 
 **Commits (Session 2025-10-29):**
 - `b0a8990` - KI Chat Script Loading Order Fix
@@ -149,6 +159,17 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 - ✅ Toast Notification System (4 types: success, error, warning, info)
 
 **Commits:** 7262200, 2a37bf5
+
+---
+
+### ✅ **COMPLETED: Badge-Konsistenz für 9 Services** (Session 2025-10-30)
+
+- ✅ kanban.html: Filter-Dropdown + serviceTypeLabels erweitert (+3 Services)
+- ✅ meine-anfragen.html: serviceIcons in allen 3 Views erweitert (+3 Services in Kanban, Liste, Kompakt)
+- ✅ Alle 9 Services mit konsistenten Badges in 3 Dateien
+- ✅ Service-Icons + Farben: Glas (🔍 #0288d1), Klima (❄️ #00bcd4), Dellen (🔨 #757575)
+
+**Commits:** ed16d0e → f4af20d (merged), 7fa307c (CLAUDE.md)
 
 ---
 
@@ -747,7 +768,7 @@ firebase emulators:start    # Firebase Emulators
 
 ---
 
-_Version: 3.4 (UX + Memory Leak Prevention DONE! Partner-App Logic Fixes NEXT!)_
+_Version: 3.5 (Badge-Konsistenz für 9 Services DONE! Partner-App Logic Fixes NEXT!)_
 _Erstellt: 28.10.2025_
-_Aktualisiert: 29.10.2025 (Evening - nach UX + Memory Leak Prevention)_
+_Aktualisiert: 30.10.2025 (Nach Badge-Konsistenz für Glas, Klima, Dellen)_
 _Next Update: Nach Session mit Partner-App Logic Fixes_
