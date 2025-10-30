@@ -424,6 +424,16 @@
             <p>Partner-Anfrage prüfen und KVA erstellen</p>
         </div>
 
+        <!-- 🆕 PHASE 2.3: Werkstatt-Auswahl für Admin -->
+        <div class="nav-buttons">
+            <select id="werkstattSelector" class="btn btn-secondary" onchange="onWerkstattChange()" style="min-width: 150px;" title="Werkstatt auswählen">
+                <option value="mosbach">Mosbach</option>
+                <option value="heidelberg">Heidelberg</option>
+                <option value="heilbronn">Heilbronn</option>
+            </select>
+            <a href="admin-anfragen.html" class="btn btn-secondary">← Zurück zu Anfragen</a>
+        </div>
+
         <div id="loading" class="loading">
             <p>Anfrage wird geladen...</p>
         </div>
@@ -499,7 +509,89 @@
             lackierung: {
                 name: 'Lackierung',
                 icon: '🎨',
-                // DEPRECATED: Static variant labels (replaced by generateVariants)
+
+                // 🆕 PHASE 9: Dynamische Varianten-Generierung basierend auf serviceData.ersatzteil
+                generateVariants: function(serviceData) {
+                    const ersatzteil = serviceData?.ersatzteil || null;
+
+                    console.log('🎨 [LACKIERUNG] Generiere Varianten für ersatzteil:', ersatzteil);
+
+                    if (ersatzteil === 'gebrauchteil') {
+                        // Partner stellt Ersatzteil (NUR Partner-Variante!)
+                        return {
+                            variants: ['partner'],
+                            labels: {
+                                partner: 'Mit Partner-Ersatzteil'
+                            },
+                            warnings: {
+                                partner: '✅ Partner stellt Ersatzteil zur Verfügung'
+                            },
+                            fields: {
+                                partner: [
+                                    { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else {
+                        // Werkstatt beschafft Ersatzteil (2 Varianten: Original vs Zubehör)
+                        return {
+                            variants: ['original', 'zubehoer'],
+                            labels: {
+                                original: 'Variante 1: Premium / Originalteile',
+                                zubehoer: 'Variante 2: Budget / Aftermarket'
+                            },
+                            warnings: {
+                                zubehoer: '⚠️ Passgenauigkeit nicht gewährleistet (Spaltmaße)'
+                            },
+                            fields: {
+                                original: [
+                                    { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
+                                    { id: 'teilekosten', label: 'Originalteile (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ],
+                                zubehoer: [
+                                    { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
+                                    { id: 'teilekosten', label: 'Zubehörteile (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+                    }
+                },
+
+                getDefaultVariants: function() {
+                    return {
+                        variants: ['original', 'zubehoer'],
+                        labels: {
+                            original: 'Variante 1: Premium / Originalteile',
+                            zubehoer: 'Variante 2: Budget / Aftermarket'
+                        },
+                        warnings: {
+                            zubehoer: '⚠️ Passgenauigkeit nicht gewährleistet (Spaltmaße)'
+                        },
+                        fields: {
+                            original: [
+                                { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
+                                { id: 'teilekosten', label: 'Originalteile (€)', type: 'number', required: true },
+                                { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                            ],
+                            zubehoer: [
+                                { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
+                                { id: 'teilekosten', label: 'Zubehörteile (€)', type: 'number', required: true },
+                                { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                            ]
+                        }
+                    };
+                },
+
+                // OLD STATIC FIELDS (kept for backward compatibility if needed)
                 variantLabels: {
                     original: 'Variante 1: Premium / Originalteile',
                     zubehoer: 'Variante 2: Budget / Aftermarket',
@@ -509,7 +601,6 @@
                     zubehoer: '⚠️ Passgenauigkeit nicht gewährleistet (Spaltmaße)',
                     partner: '✅ Partner stellt Ersatzteil zur Verfügung'
                 },
-                // DEPRECATED: Static fields (replaced by generateVariants)
                 fields: {
                     original: [
                         { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
@@ -528,136 +619,18 @@
                         { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
                         { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                     ]
-                },
-                // ============================================
-                // NEW: DYNAMIC VARIANT GENERATION
-                // ============================================
-                generateVariants: function(serviceData) {
-                    const ersatzteil = serviceData?.ersatzteil || null;
-
-                    console.log('🎨 [Lackierung] Generiere Varianten für ersatzteil:', ersatzteil);
-
-                    if (ersatzteil === 'gebrauchteil') {
-                        // Partner stellt Ersatzteil zur Verfügung → NUR Partner-Variante
-                        return {
-                            variants: ['partner'],
-                            labels: {
-                                partner: 'Mit Partner-Ersatzteil'
-                            },
-                            warnings: {
-                                partner: '✅ Partner stellt Ersatzteil zur Verfügung (nur Arbeitskosten kalkulieren)'
-                            },
-                            fields: {
-                                partner: [
-                                    { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
-                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else if (ersatzteil === 'originalteil') {
-                        // Nur Originalteile gewünscht → KEINE Budget-Variante
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Mit Originalteilen (OEM)'
-                            },
-                            warnings: {
-                                original: '✅ Partner wünscht ausdrücklich NUR Originalteile'
-                            },
-                            fields: {
-                                original: [
-                                    { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
-                                    { id: 'teilekosten', label: 'Originalteile (OEM) (€)', type: 'number', required: true },
-                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else {
-                        // Standard: Original + Budget Varianten (ersatzteil === 'guenstig' oder null)
-                        return {
-                            variants: ['original', 'zubehoer'],
-                            labels: {
-                                original: 'Variante 1: Mit Originalteilen (OEM)',
-                                zubehoer: 'Variante 2: Mit Aftermarket-Teilen'
-                            },
-                            warnings: {
-                                zubehoer: '⚠️ Passgenauigkeit nicht gewährleistet (mögliche Spaltmaße)'
-                            },
-                            fields: {
-                                original: [
-                                    { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
-                                    { id: 'teilekosten', label: 'Originalteile (OEM) (€)', type: 'number', required: true },
-                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ],
-                                zubehoer: [
-                                    { id: 'lackkosten', label: 'Lackkosten (€)', type: 'number', required: true },
-                                    { id: 'teilekosten', label: 'Aftermarket-Teile (€)', type: 'number', required: true },
-                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-                    }
-                },
-
-                getDefaultVariants: function() {
-                    return {
-                        variants: ['original'],
-                        labels: { original: 'Lackierung' },
-                        warnings: {},
-                        fields: {
-                            original: [
-                                { id: 'service', label: 'Service-Kosten (€)', type: 'number', required: true },
-                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                            ]
-                        }
-                    };
                 }
             },
             reifen: {
                 name: 'Reifen-Service',
                 icon: '🛞',
-                // DEPRECATED: Static variant labels (replaced by generateVariants)
-                variantLabels: {
-                    original: 'Variante 1: Premium-Reifen (Markenreifen)',
-                    zubehoer: 'Variante 2: Budget-Reifen (Zweitmarke)',
-                    partner: null
-                },
-                variantWarnings: {
-                    zubehoer: '⚠️ Günstigere Reifen mit geringerer Lebensdauer und Grip',
-                    partner: null
-                },
-                // DEPRECATED: Static fields (replaced by generateVariants)
-                fields: {
-                    original: [
-                        { id: 'reifensatz', label: 'Reifensatz Premium (4 Reifen) (€)', type: 'number', required: true },
-                        { id: 'montage', label: 'Montage & Wuchten (€)', type: 'number', required: true },
-                        { id: 'entsorgung', label: 'Altreifenentsorgung (€)', type: 'number', required: false },
-                        { id: 'ventile', label: 'Neue Ventile (€)', type: 'number', required: false },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ],
-                    zubehoer: [
-                        { id: 'reifensatz', label: 'Reifensatz Budget (4 Reifen) (€)', type: 'number', required: true },
-                        { id: 'montage', label: 'Montage & Wuchten (€)', type: 'number', required: true },
-                        { id: 'entsorgung', label: 'Altreifenentsorgung (€)', type: 'number', required: false },
-                        { id: 'ventile', label: 'Neue Ventile (€)', type: 'number', required: false },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ],
-                    partner: null // Reifen: Partner kann nicht Reifen mitbringen (macht keinen Sinn)
-                },
-                // ============================================
-                // NEW: DYNAMIC VARIANT GENERATION
-                // ============================================
+
+                // 🆕 PHASE 1: Dynamische Varianten-Generierung basierend auf serviceData.art
                 generateVariants: function(serviceData) {
                     const art = serviceData?.art || 'wechsel';
-                    const anzahl = serviceData?.anzahl || 4;
+                    const anzahl = serviceData?.anzahl || '4';
 
-                    console.log('🛞 [Reifen] Generiere Varianten für art:', art, 'anzahl:', anzahl);
+                    console.log('🛞 [REIFEN] Generiere Varianten für art:', art, 'anzahl:', anzahl);
 
                     if (art === 'bestellung') {
                         // Partner will NEUE Reifen bestellen
@@ -718,7 +691,7 @@
                                 original: [
                                     { id: 'reifenwechsel', label: `Reifenwechsel (${anzahl} Reifen) (€)`, type: 'number', required: true },
                                     { id: 'wuchten', label: 'Wuchten (falls notwendig) (€)', type: 'number', required: false },
-                                    { id: 'ventile', label: 'Neue Ventile (€)', type: 'number', required: false },
+                                    { id: 'ventile', label: 'Ventile prüfen (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
@@ -735,6 +708,7 @@
                             fields: {
                                 original: [
                                     { id: 'einlagerung', label: 'Einlagerung (pro Saison) (€)', type: 'number', required: true },
+                                    { id: 'reinigung', label: 'Reinigung vor Einlagerung (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
@@ -742,7 +716,7 @@
                     }
 
                     // Fallback: Wenn art unbekannt
-                    console.warn('⚠️ [Reifen] Unbekannte art:', art, '→ Fallback zu Default');
+                    console.warn('⚠️ [REIFEN] Unbekannte art:', art, '- verwende Fallback');
                     return this.getDefaultVariants();
                 },
 
@@ -763,49 +737,15 @@
             mechanik: {
                 name: 'Mechanische Reparatur',
                 icon: '🔧',
-                // DEPRECATED: Static variant labels (replaced by generateVariants)
-                variantLabels: {
-                    original: 'Variante 1: Premium / Originalteile',
-                    zubehoer: 'Variante 2: Budget / Zubehörteile',
-                    partner: 'Mit Partner-Ersatzteil'
-                },
-                variantWarnings: {
-                    zubehoer: '⚠️ Günstigere Ersatzteile mit geringerer Lebensdauer',
-                    partner: '✅ Partner stellt Ersatzteil zur Verfügung'
-                },
-                // DEPRECATED: Static fields (replaced by generateVariants)
-                fields: {
-                    original: [
-                        { id: 'diagnose', label: 'Diagnose (€)', type: 'number', required: true },
-                        { id: 'teilekosten', label: 'Originalteile (€)', type: 'number', required: true },
-                        { id: 'arbeitszeit', label: 'Arbeitszeit (Stundensatz × h) (€)', type: 'number', required: true },
-                        { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ],
-                    zubehoer: [
-                        { id: 'diagnose', label: 'Diagnose (€)', type: 'number', required: true },
-                        { id: 'teilekosten', label: 'Zubehörteile (€)', type: 'number', required: true },
-                        { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                        { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ],
-                    partner: [
-                        { id: 'diagnose', label: 'Diagnose (€)', type: 'number', required: true },
-                        { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                        { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ]
-                },
-                // ============================================
-                // NEW: DYNAMIC VARIANT GENERATION
-                // ============================================
+
+                // 🆕 PHASE 5: Dynamische Varianten-Generierung basierend auf serviceData.reparaturart
                 generateVariants: function(serviceData) {
                     const reparaturart = serviceData?.reparaturart || 'reparatur';
 
-                    console.log('🔧 [Mechanik] Generiere Varianten für reparaturart:', reparaturart);
+                    console.log('🔧 [MECHANIK] Generiere Varianten für reparaturart:', reparaturart);
 
                     if (reparaturart === 'diagnose') {
-                        // NUR Diagnose / Fehlersuche → KEINE Ersatzteile!
+                        // NUR Diagnose / Fehlersuche (KEINE Teile!)
                         return {
                             variants: ['original'],
                             labels: {
@@ -814,84 +754,145 @@
                             warnings: {},
                             fields: {
                                 original: [
-                                    { id: 'diagnose', label: 'Diagnose (Fehlersuche) (€)', type: 'number', required: true },
-                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: false },
+                                    { id: 'diagnose', label: 'Diagnose / Fehlersuche (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Diagnose-Zeit (€)', type: 'number', required: true },
+                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
 
                     } else if (reparaturart === 'inspektion') {
-                        // Inspektion → KEIN separates Diagnose-Feld
+                        // Inspektion (Durchsicht, KEINE Teile)
                         return {
-                            variants: ['original', 'zubehoer'],
+                            variants: ['original'],
                             labels: {
-                                original: 'Variante 1: Inspektion mit Originalteilen',
-                                zubehoer: 'Variante 2: Inspektion mit Budget-Teilen'
+                                original: 'Inspektion'
                             },
-                            warnings: {
-                                zubehoer: '⚠️ Günstigere Ersatzteile (Filter, Öl, etc.) mit geringerer Qualität'
-                            },
+                            warnings: {},
                             fields: {
                                 original: [
-                                    { id: 'inspektionskosten', label: 'Inspektion (Arbeitszeit) (€)', type: 'number', required: true },
-                                    { id: 'teilekosten', label: 'Originalteile (Filter, Öl, etc.) (€)', type: 'number', required: true },
-                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ],
-                                zubehoer: [
-                                    { id: 'inspektionskosten', label: 'Inspektion (Arbeitszeit) (€)', type: 'number', required: true },
-                                    { id: 'teilekosten', label: 'Budget-Teile (Filter, Öl, etc.) (€)', type: 'number', required: true },
+                                    { id: 'inspektion', label: 'Inspektionskosten (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'kleinteile', label: 'Kleinteile (Luftfilter, etc.) (€)', type: 'number', required: false },
                                     { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
 
-                    } else {
-                        // Reparatur, Wartung, Bremsen, Auspuff → 3 Varianten (Original, Budget, Partner-Ersatzteil)
-                        const reparaturartLabel = {
-                            'reparatur': 'Reparatur',
-                            'wartung': 'Wartung',
-                            'bremsen': 'Bremsen-Service',
-                            'auspuff': 'Auspuff-Reparatur'
-                        }[reparaturart] || 'Reparatur';
-
+                    } else if (reparaturart === 'wartung') {
+                        // Wartung / Ölwechsel
                         return {
-                            variants: ['original', 'zubehoer', 'partner'],
+                            variants: ['original'],
                             labels: {
-                                original: `Variante 1: ${reparaturartLabel} mit Originalteilen`,
-                                zubehoer: `Variante 2: ${reparaturartLabel} mit Budget-Teilen`,
-                                partner: 'Variante 3: Mit Partner-Ersatzteil'
+                                original: 'Wartung / Ölwechsel'
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'oel', label: 'Motoröl + Filter (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'fluessigkeiten', label: 'Flüssigkeiten (Kühlmittel, etc.) (€)', type: 'number', required: false },
+                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (reparaturart === 'bremsen') {
+                        // Bremsen-Service (2 Varianten: Original vs Zubehör)
+                        return {
+                            variants: ['original', 'zubehoer'],
+                            labels: {
+                                original: 'Variante 1: Bremsbeläge Original (OEM)',
+                                zubehoer: 'Variante 2: Bremsbeläge Budget (Aftermarket)'
                             },
                             warnings: {
-                                zubehoer: '⚠️ Günstigere Ersatzteile mit geringerer Lebensdauer',
-                                partner: '✅ Partner stellt Ersatzteil zur Verfügung'
+                                zubehoer: '⚠️ Aftermarket-Bremsbeläge haben ggf. geringere Bremsleistung'
                             },
                             fields: {
                                 original: [
-                                    { id: 'diagnose', label: 'Diagnose (falls benötigt) (€)', type: 'number', required: false },
+                                    { id: 'bremsbelaege', label: 'Bremsbeläge Original (€)', type: 'number', required: true },
+                                    { id: 'bremsscheiben', label: 'Bremsscheiben (falls nötig) (€)', type: 'number', required: false },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'bremsfluid', label: 'Bremsflüssigkeit (€)', type: 'number', required: false },
+                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ],
+                                zubehoer: [
+                                    { id: 'bremsbelaege', label: 'Bremsbeläge Budget (€)', type: 'number', required: true },
+                                    { id: 'bremsscheiben', label: 'Bremsscheiben (falls nötig) (€)', type: 'number', required: false },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'bremsfluid', label: 'Bremsflüssigkeit (€)', type: 'number', required: false },
+                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (reparaturart === 'auspuff') {
+                        // Auspuff-Reparatur (2 Varianten: Original vs Zubehör)
+                        return {
+                            variants: ['original', 'zubehoer'],
+                            labels: {
+                                original: 'Variante 1: Auspuff Original (OEM)',
+                                zubehoer: 'Variante 2: Auspuff Universal (Aftermarket)'
+                            },
+                            warnings: {
+                                zubehoer: '⚠️ Universal-Auspuff ggf. nicht passgenau (TÜV-Probleme möglich)'
+                            },
+                            fields: {
+                                original: [
+                                    { id: 'auspuff', label: 'Auspuffanlage Original (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'dichtungen', label: 'Dichtungen + Schellen (€)', type: 'number', required: false },
+                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ],
+                                zubehoer: [
+                                    { id: 'auspuff', label: 'Auspuffanlage Universal (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'dichtungen', label: 'Dichtungen + Schellen (€)', type: 'number', required: false },
+                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (reparaturart === 'reparatur') {
+                        // Allgemeine Reparatur (2 Varianten: Original vs Zubehör)
+                        return {
+                            variants: ['original', 'zubehoer'],
+                            labels: {
+                                original: 'Variante 1: Originalteile (OEM)',
+                                zubehoer: 'Variante 2: Zubehörteile (Aftermarket)'
+                            },
+                            warnings: {
+                                zubehoer: '⚠️ Günstigere Ersatzteile mit geringerer Lebensdauer'
+                            },
+                            fields: {
+                                original: [
+                                    { id: 'diagnose', label: 'Diagnose (€)', type: 'number', required: true },
                                     { id: 'teilekosten', label: 'Originalteile (€)', type: 'number', required: true },
                                     { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
                                     { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ],
                                 zubehoer: [
-                                    { id: 'diagnose', label: 'Diagnose (falls benötigt) (€)', type: 'number', required: false },
-                                    { id: 'teilekosten', label: 'Budget-Teile (€)', type: 'number', required: true },
+                                    { id: 'diagnose', label: 'Diagnose (€)', type: 'number', required: true },
+                                    { id: 'teilekosten', label: 'Zubehörteile (€)', type: 'number', required: true },
                                     { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                                    { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ],
-                                partner: [
-                                    { id: 'diagnose', label: 'Diagnose (falls benötigt) (€)', type: 'number', required: false },
-                                    { id: 'arbeitszeit', label: 'Arbeitszeit (Montage) (€)', type: 'number', required: true },
                                     { id: 'werkstattkosten', label: 'Werkstattkosten (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
                     }
+
+                    // Fallback: Wenn reparaturart unbekannt
+                    console.warn('⚠️ [MECHANIK] Unbekannte reparaturart:', reparaturart, '- verwende Fallback');
+                    return this.getDefaultVariants();
                 },
 
                 getDefaultVariants: function() {
@@ -911,81 +912,65 @@
             pflege: {
                 name: 'Fahrzeugpflege',
                 icon: '✨',
-                // DEPRECATED: Static variant labels (replaced by generateVariants)
-                variantLabels: {
-                    original: 'Fahrzeugpflege-Paket',
-                    zubehoer: null,
-                    partner: null
-                },
-                variantWarnings: {
-                    original: null,
-                    zubehoer: null,
-                    partner: null
-                },
-                // DEPRECATED: Static fields (replaced by generateVariants)
-                fields: {
-                    original: [
-                        { id: 'aussenreinigung', label: 'Außenreinigung (€)', type: 'number', required: true },
-                        { id: 'innenreinigung', label: 'Innenreinigung (€)', type: 'number', required: true },
-                        { id: 'polsterreinigung', label: 'Polsterreinigung (€)', type: 'number', required: false },
-                        { id: 'versiegelung', label: 'Versiegelung (€)', type: 'number', required: false },
-                        { id: 'motorwaesche', label: 'Motorwäsche (€)', type: 'number', required: false },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ],
-                    zubehoer: null, // Pflege hat keine Zubehör-Variante
-                    partner: null // Pflege hat keine Partner-Variante
-                },
-                // ============================================
-                // NEW: DYNAMIC VARIANT GENERATION
-                // ============================================
+
+                // 🆕 PHASE 6: Dynamische Varianten-Generierung basierend auf serviceData.leistung
                 generateVariants: function(serviceData) {
                     const leistung = serviceData?.leistung || 'vollaufbereitung';
                     const zustand = serviceData?.zustand || 'normal';
 
-                    console.log('✨ [Pflege] Generiere Varianten für leistung:', leistung, 'zustand:', zustand);
+                    console.log('✨ [PFLEGE] Generiere Varianten für leistung:', leistung, 'zustand:', zustand);
 
-                    // Zustand-Hinweis
-                    let zustandHinweis = '';
-                    if (zustand === 'stark_verschmutzt' || zustand === 'komplett') {
-                        zustandHinweis = '💡 Hinweis: Stark verschmutztes Fahrzeug → Höherer Zeitaufwand kalkulieren!';
-                    } else if (zustand === 'leicht_verschmutzt' || zustand === 'aussen') {
-                        zustandHinweis = '💡 Hinweis: Leichte Verschmutzung → Normaler Zeitaufwand';
-                    }
-
-                    if (leistung === 'aussenreinigung' || leistung === 'aussen') {
+                    if (leistung === 'aussenreinigung') {
                         // NUR Außenreinigung
                         return {
                             variants: ['original'],
                             labels: {
                                 original: 'Außenreinigung'
                             },
-                            warnings: {
-                                original: zustandHinweis
-                            },
+                            warnings: {},
                             fields: {
                                 original: [
-                                    { id: 'aussenreinigung', label: 'Außenreinigung (Handwäsche) (€)', type: 'number', required: true },
+                                    { id: 'aussenreinigung', label: 'Außenreinigung (€)', type: 'number', required: true },
                                     { id: 'felgenreinigung', label: 'Felgenreinigung (€)', type: 'number', required: false },
+                                    { id: 'motorwaesche', label: 'Motorwäsche (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
 
-                    } else if (leistung === 'innenreinigung' || leistung === 'innen') {
+                    } else if (leistung === 'innenreinigung') {
                         // NUR Innenreinigung
                         return {
                             variants: ['original'],
                             labels: {
                                 original: 'Innenreinigung'
                             },
-                            warnings: {
-                                original: zustandHinweis
-                            },
+                            warnings: {},
                             fields: {
                                 original: [
-                                    { id: 'innenreinigung', label: 'Innenreinigung (Saugen, Wischen) (€)', type: 'number', required: true },
+                                    { id: 'innenreinigung', label: 'Innenreinigung (€)', type: 'number', required: true },
+                                    { id: 'staubsaugen', label: 'Staubsaugen (€)', type: 'number', required: false },
+                                    { id: 'ablagen', label: 'Ablagen reinigen (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (leistung === 'vollaufbereitung') {
+                        // Vollaufbereitung (Innen + Außen)
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: 'Vollaufbereitung (Innen + Außen)'
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'aussenreinigung', label: 'Außenreinigung (€)', type: 'number', required: true },
+                                    { id: 'innenreinigung', label: 'Innenreinigung (€)', type: 'number', required: true },
                                     { id: 'polsterreinigung', label: 'Polsterreinigung (€)', type: 'number', required: false },
-                                    { id: 'teppichreinigung', label: 'Teppichreinigung (€)', type: 'number', required: false },
+                                    { id: 'felgenreinigung', label: 'Felgenreinigung (€)', type: 'number', required: false },
+                                    { id: 'motorwaesche', label: 'Motorwäsche (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
@@ -998,20 +983,19 @@
                             labels: {
                                 original: 'Polsterreinigung'
                             },
-                            warnings: {
-                                original: zustandHinweis
-                            },
+                            warnings: {},
                             fields: {
                                 original: [
-                                    { id: 'polsterreinigung', label: 'Polsterreinigung (Nasssauger) (€)', type: 'number', required: true },
-                                    { id: 'geruchsneutralisierung', label: 'Geruchsneutralisierung (€)', type: 'number', required: false },
+                                    { id: 'polsterreinigung', label: 'Polsterreinigung (€)', type: 'number', required: true },
+                                    { id: 'fleckenentfernung', label: 'Fleckenentfernung (€)', type: 'number', required: false },
+                                    { id: 'geruchsbeseitigung', label: 'Geruchsbeseitigung (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
 
                     } else if (leistung === 'lackversiegelung') {
-                        // NUR Lackversiegelung
+                        // Lackversiegelung
                         return {
                             variants: ['original'],
                             labels: {
@@ -1020,56 +1004,18 @@
                             warnings: {},
                             fields: {
                                 original: [
-                                    { id: 'lackpolitur', label: 'Lackpolitur (Vorbereitung) (€)', type: 'number', required: true },
-                                    { id: 'versiegelung', label: 'Versiegelung (Keramik/Wachs) (€)', type: 'number', required: true },
-                                    { id: 'aussenreinigung', label: 'Außenreinigung (vorher) (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else if (leistung === 'vollaufbereitung' || leistung === 'komplett' || leistung === 'deluxe' || leistung === 'premium') {
-                        // VOLLAUFBEREITUNG (alle Leistungen)
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Vollaufbereitung (Komplett-Paket)'
-                            },
-                            warnings: {
-                                original: zustandHinweis
-                            },
-                            fields: {
-                                original: [
-                                    { id: 'aussenreinigung', label: 'Außenreinigung (€)', type: 'number', required: true },
-                                    { id: 'innenreinigung', label: 'Innenreinigung (€)', type: 'number', required: true },
-                                    { id: 'polsterreinigung', label: 'Polsterreinigung (€)', type: 'number', required: false },
-                                    { id: 'versiegelung', label: 'Lackversiegelung (€)', type: 'number', required: false },
-                                    { id: 'motorwaesche', label: 'Motorwäsche (€)', type: 'number', required: false },
-                                    { id: 'felgenversiegelung', label: 'Felgenversiegelung (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else {
-                        // Basic oder unbekannt
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Fahrzeugpflege-Paket'
-                            },
-                            warnings: {
-                                original: zustandHinweis
-                            },
-                            fields: {
-                                original: [
-                                    { id: 'aussenreinigung', label: 'Außenreinigung (€)', type: 'number', required: true },
-                                    { id: 'innenreinigung', label: 'Innenreinigung (€)', type: 'number', required: false },
+                                    { id: 'lackversiegelung', label: 'Lackversiegelung (€)', type: 'number', required: true },
+                                    { id: 'lackpolitur', label: 'Lackpolitur (€)', type: 'number', required: false },
+                                    { id: 'aussenreinigung', label: 'Vorreinigung (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
                     }
+
+                    // Fallback: Wenn leistung unbekannt
+                    console.warn('⚠️ [PFLEGE] Unbekannte leistung:', leistung, '- verwende Fallback');
+                    return this.getDefaultVariants();
                 },
 
                 getDefaultVariants: function() {
@@ -1084,12 +1030,118 @@
                             ]
                         }
                     };
+                },
+
+                // OLD STATIC FIELDS (kept for backward compatibility if needed)
+                variantLabels: {
+                    original: 'Fahrzeugpflege-Paket',
+                    zubehoer: null,
+                    partner: null
+                },
+                variantWarnings: {
+                    original: null,
+                    zubehoer: null,
+                    partner: null
+                },
+                fields: {
+                    original: [
+                        { id: 'aussenreinigung', label: 'Außenreinigung (€)', type: 'number', required: true },
+                        { id: 'innenreinigung', label: 'Innenreinigung (€)', type: 'number', required: true },
+                        { id: 'polsterreinigung', label: 'Polsterreinigung (€)', type: 'number', required: false },
+                        { id: 'versiegelung', label: 'Versiegelung (€)', type: 'number', required: false },
+                        { id: 'motorwaesche', label: 'Motorwäsche (€)', type: 'number', required: false },
+                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                    ],
+                    zubehoer: null, // Pflege hat keine Zubehör-Variante
+                    partner: null // Pflege hat keine Partner-Variante
                 }
             },
             tuev: {
                 name: 'TÜV / AU',
                 icon: '🔍',
-                // DEPRECATED: Static variant labels (replaced by generateVariants)
+
+                // 🆕 PHASE 7: Dynamische Varianten-Generierung basierend auf serviceData.pruefung
+                generateVariants: function(serviceData) {
+                    const pruefung = serviceData?.pruefung || 'hu_au';
+
+                    console.log('🔍 [TÜV] Generiere Varianten für pruefung:', pruefung);
+
+                    if (pruefung === 'hu') {
+                        // NUR Hauptuntersuchung (KEIN AU!)
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: 'Hauptuntersuchung (HU)'
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'hauptuntersuchung', label: 'Hauptuntersuchung HU (€)', type: 'number', required: true },
+                                    { id: 'maengelbeseitigung', label: 'Mängelbeseitigung (€)', type: 'number', required: false },
+                                    { id: 'nachpruefung', label: 'Nachprüfung (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (pruefung === 'au') {
+                        // NUR Abgasuntersuchung (KEIN HU!)
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: 'Abgasuntersuchung (AU)'
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'abgasuntersuchung', label: 'Abgasuntersuchung AU (€)', type: 'number', required: true },
+                                    { id: 'maengelbeseitigung', label: 'Mängelbeseitigung (€)', type: 'number', required: false },
+                                    { id: 'nachpruefung', label: 'Nachprüfung (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (pruefung === 'hu_au') {
+                        // HU + AU Kombi
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: 'HU + AU (Kombi)'
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'hauptuntersuchung', label: 'Hauptuntersuchung HU (€)', type: 'number', required: true },
+                                    { id: 'abgasuntersuchung', label: 'Abgasuntersuchung AU (€)', type: 'number', required: true },
+                                    { id: 'maengelbeseitigung', label: 'Mängelbeseitigung (€)', type: 'number', required: false },
+                                    { id: 'nachpruefung', label: 'Nachprüfung (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+                    }
+
+                    // Fallback: Wenn pruefung unbekannt
+                    console.warn('⚠️ [TÜV] Unbekannte pruefung:', pruefung, '- verwende Fallback');
+                    return this.getDefaultVariants();
+                },
+
+                getDefaultVariants: function() {
+                    return {
+                        variants: ['original'],
+                        labels: { original: 'TÜV / AU Paket' },
+                        warnings: {},
+                        fields: {
+                            original: [
+                                { id: 'service', label: 'Service-Kosten (€)', type: 'number', required: true },
+                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                            ]
+                        }
+                    };
+                },
+
+                // OLD STATIC FIELDS (kept for backward compatibility if needed)
                 variantLabels: {
                     original: 'TÜV / AU Paket',
                     zubehoer: null,
@@ -1100,7 +1152,6 @@
                     zubehoer: null,
                     partner: null
                 },
-                // DEPRECATED: Static fields (replaced by generateVariants)
                 fields: {
                     original: [
                         { id: 'hauptuntersuchung', label: 'Hauptuntersuchung HU (€)', type: 'number', required: true },
@@ -1111,105 +1162,95 @@
                     ],
                     zubehoer: null, // TÜV hat keine Varianten
                     partner: null
-                },
-                // ============================================
-                // NEW: DYNAMIC VARIANT GENERATION
-                // ============================================
-                generateVariants: function(serviceData) {
-                    const pruefung = serviceData?.pruefung || 'hu_au';
-
-                    console.log('🔍 [TÜV] Generiere Varianten für pruefung:', pruefung);
-
-                    if (pruefung === 'hu' || pruefung === 'tuev') {
-                        // NUR Hauptuntersuchung (HU)
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Hauptuntersuchung (HU)'
-                            },
-                            warnings: {},
-                            fields: {
-                                original: [
-                                    { id: 'hauptuntersuchung', label: 'Hauptuntersuchung HU (€)', type: 'number', required: true },
-                                    { id: 'maengelbeseitigung', label: 'Mängelbeseitigung (falls erforderlich) (€)', type: 'number', required: false },
-                                    { id: 'nachpruefung', label: 'Nachprüfung (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else if (pruefung === 'au') {
-                        // NUR Abgasuntersuchung (AU)
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Abgasuntersuchung (AU)'
-                            },
-                            warnings: {},
-                            fields: {
-                                original: [
-                                    { id: 'abgasuntersuchung', label: 'Abgasuntersuchung AU (€)', type: 'number', required: true },
-                                    { id: 'maengelbeseitigung', label: 'Mängelbeseitigung (falls erforderlich) (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else if (pruefung === 'nachpruefung') {
-                        // Nachuntersuchung
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Nachuntersuchung'
-                            },
-                            warnings: {},
-                            fields: {
-                                original: [
-                                    { id: 'nachpruefung', label: 'Nachprüfung (€)', type: 'number', required: true },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else {
-                        // HU + AU Kombi (hu_au oder kombi)
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'HU + AU Kombi'
-                            },
-                            warnings: {},
-                            fields: {
-                                original: [
-                                    { id: 'hauptuntersuchung', label: 'Hauptuntersuchung HU (€)', type: 'number', required: true },
-                                    { id: 'abgasuntersuchung', label: 'Abgasuntersuchung AU (€)', type: 'number', required: true },
-                                    { id: 'maengelbeseitigung', label: 'Mängelbeseitigung (falls erforderlich) (€)', type: 'number', required: false },
-                                    { id: 'nachpruefung', label: 'Nachprüfung (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-                    }
-                },
-
-                getDefaultVariants: function() {
-                    return {
-                        variants: ['original'],
-                        labels: { original: 'TÜV / AU' },
-                        warnings: {},
-                        fields: {
-                            original: [
-                                { id: 'service', label: 'Service-Kosten (€)', type: 'number', required: true },
-                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                            ]
-                        }
-                    };
                 }
             },
             versicherung: {
                 name: 'Versicherungsfall',
                 icon: '📋',
-                // DEPRECATED: Static variant labels (replaced by generateVariants)
+
+                // 🆕 PHASE 8: Dynamische Varianten-Generierung basierend auf serviceData.gutachten
+                generateVariants: function(serviceData) {
+                    const gutachten = serviceData?.gutachten || 'nein';
+
+                    console.log('📋 [VERSICHERUNG] Generiere Varianten für gutachten:', gutachten);
+
+                    // Gutachten-Feld nur wenn nein/geplant, NICHT wenn bereits vorhanden!
+                    const showGutachtenField = (gutachten === 'nein' || gutachten === 'geplant');
+
+                    // Base-Felder (ohne Gutachten)
+                    const baseFieldsOriginal = [
+                        { id: 'karosserie', label: 'Karosseriearbeiten (€)', type: 'number', required: true },
+                        { id: 'lackierung', label: 'Lackierung (€)', type: 'number', required: true },
+                        { id: 'teilekosten', label: 'Ersatzteile Original (€)', type: 'number', required: true },
+                        { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                    ];
+
+                    const baseFieldsZubehoer = [
+                        { id: 'karosserie', label: 'Karosseriearbeiten (€)', type: 'number', required: true },
+                        { id: 'lackierung', label: 'Lackierung (€)', type: 'number', required: true },
+                        { id: 'teilekosten', label: 'Ersatzteile Budget (€)', type: 'number', required: true },
+                        { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                    ];
+
+                    // Conditionally add Gutachten field
+                    const fieldsOriginal = showGutachtenField
+                        ? [{ id: 'gutachten', label: 'Gutachten (€)', type: 'number', required: true }, ...baseFieldsOriginal]
+                        : baseFieldsOriginal;
+
+                    const fieldsZubehoer = showGutachtenField
+                        ? [{ id: 'gutachten', label: 'Gutachten (€)', type: 'number', required: true }, ...baseFieldsZubehoer]
+                        : baseFieldsZubehoer;
+
+                    return {
+                        variants: ['original', 'zubehoer'],
+                        labels: {
+                            original: 'Variante 1: Mit Originalteilen',
+                            zubehoer: 'Variante 2: Mit Budget-Ersatzteilen'
+                        },
+                        warnings: {
+                            zubehoer: '⚠️ Versicherung muss Budget-Teile genehmigen'
+                        },
+                        fields: {
+                            original: fieldsOriginal,
+                            zubehoer: fieldsZubehoer
+                        }
+                    };
+                },
+
+                getDefaultVariants: function() {
+                    return {
+                        variants: ['original', 'zubehoer'],
+                        labels: {
+                            original: 'Variante 1: Mit Originalteilen',
+                            zubehoer: 'Variante 2: Mit Budget-Ersatzteilen'
+                        },
+                        warnings: {
+                            zubehoer: '⚠️ Versicherung muss Budget-Teile genehmigen'
+                        },
+                        fields: {
+                            original: [
+                                { id: 'gutachten', label: 'Gutachten (€)', type: 'number', required: true },
+                                { id: 'karosserie', label: 'Karosseriearbeiten (€)', type: 'number', required: true },
+                                { id: 'lackierung', label: 'Lackierung (€)', type: 'number', required: true },
+                                { id: 'teilekosten', label: 'Ersatzteile (€)', type: 'number', required: true },
+                                { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                            ],
+                            zubehoer: [
+                                { id: 'gutachten', label: 'Gutachten (€)', type: 'number', required: true },
+                                { id: 'karosserie', label: 'Karosseriearbeiten (€)', type: 'number', required: true },
+                                { id: 'lackierung', label: 'Lackierung (€)', type: 'number', required: true },
+                                { id: 'teilekosten', label: 'Ersatzteile Budget (€)', type: 'number', required: true },
+                                { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                            ]
+                        }
+                    };
+                },
+
+                // OLD STATIC FIELDS (kept for backward compatibility if needed)
                 variantLabels: {
                     original: 'Variante 1: Mit Originalteilen',
                     zubehoer: 'Variante 2: Mit Budget-Ersatzteilen',
@@ -1219,7 +1260,6 @@
                     zubehoer: '⚠️ Versicherung muss Budget-Teile genehmigen',
                     partner: null
                 },
-                // DEPRECATED: Static fields (replaced by generateVariants)
                 fields: {
                     original: [
                         { id: 'gutachten', label: 'Gutachten (€)', type: 'number', required: true },
@@ -1238,80 +1278,88 @@
                         { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                     ],
                     partner: null // Versicherung hat keine Partner-Variante
-                },
-                // ============================================
-                // NEW: DYNAMIC VARIANT GENERATION
-                // ============================================
+                }
+            },
+            glas: {
+                name: 'Glas-Reparatur',
+                icon: '🔍',
+
+                // 🆕 Dynamische Varianten-Generierung basierend auf serviceData.art
                 generateVariants: function(serviceData) {
-                    const gutachten = serviceData?.gutachten || 'nein';
+                    const art = serviceData?.art || 'steinschlag';
+                    const typ = serviceData?.typ || 'windschutzscheibe';
+                    const sensor = serviceData?.sensor || false;
 
-                    console.log('📋 [Versicherung] Generiere Varianten für gutachten:', gutachten);
+                    console.log('🔍 [GLAS] Generiere Varianten für art:', art, 'typ:', typ, 'sensor:', sensor);
 
-                    // Gutachten-Feld basierend auf gutachten-Status
-                    let gutachtenField = null;
-                    if (gutachten === 'ja') {
-                        // Gutachten liegt vor → KEIN Gutachten-Feld (ist kostenlos/bereits vorhanden)
-                        gutachtenField = null;
-                    } else {
-                        // Gutachten muss erstellt werden
-                        gutachtenField = { id: 'gutachten', label: 'Gutachten (€)', type: 'number', required: true };
-                    }
+                    if (art === 'steinschlag') {
+                        // Steinschlag-Reparatur (NUR 1 Variante - keine Ersatzteilwahl)
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: 'Steinschlag-Reparatur'
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'reparatur', label: 'Steinschlag-Reparatur (€)', type: 'number', required: true },
+                                    { id: 'politur', label: 'Politur (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
 
-                    // Original-Variante (mit Originalteilen)
-                    const originalFields = [];
-                    if (gutachtenField) {
-                        originalFields.push(gutachtenField);
-                    }
-                    originalFields.push(
-                        { id: 'karosserie', label: 'Karosseriearbeiten (€)', type: 'number', required: true },
-                        { id: 'lackierung', label: 'Lackierung (€)', type: 'number', required: true },
-                        { id: 'teilekosten', label: 'Ersatzteile (Original) (€)', type: 'number', required: true },
-                        { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    );
+                    } else if (art === 'riss' || art === 'ersatz') {
+                        // Scheibenaustausch (2 Varianten: Original vs Zubehör)
+                        const typLabel = typ === 'windschutzscheibe' ? 'Windschutzscheibe' :
+                                        typ === 'seitenfenster' ? 'Seitenfenster' :
+                                        typ === 'heckscheibe' ? 'Heckscheibe' : 'Scheibe';
 
-                    // Budget-Variante (mit Budget-Teilen)
-                    const zubehoerFields = [];
-                    if (gutachtenField) {
-                        zubehoerFields.push(gutachtenField);
-                    }
-                    zubehoerFields.push(
-                        { id: 'karosserie', label: 'Karosseriearbeiten (€)', type: 'number', required: true },
-                        { id: 'lackierung', label: 'Lackierung (€)', type: 'number', required: true },
-                        { id: 'teilekosten', label: 'Ersatzteile (Budget) (€)', type: 'number', required: true },
-                        { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    );
+                        const originalFields = [
+                            { id: 'scheibe', label: `${typLabel} Original (€)`, type: 'number', required: true },
+                            { id: 'einbau', label: 'Einbau & Abdichtung (€)', type: 'number', required: true }
+                        ];
 
-                    // Gutachten-Hinweis
-                    let gutachtenHinweis = '';
-                    if (gutachten === 'ja') {
-                        gutachtenHinweis = '✅ Gutachten liegt bereits vor (keine zusätzlichen Kosten)';
-                    } else if (gutachten === 'geplant') {
-                        gutachtenHinweis = '⏳ Gutachten wird noch erstellt';
-                    }
+                        const zubehoerFields = [
+                            { id: 'scheibe', label: `${typLabel} Aftermarket (€)`, type: 'number', required: true },
+                            { id: 'einbau', label: 'Einbau & Abdichtung (€)', type: 'number', required: true }
+                        ];
 
-                    return {
-                        variants: ['original', 'zubehoer'],
-                        labels: {
-                            original: 'Variante 1: Mit Originalteilen',
-                            zubehoer: 'Variante 2: Mit Budget-Ersatzteilen'
-                        },
-                        warnings: {
-                            original: gutachtenHinweis,
-                            zubehoer: '⚠️ Versicherung muss Budget-Teile genehmigen' + (gutachtenHinweis ? ' | ' + gutachtenHinweis : '')
-                        },
-                        fields: {
-                            original: originalFields,
-                            zubehoer: zubehoerFields
+                        // Sensor-Kalibrierung nur bei Sensor vorhanden
+                        if (sensor) {
+                            originalFields.push({ id: 'kalibrierung', label: 'Sensor-Kalibrierung (€)', type: 'number', required: true });
+                            zubehoerFields.push({ id: 'kalibrierung', label: 'Sensor-Kalibrierung (€)', type: 'number', required: true });
                         }
-                    };
+
+                        originalFields.push({ id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false });
+                        zubehoerFields.push({ id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false });
+
+                        return {
+                            variants: ['original', 'zubehoer'],
+                            labels: {
+                                original: 'Variante 1: Original-Scheibe',
+                                zubehoer: 'Variante 2: Aftermarket-Scheibe'
+                            },
+                            warnings: {
+                                zubehoer: '⚠️ Aftermarket-Scheibe ggf. ohne Herstellergarantie'
+                            },
+                            fields: {
+                                original: originalFields,
+                                zubehoer: zubehoerFields
+                            }
+                        };
+                    }
+
+                    // Fallback
+                    return this.getDefaultVariants();
                 },
 
                 getDefaultVariants: function() {
                     return {
                         variants: ['original'],
-                        labels: { original: 'Versicherungsfall' },
+                        labels: {
+                            original: 'Glas-Service'
+                        },
                         warnings: {},
                         fields: {
                             original: [
@@ -1322,103 +1370,182 @@
                     };
                 }
             },
-            glas: {
-                name: 'Glas-Reparatur',
-                icon: '🔍',
-                // DEPRECATED: Static variant labels (replaced by generateVariants)
-                variantLabels: {
-                    original: 'Steinschlag-Reparatur',
-                    zubehoer: 'Mit Aftermarket-Scheibe',
-                    partner: null
-                },
-                variantWarnings: {
-                    zubehoer: '⚠️ Aftermarket-Scheiben können Sensor-Probleme verursachen',
-                    partner: null
-                },
-                // DEPRECATED: Static fields (replaced by generateVariants)
-                fields: {
-                    original: [
-                        { id: 'reparatur', label: 'Steinschlag-Reparatur (€)', type: 'number', required: true },
-                        { id: 'material', label: 'Material (Harz) (€)', type: 'number', required: false },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ],
-                    zubehoer: [
-                        { id: 'scheibe', label: 'Aftermarket-Scheibe (€)', type: 'number', required: true },
-                        { id: 'ausbau', label: 'Ausbau/Einbau (€)', type: 'number', required: true },
-                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                    ],
-                    partner: null
-                },
-                // ============================================
-                // NEW: DYNAMIC VARIANT GENERATION
-                // ============================================
+            klima: {
+                name: 'Klima-Service',
+                icon: '❄️',
+
+                // 🆕 Dynamische Varianten-Generierung basierend auf serviceData.art
                 generateVariants: function(serviceData) {
-                    const art = serviceData?.art || 'steinschlag';
-                    const anzahl = serviceData?.anzahl || 1;
+                    const art = serviceData?.art || 'wartung';
+                    const symptome = serviceData?.symptome || [];
 
-                    console.log('🔍 [Glas] Generiere Varianten für art:', art, 'anzahl:', anzahl);
+                    console.log('❄️ [KLIMA] Generiere Varianten für art:', art, 'symptome:', symptome);
 
-                    if (art === 'steinschlag' || art === 'riss') {
-                        // Steinschlag/Riss → Reparatur (keine Scheibe nötig)
-                        const artLabel = art === 'steinschlag' ? 'Steinschlag' : 'Riss';
+                    if (art === 'wartung' || art === 'befuellung') {
+                        // Wartung oder Befüllung (1 Variante - Standard-Service)
+                        const isWartung = art === 'wartung';
                         return {
                             variants: ['original'],
                             labels: {
-                                original: `${artLabel}-Reparatur`
+                                original: isWartung ? 'Klimaanlage Wartung' : 'Kältemittel Befüllung'
                             },
                             warnings: {},
                             fields: {
                                 original: [
-                                    { id: 'reparatur', label: `${artLabel}-Reparatur (€)`, type: 'number', required: true },
-                                    { id: 'material', label: 'Material (Harz) (€)', type: 'number', required: false },
+                                    { id: 'service', label: isWartung ? 'Wartung inkl. Funktionstest (€)' : 'Kältemittel R134a/R1234yf (€)', type: 'number', required: true },
+                                    { id: 'filter', label: 'Innenraumfilter wechseln (€)', type: 'number', required: false },
+                                    { id: 'desinfektion', label: 'Desinfektion (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
 
-                    } else if (art === 'austausch') {
-                        // Scheibenaustausch → 2 Varianten (Original vs. Aftermarket)
+                    } else if (art === 'desinfektion') {
+                        // Desinfektion (1 Variante)
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: 'Klimaanlage Desinfektion'
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'ozonbehandlung', label: 'Ozon-Behandlung (€)', type: 'number', required: true },
+                                    { id: 'filter', label: 'Innenraumfilter wechseln (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (art === 'reparatur') {
+                        // Reparatur (2 Varianten: Original vs Budget)
                         return {
                             variants: ['original', 'zubehoer'],
                             labels: {
-                                original: `Variante 1: Mit Originalscheibe (${anzahl}x)`,
-                                zubehoer: `Variante 2: Mit Aftermarket-Scheibe (${anzahl}x)`
+                                original: 'Variante 1: Original-Ersatzteile',
+                                zubehoer: 'Variante 2: Budget-Ersatzteile'
                             },
                             warnings: {
-                                zubehoer: '⚠️ Aftermarket-Scheiben: Mögliche Sensor-Probleme (Kamera, Regen, etc.)'
+                                zubehoer: '⚠️ Budget-Teile haben ggf. kürzere Lebensdauer'
                             },
                             fields: {
                                 original: [
-                                    { id: 'scheibe', label: `Originalscheibe (${anzahl}x) (€)`, type: 'number', required: true },
-                                    { id: 'ausbau', label: 'Ausbau/Einbau (€)', type: 'number', required: true },
-                                    { id: 'kalibrierung', label: 'Kamera-Kalibrierung (falls vorhanden) (€)', type: 'number', required: false },
-                                    { id: 'dichtung', label: 'Dichtung (€)', type: 'number', required: false },
+                                    { id: 'diagnose', label: 'Diagnose / Fehlersuche (€)', type: 'number', required: true },
+                                    { id: 'ersatzteile', label: 'Original-Ersatzteile (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'befuellung', label: 'Kältemittel nachfüllen (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ],
                                 zubehoer: [
-                                    { id: 'scheibe', label: `Aftermarket-Scheibe (${anzahl}x) (€)`, type: 'number', required: true },
-                                    { id: 'ausbau', label: 'Ausbau/Einbau (€)', type: 'number', required: true },
-                                    { id: 'kalibrierung', label: 'Kamera-Kalibrierung (falls vorhanden) (€)', type: 'number', required: false },
-                                    { id: 'dichtung', label: 'Dichtung (€)', type: 'number', required: false },
+                                    { id: 'diagnose', label: 'Diagnose / Fehlersuche (€)', type: 'number', required: true },
+                                    { id: 'ersatzteile', label: 'Budget-Ersatzteile (€)', type: 'number', required: true },
+                                    { id: 'arbeitszeit', label: 'Arbeitszeit (€)', type: 'number', required: true },
+                                    { id: 'befuellung', label: 'Kältemittel nachfüllen (€)', type: 'number', required: false },
                                     { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                                 ]
                             }
                         };
                     }
 
-                    // Fallback: Wenn art unbekannt
-                    console.warn('⚠️ [Glas] Unbekannte art:', art, '→ Fallback zu Default');
+                    // Fallback
                     return this.getDefaultVariants();
                 },
 
                 getDefaultVariants: function() {
                     return {
                         variants: ['original'],
-                        labels: { original: 'Glas-Reparatur' },
+                        labels: {
+                            original: 'Klima-Service'
+                        },
                         warnings: {},
                         fields: {
                             original: [
                                 { id: 'service', label: 'Service-Kosten (€)', type: 'number', required: true },
+                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                            ]
+                        }
+                    };
+                }
+            },
+            dellen: {
+                name: 'Dellen-Drückung',
+                icon: '🔨',
+
+                // 🆕 Dynamische Varianten-Generierung basierend auf serviceData
+                generateVariants: function(serviceData) {
+                    const art = serviceData?.art || 'klein';  // klein, mittel, gross
+                    const anzahl = serviceData?.anzahl || 1;
+                    const lackschaden = serviceData?.lackschaden || false;
+                    const positionen = serviceData?.position || [];
+
+                    console.log('🔨 [DELLEN] Generiere Varianten für art:', art, 'anzahl:', anzahl, 'lackschaden:', lackschaden);
+
+                    const artLabels = {
+                        'klein': 'Klein (Ø < 2 cm)',
+                        'mittel': 'Mittel (Ø 2-5 cm)',
+                        'gross': 'Groß (Ø > 5 cm)'
+                    };
+
+                    if (!lackschaden) {
+                        // PDR möglich - OHNE Lackierung (1 Variante)
+                        const description = `${anzahl}x ${artLabels[art]} - ${positionen.length} Position(en)`;
+
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: `PDR - ${description}`
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'pdr', label: `PDR Dellen-Drückung (${anzahl} Delle(n)) (€)`, type: 'number', required: true },
+                                    { id: 'politur', label: 'Politur (optional) (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else {
+                        // Lackschaden vorhanden - PDR + Lackierung (2 Varianten)
+                        const description = `${anzahl}x ${artLabels[art]} - ${positionen.length} Position(en)`;
+
+                        return {
+                            variants: ['original', 'zubehoer'],
+                            labels: {
+                                original: `Variante 1: PDR + Spot-Repair (Original-Lack)`,
+                                zubehoer: `Variante 2: PDR + Budget-Lackierung`
+                            },
+                            warnings: {
+                                zubehoer: '⚠️ Budget-Lackierung ggf. sichtbare Farbunterschiede'
+                            },
+                            fields: {
+                                original: [
+                                    { id: 'pdr', label: `PDR Dellen-Drückung (${anzahl} Delle(n)) (€)`, type: 'number', required: true },
+                                    { id: 'lackierung', label: 'Spot-Repair Original-Lack (€)', type: 'number', required: true },
+                                    { id: 'politur', label: 'Politur & Blend (€)', type: 'number', required: true },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ],
+                                zubehoer: [
+                                    { id: 'pdr', label: `PDR Dellen-Drückung (${anzahl} Delle(n)) (€)`, type: 'number', required: true },
+                                    { id: 'lackierung', label: 'Budget-Lackierung (€)', type: 'number', required: true },
+                                    { id: 'politur', label: 'Politur (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+                    }
+                },
+
+                getDefaultVariants: function() {
+                    return {
+                        variants: ['original'],
+                        labels: {
+                            original: 'PDR Dellen-Drückung'
+                        },
+                        warnings: {},
+                        fields: {
+                            original: [
+                                { id: 'pdr', label: 'PDR-Kosten (€)', type: 'number', required: true },
                                 { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
                             ]
                         }
@@ -1430,20 +1557,43 @@
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
 
-            // 🆕 MULTI-TENANT: Set werkstattId (admin page - default to 'mosbach')
-            // TODO: In production, fetch from admin user's werkstattId
-            window.werkstattId = 'mosbach';
+            // 🆕 PHASE 2.3: Load werkstattId from localStorage or default
+            const savedWerkstatt = localStorage.getItem('selectedWerkstatt') || 'mosbach';
+            window.werkstattId = savedWerkstatt;
+
+            // Set dropdown to saved value
+            const selector = document.getElementById('werkstattSelector');
+            if (selector) {
+                selector.value = savedWerkstatt;
+            }
+
             console.log('✅ [KVA-ERSTELLEN] werkstattId initialized:', window.werkstattId);
 
             await loadAnfrage();
         });
 
+        // 🆕 PHASE 2.3: Werkstatt-Wechsel Handler
+        function onWerkstattChange() {
+            const selector = document.getElementById('werkstattSelector');
+            const newWerkstatt = selector.value;
+
+            console.log('🔄 [KVA-ERSTELLEN] Werkstatt gewechselt:', window.werkstattId, '→', newWerkstatt);
+
+            // Save to localStorage
+            localStorage.setItem('selectedWerkstatt', newWerkstatt);
+
+            // Update global variable
+            window.werkstattId = newWerkstatt;
+
+            // Reload page to fetch data for new werkstatt
+            window.location.reload();
+        }
+
         // ============================================
         // DYNAMISCHE VARIANTEN-RENDERING FUNKTION (Single-Service)
+        // 🆕 PHASE 2: Nutzt generateVariants(serviceData) statt statischer Templates
         // ============================================
-        // REWRITTEN: Uses dynamic generateVariants(serviceData)
-        // ============================================
-        function renderVariantenBoxes(serviceTyp, serviceData, ersatzteilPraeferenz = null) {
+        function renderVariantenBoxes(serviceTyp, serviceData) {
             const container = document.getElementById('variantenContainer');
             container.innerHTML = ''; // Clear
 
@@ -1451,7 +1601,7 @@
             const actualServiceTyp = serviceTyp && SERVICE_TEMPLATES[serviceTyp] ? serviceTyp : 'lackierung';
             const template = SERVICE_TEMPLATES[actualServiceTyp];
 
-            console.log('🎨 [NEW] Rendere KVA-Varianten für Service:', actualServiceTyp, 'ServiceData:', serviceData);
+            console.log('🎨 [PHASE 2] Rendere KVA-Varianten für Service:', actualServiceTyp, 'ServiceData:', serviceData);
 
             // Titel anpassen
             document.getElementById('kvaTitle').innerHTML = `${template.icon} Kostenaufstellung - ${template.name}`;
@@ -1459,37 +1609,31 @@
             // Termin-Labels anpassen (service-agnostisch)
             updateTerminLabels(actualServiceTyp);
 
-            // ============================================
-            // NEW: DYNAMIC VARIANT GENERATION
-            // ============================================
+            // 🆕 Dynamische Varianten-Generierung (wenn generateVariants() existiert)
             let variantConfig;
-
-            if (template.generateVariants && typeof template.generateVariants === 'function') {
-                // NEW: Use dynamic generateVariants() function
-                variantConfig = template.generateVariants(serviceData);
-                console.log('✅ [NEW] Dynamische Varianten generiert:', variantConfig.variants);
+            if (typeof template.generateVariants === 'function') {
+                console.log('✅ [PHASE 2] Verwende generateVariants() für', actualServiceTyp);
+                variantConfig = template.generateVariants(serviceData || {});
             } else {
-                // FALLBACK: Legacy static fields (backwards compatibility)
-                console.warn('⚠️ [FALLBACK] Service hat keine generateVariants() → Fallback zu Static Fields');
-
-                // Map ersatzteilPraeferenz to serviceData for Lackierung (backwards compatibility)
-                if (ersatzteilPraeferenz === 'gebrauchteil' && template.fields.partner) {
+                // Fallback auf alte Logik (Lackierung, Mechanik, etc. noch nicht migriert)
+                console.warn('⚠️ [PHASE 2] Service', actualServiceTyp, 'hat noch keine generateVariants() - verwende Fallback');
+                const ersatzteilPraeferenz = serviceData?.ersatzteil || null;
+                if (ersatzteilPraeferenz === 'gebrauchteil' && template.fields?.partner) {
                     variantConfig = {
                         variants: ['partner'],
-                        labels: { partner: template.variantLabels.partner },
-                        warnings: { partner: template.variantWarnings.partner },
+                        labels: { partner: template.variantLabels.partner || 'Mit Partner-Ersatzteil' },
+                        warnings: { partner: template.variantWarnings?.partner || null },
                         fields: { partner: template.fields.partner }
                     };
-                } else if (template.fields.zubehoer) {
+                } else if (template.fields?.zubehoer) {
                     variantConfig = {
                         variants: ['original', 'zubehoer'],
                         labels: {
-                            original: template.variantLabels.original,
-                            zubehoer: template.variantLabels.zubehoer
+                            original: template.variantLabels.original || 'Variante 1: Premium',
+                            zubehoer: template.variantLabels.zubehoer || 'Variante 2: Budget'
                         },
                         warnings: {
-                            original: null,
-                            zubehoer: template.variantWarnings.zubehoer
+                            zubehoer: template.variantWarnings?.zubehoer || null
                         },
                         fields: {
                             original: template.fields.original,
@@ -1499,23 +1643,18 @@
                 } else {
                     variantConfig = {
                         variants: ['original'],
-                        labels: { original: template.variantLabels.original },
+                        labels: { original: template.variantLabels?.original || 'Standard' },
                         warnings: {},
                         fields: { original: template.fields.original }
                     };
                 }
             }
 
-            // Beschreibung anpassen basierend auf Anzahl der Varianten
+            // Beschreibung anpassen
             if (variantConfig.variants.length > 1) {
-                document.getElementById('kvaDescription').textContent = 'Erstellen Sie 2 Preis-Varianten, damit der Partner wählen kann.';
+                document.getElementById('kvaDescription').textContent = 'Erstellen Sie 2 Preis-Varianten (Premium + Budget), damit der Partner wählen kann.';
             } else {
-                const singleLabel = variantConfig.labels[variantConfig.variants[0]];
-                if (variantConfig.variants[0] === 'partner') {
-                    document.getElementById('kvaDescription').textContent = 'Partner stellt Ersatzteil zur Verfügung - kalkulieren Sie die Arbeitskosten.';
-                } else {
-                    document.getElementById('kvaDescription').textContent = 'Erstellen Sie ein Kosten-Angebot für den Partner.';
-                }
+                document.getElementById('kvaDescription').textContent = 'Erstellen Sie ein Kosten-Angebot für den Partner.';
             }
 
             // Varianten rendern
@@ -1524,11 +1663,104 @@
                 const fields = variantConfig.fields[variantType];
                 const warning = variantConfig.warnings[variantType] || null;
 
-                container.innerHTML += renderVarianteBox(variantType, fields, { ...template, variantLabels: variantConfig.labels }, '', warning);
+                // renderVarianteBox() braucht template für serviceTemplate.variantLabels
+                // Aber wir übergeben jetzt label + warning direkt
+                container.innerHTML += renderVarianteBoxDynamic(variantType, fields, label, warning);
             });
         }
 
-        function renderVarianteBox(variantType, fields, serviceTemplate, prefix = '', customWarning = null) {
+        // 🆕 PHASE 2: Neue Funktion mit direkten label + warning Parametern
+        function renderVarianteBoxDynamic(variantType, fields, label, warning, prefix = '') {
+            if (!fields) return ''; // Keine Felder → skip
+
+            const colors = {
+                original: { bg: '#e3f2fd', border: '#003366', text: '#003366' },
+                zubehoer: { bg: '#fff3e0', border: '#ff9800', text: '#e65100' },
+                partner: { bg: '#e8f5e9', border: '#4caf50', text: '#2e7d32' }
+            };
+
+            const color = colors[variantType];
+
+            // Felder-Array klonen und dynamische Lieferoptionen-Felder anhängen
+            let allFields = [...fields];
+
+            // Dynamische Zusatzfelder für Lieferoptionen (falls angefordert)
+            if (anfrage.abholserviceGewuenscht) {
+                allFields.push({
+                    id: 'abholservice',
+                    label: '🚚 Abholservice (€)',
+                    type: 'number',
+                    required: false
+                });
+            }
+
+            if (anfrage.ersatzfahrzeugGewuenscht) {
+                allFields.push({
+                    id: 'ersatzfahrzeug',
+                    label: '🚙 Ersatzfahrzeug (€)',
+                    type: 'number',
+                    required: false
+                });
+            }
+
+            // Felder in 3er-Spalten aufteilen (responsive)
+            let fieldsHTML = '<div class="form-row">';
+            allFields.forEach((field, index) => {
+                // Prefix hinzufügen für Multi-Service (z.B. service0_original_lackkosten)
+                const inputId = prefix ? `${prefix}_${variantType}_${field.id}` : `${variantType}_${field.id}`;
+                const required = field.required ? 'required' : '';
+                const requiredStar = field.required ? ' *' : '';
+
+                fieldsHTML += `
+                    <div class="form-group">
+                        <label for="${inputId}">${field.label}${requiredStar}</label>
+                        <input
+                            type="${field.type}"
+                            id="${inputId}"
+                            step="0.01"
+                            min="0"
+                            ${required}
+                            placeholder="z.B. 100.00"
+                            oninput="berechneVarianten()"
+                            value="0"
+                            data-variant="${variantType}"
+                            data-prefix="${prefix}">
+                    </div>
+                `;
+
+                // Nach 3 Feldern neue Row
+                if ((index + 1) % 3 === 0 && index < allFields.length - 1) {
+                    fieldsHTML += '</div><div class="form-row">';
+                }
+            });
+            fieldsHTML += '</div>';
+
+            // Warning (direkt als Parameter übergeben)
+            let warningHTML = '';
+            if (warning) {
+                const color = variantType === 'partner' ? '#2e7d32' : '#d32f2f';
+                warningHTML = `<small style="color: ${color}; display: block; margin-top: 10px;">${warning}</small>`;
+            }
+
+            // Gesamt-ID mit Prefix für Multi-Service
+            const gesamtId = prefix ? `gesamt_${prefix}_${variantType}` : `gesamt_${variantType}`;
+
+            return `
+                <div id="variante${prefix}${variantType.charAt(0).toUpperCase() + variantType.slice(1)}"
+                     style="background: ${color.bg}; padding: 20px; border-radius: 12px; margin-bottom: 20px; border-left: 4px solid ${color.border};">
+                    <h3 style="color: ${color.text}; margin-bottom: 15px;">${label}</h3>
+                    ${fieldsHTML}
+                    <div class="total-box" style="background: #fff; margin-top: 15px; color: ${color.text};">
+                        <div class="label">Gesamt ${label}</div>
+                        <div class="amount" id="${gesamtId}">0,00 €</div>
+                    </div>
+                    ${warningHTML}
+                </div>
+            `;
+        }
+
+        // OLD Funktion (wird noch für Fallback benötigt)
+        function renderVarianteBox(variantType, fields, serviceTemplate, prefix = '') {
             if (!fields) return ''; // Keine Felder → skip
 
             const colors = {
@@ -1600,14 +1832,12 @@
             });
             fieldsHTML += '</div>';
 
-            // ============================================
-            // NEW: Use customWarning from dynamic generateVariants() if available
-            // ============================================
-            const warning = customWarning || serviceTemplate.variantWarnings?.[variantType];
+            // Service-spezifische Warnung verwenden
+            const warning = serviceTemplate.variantWarnings?.[variantType];
             let warningHTML = '';
             if (warning) {
-                const warningColor = variantType === 'partner' ? '#2e7d32' : (warning.includes('⚠️') || warning.includes('💡') ? '#e65100' : '#d32f2f');
-                warningHTML = `<small style="color: ${warningColor}; display: block; margin-top: 10px;">${warning}</small>`;
+                const color = variantType === 'partner' ? '#2e7d32' : '#d32f2f';
+                warningHTML = `<small style="color: ${color}; display: block; margin-top: 10px;">${warning}</small>`;
             }
 
             // Gesamt-ID mit Prefix für Multi-Service
@@ -1691,8 +1921,8 @@
 
                 // Varianten dynamisch rendern basierend auf Service-Typ
                 const serviceTyp = anfrage.serviceTyp || 'lackierung';
-                // NEW: Pass serviceData instead of ersatzteilPraeferenz
-                renderVariantenBoxes(serviceTyp, anfrage.serviceData, anfrage.ersatzteilPraeferenz);
+                // 🆕 PHASE 2: Übergebe serviceData statt ersatzteilPraeferenz
+                renderVariantenBoxes(serviceTyp, anfrage.serviceData);
 
                 displayAnfrageInfo();
 

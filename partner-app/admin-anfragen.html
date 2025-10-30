@@ -1071,6 +1071,16 @@
             <p>Admin-Bereich für Partner-Lackieranfragen</p>
         </div>
 
+        <!-- 🆕 PHASE 2.3.1: Werkstatt-Auswahl für Admin -->
+        <div class="nav-buttons">
+            <select id="werkstattSelector" class="btn btn-secondary" onchange="onWerkstattChange()" style="min-width: 150px;" title="Werkstatt auswählen">
+                <option value="mosbach">Mosbach</option>
+                <option value="heidelberg">Heidelberg</option>
+                <option value="heilbronn">Heilbronn</option>
+            </select>
+            <a href="../index.html" class="btn btn-secondary">← Zurück zur Hauptseite</a>
+        </div>
+
         <!-- Statistics -->
         <div class="stats-row" id="statsRow">
             <div class="stat-card">
@@ -1163,8 +1173,62 @@
         let allAnfragen = [];
         let allPartner = [];
 
+        // 🆕 Admin Auth Check (PHASE 2.3.2)
+        async function checkAdminAuth() {
+            return new Promise((resolve, reject) => {
+                firebase.auth().onAuthStateChanged(async (user) => {
+                    if (!user) {
+                        alert('⚠️ Admin-Login erforderlich!\n\nBitte melden Sie sich zuerst in der Hauptanwendung an.');
+                        window.location.href = '../index.html';
+                        return reject('Not authenticated');
+                    }
+
+                    try {
+                        // Check role (admin oder werkstatt)
+                        const userDoc = await db.collection('users').doc(user.uid).get();
+                        if (!userDoc.exists) {
+                            alert('❌ User-Daten nicht gefunden!\n\nBitte kontaktieren Sie den Administrator.');
+                            window.location.href = '../index.html';
+                            return reject('User not found');
+                        }
+
+                        const role = userDoc.data().role;
+                        if (role !== 'admin' && role !== 'werkstatt' && role !== 'superadmin') {
+                            alert('❌ Keine Admin-Berechtigung!\n\nDiese Seite ist nur für Administratoren und Werkstatt-Mitarbeiter.');
+                            window.location.href = '../index.html';
+                            return reject('Not admin');
+                        }
+
+                        console.log('✅ [ADMIN-ANFRAGEN] Admin authenticated:', user.email, '| Role:', role);
+                        resolve();
+                    } catch (error) {
+                        console.error('❌ Auth Check Error:', error);
+                        alert('❌ Fehler beim Prüfen der Berechtigung:\n\n' + error.message);
+                        window.location.href = '../index.html';
+                        reject(error);
+                    }
+                });
+            });
+        }
+
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
+
+            // 🆕 PHASE 2.3.2: Check Admin Authentication
+            await checkAdminAuth();
+
+            // 🆕 PHASE 2.3.1: Load werkstattId from localStorage or default
+            const savedWerkstatt = localStorage.getItem('selectedWerkstatt') || 'mosbach';
+            window.werkstattId = savedWerkstatt;
+
+            // Set dropdown to saved value
+            const selector = document.getElementById('werkstattSelector');
+            if (selector) {
+                selector.value = savedWerkstatt;
+            }
+
+            console.log('✅ [ADMIN-ANFRAGEN] werkstattId initialized:', window.werkstattId);
+
             await loadAnfragen();
             setupFilters();
         });
@@ -1208,6 +1272,23 @@
                 console.error('❌ Fehler beim Laden:', error);
                 loading.innerHTML = '<p style="color: #c62828;">⚠️ Fehler beim Laden der Anfragen</p>';
             }
+        }
+
+        // 🆕 PHASE 2.3.1: Werkstatt-Wechsel Handler
+        function onWerkstattChange() {
+            const selector = document.getElementById('werkstattSelector');
+            const newWerkstatt = selector.value;
+
+            console.log('🔄 [ADMIN-ANFRAGEN] Werkstatt gewechselt:', window.werkstattId, '→', newWerkstatt);
+
+            // Save to localStorage
+            localStorage.setItem('selectedWerkstatt', newWerkstatt);
+
+            // Update global variable
+            window.werkstattId = newWerkstatt;
+
+            // Reload page to fetch data for new werkstatt
+            window.location.reload();
         }
 
         function updatePartnerFilter() {

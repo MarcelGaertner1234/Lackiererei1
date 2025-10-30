@@ -2281,3 +2281,251 @@ exports.materialOrderOverdue = functions
         return {success: false, error: error.message};
       }
     });
+
+// ============================================
+// FUNCTION 10: SET PARTNER CUSTOM CLAIMS
+// ============================================
+
+/**
+ * Sets custom claims for partner users after successful authentication
+ *
+ * Called from partner-app/index.html after Firebase Auth login
+ *
+ * Sets custom claims:
+ * - role: 'partner'
+ * - partnerId: email username (e.g. 'marcel' from marcel@test.de)
+ * - werkstattId: werkstatt location (e.g. 'mosbach')
+ *
+ * Request:
+ * {
+ *   uid: "firebase_user_id",
+ *   email: "marcel@test.de",
+ *   werkstattId: "mosbach" (optional, defaults to 'mosbach')
+ * }
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   claims: { role: 'partner', partnerId: 'marcel', werkstattId: 'mosbach' }
+ * }
+ */
+exports.setPartnerClaims = functions
+    .region("europe-west3")
+    .https
+    .onCall(async (data, context) => {
+      try {
+        // Require authentication
+        if (!context.auth) {
+          throw new functions.https.HttpsError(
+              "unauthenticated",
+              "User muss eingeloggt sein"
+          );
+        }
+
+        const { uid, email, werkstattId = "mosbach" } = data;
+
+        // Validation
+        if (!uid) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              "uid ist erforderlich"
+          );
+        }
+
+        if (!email) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              "email ist erforderlich"
+          );
+        }
+
+        // Ensure user is setting claims for themselves (security)
+        if (context.auth.uid !== uid) {
+          throw new functions.https.HttpsError(
+              "permission-denied",
+              "User kann nur eigene Claims setzen"
+          );
+        }
+
+        console.log(`🔐 Setting partner claims for user ${uid} (${email})`);
+
+        // Extract partnerId from email
+        const partnerId = email.split("@")[0]; // "marcel@test.de" → "marcel"
+
+        // Set custom claims
+        const claims = {
+          role: "partner",
+          partnerId: partnerId,
+          werkstattId: werkstattId
+        };
+
+        await admin.auth().setCustomUserClaims(uid, claims);
+
+        console.log(`✅ Custom claims set for ${email}:`, claims);
+
+        // Update users collection (if exists)
+        try {
+          const userDocRef = admin.firestore().collection("users").doc(uid);
+          const userDoc = await userDocRef.get();
+
+          if (userDoc.exists) {
+            await userDocRef.update({
+              role: "partner",
+              werkstattId: werkstattId,
+              customClaimsSet: true,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`✅ Updated users collection for ${uid}`);
+          }
+        } catch (updateError) {
+          console.warn("⚠️ Could not update users collection:", updateError.message);
+          // Non-critical error, continue
+        }
+
+        return {
+          success: true,
+          claims: claims,
+          message: "Custom Claims erfolgreich gesetzt"
+        };
+
+      } catch (error) {
+        console.error("❌ setPartnerClaims error:", error);
+
+        // Return user-friendly error
+        if (error instanceof functions.https.HttpsError) {
+          throw error; // Re-throw HttpsError as-is
+        }
+
+        throw new functions.https.HttpsError(
+            "internal",
+            `Fehler beim Setzen der Claims: ${error.message}`
+        );
+      }
+    });
+
+// ============================================
+// SET WERKSTATT CUSTOM CLAIMS
+// 🆕 PHASE 2.4: Custom Claims für Werkstatt Users
+// ============================================
+/**
+ * Set Custom Claims for Werkstatt Users
+ * Similar to setPartnerClaims but for werkstatt role
+ *
+ * Request:
+ * {
+ *   uid: "firebase_user_id",
+ *   email: "werkstatt-mosbach@auto-lackierzentrum.de",
+ *   werkstattId: "mosbach" (optional, default: extracted from email or "mosbach")
+ * }
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   claims: { role: 'werkstatt', werkstattId: 'mosbach' },
+ *   message: "Custom Claims erfolgreich gesetzt"
+ * }
+ */
+exports.setWerkstattClaims = functions
+    .region("europe-west3")
+    .https
+    .onCall(async (data, context) => {
+      try {
+        // Require authentication
+        if (!context.auth) {
+          throw new functions.https.HttpsError(
+              "unauthenticated",
+              "User muss eingeloggt sein"
+          );
+        }
+
+        const { uid, email, werkstattId } = data;
+
+        // Validation
+        if (!uid) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              "uid ist erforderlich"
+          );
+        }
+
+        if (!email) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              "email ist erforderlich"
+          );
+        }
+
+        // Ensure user is setting claims for themselves (security)
+        if (context.auth.uid !== uid) {
+          throw new functions.https.HttpsError(
+              "permission-denied",
+              "User kann nur eigene Claims setzen"
+          );
+        }
+
+        console.log(`🔐 Setting werkstatt claims for user ${uid} (${email})`);
+
+        // Extract werkstattId from email if not provided
+        // "werkstatt-mosbach@..." → "mosbach"
+        let finalWerkstattId = werkstattId;
+        if (!finalWerkstattId && email.includes("werkstatt-")) {
+          const parts = email.split("@")[0].split("-"); // werkstatt-mosbach
+          if (parts.length > 1) {
+            finalWerkstattId = parts[1]; // mosbach
+          }
+        }
+
+        // Fallback to "mosbach" if still not set
+        if (!finalWerkstattId) {
+          finalWerkstattId = "mosbach";
+        }
+
+        // Set custom claims
+        const claims = {
+          role: "werkstatt",
+          werkstattId: finalWerkstattId
+        };
+
+        await admin.auth().setCustomUserClaims(uid, claims);
+
+        console.log(`✅ Custom claims set for ${email}:`, claims);
+
+        // Update users collection (if exists)
+        try {
+          const userDocRef = admin.firestore().collection("users").doc(uid);
+          const userDoc = await userDocRef.get();
+
+          if (userDoc.exists) {
+            await userDocRef.update({
+              role: "werkstatt",
+              werkstattId: finalWerkstattId,
+              customClaimsSet: true,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`✅ Updated users collection for ${uid}`);
+          }
+        } catch (updateError) {
+          console.warn("⚠️ Could not update users collection:", updateError.message);
+          // Non-critical error, continue
+        }
+
+        return {
+          success: true,
+          claims: claims,
+          message: "Custom Claims erfolgreich gesetzt"
+        };
+
+      } catch (error) {
+        console.error("❌ setWerkstattClaims error:", error);
+
+        // Return user-friendly error
+        if (error instanceof functions.https.HttpsError) {
+          throw error; // Re-throw HttpsError as-is
+        }
+
+        throw new functions.https.HttpsError(
+            "internal",
+            `Fehler beim Setzen der Claims: ${error.message}`
+        );
+      }
+    });

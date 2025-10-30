@@ -559,10 +559,34 @@
                             uid: user.uid
                         };
 
+                        // 🆕 PHASE 2.1: Set Custom Claims via Cloud Function
+                        try {
+                            console.log('🔐 Setting custom claims for partner...');
+                            const setPartnerClaims = firebase.functions().httpsCallable('setPartnerClaims');
+                            const claimsResult = await setPartnerClaims({
+                                uid: user.uid,
+                                email: user.email,
+                                werkstattId: 'mosbach' // Default: mosbach (später dynamisch)
+                            });
+
+                            if (claimsResult.data.success) {
+                                console.log('✅ Custom claims set:', claimsResult.data.claims);
+
+                                // Force token refresh to load new claims
+                                await user.getIdToken(true);
+                                console.log('✅ Token refreshed with new claims');
+                            } else {
+                                console.warn('⚠️ Custom claims nicht gesetzt:', claimsResult.data.message);
+                            }
+                        } catch (claimsError) {
+                            console.error('❌ Fehler beim Setzen der Custom Claims:', claimsError);
+                            // Non-critical error - continue with login
+                        }
+
                         // 🆕 MULTI-TENANT: Fetch werkstattId from Firestore partner collection
                         try {
                             const db = firebase.firestore();
-                            const partnerDoc = await db.collection('partner').doc(partnerId).get();
+                            const partnerDoc = await window.getCollection('partner').doc(partnerId).get();
 
                             if (partnerDoc.exists) {
                                 const firestoreData = partnerDoc.data();
@@ -578,7 +602,7 @@
                                 console.warn('⚠️ Partner-Dokument nicht gefunden in Firestore - erstelle neues Dokument');
                                 // Create new partner document with default werkstattId
                                 partner.werkstattId = 'mosbach'; // Default werkstatt
-                                await db.collection('partner').doc(partnerId).set({
+                                await window.getCollection('partner').doc(partnerId).set({
                                     email: user.email,
                                     name: user.email,
                                     werkstattId: 'mosbach',

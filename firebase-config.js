@@ -403,25 +403,29 @@ window.firebaseApp = {
  *   const collectionName = window.getCollectionName('fahrzeuge'); // 'fahrzeuge_mosbach'
  */
 window.getCollectionName = function(baseCollection) {
-  // Get current user from auth-manager
+  // 🆕 BUG #1 FIX: PRIORITY 1 - Check window.werkstattId (Partner-App pattern)
+  if (window.werkstattId) {
+    const collectionName = `${baseCollection}_${window.werkstattId}`;
+    console.log(`🏢 getCollectionName [window]: ${baseCollection} → ${collectionName}`);
+    return collectionName;
+  }
+
+  // PRIORITY 2 - Check auth-manager (Main App pattern)
   const currentUser = window.authManager?.getCurrentUser();
-
-  if (!currentUser) {
-    console.warn('⚠️ getCollectionName: Kein User eingeloggt, verwende BaseCollection:', baseCollection);
-    return baseCollection;
+  if (currentUser?.werkstattId) {
+    const collectionName = `${baseCollection}_${currentUser.werkstattId}`;
+    console.log(`🏢 getCollectionName [authManager]: ${baseCollection} → ${collectionName}`);
+    return collectionName;
   }
 
-  // Check for werkstattId (set after workshop login)
-  const werkstattId = currentUser.werkstattId;
-
-  if (!werkstattId) {
-    console.warn('⚠️ getCollectionName: User hat keine werkstattId, verwende BaseCollection:', baseCollection);
-    return baseCollection;
-  }
-
-  const collectionName = `${baseCollection}_${werkstattId}`;
-  console.log(`🏢 getCollectionName: ${baseCollection} → ${collectionName}`);
-  return collectionName;
+  // 🆕 FALLBACK: Error werfen statt silent failure!
+  console.error('❌ CRITICAL: getCollectionName - werkstattId nicht gefunden!', {
+    'window.werkstattId': window.werkstattId,
+    'authManager exists': !!window.authManager,
+    'currentUser': currentUser,
+    baseCollection: baseCollection
+  });
+  throw new Error(`werkstattId required for collection '${baseCollection}' but not found`);
 };
 
 /**
@@ -904,10 +908,11 @@ document.addEventListener('DOMContentLoaded', () => {
       auth = firebase.auth();  // Initialize Auth
 
       // Initialize Functions with error handling (SDK might not be loaded)
+      // 🆕 PHASE 2.4: Set region to europe-west3 (DSGVO compliance)
       try {
         if (firebase.functions) {
-          functions = firebase.functions();
-          console.log('✅ Functions connected (Production)');
+          functions = firebase.app().functions('europe-west3');
+          console.log('✅ Functions connected (Production - europe-west3)');
         } else {
           console.warn('⚠️ Functions SDK not available (optional)');
           functions = null;

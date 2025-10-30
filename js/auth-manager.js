@@ -111,6 +111,25 @@ async function loginWerkstatt(email, password) {
 
     console.log('✅ Firebase Auth erfolgreich:', firebaseUser.uid);
 
+    // 🆕 PHASE 2.4: Set Custom Claims für Werkstatt users
+    try {
+      console.log('🔐 Setting Custom Claims for werkstatt user...');
+      const setWerkstattClaims = window.functions.httpsCallable('setWerkstattClaims');
+      const claimsResult = await setWerkstattClaims({
+        uid: firebaseUser.uid,
+        email: email
+        // werkstattId extracted from email in Cloud Function
+      });
+      console.log('✅ Custom claims set:', claimsResult.data.claims);
+
+      // Force token refresh to apply new claims
+      await firebaseUser.getIdToken(true);
+      console.log('✅ Token refreshed with new claims');
+    } catch (claimsError) {
+      console.warn('⚠️ Could not set custom claims:', claimsError.message);
+      // Non-critical: Continue with login (fallback to Firestore users doc)
+    }
+
     // 2. Get workshop document from Firestore
     // GLOBAL collection (not werkstatt-specific) → use db.collection() directly
     const userDoc = await window.db.collection('users').doc(firebaseUser.uid).get();

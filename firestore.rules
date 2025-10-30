@@ -4,16 +4,22 @@ service cloud.firestore {
 
     // ============================================
     // HELPER FUNCTIONS
+    // 🆕 PHASE 2.1: Custom Claims Support mit Fallback
     // ============================================
 
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    // 🆕 Priority 1: Custom Claims, Priority 2: Firestore Fallback
     function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      // Try Custom Claims first (faster, no Firestore read), else Firestore
+      return (request.auth.token != null && request.auth.token.role != null)
+        ? request.auth.token.role
+        : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
+    // Status bleibt Firestore-basiert (Claims haben kein 'status' field)
     function getUserStatus() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status;
     }
@@ -42,8 +48,13 @@ service cloud.firestore {
       return getUserStatus() == 'active';
     }
 
+    // 🆕 Check ownership via Custom Claims partnerId OR uid
     function isOwner(partnerId) {
-      return isAuthenticated() && request.auth.uid == partnerId;
+      // Priority 1: Custom Claims partnerId, Priority 2: Fallback to uid
+      return isAuthenticated() &&
+        ((request.auth.token != null && request.auth.token.partnerId != null)
+          ? request.auth.token.partnerId == partnerId
+          : request.auth.uid == partnerId);
     }
 
     // ============================================
@@ -286,7 +297,25 @@ service cloud.firestore {
     }
 
     // ============================================
-    // PARTNER ANFRAGEN (global collection)
+    // CHAT NOTIFICATIONS (Global + Multi-Tenant)
+    // 🆕 PHASE 2.3.3: Chat Notification Rules
+    // ============================================
+
+    // Global Chat Notifications
+    match /chatNotifications/{docId} {
+      allow read, write: if isAdmin();
+      allow read: if isMitarbeiter() && isActive();
+    }
+
+    // Werkstatt-specific Chat Notifications: chatNotifications_mosbach, etc.
+    match /{chatCollection}/{docId} {
+      allow read, write: if chatCollection.matches('chatNotifications_.*') && isAdmin();
+      allow read: if chatCollection.matches('chatNotifications_.*') && isMitarbeiter() && isActive();
+    }
+
+    // ============================================
+    // PARTNER ANFRAGEN (global collection - DEPRECATED)
+    // ⚠️ Kept for backward compatibility - use partnerAnfragen_{werkstatt} instead
     // ============================================
 
     match /partnerAnfragen/{anfrageId} {
@@ -315,6 +344,43 @@ service cloud.firestore {
         // Kunde: Read-only access to messages in their anfragen
         allow read: if isKunde() && isActive()
                     && isOwner(get(/databases/$(database)/documents/partnerAnfragen/$(anfrageId)).data.partnerId);
+      }
+    }
+
+    // ============================================
+    // PARTNER ANFRAGEN MULTI-TENANT (werkstatt-specific collections) 🆕
+    // Using wildcard pattern: partnerAnfragen_mosbach, partnerAnfragen_heilbronn, etc.
+    // ============================================
+
+    match /{anfrageCollection}/{anfrageId} {
+      // Admins: Full access to all werkstätten anfragen
+      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*') && isAdmin();
+
+      // Mitarbeiter: Full access to werkstatt-specific anfragen
+      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+                         && isMitarbeiter() && isActive();
+
+      // Partners: Can create and read their own anfragen
+      allow create: if anfrageCollection.matches('partnerAnfragen_.*')
+                    && isPartner() && isActive();
+
+      allow read: if anfrageCollection.matches('partnerAnfragen_.*')
+                  && isPartner() && isActive()
+                  && isOwner(resource.data.partnerId);
+
+      // Subcollection: Chat Messages
+      match /chat/{messageId} {
+        // Admins: Full access
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*') && isAdmin();
+
+        // Mitarbeiter: Full access
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+                           && isMitarbeiter() && isActive();
+
+        // Partner: Can read/write messages in their own anfragen
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+                           && isPartner() && isActive()
+                           && isOwner(get(/databases/$(database)/documents/$(anfrageCollection)/$(anfrageId)).data.partnerId);
       }
     }
 
