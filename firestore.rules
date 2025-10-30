@@ -13,12 +13,10 @@ service cloud.firestore {
 
     // 🆕 Priority 1: Custom Claims, Priority 2: Firestore Fallback
     function getUserRole() {
-      // Try Custom Claims first (faster, no Firestore read)
-      if (request.auth.token != null && request.auth.token.role != null) {
-        return request.auth.token.role;
-      }
-      // Fallback: Firestore users collection (backward compatibility)
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      // Try Custom Claims first (faster, no Firestore read), else Firestore
+      return (request.auth.token != null && request.auth.token.role != null)
+        ? request.auth.token.role
+        : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     // Status bleibt Firestore-basiert (Claims haben kein 'status' field)
@@ -52,12 +50,11 @@ service cloud.firestore {
 
     // 🆕 Check ownership via Custom Claims partnerId OR uid
     function isOwner(partnerId) {
-      // Priority 1: Custom Claims partnerId
-      if (request.auth.token != null && request.auth.token.partnerId != null) {
-        return isAuthenticated() && request.auth.token.partnerId == partnerId;
-      }
-      // Priority 2: Fallback to uid
-      return isAuthenticated() && request.auth.uid == partnerId;
+      // Priority 1: Custom Claims partnerId, Priority 2: Fallback to uid
+      return isAuthenticated() &&
+        ((request.auth.token != null && request.auth.token.partnerId != null)
+          ? request.auth.token.partnerId == partnerId
+          : request.auth.uid == partnerId);
     }
 
     // ============================================
