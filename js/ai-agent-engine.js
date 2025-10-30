@@ -62,33 +62,33 @@ class AIAgentEngine {
     }
 
     /**
-     * Detect werkstatt from collection or default to mosbach
+     * Detect werkstatt from auth manager or default to mosbach
+     * 🆕 HOTFIX: Graceful degradation wenn Auth State noch nicht ready
      */
     detectWerkstatt() {
-        // Try to get from auth manager if available
-        if (window.authManager && window.authManager.werkstatt) {
-            return window.authManager.werkstatt;
-        }
-
-        // Try to extract from collection name
-        const collectionNames = ['fahrzeuge', 'kunden', 'kalender'];
-        for (const baseName of collectionNames) {
-            try {
-                const collection = window.getCollection(baseName);
-                if (collection && collection._query && collection._query.path) {
-                    const path = collection._query.path.segments[0];
-                    const match = path.match(/_(mosbach|heidelberg|other)$/);
-                    if (match) {
-                        return match[1];
-                    }
-                }
-            } catch (error) {
-                // Continue trying
+        try {
+            // PRIORITY 1: authManager.getCurrentUser().werkstattId (Main App pattern)
+            const currentUser = window.authManager?.getCurrentUser();
+            if (currentUser?.werkstattId) {
+                console.log('✅ [AI Agent] werkstattId from authManager:', currentUser.werkstattId);
+                return currentUser.werkstattId;
             }
-        }
 
-        // Default to mosbach
-        return 'mosbach';
+            // PRIORITY 2: window.werkstattId (Partner-App pattern)
+            if (window.werkstattId) {
+                console.log('✅ [AI Agent] werkstattId from window:', window.werkstattId);
+                return window.werkstattId;
+            }
+
+            // PRIORITY 3: Fallback to 'mosbach' (with warning)
+            console.warn('⚠️ [AI Agent] Auth State noch nicht ready, verwende Default: mosbach');
+            return 'mosbach';
+
+        } catch (error) {
+            // Graceful degradation: Fallback to 'mosbach' on any error
+            console.warn('⚠️ [AI Agent] detectWerkstatt failed:', error.message);
+            return 'mosbach';
+        }
     }
 
     /**
