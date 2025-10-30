@@ -3229,6 +3229,10 @@
                 return;
             }
 
+            // 🆕 MULTI-TENANT: Set werkstattId from partner object
+            window.werkstattId = partner.werkstattId || 'mosbach';
+            console.log('✅ [MEINE-ANFRAGEN] werkstattId initialized:', window.werkstattId);
+
             // RUN #62: Emulator-Detection - Skip Firestore Check in Test-Umgebung
             const isEmulator = window.location.hostname === 'localhost' ||
                                window.location.hostname === '127.0.0.1';
@@ -3343,7 +3347,7 @@
                 console.log('🔥 Setting up realtime listener for partnerAnfragen...');
 
                 // ✅ REALTIME LISTENER: Automatically updates UI when data changes
-                anfrageNUnsubscribe = db.collection('partnerAnfragen')
+                anfrageNUnsubscribe = window.getCollection('partnerAnfragen')
                     .where('partnerId', '==', partner.id)
                     .onSnapshot(async (snapshot) => {
                         console.log('🔄 Realtime Update: Received', snapshot.size, 'anfragen');
@@ -3610,7 +3614,7 @@
 
                 try {
                     // Versuche mit Composite Index (schneller)
-                    const snapshot = await db.collection('partnerAnfragen')
+                    const snapshot = await window.getCollection('partnerAnfragen')
                         .doc(anfrage.id)
                         .collection('chat')
                         .where('sender', '==', 'werkstatt')
@@ -3623,7 +3627,7 @@
                     if (error.code === 'failed-precondition' || error.message.includes('index')) {
                         console.log('ℹ️ Verwende Fallback-Methode für Unread-Count (Index wird erstellt...)');
 
-                        const snapshot = await db.collection('partnerAnfragen')
+                        const snapshot = await window.getCollection('partnerAnfragen')
                             .doc(anfrage.id)
                             .collection('chat')
                             .where('sender', '==', 'werkstatt')
@@ -4637,7 +4641,7 @@
 
             // In Firestore speichern
             try {
-                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                     'kva.gewaehlteVariante': variante,
                     updatedAt: Date.now()
                 });
@@ -4742,7 +4746,7 @@
                 const batch = db.batch();
 
                 // Operation 1: partnerAnfragen UPDATE
-                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
                 batch.update(anfrageRef, {
                     status: 'storniert',
                     storniertAm: new Date().toISOString(),
@@ -5143,7 +5147,7 @@
                     if (!anfrage.fahrzeugAngelegt) {
                         console.log('🔧 Setze fahrzeugAngelegt Flag nachträglich...');
                         try {
-                            await db.collection('partnerAnfragen').doc(anfrageId).update({
+                            await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                                 fahrzeugAngelegt: true,
                                 fahrzeugAngelegtAm: vehicle.data().datum || new Date().toISOString(),
                                 fahrzeugId: vehicle.id,
@@ -5202,7 +5206,7 @@
 
                 // 4.2 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
                 // WICHTIG: Transaction statt Batch für automatische Retry + Status-Re-Check!
-                const anfrageRef = db.collection('partnerAnfragen').doc(anfrageId);
+                const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
                 const fahrzeugRef = window.getCollection('fahrzeuge').doc(dataForFirestore.id);
 
                 console.log('🔒 Starte Transaction mit Optimistic Locking...');
@@ -5347,7 +5351,7 @@
                 // Verhindert Realtime Listener Race Condition (Flag-Update triggert Listener während Transaction läuft)
                 console.log('🏷️ Setze fahrzeugAngelegt Flag (FINAL STEP)...');
                 try {
-                    await db.collection('partnerAnfragen').doc(anfrageId).update({
+                    await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                         fahrzeugAngelegt: true,
                         fahrzeugAngelegtAm: new Date().toISOString(),
                         fahrzeugId: fahrzeugData.id,  // Verknüpfung zum Fahrzeug
@@ -5415,7 +5419,7 @@
 
             try {
                 // Status zurück auf "neu" + Ablehnung markieren
-                await db.collection('partnerAnfragen').doc(anfrageId).update({
+                await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                     status: 'neu',
                     statusText: 'Neu eingegangen',
                     kvaAbgelehnt: true,
@@ -5791,7 +5795,7 @@
                 }
 
                 // Realtime Listener
-                chatUnsubscribe = db.collection('partnerAnfragen')
+                chatUnsubscribe = window.getCollection('partnerAnfragen')
                     .doc(anfrageId)
                     .collection('chat')
                     .orderBy('timestamp', 'asc')
@@ -5871,7 +5875,7 @@
                     typ: 'text'
                 };
 
-                await db.collection('partnerAnfragen')
+                await window.getCollection('partnerAnfragen')
                     .doc(activeChatAnfrageId)
                     .collection('chat')
                     .add(messageData);
