@@ -2,8 +2,8 @@
 
 **Rolle:** Lead Developer & Technical CEO der Fahrzeugannahme-App
 **Verantwortung:** Vollständige technische Ownership & Production-Ready Implementierung
-**Version:** 3.6 (Partner-App PRODUKTIONSREIF ✅)
-**Letzte Aktualisierung:** 30.10.2025 (Partner-App Logic + Multi-Tenant COMPLETE)
+**Version:** 3.7 (Service-spezifische Felder KOMPLETT ✅)
+**Letzte Aktualisierung:** 30.10.2025 (Complete Service Workflow Consistency)
 
 ---
 
@@ -21,7 +21,7 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 
 ---
 
-## 📊 AKTUELLER APP-STATUS (Version 3.6 - Partner-App PRODUKTIONSREIF)
+## 📊 AKTUELLER APP-STATUS (Version 3.7 - Service-spezifische Felder KOMPLETT)
 
 ### ✅ Was KOMPLETT funktioniert:
 
@@ -33,9 +33,14 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
   - Automatischer Fallback auf Browser TTS
   - 3 Cloud Functions: aiAgentExecute, whisperTranscribe, synthesizeSpeech
   - Kosten: ~$0.029/Minute (~€0.027) - sehr günstig!
-- ✅ Fahrzeug-Annahme/Abnahme (annahme.html, abnahme.html)
-- ✅ Fahrzeug-Übersicht (liste.html) - Lazy Loading, Detail-Ansicht
-- ✅ Multi-Prozess Kanban (kanban.html) - 9 Service-Workflows (Lackierung, Reifen, Mechanik, Pflege, TÜV, Versicherung, Glas, Klima, Dellen), Drag & Drop
+- ✅ Fahrzeug-Annahme/Abnahme (annahme.html, abnahme.html) - **Service-spezifische Felder** 🆕
+  - Reifen: Reifengröße (z.B. 205/55 R16), Reifentyp (Sommer/Winter/Ganzjahr), Anzahl
+  - Glas: Scheibentyp (Frontscheibe/Heckscheibe/Seitenfenster), Schaden (Steinschlag/Riss/Bruch)
+  - Klima: Problem (keine Kühlung/komischer Geruch/Geräusche/schwache Leistung)
+  - Dellen: Anzahl Dellen, Größe (klein/mittel/groß), Hagelschaden (ja/nein)
+  - Dynamic Form Toggling (zeigt nur relevante Felder je Service)
+- ✅ Fahrzeug-Übersicht (liste.html) - Lazy Loading, Detail-Ansicht mit Service-Details
+- ✅ Multi-Prozess Kanban (kanban.html) - 9 Service-Workflows (Lackierung, Reifen, Mechanik, Pflege, TÜV, Versicherung, Glas, Klima, Dellen), Drag & Drop, Service-Badges mit Details
 - ✅ Kundenverwaltung (kunden.html)
 - ✅ Kalender + Material-Bestellungen (kalender.html, material.html)
 - ✅ Partner Portal (partner-app/) - 7 Service-Seiten, Dark Mode
@@ -49,6 +54,50 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 - ✅ Safari-kompatibel (ITP-Fix via Firestore)
 - ✅ Apple Liquid Glass Dark Mode
 - ✅ Playwright E2E Testing (566 Tests)
+
+**Firestore Schema (fahrzeuge_mosbach Collection):**
+```javascript
+{
+  id: "1761584927579",
+  kennzeichen: "MOS-CG 123",
+  marke: "BMW",
+  modell: "3er",
+  serviceTyp: "reifen",           // lackier, reifen, mechanik, pflege, tuev, versicherung, glas, klima, dellen
+  status: "neu",                  // neu, angenommen, in_arbeit, fertig, etc.
+  prozessStatus: "reifen-1",      // Service-specific workflow step
+  timestamp: "2025-10-30T22:30:00Z",
+
+  // 🆕 SERVICE-SPEZIFISCHE FELDER (Session 2025-10-30 Night)
+  serviceDetails: {
+    // Reifen:
+    reifengroesse: "205/55 R16 91V",
+    reifentyp: "sommer",          // sommer, winter, ganzjahr
+    reifenanzahl: 4,
+
+    // Glas:
+    scheibentyp: "frontscheibe",  // frontscheibe, heckscheibe, seitenfenster_vorne_links, etc.
+    schaden: "steinschlag",       // steinschlag, riss, bruch
+
+    // Klima:
+    klimaproblem: "keine_kuehlung", // keine_kuehlung, komischer_geruch, geraeusche, schwache_leistung
+
+    // Dellen:
+    anzahlDellen: 3,
+    groesse: "mittel",            // klein, mittel, gross
+    hagelschaden: true
+  },
+
+  // Subcollection:
+  /fotos/vorher/{photoId}         // Vorher-Fotos (LocalStorage Fallback)
+  /fotos/nachher/{photoId}        // Nachher-Fotos (LocalStorage Fallback)
+}
+```
+
+**Key Points:**
+- `serviceTyp` determines which workflow (9 different processes)
+- `serviceDetails` is OPTIONAL - only present if service-specific fields filled
+- Backward compatibility: Old vehicles without `serviceDetails` continue to work
+- Multi-Tenant: Collection name has `_mosbach` suffix (accessed via `window.getCollection('fahrzeuge')`)
 
 **Recent Improvements (Session 2025-10-29 Morning):**
 - ✅ **OpenAI Whisper Integration** - Web Speech API → MediaRecorder + Whisper
@@ -78,7 +127,26 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 - ✅ **Multi-Tenant Migration COMPLETE** - Alle 44 Locations verwenden window.getCollection()
 - ✅ **CLAUDE.md Optimierung** - 658 → 456 Zeilen (30% Reduktion), CLAUDE_SESSIONS_ARCHIVE.md erstellt
 
-**Commits (Session 2025-10-30):**
+**Recent Improvements (Session 2025-10-30 Night):** 🎯 **Complete Service Workflow Consistency**
+- ✅ **Service-Availability CRITICAL Fix** - 3 services (Glas, Klima, Dellen) added to annahme.html dropdown
+- ✅ **Service-Label Konsistenz** - TÜV typo fix ('tuv' → 'tuev'), all service labels unified across pages
+- ✅ **serviceTyp Consistency** - 'lackier' → 'lackier' (1:1 mapping, backward compatible with 'lackierung')
+- ✅ **Service-spezifische Felder** - Dynamic form fields for Reifen, Glas, Klima, Dellen (4 services)
+- ✅ **Firestore Schema Extension** - New `serviceDetails` object with service-specific data
+- ✅ **annahme.html** - ~230 lines added (dynamic form fields + toggle logic)
+- ✅ **liste.html** - ~75 lines added (renderServiceDetails function)
+- ✅ **kanban.html** - ~50 lines modified (service badges with details)
+- ✅ **CLAUDE.md Documentation** - Session fully documented (~140 lines)
+
+**Commits (Session 2025-10-30 Night):**
+- `b40b2f5` - feat: Kanban processDefinitions für 9 Services
+- `a008c9f` - fix: CRITICAL - 3 Services in annahme.html + TÜV typo + serviceTypMap
+- `2c8a5cc` - fix: serviceTyp Consistency - lackier bleibt lackier
+- `1356d45` - feat: Service-spezifische Felder - annahme.html dynamic forms
+- `a6caa9a` - feat: Service-spezifische Felder - liste.html + kanban.html
+- `e5d0098` - docs: CLAUDE.md Session 2025-10-30 Night dokumentiert
+
+**Commits (Session 2025-10-30 Evening):**
 - `00261a1` - fix: admin-anfragen.html Auth-Check timeout (werkstattId pre-init)
 - `741c09c` - docs: MULTI_SERVICE_LOGIKFEHLER.md Status → GELÖST
 - `96b277e` - docs: CLAUDE.md Optimierung + CLAUDE_SESSIONS_ARCHIVE.md
