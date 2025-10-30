@@ -908,10 +908,11 @@ document.addEventListener('DOMContentLoaded', () => {
       auth = firebase.auth();  // Initialize Auth
 
       // Initialize Functions with error handling (SDK might not be loaded)
+      // 🆕 PHASE 2.4: Set region to europe-west3 (DSGVO compliance)
       try {
         if (firebase.functions) {
-          functions = firebase.functions();
-          console.log('✅ Functions connected (Production)');
+          functions = firebase.app().functions('europe-west3');
+          console.log('✅ Functions connected (Production - europe-west3)');
         } else {
           console.warn('⚠️ Functions SDK not available (optional)');
           functions = null;
