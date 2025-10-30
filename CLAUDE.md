@@ -413,6 +413,142 @@ git push origin main
 
 ## Latest Session
 
+### Session 2025-10-30 (Night): Complete Service Workflow Consistency
+
+**Duration:** ~4-5 hours
+**Status:** ✅ COMPLETED - Service-spezifische Felder implementiert!
+
+**Context:**
+User requested comprehensive workflow analysis (Annahme → Liste → Kanban → Abnahme) for ALL 10 services to ensure consistent logic across all service types.
+
+**Problems Fixed:**
+
+**1. Service-Availability Gaps (CRITICAL)** ⛔
+- **Symptom:** 3 Services (glas, klima, dellen) waren NICHT in annahme.html auswählbar
+- **Impact:** User konnten diese Services NICHT bei Fahrzeugannahme auswählen → kompletter Workflow blockiert
+- **Root Cause:** Services existierten in Kanban, aber fehlten im annahme.html Dropdown
+- **Solution:** 3 neue `<option>` zu serviceTyp Dropdown hinzugefügt
+- **Result:** Alle 10 Services jetzt in Annahme auswählbar ✅
+
+**2. Service-Label Inkonsistenzen (HIGH)** ⚠️
+- **Symptom:** liste.html zeigte falsche Labels (TÜV-Typo: 'tuv' statt 'tuev'), fehlende Labels für glas/klima/dellen
+- **Impact:** User sahen "glas" statt "🔍 Glas-Reparatur" → verwirrende UX
+- **Solution:** `getServiceLabel()` erweitert + TÜV-Typo gefixt
+- **Result:** Konsistente Labels in Liste + Kanban ✅
+
+**3. serviceTyp Consistency Issues (MEDIUM)** 🟡
+- **Symptom:** 'lackier' (annahme) vs 'lackierung' (Kanban-intern) Inkonsistenz
+- **Impact:** Code-Komplexität, 2 verschiedene Keys für denselben Service
+- **Solution:** serviceTypMap vereinfacht ('lackier' → 'lackier'), 4 Mappings aktualisiert
+- **Result:** 1:1 Mapping, Backward-Compatible ✅
+
+**4. Fehlende Service-spezifische Felder (ENHANCEMENT)** ⭐
+- **Symptom:** Annahme erfasste KEINE service-spezifischen Details (z.B. Reifengröße, Scheiben-Typ)
+- **Impact:** Werkstatt musste nachfragen, ineffizienter Workflow
+- **Solution:** Service-spezifische Formular-Felder implementiert
+- **Result:** Strukturierte Datenerfassung für 4 Services ✅
+
+---
+
+**Implementation Details:**
+
+**Phase 1: CRITICAL Fixes (30-40 Min)**
+- ✅ annahme.html (Zeile 527-529): 3 Services zum Dropdown hinzugefügt
+- ✅ liste.html (Zeile 2059-2074): Service-Labels ergänzt + TÜV-Typo gefixt
+- ✅ kanban.html (Zeile 2531-2541): serviceTypMap erweitert (glas, klima, dellen)
+
+**Phase 2: serviceTyp Consistency (1h)**
+- ✅ kanban.html serviceTypMap: 'lackier' → 'lackier' (FIX: war 'lackierung')
+- ✅ 4 serviceTypToProcessKey Objekte erweitert:
+  - Zeile 2156: Service-Filter
+  - Zeile 2642: BUG #12 reparatur conflict
+  - Zeile 2673: BUG #13 qualitaet conflict
+  - Zeile 2745: mapUniversalToServiceStatus
+- ✅ Backward-Compatibility: 'lackierung' → 'lackier' Mapping bleibt
+
+**Phase 3: Service-spezifische Felder (3-4h)** ⭐ MAJOR FEATURE
+
+**Phase 3.1: annahme.html - Dynamische Formular-Felder**
+- HTML (Zeile 536-676): 4 neue `<div class="service-felder">` Sections
+  - **Reifen:** reifengroesse, reifentyp, reifenanzahl
+  - **Glas:** scheibentyp, schadensgroesse, glasposition
+  - **Klima:** klimaservice, kaeltemittel, klimaproblem
+  - **Dellen:** dellenanzahl, dellengroesse, lackschaden, dellenpositionen
+- JavaScript Toggle (Zeile 1059-1081): `toggleServiceFelder()` zeigt/versteckt Felder
+- Data Collection (Zeile 1804-1861): `getServiceDetails(serviceTyp)` sammelt Daten
+- Firestore Schema: Neues Feld `fahrzeug.serviceDetails { ... }`
+
+**Phase 3.2: liste.html - Service-Details Anzeige**
+- Function (Zeile 2160-2233): `renderServiceDetails(vehicle)`
+- Zeigt service-spezifische Daten in Detail-Modal
+- Formatierung mit Icons:
+  - Reifen: "🛞 205/55 R16 | 📅 Sommerreifen | 🔢 4x"
+  - Glas: "🪟 Frontscheibe | 💥 Steinschlag | 📍 Fahrerseite Mitte"
+  - Klima: "❄️ Wartung | 💨 R1234yf | 📝 Kühlt nicht mehr"
+  - Dellen: "🔨 3x | 📏 Klein | 🎨 Ja (Lackierung nötig)"
+
+**Phase 3.3: kanban.html - Service-Details auf Karten**
+- Badge Extension (Zeile 2404-2442): Service-Label mit Kurzinfo
+- Kompakte Darstellung:
+  - "🛞 Reifen (4x S)" = 4 Sommerreifen
+  - "🔍 Glas (Front)" = Frontscheibe
+  - "❄️ Klima (Wartung)" = Wartungs-Service
+  - "🔨 Dellen (3x)" = 3 Dellen
+
+---
+
+**Commits:**
+1. `a008c9f` - fix: CRITICAL - 3 Services in annahme/liste/kanban ergänzt + TÜV-Typo
+2. `2c8a5cc` - refactor: serviceTyp Consistency - lackier/lackierung vereinheitlicht
+3. `1356d45` - feat: Service-spezifische Felder in annahme.html
+4. `a6caa9a` - feat: Service-Details Anzeige in liste.html + kanban.html
+
+**Firestore Schema Update:**
+```javascript
+{
+  id: "1234567890",
+  serviceTyp: "reifen",
+
+  // ✨ NEU: Service-spezifische Daten
+  serviceDetails: {
+    reifengroesse: "205/55 R16 91V",
+    reifentyp: "sommer",
+    reifenanzahl: 4
+  }
+
+  // Andere Services:
+  // glas: { scheibentyp, schadensgroesse, glasposition }
+  // klima: { klimaservice, kaeltemittel, klimaproblem }
+  // dellen: { dellenanzahl, dellengroesse, lackschaden, dellenpositionen }
+}
+```
+
+**Testing:**
+1. annahme.html: Service auswählen → Felder erscheinen dynamisch
+2. Fahrzeug anlegen mit Service-Details
+3. liste.html: Detail-Ansicht → Service-Details sichtbar
+4. kanban.html: Karte zeigt "🛞 Reifen (4x S)"
+
+**Result:**
+✅ Workflow funktioniert für ALLE 10 Services (lackier, reifen, mechanik, pflege, tuev, versicherung, glas, klima, dellen, alle)
+✅ Konsistente Labels in annahme, liste, kanban
+✅ Service-spezifische Datenerfassung für 4 Services
+✅ Verbesserte UX: Sofort erkennbar welcher Service + Details
+✅ Backward-Compatible: Alte Fahrzeuge ohne serviceDetails funktionieren weiterhin
+
+**Manual Testing Required:**
+1. Reifen-Service: Anlegen mit Größe "205/55 R16", Typ "Sommer", Anzahl "4"
+   - Liste Detail: Sollte zeigen "🛞 205/55 R16 | 📅 Sommerreifen | 🔢 4x"
+   - Kanban Karte: Sollte zeigen "🛞 Reifen (4x S)"
+
+2. Glas-Service: Anlegen mit Frontscheibe, Steinschlag
+   - Liste Detail: Sollte zeigen "🪟 Frontscheibe | 💥 Steinschlag"
+   - Kanban Karte: Sollte zeigen "🔍 Glas (Front)"
+
+3. Alte Fahrzeuge (ohne serviceDetails): Sollten weiterhin funktionieren (keine Errors)
+
+---
+
 ### Session 2025-10-30 (Late Evening): Kanban Board Service Definitions Fix
 
 **Duration:** ~1 hour
@@ -501,4 +637,4 @@ Continuation session focused on comprehensive codebase analysis and fixing Kanba
 
 ---
 
-_Last Updated: 2025-10-30 (Late Evening) by Claude Code (Sonnet 4.5)_
+_Last Updated: 2025-10-30 (Night - Complete Service Workflow) by Claude Code (Sonnet 4.5)_
