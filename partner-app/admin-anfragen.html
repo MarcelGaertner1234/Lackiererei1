@@ -1173,8 +1173,49 @@
         let allAnfragen = [];
         let allPartner = [];
 
+        // 🆕 Admin Auth Check (PHASE 2.3.2)
+        async function checkAdminAuth() {
+            return new Promise((resolve, reject) => {
+                firebase.auth().onAuthStateChanged(async (user) => {
+                    if (!user) {
+                        alert('⚠️ Admin-Login erforderlich!\n\nBitte melden Sie sich zuerst in der Hauptanwendung an.');
+                        window.location.href = '../index.html';
+                        return reject('Not authenticated');
+                    }
+
+                    try {
+                        // Check role (admin oder werkstatt)
+                        const userDoc = await db.collection('users').doc(user.uid).get();
+                        if (!userDoc.exists) {
+                            alert('❌ User-Daten nicht gefunden!\n\nBitte kontaktieren Sie den Administrator.');
+                            window.location.href = '../index.html';
+                            return reject('User not found');
+                        }
+
+                        const role = userDoc.data().role;
+                        if (role !== 'admin' && role !== 'werkstatt' && role !== 'superadmin') {
+                            alert('❌ Keine Admin-Berechtigung!\n\nDiese Seite ist nur für Administratoren und Werkstatt-Mitarbeiter.');
+                            window.location.href = '../index.html';
+                            return reject('Not admin');
+                        }
+
+                        console.log('✅ [ADMIN-ANFRAGEN] Admin authenticated:', user.email, '| Role:', role);
+                        resolve();
+                    } catch (error) {
+                        console.error('❌ Auth Check Error:', error);
+                        alert('❌ Fehler beim Prüfen der Berechtigung:\n\n' + error.message);
+                        window.location.href = '../index.html';
+                        reject(error);
+                    }
+                });
+            });
+        }
+
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
+
+            // 🆕 PHASE 2.3.2: Check Admin Authentication
+            await checkAdminAuth();
 
             // 🆕 PHASE 2.3.1: Load werkstattId from localStorage or default
             const savedWerkstatt = localStorage.getItem('selectedWerkstatt') || 'mosbach';
