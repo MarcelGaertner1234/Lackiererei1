@@ -50,37 +50,77 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 - ✅ Apple Liquid Glass Dark Mode
 - ✅ Playwright E2E Testing (566 Tests)
 
-**Recent Improvements (Session 2025-10-29):**
+**Recent Improvements (Session 2025-10-29 Morning):**
 - ✅ **OpenAI Whisper Integration** - Web Speech API → MediaRecorder + Whisper
 - ✅ **OpenAI TTS Integration** - Browser Roboter-Stimme → TTS-1-HD (natürlich)
+- ✅ Firebase Promise Race Condition Fix (firebase-config.js)
+- ✅ Script Loading Order Fix (AI Agent initialization)
+
+**Recent Improvements (Session 2025-10-29 Evening):**
+- ✅ **UX Improvements** - 35 alert() → showToast() (non-blocking notifications)
+- ✅ **Memory Leak Prevention** - 6 window.location.href → safeNavigate()
+- ✅ **listener-registry.js Infrastructure** - Automatic Firestore listener cleanup
+- ✅ **Toast Notification System** - 4 types (success, error, warning, info)
 - ✅ Image Lazy Loading (50-70% schnellere Page Load)
 - ✅ Loading States Komponente (UX +40%)
 - ✅ Input Validation (5 Funktionen: Kennzeichen, Farbnummer, VIN, Email, Telefon)
 - ✅ Code Quality: 10/10 ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
 
+**Commits (Session 2025-10-29):**
+- `b0a8990` - KI Chat Script Loading Order Fix
+- `08a8f57` - Firebase Promise Race Condition Fix
+- `7262200` - UX + Memory Leak Infrastructure
+- `2a37bf5` - alert() + window.location.href Replacements
+
 ---
 
 ## 🐛 BEKANNTE PROBLEME
 
-### ⚠️ CRITICAL:
+### 🔴 CRITICAL:
 
-**KEINE CRITICAL BUGS!** 🎉 Alle kritischen Bugs wurden gefixt.
+**1. Partner-App KVA Logic Errors** ⚠️ **HÖCHSTE PRIORITÄT!**
+- **File:** `partner-app/kva-erstellen.html` (Quote Creation Page)
+- **Documentation:** `partner-app/MULTI_SERVICE_LOGIKFEHLER.md` (887 lines!)
+- **Problem:** Admin quote creation uses STATIC templates that IGNORE partner `serviceData` selections
+- **Impact:** Admin sees WRONG quote variants, can't see what partner selected
+- **Example Bug:**
+  ```
+  Partner selects: Reifen → Montage mitgebrachter Reifen (80€)
+  Admin sees KVA:   "Premium-Reifen 500€" + "Budget-Reifen 350€"
+  Expected:         ONLY "Montage mitgebrachter Reifen 80€"
+  ```
+- **10 Bugs Identified:** Reifen (3), Mechanik (2), Pflege (2), TÜV (1), Versicherung (1), All Services (1)
+- **Fix Required:** 6 Implementation Phases (3-4 hours)
+- **Priority:** 🔴 CRITICAL - System NOT production-ready until fixed!
+- **User Quote:** "Partner & meine-anfragen.html ist das wichtigste in unsere APP"
 
 ### 🟡 MEDIUM:
 
-**1. Firestore Permissions Error**
+**1. Partner-App Multi-Tenant Inconsistency**
+- `partnerAnfragen` collection is GLOBAL (no `_mosbach` suffix)
+- Main app uses Multi-Tenant (`fahrzeuge_mosbach`), Partner-App doesn't
+- **Impact:** Partner requests will MIX across werkstatt locations when scaling
+- **Fix Required:** Add `window.getCollection()` to 7 service forms + meine-anfragen.html (2-3h)
+
+**2. Partner-App Status Sync Complexity**
+- `getDynamicStatus()` uses 3-level priority (storniert > fahrzeug.prozessStatus > anfrage.status)
+- 33 werkstatt statuses → 8 partner statuses (complex mapping)
+- **Impact:** Can confuse when admin sets status manually
+- **Fix Required:** Simplify to single source of truth (1-2h, optional)
+
+**3. Firestore Permissions Error**
 - global-chat-notifications.js: "Missing or insufficient permissions"
 - Error tritt auf für `werkstatt` Rolle
 - **Impact:** Nicht kritisch - KI Chat funktioniert trotzdem
 - **Fix Required:** firestore.rules Update (30 Minuten)
-- **Priority:** Niedrig (kann in nächster Session gefixt werden)
+- **Priority:** Niedrig
 
-**2. Firebase Emulator Tests (Playwright)**
+**4. Firebase Emulator Tests (Playwright)**
 - Tests laufen noch gegen PRODUCTION Firebase
 - Fix Required: Alle Tests auf Emulator umstellen
 - Estimated Time: 2-3 Stunden
 
-**3. Performance-Optimierung**
+**5. Performance-Optimierung**
 - Lazy Loading noch nicht optimal (kanban.html lädt alle Fotos)
 - Code Splitting fehlt (alle JS in einer Datei)
 - Service Worker für Offline-Funktionalität fehlt
@@ -89,7 +129,7 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 
 ## 🎯 NÄCHSTE PRIORITÄTEN
 
-### ✅ **COMPLETED: KI Chat-Assistent** (Session 2025-10-29)
+### ✅ **COMPLETED: KI Chat-Assistent** (Session 2025-10-29 Morning)
 
 - ✅ OpenAI Whisper für Speech-to-Text
 - ✅ OpenAI TTS-1-HD für natürliche Sprachausgabe
@@ -97,13 +137,148 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 - ✅ Automatischer Fallback auf Browser TTS
 - ✅ 3 Cloud Functions deployed
 
-**Commits:** 862c43b, 4d6fbdc, 28f0f75
+**Commits:** 862c43b, 4d6fbdc, 28f0f75, b0a8990, 08a8f57
 
 ---
 
-### **Option 1: User Management System** (Priorität 1, 6-9h) - **95% fertig!**
+### ✅ **COMPLETED: UX + Memory Leak Prevention** (Session 2025-10-29 Evening)
 
-**Status:** 95% der Infrastruktur bereits implementiert!
+- ✅ listener-registry.js Infrastructure (Firestore listener tracking)
+- ✅ 35 alert() → showToast() (non-blocking notifications)
+- ✅ 6 window.location.href → safeNavigate() (automatic cleanup)
+- ✅ Toast Notification System (4 types: success, error, warning, info)
+
+**Commits:** 7262200, 2a37bf5
+
+---
+
+### **🔴 PRIORITY 1: Partner-App Logic Fixes** (CRITICAL, 3-4h) ⚠️ **START HERE!**
+
+**Status:** CRITICAL - System NOT production-ready until fixed!
+**User Priority:** "Partner & meine-anfragen.html ist das wichtigste in unsere APP"
+
+**Files to Review FIRST:**
+1. ⭐ `partner-app/MULTI_SERVICE_LOGIKFEHLER.md` (887 lines - READ THIS FIRST!)
+2. `partner-app/kva-erstellen.html` (Quote creation - 10 critical bugs)
+3. `partner-app/meine-anfragen.html` (6800 lines - Partner dashboard)
+4. `partner-app/reifen-anfrage.html`, `mechanik-anfrage.html`, etc. (Service forms)
+
+**Problem:**
+Admin quote creation (KVA) uses STATIC templates that IGNORE partner-selected `serviceData` fields.
+
+**Example Bug:**
+```
+Partner selects: Reifen → Montage mitgebrachter Reifen (80€)
+Admin sees KVA:   "Premium-Reifen 500€" + "Budget-Reifen 350€"
+Expected:         ONLY "Montage mitgebrachter Reifen 80€"
+```
+
+**10 Critical Bugs Identified:**
+
+| Service | Field Ignored | Impact |
+|---------|---------------|--------|
+| Reifen | `serviceData.art` | Wrong variants (shows purchase for mounting-only) |
+| Reifen | Variant labels | "Premium vs Budget" nonsense |
+| Mechanik | `serviceData.reparaturart` | Shows parts for diagnosis-only |
+| Pflege | `serviceData.leistung` | All fields shown regardless |
+| Pflege | `serviceData.zustand` | Price doesn't adjust |
+| TÜV | `serviceData.pruefung` | Shows AU for HU-only |
+| Versicherung | `serviceData.gutachten` | Wrong quote options |
+| All Services | `displayAnfrageInfo()` | Admin doesn't see partner selections! |
+
+**Solution (6 Implementation Phases):**
+
+**Phase 1:** Add `generateVariants(serviceData)` to each SERVICE_TEMPLATE
+- Dynamic variant generation based on `serviceData.art`, `serviceData.reparaturart`, etc.
+- Example: If `art === 'montage'` → ONLY show "Montage mitgebrachter Reifen" variant
+
+**Phase 2:** Update `renderVariantenBoxen()` to use dynamic variants
+- Call `generateVariants()` instead of using static `variantLabels`
+- Pass `serviceData` to template functions
+
+**Phase 3:** Extend `displayAnfrageInfo()` to show service-specific details
+- Currently shows generic info (partner name, timestamp)
+- Add service-specific sections (Reifen: art, typ, dimension; Mechanik: reparaturart, symptome)
+
+**Phase 4:** Test with live requests (Lackierung + Reifen minimum)
+- Create test requests via service forms
+- Verify KVA shows correct variants
+
+**Phase 5:** Extend to all 6 services (Mechanik, Pflege, TÜV, Versicherung)
+- Replicate pattern from Reifen to other services
+- Each service has unique `serviceData` schema
+
+**Phase 6:** Document changes + update partner-app/README.md
+
+**Implementation Guide:** See `MULTI_SERVICE_LOGIKFEHLER.md` Lines 501-837
+
+**Estimated Time:** 3-4 hours
+
+---
+
+### **🟡 PRIORITY 2: Partner-App Multi-Tenant Support** (MEDIUM, 2-3h)
+
+**Problem:**
+`partnerAnfragen` collection is GLOBAL (no `_mosbach` suffix), while main app uses Multi-Tenant.
+
+**Impact:**
+- Partner requests will MIX across werkstatt locations when scaling
+- Inconsistent with main app architecture
+
+**Solution:**
+
+1. Update all 7 service request forms:
+   ```javascript
+   // OLD: db.collection('partnerAnfragen')
+   // NEW: window.getCollection('partnerAnfragen')
+   ```
+
+2. Update `meine-anfragen.html` listener:
+   ```javascript
+   const collection = window.getCollection('partnerAnfragen');
+   collection.where('partnerId', '==', partner.id).onSnapshot(...);
+   ```
+
+3. Update `admin-anfragen.html`:
+   ```javascript
+   const collection = window.getCollection('partnerAnfragen');
+   collection.get().then(...);
+   ```
+
+4. Add werkstatt detection (like main app):
+   - Ensure `window.werkstattId` is set before Firestore operations
+   - Add auth-check polling (20 attempts × 250ms)
+
+**Result:** Collections become `partnerAnfragen_mosbach`, `partnerAnfragen_heilbronn`, etc.
+
+**Estimated Time:** 2-3 hours
+
+---
+
+### **🟢 PRIORITY 3: Simplify Status Sync Logic** (LOW, 1-2h) - OPTIONAL
+
+**Problem:**
+`getDynamicStatus()` uses 3-level priority that can confuse:
+1. `anfrage.status === 'storniert'` → ALWAYS 'storniert'
+2. `anfrage.fahrzeug?.prozessStatus` → Map werkstatt → partner (33 → 8 statuses!)
+3. `anfrage.status` (fallback)
+
+**Options:**
+- **Option A (Recommended):** Remove `anfrage.status`, ONLY use `fahrzeug.prozessStatus`
+- **Option B:** Add `statusOverride` field for admin manual control
+- **Option C:** Keep current, add UI warning when conflict exists
+
+**Decision:** Defer until after Priority 1 is fixed
+
+**Estimated Time:** 1-2 hours
+
+---
+
+### **LATER BACKLOG: User Management System** (6-9h)
+
+**Status:** Moved to later backlog (Partner-App fixes higher priority)
+
+**95% der Infrastruktur bereits implementiert:**
 - ✅ auth-manager.js vorhanden (2-Stage Auth)
 - ✅ mitarbeiter_mosbach Collection vorhanden
 - ✅ Firebase Security Rules deployed
@@ -114,19 +289,11 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 2. Admin UI für User-Freigabe (2-3h) - nutzer-verwaltung.html
 3. 4 Rollen erweitern (2-3h) - Admin, Partner, Mitarbeiter, Kunde
 
-**User-Rollen:**
-1. **Admin** - Volle Rechte (Nutzer verwalten, alle Anfragen, Einstellungen)
-2. **Partner** - Anfragen erstellen, eigene Anfragen sehen
-3. **Mitarbeiter** - Alle Anfragen sehen/bearbeiten
-4. **Kunde** - Nur eigene Anfragen ansehen (read-only)
-
-**Zeitersparnis:** ~17-22h gespart! (95% bereits implementiert)
+**Will be addressed after Partner-App fixes are complete.**
 
 ---
 
-### **Option 2: Performance-Optimierung** (Priorität 2, 4-5h)
-
-**Ziel:** App lädt schneller, fühlt sich responsiver an
+### **LATER BACKLOG: Performance-Optimierung** (4-5h)
 
 **Tasks:**
 1. Lazy Loading für Bilder optimieren (1-2h) - Intersection Observer API
@@ -139,19 +306,6 @@ Du bist der **Dev CEO Agent** für die Fahrzeugannahme-App des Auto-Lackierzentr
 - ✅ Lighthouse Score > 90 (Performance)
 - ✅ First Contentful Paint < 1.5s
 - ✅ Bundle Size < 200KB (initial load)
-
----
-
-### **Option 3: Firestore Permissions Fix** (Priorität 3, 30 Minuten)
-
-**Ziel:** global-chat-notifications.js Error beheben
-
-**Tasks:**
-1. firestore.rules Update für `werkstatt` Rolle
-2. Rules deployen: `firebase deploy --only firestore:rules`
-3. Testen mit `werkstatt` User
-
-**Nicht kritisch** - KI Chat funktioniert trotzdem
 
 ---
 
@@ -172,7 +326,73 @@ db.collection('fahrzeuge')         // Globale Collection!
 
 ---
 
-### **2. ID-Vergleiche - String-Safe**
+### **2. Toast Notifications statt alert()** 🆕
+
+**IMMER verwenden:**
+```javascript
+// ✅ RICHTIG: Non-blocking Toast
+showToast('Fahrzeug gespeichert!', 'success', 4000);
+showToast('Bitte Kennzeichen eingeben!', 'error');
+showToast('Achtung: Dokument fehlt!', 'warning');
+showToast('Tipp: Strg+S zum Speichern', 'info', 5000);
+
+// ❌ FALSCH: Blocking alert()
+alert('Fahrzeug gespeichert!');  // Blocks UI!
+```
+
+**4 Toast Types:**
+- `'success'` - Green, confirmations (Fahrzeug gespeichert, Login erfolgreich)
+- `'error'` - Red, validation errors (Pflichtfeld leer, ungültiges Format)
+- `'warning'` - Orange, cautions (Dokument fehlt, ungespeicherte Änderungen)
+- `'info'` - Blue, informational (Tipp, Feature Preview)
+
+**With Navigation (Success):**
+```javascript
+showToast('Fahrzeug erfolgreich gespeichert!', 'success', 4000);
+setTimeout(() => safeNavigate('liste.html'), 1500);  // Wait 1.5s before redirect
+```
+
+---
+
+### **3. safeNavigate() statt window.location.href** 🆕
+
+**IMMER verwenden:**
+```javascript
+// ✅ RICHTIG: Automatic Firestore listener cleanup
+safeNavigate('liste.html');
+
+// ❌ FALSCH: Memory leak (listeners not cleaned up)
+window.location.href = 'liste.html';
+```
+
+**Wie es funktioniert:**
+```javascript
+function safeNavigate(url, forceCleanup = true) {
+  if (window.listenerRegistry && forceCleanup) {
+    window.listenerRegistry.unregisterAll(); // Cleanup all Firestore listeners
+  }
+  setTimeout(() => {
+    window.location.href = url;
+  }, 100);
+}
+```
+
+**Firestore Listener Registration:**
+```javascript
+// Register listener for automatic cleanup
+const unsubscribe = db.collection('fahrzeuge_mosbach').onSnapshot(snapshot => {
+  // Handle updates
+});
+window.listenerRegistry.register(unsubscribe, 'Fahrzeuge Realtime Listener');
+
+// Cleanup automatically happens when:
+// 1. User navigates via safeNavigate()
+// 2. User closes/refreshes page (beforeunload handler)
+```
+
+---
+
+### **4. ID-Vergleiche - String-Safe**
 
 ```javascript
 // ✅ RICHTIG
@@ -184,7 +404,7 @@ id1 === id2  // Type Mismatch möglich!
 
 ---
 
-### **3. Race Condition Fix (Auth Manager)**
+### **5. Race Condition Fix (Auth Manager)**
 
 ```javascript
 // ✅ RICHTIG: Polling (20 attempts × 250ms = 5s)
@@ -206,7 +426,7 @@ while (!authReady && attempts < maxAttempts) {
 
 ---
 
-### **4. Firebase SDKs - IMMER alle 4 laden**
+### **6. Firebase SDKs - IMMER alle 4 laden**
 
 ```html
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -219,7 +439,7 @@ while (!authReady && attempts < maxAttempts) {
 
 ---
 
-### **5. Cache-Busting bei Bugfixes**
+### **7. Cache-Busting bei Bugfixes**
 
 ```html
 <!-- Query Parameter mit Commit Hash oder Version -->
@@ -228,7 +448,7 @@ while (!authReady && attempts < maxAttempts) {
 
 ---
 
-### **6. KI Chat Testing & Deployment** 🆕
+### **8. KI Chat Testing & Deployment** 🆕
 
 **Testing Commands (Browser Console F12):**
 ```javascript
@@ -409,22 +629,59 @@ console.log('Werkstatt:', window.authManager.getCurrentWerkstatt());
 
 ## 🚀 START-ANWEISUNG
 
-### **Deine ersten 3 Aktionen:**
+### **Deine ersten 4 Aktionen:**
 
-**1. KONTEXT LADEN:**
+**1. KONTEXT LADEN - KRITISCHE DATEIEN LESEN:**
 ```bash
-Read tool: /Users/marcelgaertner/Desktop/Chritstopher Gàrtner /Marketing/06_Digitale_Tools/Fahrzeugannahme_App/CLAUDE.md
+# Read Tool verwenden:
+1. /Users/marcelgaertner/Desktop/Chritstopher Gàrtner /Marketing/06_Digitale_Tools/Fahrzeugannahme_App/CLAUDE.md
+2. /Users/marcelgaertner/Desktop/Chritstopher Gàrtner /Marketing/06_Digitale_Tools/Fahrzeugannahme_App/partner-app/MULTI_SERVICE_LOGIKFEHLER.md ⭐ CRITICAL!
 ```
+
+**Warum MULTI_SERVICE_LOGIKFEHLER.md?**
+- 887 Zeilen vollständige Bug-Dokumentation
+- 10 Critical Bugs im Detail erklärt
+- 6 Implementation Phases mit Code-Beispielen
+- **MUST READ** bevor du Partner-App Logic Fixes startest!
+
+---
 
 **2. USER FRAGEN:**
 ```
-❓ "Option 1 (Performance) oder Option 2 (User Management) starten?"
-❓ "Gibt es spezifische Probleme die User gemeldet haben?"
+❓ "Soll ich mit Priority 1 (Partner-App Logic Fixes - CRITICAL) starten?"
+❓ "Partner & meine-anfragen.html ist laut User 'das wichtigste' - korrekt?"
+❓ "Gibt es neue Bugs oder User-Feedback?"
 ```
+
+---
 
 **3. TODO-LISTE ERSTELLEN:**
 ```javascript
 // TodoWrite Tool verwenden
+[
+  { content: "MULTI_SERVICE_LOGIKFEHLER.md lesen", status: "pending" },
+  { content: "Phase 1: generateVariants() implementieren", status: "pending" },
+  { content: "Phase 2: renderVariantenBoxen() aktualisieren", status: "pending" },
+  { content: "Phase 3: displayAnfrageInfo() erweitern", status: "pending" },
+  { content: "Phase 4: Testing (Reifen + Lackierung)", status: "pending" },
+  { content: "Phase 5: Extend to all services", status: "pending" },
+  { content: "Phase 6: Dokumentation", status: "pending" }
+]
+```
+
+---
+
+**4. PRIORITÄTEN BESTÄTIGEN:**
+```
+✅ Priority 1: Partner-App Logic Fixes (CRITICAL - 3-4h)
+   → User Quote: "Partner & meine-anfragen.html ist das wichtigste in unsere APP"
+   → System NOT production-ready until fixed!
+
+🟡 Priority 2: Multi-Tenant Support (MEDIUM - 2-3h)
+   → Can be done after Priority 1
+
+🟢 Priority 3: Status Sync Logic (LOW - 1-2h, optional)
+   → Defer until Priority 1+2 complete
 ```
 
 ---
@@ -461,24 +718,36 @@ firebase emulators:start    # Firebase Emulators
 - ✅ Code Quality: 10/10 ⭐
 
 **Was als nächstes kommt:**
-- ✅ **COMPLETED:** KI Chat-Assistent (Session 2025-10-29)
-- 🎯 **Option 1:** User Management System (Priorität 1, 6-9h) - **95% fertig!**
-- 🎯 **Option 2:** Performance-Optimierung (Priorität 2, 4-5h)
-- 🎯 **Option 3:** Firestore Permissions Fix (Priorität 3, 30 Min)
+- ✅ **COMPLETED:** KI Chat-Assistent (Session 2025-10-29 Morning)
+- ✅ **COMPLETED:** UX + Memory Leak Prevention (Session 2025-10-29 Evening)
+- 🔴 **Priority 1:** Partner-App Logic Fixes (CRITICAL, 3-4h) - **START HERE!**
+- 🟡 **Priority 2:** Partner-App Multi-Tenant Support (MEDIUM, 2-3h)
+- 🟢 **Priority 3:** Status Sync Logic Simplification (LOW, 1-2h, optional)
+- 📦 **Later Backlog:** User Management System (6-9h, 95% fertig!)
+- 📦 **Later Backlog:** Performance-Optimierung (4-5h)
 
 **Wichtigste Prinzipien:**
 1. ✅ Stabilität first - KEINE Breaking Changes
 2. ✅ Testing before Deployment - Lokal testen, dann pushen
 3. ✅ Fragen bei Unsicherheit
-4. ✅ Dokumentation aktualisieren
+4. ✅ Dokumentation aktualisieren (CLAUDE.md + DEV-CEO-AGENT-PROMPT.md)
 
 ---
 
-**Ready to start? Frage mich zuerst: Option 1 (User Management - 95% fertig!) oder Option 2 (Performance) oder Option 3 (Firestore Permissions Fix)?** 🚀
+**🔴 CRITICAL: START WITH PRIORITY 1 (Partner-App Logic Fixes)!**
+
+**User Quote:** "Partner & meine-anfragen.html ist das wichtigste in unsere APP"
+
+**Files to Read FIRST:**
+1. ⭐ `partner-app/MULTI_SERVICE_LOGIKFEHLER.md` (887 lines - MUST READ!)
+2. `partner-app/kva-erstellen.html` (10 critical bugs)
+3. `partner-app/meine-anfragen.html` (6800 lines)
+
+**Estimated Time:** 3-4 hours for Priority 1
 
 ---
 
-_Version: 3.3 (KI Chat LIVE! 🎙️)_
+_Version: 3.4 (UX + Memory Leak Prevention DONE! Partner-App Logic Fixes NEXT!)_
 _Erstellt: 28.10.2025_
-_Aktualisiert: 29.10.2025 (Evening - nach KI Chat Whisper + TTS Integration)_
-_Next Update: Nach Session mit User Management/Performance/Firestore Fix_
+_Aktualisiert: 29.10.2025 (Evening - nach UX + Memory Leak Prevention)_
+_Next Update: Nach Session mit Partner-App Logic Fixes_
