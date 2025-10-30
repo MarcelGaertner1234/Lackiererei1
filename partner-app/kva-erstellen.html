@@ -1321,6 +1321,109 @@
                         }
                     };
                 }
+            },
+            glas: {
+                name: 'Glas-Reparatur',
+                icon: '🔍',
+                // DEPRECATED: Static variant labels (replaced by generateVariants)
+                variantLabels: {
+                    original: 'Steinschlag-Reparatur',
+                    zubehoer: 'Mit Aftermarket-Scheibe',
+                    partner: null
+                },
+                variantWarnings: {
+                    zubehoer: '⚠️ Aftermarket-Scheiben können Sensor-Probleme verursachen',
+                    partner: null
+                },
+                // DEPRECATED: Static fields (replaced by generateVariants)
+                fields: {
+                    original: [
+                        { id: 'reparatur', label: 'Steinschlag-Reparatur (€)', type: 'number', required: true },
+                        { id: 'material', label: 'Material (Harz) (€)', type: 'number', required: false },
+                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                    ],
+                    zubehoer: [
+                        { id: 'scheibe', label: 'Aftermarket-Scheibe (€)', type: 'number', required: true },
+                        { id: 'ausbau', label: 'Ausbau/Einbau (€)', type: 'number', required: true },
+                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                    ],
+                    partner: null
+                },
+                // ============================================
+                // NEW: DYNAMIC VARIANT GENERATION
+                // ============================================
+                generateVariants: function(serviceData) {
+                    const art = serviceData?.art || 'steinschlag';
+                    const anzahl = serviceData?.anzahl || 1;
+
+                    console.log('🔍 [Glas] Generiere Varianten für art:', art, 'anzahl:', anzahl);
+
+                    if (art === 'steinschlag' || art === 'riss') {
+                        // Steinschlag/Riss → Reparatur (keine Scheibe nötig)
+                        const artLabel = art === 'steinschlag' ? 'Steinschlag' : 'Riss';
+                        return {
+                            variants: ['original'],
+                            labels: {
+                                original: `${artLabel}-Reparatur`
+                            },
+                            warnings: {},
+                            fields: {
+                                original: [
+                                    { id: 'reparatur', label: `${artLabel}-Reparatur (€)`, type: 'number', required: true },
+                                    { id: 'material', label: 'Material (Harz) (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+
+                    } else if (art === 'austausch') {
+                        // Scheibenaustausch → 2 Varianten (Original vs. Aftermarket)
+                        return {
+                            variants: ['original', 'zubehoer'],
+                            labels: {
+                                original: `Variante 1: Mit Originalscheibe (${anzahl}x)`,
+                                zubehoer: `Variante 2: Mit Aftermarket-Scheibe (${anzahl}x)`
+                            },
+                            warnings: {
+                                zubehoer: '⚠️ Aftermarket-Scheiben: Mögliche Sensor-Probleme (Kamera, Regen, etc.)'
+                            },
+                            fields: {
+                                original: [
+                                    { id: 'scheibe', label: `Originalscheibe (${anzahl}x) (€)`, type: 'number', required: true },
+                                    { id: 'ausbau', label: 'Ausbau/Einbau (€)', type: 'number', required: true },
+                                    { id: 'kalibrierung', label: 'Kamera-Kalibrierung (falls vorhanden) (€)', type: 'number', required: false },
+                                    { id: 'dichtung', label: 'Dichtung (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ],
+                                zubehoer: [
+                                    { id: 'scheibe', label: `Aftermarket-Scheibe (${anzahl}x) (€)`, type: 'number', required: true },
+                                    { id: 'ausbau', label: 'Ausbau/Einbau (€)', type: 'number', required: true },
+                                    { id: 'kalibrierung', label: 'Kamera-Kalibrierung (falls vorhanden) (€)', type: 'number', required: false },
+                                    { id: 'dichtung', label: 'Dichtung (€)', type: 'number', required: false },
+                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                                ]
+                            }
+                        };
+                    }
+
+                    // Fallback: Wenn art unbekannt
+                    console.warn('⚠️ [Glas] Unbekannte art:', art, '→ Fallback zu Default');
+                    return this.getDefaultVariants();
+                },
+
+                getDefaultVariants: function() {
+                    return {
+                        variants: ['original'],
+                        labels: { original: 'Glas-Reparatur' },
+                        warnings: {},
+                        fields: {
+                            original: [
+                                { id: 'service', label: 'Service-Kosten (€)', type: 'number', required: true },
+                                { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                            ]
+                        }
+                    };
+                }
             }
         };
 
@@ -1888,6 +1991,22 @@
                         </div>
                     `;
                     break;
+
+                case 'glas':
+                    html = `
+                        <div style="background: #e1f5fe; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #0288d1;">
+                            <h4 style="color: #01579b; margin: 0 0 10px 0; font-size: 14px;">🔍 Glas-Reparatur Details</h4>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 13px;">
+                                <div><strong>Art der Reparatur:</strong> ${formatGlasArt(serviceData.art)}</div>
+                                <div><strong>Betroffene Scheibe:</strong> ${formatScheibe(serviceData.scheibe)}</div>
+                                ${serviceData.position ? `<div><strong>Position:</strong> ${formatPosition(serviceData.position)}</div>` : ''}
+                                ${serviceData.anzahl ? `<div><strong>Anzahl:</strong> ${serviceData.anzahl}</div>` : ''}
+                                ${serviceData.groesse ? `<div><strong>Schadensgröße:</strong> ${formatGroesse(serviceData.groesse)}</div>` : ''}
+                            </div>
+                            ${serviceData.info ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${serviceData.info}</p>` : ''}
+                        </div>
+                    `;
+                    break;
             }
 
             return html;
@@ -1998,6 +2117,43 @@
             return labels[vorbereitung] || vorbereitung || 'k.A.';
         }
 
+        function formatGlasArt(art) {
+            const labels = {
+                'steinschlag': '🔹 Steinschlag-Reparatur',
+                'riss': '🔸 Riss-Reparatur',
+                'austausch': '🔄 Scheibenaustausch'
+            };
+            return labels[art] || art || 'k.A.';
+        }
+
+        function formatScheibe(scheibe) {
+            const labels = {
+                'windschutzscheibe': '🚗 Windschutzscheibe',
+                'seitenscheibe': '🪟 Seitenscheibe',
+                'heckscheibe': '🔲 Heckscheibe'
+            };
+            return labels[scheibe] || scheibe || 'k.A.';
+        }
+
+        function formatPosition(position) {
+            const labels = {
+                'fahrer': '👨‍✈️ Fahrerseite',
+                'beifahrer': '🧑 Beifahrerseite',
+                'hinten_links': '⬅️ Hinten Links',
+                'hinten_rechts': '➡️ Hinten Rechts'
+            };
+            return labels[position] || position || 'k.A.';
+        }
+
+        function formatGroesse(groesse) {
+            const labels = {
+                'klein': '🟢 Klein (< 2cm)',
+                'mittel': '🟡 Mittel (2-5cm)',
+                'gross': '🔴 Groß (> 5cm)'
+            };
+            return labels[groesse] || groesse || 'k.A.';
+        }
+
         function generateServiceLieferzeitText(serviceTyp, startFormatted, endFormatted, startDatum, endDatum) {
             // Service-spezifische Labels
             const serviceLabels = {
@@ -2007,7 +2163,8 @@
                 'mechanik': '🔧 Reparatur',
                 'pflege': '✨ Aufbereitung',
                 'tuev': '✅ Prüfung',
-                'versicherung': '🛡️ Reparatur'
+                'versicherung': '🛡️ Reparatur',
+                'glas': '🔍 Glas-Reparatur'
             };
 
             const label = serviceLabels[serviceTyp?.toLowerCase()] || '🚗 Service';
