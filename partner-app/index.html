@@ -559,6 +559,30 @@
                             uid: user.uid
                         };
 
+                        // 🆕 PHASE 2.1: Set Custom Claims via Cloud Function
+                        try {
+                            console.log('🔐 Setting custom claims for partner...');
+                            const setPartnerClaims = firebase.functions().httpsCallable('setPartnerClaims');
+                            const claimsResult = await setPartnerClaims({
+                                uid: user.uid,
+                                email: user.email,
+                                werkstattId: 'mosbach' // Default: mosbach (später dynamisch)
+                            });
+
+                            if (claimsResult.data.success) {
+                                console.log('✅ Custom claims set:', claimsResult.data.claims);
+
+                                // Force token refresh to load new claims
+                                await user.getIdToken(true);
+                                console.log('✅ Token refreshed with new claims');
+                            } else {
+                                console.warn('⚠️ Custom claims nicht gesetzt:', claimsResult.data.message);
+                            }
+                        } catch (claimsError) {
+                            console.error('❌ Fehler beim Setzen der Custom Claims:', claimsError);
+                            // Non-critical error - continue with login
+                        }
+
                         // 🆕 MULTI-TENANT: Fetch werkstattId from Firestore partner collection
                         try {
                             const db = firebase.firestore();
