@@ -804,6 +804,125 @@ window.validateKennzeichen = function(value) {
   return { valid: true, error: null, value: trimmed };
 };
 
+
+/**
+ * Validate Reifengröße (Tire Size)
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validateReifengroesse('205/55 R16 91V');
+ * if (!result.valid) alert(result.error);
+ */
+window.validateReifengroesse = function(value) {
+  if (!value || value.trim() === '') {
+    return { valid: true, error: null, value: '' }; // Optional field
+  }
+
+  const trimmed = value.trim().toUpperCase();
+
+  // Reifengröße: 3 digits / 2 digits SPACE R 2 digits optional: SPACE 2-3 digits + letter
+  // Examples: 205/55 R16, 225/45 R17 94W, 195/65R15 91H
+  const pattern = /^\d{3}\/\d{2}\s?R\d{2}(\s?\d{2,3}[A-Z])?$/;
+
+  if (!pattern.test(trimmed)) {
+    return {
+      valid: false,
+      error: 'Ungültige Reifengröße! Format: 205/55 R16 oder 225/45 R17 94W',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
+
+/**
+ * Validate Scheibentyp (Window Glass Type)
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validateScheibentyp('Frontscheibe');
+ * if (!result.valid) alert(result.error);
+ */
+window.validateScheibentyp = function(value) {
+  if (!value || value.trim() === '') {
+    return { valid: true, error: null, value: '' }; // Optional field
+  }
+
+  const trimmed = value.trim();
+
+  // Valid glass types
+  const validTypes = [
+    'Frontscheibe',
+    'Heckscheibe',
+    'Seitenscheibe vorne links',
+    'Seitenscheibe vorne rechts',
+    'Seitenscheibe hinten links',
+    'Seitenscheibe hinten rechts',
+    'Dreieckscheibe',
+    'Glasdach',
+    'Panoramadach'
+  ];
+
+  if (!validTypes.includes(trimmed)) {
+    return {
+      valid: false,
+      error: 'Ungültiger Scheibentyp! Bitte aus Liste wählen.',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
+
+/**
+ * Validate Lackschaden-Position
+ * @param {string} value - Input value
+ * @returns {Object} { valid: boolean, error: string|null, value: string }
+ *
+ * @example
+ * const result = validateLackschadenPosition('Stoßstange vorne');
+ * if (!result.valid) alert(result.error);
+ */
+window.validateLackschadenPosition = function(value) {
+  if (!value || value.trim() === '') {
+    return { valid: true, error: null, value: '' }; // Optional field
+  }
+
+  const trimmed = value.trim();
+
+  // Valid positions
+  const validPositions = [
+    'Stoßstange vorne',
+    'Stoßstange hinten',
+    'Motorhaube',
+    'Kotflügel vorne links',
+    'Kotflügel vorne rechts',
+    'Kotflügel hinten links',
+    'Kotflügel hinten rechts',
+    'Tür vorne links',
+    'Tür vorne rechts',
+    'Tür hinten links',
+    'Tür hinten rechts',
+    'Dach',
+    'Heckklappe',
+    'Schweller links',
+    'Schweller rechts',
+    'Spiegel links',
+    'Spiegel rechts'
+  ];
+
+  if (!validPositions.includes(trimmed)) {
+    return {
+      valid: false,
+      error: 'Ungültige Position! Bitte aus Liste wählen.',
+      value: trimmed
+    };
+  }
+
+  return { valid: true, error: null, value: trimmed };
+};
 // Define initFirebase() helper for compatibility
 window.initFirebase = async function() {
   console.log('🔧 RUN #68: [1/3] initFirebase() called');
