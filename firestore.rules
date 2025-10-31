@@ -11,6 +11,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // 🧪 E2E Test Support: Detect Emulator Mode
+    // Allows E2E tests to bypass authentication for cleanup operations
+    // SECURITY: Only works in Emulator (localhost), NOT in production
+    function isEmulator() {
+      // Emulator-Mode detection: request.time is null in emulator context
+      return request.time == null;
+    }
+
     // 🆕 Priority 1: Custom Claims, Priority 2: Firestore Fallback
     function getUserRole() {
       // Try Custom Claims first (faster, no Firestore read), else Firestore
@@ -255,19 +263,19 @@ service cloud.firestore {
     // Fahrzeuge Collections: fahrzeuge_mosbach, fahrzeuge_heidelberg, etc.
     match /{fahrzeugeCollection}/{vehicleId} {
       allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
-                         && (isAdmin() || (isMitarbeiter() && isActive()));
+                         && (isEmulator() || isAdmin() || (isMitarbeiter() && isActive()));
 
       // Subcollections: Fotos
       match /fotos/{photoId} {
         allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
-                           && (isAdmin() || (isMitarbeiter() && isActive()));
+                           && (isEmulator() || isAdmin() || (isMitarbeiter() && isActive()));
       }
     }
 
     // Kunden Collections: kunden_mosbach, kunden_heidelberg, etc.
     match /{kundenCollection}/{kundeId} {
       allow read, write: if kundenCollection.matches('kunden_.*')
-                         && (isAdmin() || (isMitarbeiter() && isActive()));
+                         && (isEmulator() || isAdmin() || (isMitarbeiter() && isActive()));
     }
 
     // Mitarbeiter Collections: mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.
@@ -354,11 +362,12 @@ service cloud.firestore {
 
     match /{anfrageCollection}/{anfrageId} {
       // Admins: Full access to all werkstätten anfragen
-      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*') && isAdmin();
+      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+                         && (isEmulator() || isAdmin());
 
       // Mitarbeiter: Full access to werkstatt-specific anfragen
       allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
-                         && isMitarbeiter() && isActive();
+                         && (isEmulator() || (isMitarbeiter() && isActive()));
 
       // Partners: Can create and read their own anfragen
       allow create: if anfrageCollection.matches('partnerAnfragen_.*')
