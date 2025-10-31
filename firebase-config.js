@@ -923,6 +923,71 @@ window.validateLackschadenPosition = function(value) {
 
   return { valid: true, error: null, value: trimmed };
 };
+
+/**
+ * Get Service Icon (Emoji) for serviceTyp
+ * Centralized mapping to ensure consistency across app
+ * @param {string} serviceTyp - Service type (case-insensitive)
+ * @returns {string} Emoji icon for the service
+ *
+ * @example
+ * const icon = window.getServiceIcon('lackierung'); // Returns '🎨'
+ * const icon = window.getServiceIcon('REIFEN');     // Returns '🛞'
+ */
+window.getServiceIcon = function(serviceTyp) {
+  if (!serviceTyp) return '📋'; // Default icon
+  
+  const normalized = serviceTyp.toLowerCase().trim();
+  
+  // Service icon mapping
+  const icons = {
+    // Hauptservices
+    'lackierung': '🎨',
+    'lackier': '🎨',
+    'paint': '🎨',
+    
+    'reifen': '🛞',
+    'tire': '🛞',
+    'tyre': '🛞',
+    
+    'mechanik': '🔧',
+    'mechanic': '🔧',
+    'repair': '🔧',
+    
+    'pflege': '✨',
+    'detailing': '✨',
+    'cleaning': '✨',
+    
+    'tuev': '📋',
+    'tüv': '📋',
+    'inspection': '📋',
+    
+    'versicherung': '📄',
+    'insurance': '📄',
+    
+    // Zusatzservices
+    'glas': '🔍',
+    'glass': '🔍',
+    'scheibe': '🔍',
+    'windshield': '🔍',
+    
+    'klima': '❄️',
+    'ac': '❄️',
+    'klimaanlage': '❄️',
+    
+    'dellen': '🔨',
+    'dent': '🔨',
+    'pdr': '🔨',
+    
+    // Fallbacks
+    'service': '🔧',
+    'wartung': '🔧',
+    'default': '📋'
+  };
+  
+  return icons[normalized] || icons['default'];
+};
+
 // Define initFirebase() helper for compatibility
 window.initFirebase = async function() {
   console.log('🔧 RUN #68: [1/3] initFirebase() called');
