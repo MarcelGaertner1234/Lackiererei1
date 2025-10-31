@@ -174,19 +174,11 @@
     // ========================================
 
     function startFirebaseListener() {
-        // 🚧 TEMPORÄR DEAKTIVIERT: Chat-Notifications
-        // Reason: Firestore Permission Error - collectionGroup('chat') hat keine Rules
-        // TODO: Firestore Rules erweitern oder auf Multi-Tenant Collection umstellen
-
-        console.log('ℹ️ Chat-Notifications: Temporär deaktiviert (Firestore Rules fehlen)');
-        return;
-
-        /* ORIGINAL CODE (deaktiviert bis Rules existieren):
         const db = firebase.firestore();
 
-        // Höre auf neue Nachrichten in globalChat (Werkstatt-Benachrichtigungen)
-        // CHANGED: collectionGroup('chat') → collection('globalChat')
-        // Reason: Permission Error mit collectionGroup (versucht auf alle chat Subcollections zuzugreifen)
+        console.log('✅ Chat-Notifications: Aktiviert (Firestore Rules deployed)');
+
+        // Höre auf neue Nachrichten in allen chat Subcollections
         firebaseListener = db.collectionGroup('chat')
             .where('sender', '==', 'partner')
             .orderBy('timestamp', 'desc')
@@ -209,9 +201,9 @@
                 lastCheck = new Date().toISOString();
                 localStorage.setItem('chat_notifications_last_check', lastCheck);
             }, (error) => {
-                console.error('Firebase Listener Error:', error);
+                console.error('❌ Firebase Listener Error:', error);
+                console.error('Falls Permission-Error: Firestore Rules prüfen!');
             });
-        */
     }
 
     async function handleNewMessage(message, anfrageId) {
