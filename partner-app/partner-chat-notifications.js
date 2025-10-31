@@ -97,11 +97,10 @@
 
     async function loadUnreadCount() {
         try {
-            const db = firebase.firestore();
             const lastRead = localStorage.getItem('partner_chat_last_check') || '0';
 
-            // Nur Anfragen des eingeloggten Partners laden
-            const anfrageSnapshot = await db.collection('partnerAnfragen')
+            // Nur Anfragen des eingeloggten Partners laden (Multi-Tenant)
+            const anfrageSnapshot = await window.getCollection('partnerAnfragen')
                 .where('partnerEmail', '==', partnerEmail)
                 .get();
 
@@ -110,7 +109,7 @@
             // Für jede Anfrage ungelesene Werkstatt-Nachrichten zählen
             for (const anfrageDoc of anfrageSnapshot.docs) {
                 try {
-                    const chatSnapshot = await db.collection('partnerAnfragen')
+                    const chatSnapshot = await window.getCollection('partnerAnfragen')
                         .doc(anfrageDoc.id)
                         .collection('chat')
                         .where('sender', '==', 'werkstatt')
@@ -120,7 +119,7 @@
                     totalUnread += chatSnapshot.size;
                 } catch (error) {
                     // Fallback ohne timestamp filter
-                    const chatSnapshot = await db.collection('partnerAnfragen')
+                    const chatSnapshot = await window.getCollection('partnerAnfragen')
                         .doc(anfrageDoc.id)
                         .collection('chat')
                         .where('sender', '==', 'werkstatt')
@@ -195,8 +194,7 @@
     async function handleNewMessage(message, anfrageId) {
         // Prüfe ob Nachricht für diesen Partner ist
         try {
-            const db = firebase.firestore();
-            const anfrageDoc = await db.collection('partnerAnfragen').doc(anfrageId).get();
+            const anfrageDoc = await window.getCollection('partnerAnfragen').doc(anfrageId).get();
 
             if (!anfrageDoc.exists) return;
 

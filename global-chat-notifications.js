@@ -123,7 +123,7 @@
             // Für jede Anfrage ungelesene Nachrichten zählen
             for (const anfrageDoc of anfrageSnapshot.docs) {
                 try {
-                    const chatSnapshot = await db.collection('partnerAnfragen')
+                    const chatSnapshot = await window.getCollection('partnerAnfragen')
                         .doc(anfrageDoc.id)
                         .collection('chat')
                         .where('sender', '==', 'partner')
@@ -133,7 +133,7 @@
                     totalUnread += chatSnapshot.size;
                 } catch (error) {
                     // Fallback ohne timestamp filter
-                    const chatSnapshot = await db.collection('partnerAnfragen')
+                    const chatSnapshot = await window.getCollection('partnerAnfragen')
                         .doc(anfrageDoc.id)
                         .collection('chat')
                         .where('sender', '==', 'partner')
@@ -220,8 +220,7 @@
 
         // Anfrage-Details laden für Toast
         try {
-            const db = firebase.firestore();
-            const anfrageDoc = await db.collection('partnerAnfragen').doc(anfrageId).get();
+            const anfrageDoc = await window.getCollection('partnerAnfragen').doc(anfrageId).get();
             if (anfrageDoc.exists) {
                 const anfrage = anfrageDoc.data();
                 showToast({
