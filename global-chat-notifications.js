@@ -174,6 +174,14 @@
     // ========================================
 
     function startFirebaseListener() {
+        // 🚧 TEMPORÄR DEAKTIVIERT: Chat-Notifications
+        // Reason: Firestore Permission Error - collectionGroup('chat') hat keine Rules
+        // TODO: Firestore Rules erweitern oder auf Multi-Tenant Collection umstellen
+
+        console.log('ℹ️ Chat-Notifications: Temporär deaktiviert (Firestore Rules fehlen)');
+        return;
+
+        /* ORIGINAL CODE (deaktiviert bis Rules existieren):
         const db = firebase.firestore();
 
         // Höre auf neue Nachrichten in globalChat (Werkstatt-Benachrichtigungen)
@@ -203,6 +211,7 @@
             }, (error) => {
                 console.error('Firebase Listener Error:', error);
             });
+        */
     }
 
     async function handleNewMessage(message, anfrageId) {
