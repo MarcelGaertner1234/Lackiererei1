@@ -116,7 +116,7 @@
             const lastRead = localStorage.getItem('chat_notifications_last_check') || '0';
 
             // Alle Anfragen laden
-            const anfrageSnapshot = await db.collection('partnerAnfragen').get();
+            const anfrageSnapshot = await window.getCollection('partnerAnfragen').get();
 
             let totalUnread = 0;
 
@@ -179,7 +179,7 @@
         // Höre auf neue Nachrichten in globalChat (Werkstatt-Benachrichtigungen)
         // CHANGED: collectionGroup('chat') → collection('globalChat')
         // Reason: Permission Error mit collectionGroup (versucht auf alle chat Subcollections zuzugreifen)
-        firebaseListener = db.collection('globalChat')
+        firebaseListener = db.collectionGroup('chat')
             .where('sender', '==', 'partner')
             .orderBy('timestamp', 'desc')
             .limit(10)
