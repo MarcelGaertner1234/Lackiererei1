@@ -988,6 +988,57 @@ window.getServiceIcon = function(serviceTyp) {
   return icons[normalized] || icons['default'];
 };
 
+/**
+ * Firestore Error Boundary - Wraps async functions with centralized error handling
+ * @param {Function} asyncFn - Async function to wrap
+ * @param {string} context - Context description for error logging (e.g., "loadVehicles")
+ * @param {boolean} showToast - Whether to show error toast to user (default: true)
+ * @returns {Promise} Result of asyncFn or null on error
+ *
+ * @example
+ * const vehicles = await window.withFirestoreErrorHandling(
+ *   async () => {
+ *     const snapshot = await window.getCollection('fahrzeuge').get();
+ *     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+ *   },
+ *   'loadVehicles'
+ * );
+ */
+window.withFirestoreErrorHandling = async function(asyncFn, context, showToast = true) {
+  try {
+    return await asyncFn();
+  } catch (error) {
+    console.error(`❌ Firestore Error [${context}]:`, error);
+    console.error('   Error Code:', error.code);
+    console.error('   Error Message:', error.message);
+    
+    // User-friendly error messages
+    let userMessage = 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.';
+    
+    if (error.code === 'permission-denied') {
+      userMessage = '⛔ Zugriff verweigert. Bitte prüfen Sie Ihre Berechtigungen.';
+    } else if (error.code === 'unavailable') {
+      userMessage = '📡 Keine Verbindung zur Datenbank. Bitte prüfen Sie Ihre Internetverbindung.';
+    } else if (error.code === 'not-found') {
+      userMessage = '🔍 Daten nicht gefunden.';
+    } else if (error.code === 'already-exists') {
+      userMessage = '⚠️ Daten existieren bereits.';
+    } else if (error.code === 'failed-precondition') {
+      userMessage = '❌ Anfrage fehlgeschlagen. Möglicherweise fehlt ein Index.';
+    } else if (error.code === 'unauthenticated') {
+      userMessage = '🔐 Nicht angemeldet. Bitte melden Sie sich an.';
+    }
+    
+    if (showToast && typeof window.showToast === 'function') {
+      window.showToast(`${userMessage} (Context: ${context})`, 'error', 6000);
+    }
+    
+    // Return null to allow callers to handle gracefully
+    return null;
+  }
+};
+
+
 // Define initFirebase() helper for compatibility
 window.initFirebase = async function() {
   console.log('🔧 RUN #68: [1/3] initFirebase() called');
