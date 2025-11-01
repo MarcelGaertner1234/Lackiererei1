@@ -1020,10 +1020,21 @@
 
                     const vorherPhotos = await localFirebaseApp.loadPhotosFromFirestore(currentVehicle.id, 'vorher');
 
+                    // Prozess-Fotos aus statusHistory extrahieren (nur Einträge mit Foto)
+                    const prozessFotos = (currentVehicle.statusHistory || [])
+                        .filter(entry => entry.foto)
+                        .map(entry => ({
+                            status: entry.status,
+                            timestamp: entry.timestamp,
+                            foto: entry.foto,
+                            notiz: entry.notiz || ''
+                        }));
+
                     const dataForPDF = {
                         ...abnahmeData,
                         photos: vorherPhotos,
-                        nachherPhotos: nachherPhotos
+                        nachherPhotos: nachherPhotos,
+                        prozessFotos: prozessFotos
                     };
                     await createPDF(dataForPDF);
                 } else {
@@ -1034,7 +1045,23 @@
                         localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
                     }
                     console.log('ℹ️ Fahrzeug in LocalStorage aktualisiert');
-                    await createPDF(abnahmeData);
+
+                    // Prozess-Fotos aus statusHistory extrahieren (nur Einträge mit Foto)
+                    const prozessFotos = (currentVehicle.statusHistory || [])
+                        .filter(entry => entry.foto)
+                        .map(entry => ({
+                            status: entry.status,
+                            timestamp: entry.timestamp,
+                            foto: entry.foto,
+                            notiz: entry.notiz || ''
+                        }));
+
+                    const dataForPDF = {
+                        ...abnahmeData,
+                        prozessFotos: prozessFotos
+                    };
+
+                    await createPDF(dataForPDF);
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Aktualisieren:', error);
@@ -1044,7 +1071,23 @@
                     fahrzeuge[index] = abnahmeData;
                     localStorage.setItem('fahrzeuge', JSON.stringify(fahrzeuge));
                 }
-                await createPDF(abnahmeData);
+
+                // Prozess-Fotos aus statusHistory extrahieren (nur Einträge mit Foto)
+                const prozessFotos = (currentVehicle.statusHistory || [])
+                    .filter(entry => entry.foto)
+                    .map(entry => ({
+                        status: entry.status,
+                        timestamp: entry.timestamp,
+                        foto: entry.foto,
+                        notiz: entry.notiz || ''
+                    }));
+
+                const dataForPDF = {
+                    ...abnahmeData,
+                    prozessFotos: prozessFotos
+                };
+
+                await createPDF(dataForPDF);
             }
 
             showSuccess('Fahrzeug erfolgreich abgenommen!');
@@ -1763,6 +1806,111 @@
                 }
 
                 y += imgHeight + 10;
+            }
+
+            // PRODUKTIONSFORTSCHRITT (Prozess-Fotos aus Kanban)
+            const prozessFotos = data.prozessFotos || [];
+            if (prozessFotos.length > 0) {
+                y += 15;
+
+                // Check page overflow before header
+                if (y > 240) {
+                    doc.addPage();
+                    y = 20;
+                }
+
+                // Header mit lila Hintergrund
+                doc.setFillColor(156, 39, 176);  // Lila
+                doc.rect(15, y - 5, 180, 8, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(13);
+                doc.text('PRODUKTIONSFORTSCHRITT (Status-Updates)', 20, y);
+                doc.setTextColor(0, 0, 0);
+                doc.setFont(undefined, 'normal');
+                y += 10;
+
+                // Status-Namen Mapping (Deutsch)
+                const statusNames = {
+                    'vorbereitung': 'Vorbereitung',
+                    'lackierung': 'Lackierung',
+                    'qualitaetskontrolle': 'Qualitätskontrolle',
+                    'trocknung': 'Trocknung',
+                    'reparatur': 'Reparatur',
+                    'montage': 'Montage',
+                    'wuchten': 'Wuchten',
+                    'aufbereitung': 'Aufbereitung',
+                    'qualitaet': 'Qualität',
+                    'pruefung': 'Prüfung',
+                    'diagnose': 'Diagnose'
+                };
+
+                // Prozess-Fotos rendern (2 Spalten wie Vorher/Nachher)
+                for (let i = 0; i < prozessFotos.length; i += 2) {
+                    // Check page overflow
+                    if (y > 200) {
+                        doc.addPage();
+                        y = 20;
+                    }
+
+                    const imgWidth = 80;
+                    const imgHeight = 60;
+
+                    // Linke Spalte
+                    const leftEntry = prozessFotos[i];
+                    const leftStatusName = statusNames[leftEntry.status] || leftEntry.status.toUpperCase();
+                    const leftDate = new Date(leftEntry.timestamp).toLocaleDateString('de-DE');
+                    const leftTime = new Date(leftEntry.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+                    // Status + Datum über Foto (links)
+                    doc.setFont(undefined, 'bold');
+                    doc.setFontSize(10);
+                    doc.text(`${leftStatusName} - ${leftDate} ${leftTime}`, 20, y);
+                    y += 5;
+
+                    // Foto (links)
+                    safeAddImage(leftEntry.foto, 'JPEG', 20, y, imgWidth, imgHeight, `Prozess-Foto ${i+1}`);
+
+                    // Notiz unter Foto (links) - falls vorhanden
+                    if (leftEntry.notiz && leftEntry.notiz.trim()) {
+                        doc.setFont(undefined, 'normal');
+                        doc.setFontSize(8);
+                        doc.setTextColor(100, 100, 100);
+                        const notizLines = doc.splitTextToSize(leftEntry.notiz, imgWidth - 4);
+                        doc.text(notizLines, 22, y + imgHeight + 3);
+                        doc.setTextColor(0, 0, 0);
+                    }
+
+                    // Rechte Spalte (falls vorhanden)
+                    if (i + 1 < prozessFotos.length) {
+                        const rightEntry = prozessFotos[i + 1];
+                        const rightStatusName = statusNames[rightEntry.status] || rightEntry.status.toUpperCase();
+                        const rightDate = new Date(rightEntry.timestamp).toLocaleDateString('de-DE');
+                        const rightTime = new Date(rightEntry.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+                        // Status + Datum über Foto (rechts)
+                        doc.setFont(undefined, 'bold');
+                        doc.setFontSize(10);
+                        doc.text(`${rightStatusName} - ${rightDate} ${rightTime}`, 110, y - 5);
+
+                        // Foto (rechts)
+                        safeAddImage(rightEntry.foto, 'JPEG', 110, y, imgWidth, imgHeight, `Prozess-Foto ${i+2}`);
+
+                        // Notiz unter Foto (rechts) - falls vorhanden
+                        if (rightEntry.notiz && rightEntry.notiz.trim()) {
+                            doc.setFont(undefined, 'normal');
+                            doc.setFontSize(8);
+                            doc.setTextColor(100, 100, 100);
+                            const notizLines = doc.splitTextToSize(rightEntry.notiz, imgWidth - 4);
+                            doc.text(notizLines, 112, y + imgHeight + 3);
+                            doc.setTextColor(0, 0, 0);
+                        }
+                    }
+
+                    y += imgHeight + 12;  // Extra Abstand für Timeline-Feeling
+                }
+
+                y += 5;
             }
 
             y += 10;
