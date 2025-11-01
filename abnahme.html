@@ -608,14 +608,25 @@
             try {
                 let vehicles = [];
 
+                // Status-Filter: Nur Fahrzeuge die bereit zur Abnahme sind
+                const readyStatuses = ['bereit', 'fertig', 'abholbereit'];
+
                 if (firebaseInitialized && localFirebaseApp) {
                     const allVehicles = await localFirebaseApp.getAllFahrzeuge();
-                    vehicles = allVehicles.filter(v => v.status !== 'abgeschlossen' && v.status !== 'storniert');
-                    console.log('✅ Dropdown geladen: ' + vehicles.length + ' Fahrzeuge (ohne abgeschlossen/storniert)');
+                    vehicles = allVehicles.filter(v =>
+                        readyStatuses.includes(v.prozessStatus) &&
+                        v.status !== 'abgeschlossen' &&
+                        v.status !== 'storniert'
+                    );
+                    console.log('✅ Dropdown geladen: ' + vehicles.length + ' Fahrzeuge (bereit zur Abnahme)');
                 } else {
                     const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-                    vehicles = fahrzeuge.filter(v => v.status !== 'abgeschlossen' && v.status !== 'storniert');
-                    console.log('✅ Dropdown geladen (LocalStorage): ' + vehicles.length + ' Fahrzeuge');
+                    vehicles = fahrzeuge.filter(v =>
+                        readyStatuses.includes(v.prozessStatus) &&
+                        v.status !== 'abgeschlossen' &&
+                        v.status !== 'storniert'
+                    );
+                    console.log('✅ Dropdown geladen (LocalStorage): ' + vehicles.length + ' Fahrzeuge (bereit zur Abnahme)');
                 }
 
                 // Migration: Alte baujahr-Werte konvertieren
@@ -632,25 +643,19 @@
                 // Dropdown leeren
                 dropdown.innerHTML = '<option value="">-- Fahrzeug auswählen --</option>';
 
-                // Fahrzeuge sortieren (bereit zur Abnahme zuerst)
-                vehicles.sort((a, b) => {
-                    const aBereit = (a.prozessStatus === 'bereit') ? 1 : 0;
-                    const bBereit = (b.prozessStatus === 'bereit') ? 1 : 0;
-                    if (aBereit !== bBereit) return bBereit - aBereit;
-                    return b.id - a.id;
-                });
+                // Fahrzeuge nach ID sortieren (neueste zuerst)
+                vehicles.sort((a, b) => b.id - a.id);
 
-                // Dropdown befüllen
+                // Dropdown befüllen (alle Fahrzeuge sind bereit zur Abnahme)
                 vehicles.forEach(vehicle => {
                     const option = document.createElement('option');
                     option.value = vehicle.kennzeichen;
-                    const bereitBadge = (vehicle.prozessStatus === 'bereit') ? ' 🎯 [BEREIT ZUR ABNAHME]' : '';
-                    option.textContent = `${vehicle.kennzeichen} - ${vehicle.marke} ${vehicle.modell} - ${vehicle.kundenname}${bereitBadge}`;
+                    option.textContent = `${vehicle.kennzeichen} - ${vehicle.marke} ${vehicle.modell} - ${vehicle.kundenname}`;
                     dropdown.appendChild(option);
                 });
 
                 if (vehicles.length === 0) {
-                    dropdown.innerHTML = '<option value="">Keine angenommenen Fahrzeuge vorhanden</option>';
+                    dropdown.innerHTML = '<option value="">Keine Fahrzeuge bereit zur Abnahme</option>';
                     dropdown.disabled = true;
                 } else {
                     dropdown.disabled = false;
