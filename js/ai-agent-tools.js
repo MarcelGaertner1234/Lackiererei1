@@ -126,6 +126,24 @@ async function updateFahrzeugStatus(params) {
             throw new Error('vehicleId ist erforderlich');
         }
 
+        // DELEGATION: Wenn kanban.html updateFahrzeugStatus verfügbar ist, delegiere dorthin
+        // Dies stellt sicher, dass Photo Modal und alle Arbeitsschritte-Logik funktioniert
+        if (typeof window.updateFahrzeugStatusKanban === 'function') {
+            console.log('🔄 KI-Agent: Delegiere an kanban.html updateFahrzeugStatus');
+            const newStatus = prozessStatus || status;
+            await window.updateFahrzeugStatusKanban(vehicleId, newStatus);
+
+            return {
+                success: true,
+                message: `Status wurde erfolgreich aktualisiert (via Kanban)!`,
+                vehicleId: vehicleId,
+                status: newStatus
+            };
+        }
+
+        // FALLBACK: Direkte Firestore-Update (wenn nicht auf kanban.html Seite)
+        console.log('ℹ️ KI-Agent: Direkte Firestore-Update (kein Kanban-Delegation)');
+
         // Prepare update data
         const updateData = {
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
