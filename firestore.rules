@@ -11,14 +11,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // 🧪 E2E Test Support: Detect Emulator Mode
-    // Allows E2E tests to bypass authentication for cleanup operations
-    // SECURITY: Only works in Emulator (localhost), NOT in production
-    function isEmulator() {
-      // Emulator-Mode detection: request.time is null in emulator context
-      return request.time == null;
-    }
-
     // 🆕 Priority 1: Custom Claims, Priority 2: Firestore Fallback
     function getUserRole() {
       // Try Custom Claims first (faster, no Firestore read), else Firestore
@@ -104,12 +96,12 @@ service cloud.firestore {
 
     match /fahrzeuge/{requestId} {
       // Admins: Full access to all requests
-      allow read, write: if isEmulator() || isAdmin();
+      allow read, write: if isAdmin();
 
       // Mitarbeiter: Can read all, can update assigned requests
-      allow read: if isEmulator() || (isMitarbeiter() && isActive());
-      allow update: if isEmulator() || (isMitarbeiter() && isActive());
-      allow create: if isEmulator() || (isMitarbeiter() && isActive());
+      allow read: if (isMitarbeiter() && isActive());
+      allow update: if (isMitarbeiter() && isActive());
+      allow create: if (isMitarbeiter() && isActive());
 
       // Partner: Can only access their own requests
       allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
@@ -146,10 +138,10 @@ service cloud.firestore {
 
     match /kunden/{kundeId} {
       // Admins: Full access
-      allow read, write: if isEmulator() || isAdmin();
+      allow read, write: if isAdmin();
 
       // Mitarbeiter: Full access
-      allow read, write: if isEmulator() || (isMitarbeiter() && isActive());
+      allow read, write: if (isMitarbeiter() && isActive());
 
       // Partner: Can read customers they've registered
       allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
@@ -168,10 +160,10 @@ service cloud.firestore {
 
     match /material/{materialId} {
       // Admins: Full access
-      allow read, write: if isEmulator() || isAdmin();
+      allow read, write: if isAdmin();
 
       // Mitarbeiter: Full access
-      allow read, write: if isEmulator() || (isMitarbeiter() && isActive());
+      allow read, write: if (isMitarbeiter() && isActive());
 
       // Partner: No access (internal only)
       allow read, write: if false;
@@ -186,10 +178,10 @@ service cloud.firestore {
 
     match /kalender/{terminId} {
       // Admins: Full access
-      allow read, write: if isEmulator() || isAdmin();
+      allow read, write: if isAdmin();
 
       // Mitarbeiter: Full access
-      allow read, write: if isEmulator() || (isMitarbeiter() && isActive());
+      allow read, write: if (isMitarbeiter() && isActive());
 
       // Partner: Can read appointments related to their requests
       allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
@@ -263,19 +255,19 @@ service cloud.firestore {
     // Fahrzeuge Collections: fahrzeuge_mosbach, fahrzeuge_heidelberg, etc.
     match /{fahrzeugeCollection}/{vehicleId} {
       allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
-                         && (isEmulator() || isAdmin() || (isMitarbeiter() && isActive()));
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
 
       // Subcollections: Fotos
       match /fotos/{photoId} {
         allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
-                           && (isEmulator() || isAdmin() || (isMitarbeiter() && isActive()));
+                           && (isAdmin() || (isMitarbeiter() && isActive()));
       }
     }
 
     // Kunden Collections: kunden_mosbach, kunden_heidelberg, etc.
     match /{kundenCollection}/{kundeId} {
       allow read, write: if kundenCollection.matches('kunden_.*')
-                         && (isEmulator() || isAdmin() || (isMitarbeiter() && isActive()));
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
     }
 
     // Mitarbeiter Collections: mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.
@@ -328,10 +320,10 @@ service cloud.firestore {
 
     match /partnerAnfragen/{anfrageId} {
       // Admins: Full access
-      allow read, write: if isEmulator() || isAdmin();
+      allow read, write: if isAdmin();
 
       // Mitarbeiter: Full access
-      allow read, write: if isEmulator() || (isMitarbeiter() && isActive());
+      allow read, write: if (isMitarbeiter() && isActive());
 
       // Partners: Can create and read their own
       allow create: if isPartner() && isActive();
@@ -363,11 +355,11 @@ service cloud.firestore {
     match /{anfrageCollection}/{anfrageId} {
       // Admins: Full access to all werkstätten anfragen
       allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
-                         && (isEmulator() || isAdmin());
+                         && (isAdmin());
 
       // Mitarbeiter: Full access to werkstatt-specific anfragen
       allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
-                         && (isEmulator() || (isMitarbeiter() && isActive()));
+                         && ((isMitarbeiter() && isActive()));
 
       // Partners: Can create and read their own anfragen
       allow create: if anfrageCollection.matches('partnerAnfragen_.*')
@@ -462,6 +454,16 @@ service cloud.firestore {
 
       // Kunden: Can read/write messages in anfragen where they are the customer
       allow read, write: if isKunde() && isActive();
+    }
+
+    // ============================================
+    // PARTNER AUTO-LOGIN TOKENS (Cloud Functions only)
+    // ============================================
+
+    match /partnerAutoLoginTokens/{tokenId} {
+      // ONLY Cloud Functions can read/write tokens
+      // Partners should NOT have direct access (security: tokens are one-time use)
+      allow read, write: if false;
     }
 
     // ============================================

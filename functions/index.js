@@ -12,6 +12,7 @@ const sgMail = require("@sendgrid/mail");
 const { OpenAI } = require("openai");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -2526,6 +2527,344 @@ exports.setWerkstattClaims = functions
         throw new functions.https.HttpsError(
             "internal",
             `Fehler beim Setzen der Claims: ${error.message}`
+        );
+      }
+    });
+
+// ============================================
+// PARTNER AUTO-LOGIN FUNCTIONS (QR-Code Feature)
+// ============================================
+
+/**
+ * FUNCTION: ensurePartnerAccount
+ *
+ * Ensures a partner account exists (create if new, return if existing)
+ * Used when generating PDF with QR-Code for customer
+ *
+ * @param {string} email - Partner email
+ * @param {string} kundenname - Customer name
+ * @param {string} werkstattId - Workshop ID (default: "mosbach")
+ * @returns {object} { partnerId, email, generatedPassword | null, isNewPartner }
+ */
+exports.ensurePartnerAccount = functions
+    .region("europe-west3")
+    .https.onCall(async (data, context) => {
+      console.log("🔐 ensurePartnerAccount called");
+
+      // Validate input
+      const { email, kundenname, werkstattId = "mosbach" } = data;
+
+      if (!email || !kundenname) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Email und Kundenname erforderlich"
+        );
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Ungültiges Email-Format"
+        );
+      }
+
+      try {
+        // partnerId = email username (part before @)
+        const partnerId = email.split("@")[0].toLowerCase();
+
+        console.log(`🔍 Checking if partner exists: ${email}`);
+
+        // Check if Firebase Auth user exists
+        let userRecord = null;
+        let isNewPartner = false;
+        let generatedPassword = null;
+
+        try {
+          userRecord = await admin.auth().getUserByEmail(email);
+          console.log(`✅ Partner exists: ${email} (UID: ${userRecord.uid})`);
+          isNewPartner = false;
+        } catch (error) {
+          if (error.code === "auth/user-not-found") {
+            console.log(`🆕 Partner does not exist, creating: ${email}`);
+            isNewPartner = true;
+
+            // Generate secure password (12 characters)
+            const passwordChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&*";
+            generatedPassword = Array.from(crypto.randomBytes(12))
+                .map((byte) => passwordChars[byte % passwordChars.length])
+                .join("");
+
+            // Create Firebase Auth user
+            userRecord = await admin.auth().createUser({
+              email: email,
+              password: generatedPassword,
+              emailVerified: false,
+              displayName: kundenname
+            });
+
+            console.log(`✅ Firebase Auth user created: ${userRecord.uid}`);
+
+            // Set custom claims for partner
+            const claims = {
+              role: "partner",
+              partnerId: partnerId,
+              werkstattId: werkstattId
+            };
+            await admin.auth().setCustomUserClaims(userRecord.uid, claims);
+            console.log(`✅ Custom claims set for ${email}:`, claims);
+
+            // Create Firestore partner document
+            const partnerData = {
+              id: partnerId,
+              email: email,
+              name: kundenname,
+              werkstattId: werkstattId,
+              uid: userRecord.uid,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              bonusPunkte: 0,
+              status: "active"
+            };
+
+            await db.collection("partner").doc(partnerId).set(partnerData);
+            console.log(`✅ Firestore partner document created: ${partnerId}`);
+          } else {
+            throw error; // Re-throw if not "user-not-found"
+          }
+        }
+
+        // Ensure Firestore partner document exists (even for existing users)
+        const partnerDocRef = db.collection("partner").doc(partnerId);
+        const partnerDoc = await partnerDocRef.get();
+
+        if (!partnerDoc.exists && !isNewPartner) {
+          // Edge case: Firebase Auth user exists but Firestore doc missing
+          console.warn(`⚠️ Creating missing Firestore doc for existing user: ${partnerId}`);
+          await partnerDocRef.set({
+            id: partnerId,
+            email: email,
+            name: kundenname,
+            werkstattId: werkstattId,
+            uid: userRecord.uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            bonusPunkte: 0,
+            status: "active"
+          });
+        }
+
+        return {
+          partnerId: partnerId,
+          email: email,
+          generatedPassword: generatedPassword, // null if existing partner
+          isNewPartner: isNewPartner,
+          message: isNewPartner ? "Partner erstellt" : "Partner existiert bereits"
+        };
+      } catch (error) {
+        console.error("❌ ensurePartnerAccount error:", error);
+        throw new functions.https.HttpsError(
+            "internal",
+            `Fehler beim Erstellen des Partner-Accounts: ${error.message}`
+        );
+      }
+    });
+
+/**
+ * FUNCTION: createPartnerAutoLoginToken
+ *
+ * Creates a secure auto-login token for partner
+ * Token is valid for 30 days and stored in Firestore
+ *
+ * @param {string} partnerId - Partner ID (email username)
+ * @param {string} werkstattId - Workshop ID
+ * @param {string} fahrzeugId - Optional: Specific vehicle ID
+ * @param {number} expiresInDays - Token expiration (default: 30)
+ * @returns {object} { token, loginUrl, expiresAt }
+ */
+exports.createPartnerAutoLoginToken = functions
+    .region("europe-west3")
+    .https.onCall(async (data, context) => {
+      console.log("🔑 createPartnerAutoLoginToken called");
+
+      // Validate input
+      const { partnerId, werkstattId, fahrzeugId = null, expiresInDays = 30 } = data;
+
+      if (!partnerId || !werkstattId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "partnerId und werkstattId erforderlich"
+        );
+      }
+
+      try {
+        // Generate secure random token (32 characters hex)
+        const token = crypto.randomBytes(16).toString("hex");
+
+        // Calculate expiration date
+        const now = Date.now();
+        const expiresAt = new Date(now + (expiresInDays * 24 * 60 * 60 * 1000));
+
+        // Store token in Firestore
+        const tokenData = {
+          partnerId: partnerId,
+          werkstattId: werkstattId,
+          fahrzeugId: fahrzeugId,
+          createdAt: admin.firestore.Timestamp.fromDate(new Date(now)),
+          expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+          usedAt: null,
+          usedCount: 0,
+          maxUses: 999 // Practically unlimited within 30 days
+        };
+
+        await db.collection("partnerAutoLoginTokens").doc(token).set(tokenData);
+
+        console.log(`✅ Auto-login token created: ${token.substring(0, 8)}... (expires: ${expiresAt.toISOString()})`);
+
+        // Generate login URL
+        const baseUrl = "https://marcelgaertner1234.github.io/Lackiererei1";
+        const loginUrl = `${baseUrl}/partner-app/auto-login.html?token=${token}`;
+
+        return {
+          token: token,
+          loginUrl: loginUrl,
+          expiresAt: expiresAt.toISOString(),
+          message: "Auto-Login Token erstellt"
+        };
+      } catch (error) {
+        console.error("❌ createPartnerAutoLoginToken error:", error);
+        throw new functions.https.HttpsError(
+            "internal",
+            `Fehler beim Erstellen des Tokens: ${error.message}`
+        );
+      }
+    });
+
+/**
+ * FUNCTION: validatePartnerAutoLoginToken
+ *
+ * Validates auto-login token and creates Firebase custom token
+ * Used by auto-login.html to authenticate partner
+ *
+ * @param {string} token - Auto-login token from QR code
+ * @returns {object} { valid, partnerId, werkstattId, customToken, fahrzeugId }
+ */
+exports.validatePartnerAutoLoginToken = functions
+    .region("europe-west3")
+    .https.onCall(async (data, context) => {
+      console.log("🔍 validatePartnerAutoLoginToken called");
+
+      // Validate input
+      const { token } = data;
+
+      if (!token || token.length !== 32) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Ungültiger Token"
+        );
+      }
+
+      try {
+        // Load token from Firestore
+        const tokenDocRef = db.collection("partnerAutoLoginTokens").doc(token);
+        const tokenDoc = await tokenDocRef.get();
+
+        if (!tokenDoc.exists) {
+          console.warn(`⚠️ Token not found: ${token.substring(0, 8)}...`);
+          throw new functions.https.HttpsError(
+              "not-found",
+              "QR-Code ungültig oder bereits verwendet"
+          );
+        }
+
+        const tokenData = tokenDoc.data();
+
+        // Validation 1: Check expiration
+        const now = Date.now();
+        const expiresAt = tokenData.expiresAt.toMillis();
+
+        if (now > expiresAt) {
+          console.warn(`⚠️ Token expired: ${token.substring(0, 8)}... (expired: ${new Date(expiresAt).toISOString()})`);
+          throw new functions.https.HttpsError(
+              "deadline-exceeded",
+              "QR-Code abgelaufen (30 Tage). Bitte neues PDF anfordern."
+          );
+        }
+
+        // Validation 2: Check usage limit
+        if (tokenData.usedCount >= tokenData.maxUses) {
+          console.warn(`⚠️ Token usage limit reached: ${token.substring(0, 8)}...`);
+          throw new functions.https.HttpsError(
+              "resource-exhausted",
+              "QR-Code wurde zu oft verwendet"
+          );
+        }
+
+        // Get partner user
+        const partnerId = tokenData.partnerId;
+        const partnerEmail = `${partnerId}@`; // Need to construct full email
+
+        // Load partner document to get full email
+        const partnerDocRef = db.collection("partner").doc(partnerId);
+        const partnerDoc = await partnerDocRef.get();
+
+        if (!partnerDoc.exists) {
+          throw new functions.https.HttpsError(
+              "not-found",
+              "Partner-Account nicht gefunden"
+          );
+        }
+
+        const partnerData = partnerDoc.data();
+        const fullEmail = partnerData.email;
+
+        // Get Firebase Auth user by email
+        let userRecord;
+        try {
+          userRecord = await admin.auth().getUserByEmail(fullEmail);
+        } catch (authError) {
+          console.error(`❌ Firebase Auth user not found: ${fullEmail}`);
+          throw new functions.https.HttpsError(
+              "not-found",
+              "Partner-Account nicht gefunden in Firebase Auth"
+          );
+        }
+
+        // Create custom token for authentication
+        const customToken = await admin.auth().createCustomToken(userRecord.uid, {
+          role: "partner",
+          partnerId: partnerId,
+          werkstattId: tokenData.werkstattId
+        });
+
+        // Update token usage statistics
+        await tokenDocRef.update({
+          usedCount: admin.firestore.FieldValue.increment(1),
+          usedAt: tokenData.usedAt || admin.firestore.Timestamp.now(), // Only set on first use
+          lastUsedAt: admin.firestore.Timestamp.now()
+        });
+
+        console.log(`✅ Token validated: ${token.substring(0, 8)}... (Partner: ${partnerId}, Uses: ${tokenData.usedCount + 1})`);
+
+        return {
+          valid: true,
+          partnerId: partnerId,
+          email: fullEmail,
+          werkstattId: tokenData.werkstattId,
+          fahrzeugId: tokenData.fahrzeugId,
+          customToken: customToken,
+          message: "Token gültig"
+        };
+      } catch (error) {
+        console.error("❌ validatePartnerAutoLoginToken error:", error);
+
+        // Re-throw HttpsError as-is
+        if (error instanceof functions.https.HttpsError) {
+          throw error;
+        }
+
+        throw new functions.https.HttpsError(
+            "internal",
+            `Fehler bei der Token-Validierung: ${error.message}`
         );
       }
     });
