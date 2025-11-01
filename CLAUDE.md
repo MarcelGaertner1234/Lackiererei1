@@ -6,6 +6,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⭐ Was ist NEU?
 
+**Version 4.0 - QR-Code Partner Auto-Login System** (2025-11-01)
+
+🚀 **QR-CODE PARTNER AUTO-LOGIN KOMPLETT IMPLEMENTIERT!**
+
+**Latest Updates:**
+- ✅ **3 Cloud Functions deployed** (europe-west3): ensurePartnerAccount, createPartnerAutoLoginToken, validatePartnerAutoLoginToken
+- ✅ **QR-Code in PDF** - 30x30mm neben Unterschrift auf Seite 2
+- ✅ **Automatische Passwort-Generierung** - 12-Zeichen für Neukunden
+- ✅ **Auto-Login Page** - partner-app/auto-login.html mit Token-Validierung
+- ✅ **QRious Library** - Lokal geladen (./libs/qrious.min.js, 17KB)
+- ✅ **30-Tage Token** - Sicher, DSGVO-konform, wiederverwendbar (maxUses: 999)
+
+**Commit:** e0eb255 (QR-Code Partner Auto-Login System komplett implementiert)
+
+**Workflow:**
+1. Kunde Email → Cloud Function prüft ob neu/vorhanden
+2. Token generiert & QR-Code im PDF platziert (Seite 2, neben Unterschrift)
+3. Kunde scannt QR → auto-login.html validiert Token
+4. Custom Firebase Token → automatischer Login
+5. Redirect zum Partner Portal Dashboard
+
+**Letzte Session:** [2025-11-01 - QR-Code Auto-Login Implementation](#session-2025-11-01-qr-code-auto-login-implementation)
+
+---
+
 **Version 3.9 - Manual Testing Session #1** (2025-11-01)
 
 🎯 **ERSTE MANUELLE TEST-SESSION ABGESCHLOSSEN!**
@@ -20,8 +45,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Commit:** df2b601 (Bug Fixes + Comprehensive Documentation)
 
 **Wichtigste Erkenntnis:** Console-Log Analyse findet Bugs, die Automated Tests übersehen!
-
-**Letzte Session:** [2025-11-01 - Manual Testing Session #1](#session-2025-11-01-manual-testing-session-1)
 
 ---
 
@@ -247,6 +270,26 @@ firebase deploy --only hosting
 - ALWAYS use String comparison: `String(v.id) === String(vehicleId)`
 - Firestore IDs are strings, but JavaScript may have numeric timestamps
 - Type mismatch causes "not found" errors
+
+**5. QR-Code Partner Auto-Login System:**
+- **NEW in v4.0** - Automatischer Login für Partner via QR-Code
+- **Cloud Functions** (europe-west3):
+  - `ensurePartnerAccount`: Erstellt Partner Firebase Auth + Firestore Doc (Neukunden: 12-char Passwort)
+  - `createPartnerAutoLoginToken`: Generiert 32-char hex Token (30 Tage gültig, maxUses: 999)
+  - `validatePartnerAutoLoginToken`: Validiert Token → Custom Firebase Token
+- **PDF Integration** (annahme.html):
+  - QR-Code 30x30mm neben Unterschrift auf Seite 2 (X=110, Y=signatureY-5)
+  - NEU-KUNDEN: Passwort in gelber Box unter QR-Code
+  - BESTANDS-KUNDEN: Nur QR-Code, kein Passwort
+- **Auto-Login Page** (partner-app/auto-login.html):
+  - Parst Token aus URL: `?token={32-char-hex}`
+  - Validiert via Cloud Function → Custom Token
+  - Automatischer Login → Redirect zu Partner Portal
+- **Security**:
+  - DSGVO-konform (europe-west3 Region)
+  - Tokens nur via Cloud Functions lesbar (Firestore Rules: `allow read, write: if false`)
+  - 30-Tage Expiration mit Usage Tracking
+- **Library**: QRious (lokal: `./libs/qrious.min.js`, 17KB)
 
 ### Core JavaScript Modules
 
@@ -1019,6 +1062,68 @@ Continuation session focused on comprehensive codebase analysis and fixing Kanba
 
 ---
 
+### Session 2025-11-01: QR-Code Auto-Login Implementation
+
+**Ziel:** Implementierung eines automatischen Login-Systems für Partner via QR-Code im PDF
+
+**Implementierte Features:**
+
+1. **Cloud Functions (europe-west3)**:
+   - `ensurePartnerAccount`: Erstellt/prüft Partner Firebase Auth Account
+     - NEU-KUNDEN: Generiert 12-char Passwort (crypto.randomBytes)
+     - BESTANDS-KUNDEN: Gibt existierenden Account zurück (kein Passwort)
+   - `createPartnerAutoLoginToken`: Generiert 32-char hex Token
+     - 30 Tage gültig (configurable via `expiresInDays`)
+     - maxUses: 999 (praktisch unlimited)
+     - Stored in `partnerAutoLoginTokens` collection
+   - `validatePartnerAutoLoginToken`: Validiert Token & erstellt Custom Firebase Token
+     - Expiration Check
+     - Usage Limit Check
+     - Usage Tracking (usedCount, usedAt, lastUsedAt)
+
+2. **PDF Integration (annahme.html)**:
+   - QR-Code Generierung mit QRious Library (lokal: `./libs/qrious.min.js`)
+   - Position: X=110, Y=signatureY-5 (neben Unterschrift auf Seite 2)
+   - Größe: 30x30mm
+   - NEU-KUNDEN: Passwort in gelber Box unter QR-Code
+   - BESTANDS-KUNDEN: Nur QR-Code, kein Passwort
+   - Banner-Breiten reduziert: 140mm (statt 180mm) - kein Overlap
+
+3. **Auto-Login Page (partner-app/auto-login.html)**:
+   - Parst Token aus URL: `?token={32-char-hex}`
+   - Validiert Token via Cloud Function
+   - Erstellt Custom Firebase Token
+   - Automatischer Login
+   - Redirect: `meine-anfragen.html` (mit fahrzeugId) oder `index.html` (Dashboard)
+   - Error Handling: Expired, Invalid, Usage Limit
+
+4. **Security (firestore.rules)**:
+   - `partnerAutoLoginTokens`: `allow read, write: if false`
+   - Nur Cloud Functions können Tokens lesen/schreiben
+   - Verhindert Token-Enumeration & Tampering
+
+**Bug Fixes während Implementation:**
+- ✅ QR-Code Overlap mit Service-Bannern → Banner auf 140mm reduziert
+- ✅ QRious Library nicht geladen → Lokal gespeichert (./libs/qrious.min.js)
+- ✅ QR-Code im Header statt neben Unterschrift → Code verschoben
+- ✅ Cloud Functions Region-Mismatch (us-central1 vs europe-west3) → Fixed
+
+**Testing Notes:**
+- QR-Code muss auf Seite 2 neben Unterschrift erscheinen
+- NEU-KUNDEN: Passwort-Box unter QR-Code
+- BESTANDS-KUNDEN: Kein Passwort
+- Token scan → auto-login.html → Partner Portal
+
+**Commits:**
+- `e0eb255` - QR-Code Partner Auto-Login System komplett implementiert
+
+**Next Steps:**
+- Manuelle Tests des QR-Code Workflows
+- Validierung: NEU-KUNDEN vs BESTANDS-KUNDEN Flow
+- E2E Tests für Auto-Login Page
+
+---
+
 ## External Resources
 
 - **GitHub Repository:** https://github.com/MarcelGaertner1234/Lackiererei1
@@ -1028,4 +1133,4 @@ Continuation session focused on comprehensive codebase analysis and fixing Kanba
 
 ---
 
-_Last Updated: 2025-11-01 (Manual Testing Session #1 - 2 Bugs Fixed, 6 Tests Passed) by Claude Code (Sonnet 4.5)_
+_Last Updated: 2025-11-01 (QR-Code Auto-Login System v4.0 - Komplett implementiert & deployed) by Claude Code (Sonnet 4.5)_
