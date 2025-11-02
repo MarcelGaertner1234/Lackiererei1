@@ -164,30 +164,48 @@
     function startFirebaseListener() {
         const db = firebase.firestore();
 
-        // Höre auf neue Werkstatt-Nachrichten in Partner-Anfragen
-        firebaseListener = db.collectionGroup('chat')
-            .where('sender', '==', 'werkstatt')
-            .orderBy('timestamp', 'desc')
-            .limit(10)
-            .onSnapshot((snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === 'added') {
-                        const message = change.doc.data();
-                        const messageTime = new Date(message.timestamp);
-                        const lastCheckTime = new Date(lastCheck);
+        // 🆕 FIX: Statt collectionGroup - direkte partnerAnfragen Query
+        // Höre auf ALLE Anfragen des Partners, dann pro Anfrage auf chat subcollection
 
-                        // Nur Nachrichten seit letztem Check anzeigen
-                        if (messageTime > lastCheckTime) {
-                            handleNewMessage(message, change.doc.ref.parent.parent.id);
-                        }
-                    }
+        const anfrageCollection = window.getCollection('partnerAnfragen');
+
+        // Listener auf Partner-Anfragen (nur IHRE Anfragen)
+        firebaseListener = anfrageCollection
+            .where('partnerEmail', '==', partnerEmail)
+            .onSnapshot((anfrageSnapshot) => {
+                anfrageSnapshot.forEach((anfrageDoc) => {
+                    const anfrageId = anfrageDoc.id;
+
+                    // Pro Anfrage: Listener auf chat subcollection
+                    const chatCollection = anfrageCollection.doc(anfrageId).collection('chat');
+
+                    chatCollection
+                        .where('sender', '==', 'werkstatt')
+                        .orderBy('timestamp', 'desc')
+                        .limit(10)
+                        .onSnapshot((chatSnapshot) => {
+                            chatSnapshot.docChanges().forEach((change) => {
+                                if (change.type === 'added') {
+                                    const message = change.doc.data();
+                                    const messageTime = new Date(message.timestamp);
+                                    const lastCheckTime = new Date(lastCheck);
+
+                                    // Nur Nachrichten seit letztem Check anzeigen
+                                    if (messageTime > lastCheckTime) {
+                                        handleNewMessage(message, anfrageId);
+                                    }
+                                }
+                            });
+                        }, (error) => {
+                            console.error('Firebase Chat Listener Error:', error);
+                        });
                 });
 
                 // Last check aktualisieren
                 lastCheck = new Date().toISOString();
                 localStorage.setItem('partner_chat_last_check', lastCheck);
             }, (error) => {
-                console.error('Firebase Listener Error:', error);
+                console.error('Firebase Anfragen Listener Error:', error);
             });
     }
 
