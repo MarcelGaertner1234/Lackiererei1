@@ -2615,6 +2615,21 @@ exports.ensurePartnerAccount = functions
             await admin.auth().setCustomUserClaims(userRecord.uid, claims);
             console.log(`✅ Custom claims set for ${email}:`, claims);
 
+            // 🆕 PHASE 2: Create users/{uid} document for Partner
+            const userData = {
+              uid: userRecord.uid,
+              email: email,
+              name: kundenname,
+              role: "partner",
+              status: "active", // Partners start active
+              partnerId: partnerId,
+              werkstattId: werkstattId,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              lastLogin: null
+            };
+            await db.collection("users").doc(userRecord.uid).set(userData);
+            console.log(`✅ Firestore users document created: users/${userRecord.uid}`);
+
             // Create Firestore partner document
             const partnerData = {
               id: partnerId,
@@ -2670,6 +2685,21 @@ exports.ensurePartnerAccount = functions
           const werkstattCollection = `partners_${werkstattId}`;
           await db.collection(werkstattCollection).doc(partnerId).set(edgeCaseData, {merge: true});
           console.log(`✅ Edge case: Created docs in both collections for ${partnerId}`);
+
+          // 🆕 PHASE 2: Also create users/{uid} for edge case
+          const edgeCaseUserData = {
+            uid: userRecord.uid,
+            email: email,
+            name: kundenname,
+            role: "partner",
+            status: "active",
+            partnerId: partnerId,
+            werkstattId: werkstattId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastLogin: null
+          };
+          await db.collection("users").doc(userRecord.uid).set(edgeCaseUserData, {merge: true});
+          console.log(`✅ Edge case: Created users/${userRecord.uid} document`);
         }
 
         return {
