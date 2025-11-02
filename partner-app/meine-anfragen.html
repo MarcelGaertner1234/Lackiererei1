@@ -3248,6 +3248,27 @@
                 return;
             }
 
+            // 🆕 WERKSTATT-ACCOUNT CHECK: Werkstatt darf nicht auf Partner-Portal zugreifen!
+            const currentUser = firebase.auth().currentUser;
+            if (currentUser) {
+                const userEmail = currentUser.email || '';
+                console.log('🔐 Checking user account type:', userEmail);
+
+                // Prüfe ob Werkstatt-Account (werkstatt-mosbach@..., werkstatt-heidelberg@...)
+                if (userEmail.includes('werkstatt-') || partner.role === 'werkstatt') {
+                    console.error('❌ WERKSTATT-ACCOUNT im Partner-Portal! Logout & Redirect...');
+                    alert('⚠️ Sie sind als Werkstatt eingeloggt!\n\nBitte verwenden Sie einen Partner-Account für das Partner-Portal.');
+
+                    // Kompletter Logout
+                    await firebase.auth().signOut();
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.href = '../login.html';
+                    return;
+                }
+                console.log('✅ Partner-Account bestätigt');
+            }
+
             // 🆕 MULTI-TENANT: Set werkstattId from partner object (with fallback)
             window.werkstattId = (partner && partner.werkstattId) || 'mosbach';
             if (!partner || !partner.werkstattId) {
@@ -3316,10 +3337,31 @@
             document.getElementById('partnerName').textContent = partner.name;
         }
 
-        function logout() {
+        async function logout() {
             if (confirm('Möchten Sie sich wirklich abmelden?')) {
-                localStorage.removeItem('partner');
-                window.safeNavigate('index.html');
+                console.log('🚪 Logout gestartet...');
+
+                try {
+                    // 1️⃣ Firebase Auth signOut (verhindert Auto-Login!)
+                    if (firebase.auth().currentUser) {
+                        await firebase.auth().signOut();
+                        console.log('✅ Firebase Auth signOut erfolgreich');
+                    }
+
+                    // 2️⃣ Komplette Session-Cleanup
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    console.log('✅ localStorage & sessionStorage gelöscht');
+
+                    // 3️⃣ Redirect zu Login
+                    window.location.href = 'index.html';
+                } catch (error) {
+                    console.error('❌ Logout-Fehler:', error);
+                    // Auch bei Fehler: Session löschen und redirect
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.href = 'index.html';
+                }
             }
         }
 
