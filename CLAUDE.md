@@ -6,6 +6,100 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⭐ Was ist NEU?
 
+**Version 4.2 - Partner Account Permission Fixes + Multi-Tenant Registration System** (2025-11-03)
+
+🔐 **ALLE PARTNER PERMISSION ERRORS GEFIXT + NEUES REGISTRATION SYSTEM!**
+
+**Critical Fixes (6x Deployed):**
+1. ✅ **users/{uid} Security Rules** - exists() check mit fallback zu 'active'
+2. ✅ **Chat-Notifications collectionGroup** - Disabled für Partner, refactored zu direct queries
+3. ✅ **partner-chat-notifications.js** - Removed collectionGroup, verwendet jetzt partnerAnfragen queries
+4. ✅ **Fix-Tool firebase.functions()** - Korrigiert zu firebase.app().functions('europe-west3')
+5. ✅ **ensurePartnerAccount users/{uid}** - Erstellt jetzt users/{uid} für ALLE Partner (neu + existing)
+6. ✅ **partnerAnfragen Query Permissions** - Security Rule erlaubt jetzt partnerEmail queries
+
+**Neue Features (In Progress):**
+- ✅ **Self-Registration mit PLZ + Region** - registrierung.html erweitert
+- 🚧 **Admin Approval System** - pending-registrations.html (80% fertig)
+- 🚧 **Multi-Tenant Registration** - Endkunden registrieren → Admin weist werkstattId zu
+
+**Commits:**
+- 5ec7974 (partnerAnfragen query permissions fix)
+- 53b51ef (ensurePartnerAccount users/{uid} creation)
+- d50f4a2 (fix-tool firebase.app().functions() syntax)
+- 25cc619 (fix-tool firebase.functions() undefined)
+- [TBD] (registrierung.html PLZ + Region fields)
+
+**Gelöste Probleme:**
+1. **Permission Errors** - "Missing or insufficient permissions" in Partner-Portal komplett behoben
+2. **users/{uid} fehlte** - Cloud Function erstellt jetzt automatisch für alle Partner
+3. **collectionGroup Security** - Zu permissiv, jetzt disabled + refactored
+4. **Query by Email** - Security Rules erlauben jetzt `.where('partnerEmail', '==', ...)`
+
+**Multi-Tenant Registration System (NEU):**
+
+**Problem erkannt:**
+- Werkstätten können sich nicht selbst registrieren (korrekt, nur Super-Admin)
+- Kunden konnten sich registrieren, aber ohne werkstattId → unbrauchbar
+- Frage: "Welche Werkstatt sieht welche Aufträge?" → Nur die eigene! (verifiziert)
+
+**Lösung implementiert:**
+1. **registrierung.html** - Neue Felder:
+   - PLZ (5-stellig, validiert)
+   - Stadt/Ort
+   - Region (Dropdown: Mosbach, Heidelberg, Karlsruhe, Stuttgart, Freiburg, Andere)
+   - Live PLZ-Region Validation (warnt bei Mismatch)
+
+2. **pending-registrations.html** (in Arbeit):
+   - Admin-Panel für neue Registrierungen
+   - Liste aller Partner mit status: "pending"
+   - Intelligente Werkstatt-Empfehlung basierend auf PLZ + Region
+   - Confidence Score (95% = beide stimmen überein, 80% = nur PLZ, 60% = nur Region)
+   - One-Click Zuordnung: werkstattId setzen, zu partners_{werkstattId} kopieren, Custom Claims setzen
+
+3. **PLZ-Region Mapping:**
+   ```javascript
+   69xxx → Heidelberg/Rhein-Neckar
+   74xxx → Mosbach/Neckar-Odenwald
+   76xxx → Karlsruhe/Mittelbaden
+   70-71xxx → Stuttgart
+   79xxx → Freiburg/Südbaden
+   ```
+
+**Workflow:**
+1. Endkunde registriert sich → PLZ "69124", Stadt "Heidelberg", Region "Heidelberg/Rhein-Neckar"
+2. Validation: PLZ 69xxx + Region Heidelberg = ✅ Match
+3. Gespeichert als: `partners/{partnerId}` mit `status: "pending"`, keine werkstattId
+4. Admin öffnet pending-registrations.html
+5. Sieht: "💡 Empfehlung: Heidelberg (95% Confidence)"
+6. Klick "Zuordnen" → werkstattId: "heidelberg" gesetzt, status: "active"
+7. Kunde kann sich einloggen und Service-Anfragen an Heidelberg senden
+
+**Aktueller Implementierungsstand:**
+- ✅ registrierung.html (PLZ + Region Felder, Validation)
+- 🚧 pending-registrations.html (80% - UI fertig, Backend-Integration fehlt)
+- ⏳ admin-dashboard.html (Kachel "Neue Registrierungen" mit Badge)
+- ⏳ auth-manager.js (status: "pending" Support prüfen)
+- ⏳ firestore.rules (Pending partners Security Rules)
+- ⏳ Cloud Function assignPartnerToWerkstatt (optional, kann auch Client-seitig)
+
+**Was noch zu tun ist:**
+1. pending-registrations.html fertigstellen (ca. 800 Zeilen, komplexes UI)
+2. admin-dashboard.html Kachel hinzufügen
+3. auth-manager.js checken ob status: "pending" unterstützt wird
+4. Security Rules für pending partners (allow create if status == "pending")
+5. Testing: Kompletter Flow End-to-End
+6. Deploy: GitHub Pages + Firestore Rules
+
+**Known Issues:**
+- ❌ registrierung.html nutzt auth-manager.registerUser() - muss PLZ/Region/pending Support haben
+- ⚠️ Aktuell speichert registerUser möglicherweise status: "active" statt "pending"
+- ⚠️ Zu prüfen: Wird werkstattId aktuell hardcoded oder kann es null sein?
+
+**Letzte Session:** [2025-11-03 - Partner Permissions + Multi-Tenant Registration](#session-2025-11-03-partner-permissions-multi-tenant-registration)
+
+---
+
 **Version 4.1 - PDF Pagination Fix** (2025-11-02)
 
 🔧 **PDF ERSTE SEITE ABGESCHNITTEN - GEFIXT!**

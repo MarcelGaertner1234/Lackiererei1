@@ -321,6 +321,41 @@
                 <input type="password" id="passwordConfirm" required placeholder="Passwort wiederholen">
             </div>
 
+            <!-- 🆕 PLZ + Region Felder -->
+            <div class="form-group">
+                <label for="plz">📍 PLZ *</label>
+                <input type="text" id="plz" required pattern="[0-9]{5}" placeholder="z.B. 69124" maxlength="5">
+                <p class="password-requirements">
+                    5-stellige Postleitzahl für optimale Werkstatt-Zuordnung
+                </p>
+            </div>
+
+            <div class="form-group">
+                <label for="stadt">🏙️ Ort/Stadt *</label>
+                <input type="text" id="stadt" required placeholder="z.B. Heidelberg">
+            </div>
+
+            <div class="form-group">
+                <label for="region">🗺️ Region *</label>
+                <select id="region" required>
+                    <option value="">Bitte wählen...</option>
+                    <option value="mosbach">Mosbach / Neckar-Odenwald-Kreis</option>
+                    <option value="heidelberg">Heidelberg / Mannheim / Rhein-Neckar</option>
+                    <option value="karlsruhe">Karlsruhe / Mittelbaden</option>
+                    <option value="stuttgart">Stuttgart / Rems-Murr-Kreis</option>
+                    <option value="freiburg">Freiburg / Südbaden</option>
+                    <option value="andere">Andere Region</option>
+                </select>
+                <p class="password-requirements">
+                    Wählen Sie die Region aus, in der Sie sich befinden
+                </p>
+            </div>
+
+            <!-- Validation Warning -->
+            <div id="plzRegionWarning" class="error-message" style="display: none;">
+                ⚠️ PLZ und Region passen möglicherweise nicht zusammen. Bitte prüfen Sie Ihre Eingabe!
+            </div>
+
             <div class="form-group">
                 <label for="role">👤 Rolle *</label>
                 <select id="role" required>
@@ -506,6 +541,39 @@
         }
 
 
+        // 🆕 PLZ-Region Mapping für Validation
+        const PLZ_REGION_MAP = {
+            "69": "heidelberg",    // Heidelberg, Mannheim, Weinheim
+            "74": "mosbach",       // Mosbach, Neckarelz, Bad Rappenau
+            "76": "karlsruhe",     // Karlsruhe, Rastatt, Baden-Baden
+            "70": "stuttgart",     // Stuttgart, Esslingen, Ludwigsburg
+            "71": "stuttgart",     // Stuttgart Umgebung
+            "79": "freiburg"       // Freiburg, Emmendingen, Waldkirch
+        };
+
+        // 🆕 PLZ-Region Validation (Live)
+        document.getElementById('region').addEventListener('change', validatePLZRegion);
+        document.getElementById('plz').addEventListener('input', validatePLZRegion);
+
+        function validatePLZRegion() {
+            const plz = document.getElementById('plz').value.trim();
+            const region = document.getElementById('region').value;
+            const warningDiv = document.getElementById('plzRegionWarning');
+
+            if (plz.length >= 2 && region && region !== 'andere') {
+                const plzPrefix = plz.substring(0, 2);
+                const expectedRegion = PLZ_REGION_MAP[plzPrefix];
+
+                if (expectedRegion && expectedRegion !== region) {
+                    warningDiv.style.display = 'block';
+                } else {
+                    warningDiv.style.display = 'none';
+                }
+            } else {
+                warningDiv.style.display = 'none';
+            }
+        }
+
         // Registration Form Handler
         document.getElementById('registrationForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -521,10 +589,13 @@
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const passwordConfirm = document.getElementById('passwordConfirm').value;
+            const plz = document.getElementById('plz').value.trim();
+            const stadt = document.getElementById('stadt').value.trim();
+            const region = document.getElementById('region').value;
             const role = document.getElementById('role').value;
 
             // Validation
-            if (!name || !email || !password || !passwordConfirm || !role) {
+            if (!name || !email || !password || !passwordConfirm || !plz || !stadt || !region || !role) {
                 showError('Bitte füllen Sie alle Pflichtfelder aus!');
                 return;
             }
@@ -539,22 +610,30 @@
                 return;
             }
 
+            if (plz.length !== 5 || !/^\d{5}$/.test(plz)) {
+                showError('Bitte geben Sie eine gültige 5-stellige PLZ ein!');
+                return;
+            }
+
             // Disable button
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i data-feather="loader"></i> Registriere...';
             feather.replace();
 
             try {
-                // Register user
+                // Register user (mit PLZ + Region)
                 const userData = await window.authManager.registerUser({
                     name,
                     company,
                     email,
                     password,
-                    role
+                    role,
+                    plz,        // 🆕 PLZ
+                    stadt,      // 🆕 Stadt
+                    region      // 🆕 Region
                 });
 
-                console.log('✅ Registrierung erfolgreich:', userData);
+                console.log('✅ Registrierung erfolgreich (pending):', userData);
 
                 // Show success message
                 form.style.display = 'none';
