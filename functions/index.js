@@ -2627,8 +2627,21 @@ exports.ensurePartnerAccount = functions
               status: "active"
             };
 
+            // Write to GLOBAL collection
             await db.collection("partner").doc(partnerId).set(partnerData);
-            console.log(`✅ Firestore partner document created: ${partnerId}`);
+            console.log(`✅ Firestore partner document created (global): ${partnerId}`);
+
+            // 🆕 ALSO write to MULTI-TENANT collection (partners_{werkstattId})
+            const werkstattCollection = `partners_${werkstattId}`;
+            const multiTenantData = {
+              ...partnerData,
+              initialPassword: generatedPassword, // Store initial password temporarily
+              requiresPasswordChange: true, // Force password change on first login
+              accountCreatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              accountCreatedBy: "system"
+            };
+            await db.collection(werkstattCollection).doc(partnerId).set(multiTenantData, {merge: true});
+            console.log(`✅ Firestore partner document created (multi-tenant): ${werkstattCollection}/${partnerId}`);
           } else {
             throw error; // Re-throw if not "user-not-found"
           }
@@ -2641,7 +2654,7 @@ exports.ensurePartnerAccount = functions
         if (!partnerDoc.exists && !isNewPartner) {
           // Edge case: Firebase Auth user exists but Firestore doc missing
           console.warn(`⚠️ Creating missing Firestore doc for existing user: ${partnerId}`);
-          await partnerDocRef.set({
+          const edgeCaseData = {
             id: partnerId,
             email: email,
             name: kundenname,
@@ -2650,7 +2663,13 @@ exports.ensurePartnerAccount = functions
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             bonusPunkte: 0,
             status: "active"
-          });
+          };
+          // Write to global collection
+          await partnerDocRef.set(edgeCaseData);
+          // 🆕 ALSO write to multi-tenant collection
+          const werkstattCollection = `partners_${werkstattId}`;
+          await db.collection(werkstattCollection).doc(partnerId).set(edgeCaseData, {merge: true});
+          console.log(`✅ Edge case: Created docs in both collections for ${partnerId}`);
         }
 
         return {
@@ -2658,6 +2677,7 @@ exports.ensurePartnerAccount = functions
           email: email,
           generatedPassword: generatedPassword, // null if existing partner
           isNewPartner: isNewPartner,
+          requiresPasswordChange: isNewPartner, // 🆕 Added
           message: isNewPartner ? "Partner erstellt" : "Partner existiert bereits"
         };
       } catch (error) {

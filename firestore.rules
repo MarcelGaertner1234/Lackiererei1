@@ -296,6 +296,45 @@ service cloud.firestore {
       allow read: if einstellungenCollection.matches('einstellungen_.*') && isMitarbeiter() && isActive();
     }
 
+    // Partners Collections: partners_mosbach, partners_heidelberg, etc.
+    match /{partnersCollection}/{partnerId} {
+      // Admins & Mitarbeiter: Full access
+      allow read, write: if partnersCollection.matches('partners_.*')
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
+
+      // Partners: Can read ONLY their own document
+      allow read: if partnersCollection.matches('partners_.*')
+                  && isPartner()
+                  && isActive()
+                  && isOwner(partnerId);
+
+      // Partners: Can update password-related fields ONLY
+      allow update: if partnersCollection.matches('partners_.*')
+                    && isPartner()
+                    && isActive()
+                    && isOwner(partnerId)
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly(['requiresPasswordChange', 'passwordChangedAt', 'initialPassword', 'lastLogin']);
+    }
+
+    // Global Partner Collection (used by Cloud Functions for Auth data)
+    match /partner/{partnerId} {
+      // Admins: Full access
+      allow read, write: if isAdmin();
+
+      // Partners: Can read ONLY their own document
+      allow read: if isPartner() && isActive() && isOwner(partnerId);
+
+      // Partners: Can update specific fields (last login tracking)
+      allow update: if isPartner()
+                    && isActive()
+                    && isOwner(partnerId)
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly(['lastLogin', 'lastPasswordChange', 'firstLoginCompleted']);
+    }
+
     // ============================================
     // CHAT NOTIFICATIONS (Global + Multi-Tenant)
     // 🆕 PHASE 2.3.3: Chat Notification Rules
