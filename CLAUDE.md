@@ -6,6 +6,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⭐ Was ist NEU?
 
+**Version 4.1 - PDF Pagination Fix** (2025-11-02)
+
+🔧 **PDF ERSTE SEITE ABGESCHNITTEN - GEFIXT!**
+
+**Latest Updates:**
+- ✅ **3 strategische Page-Break-Checks** in abnahme.html hinzugefügt
+- ✅ **Vor Schadenbeschreibung** - Check bei y > 230 (Zeile 1866)
+- ✅ **Vor Partner-Anfragen/KVA** - Check bei y > 220 (Zeile 1887)
+- ✅ **Vor Prozess-Fotos** - Check reduziert von 240 auf 200 (Zeile 2042)
+- ✅ **User-Bestätigung** - "es funktioniert !!"
+
+**Commit:** e3af216 (PDF Pagination Fix - Erste Seite nicht mehr abgeschnitten)
+
+**Problem gelöst:**
+- Variable Inhalte (Schadenbeschreibung, KVA, Partner-Anfragen) konnten A4-Seitenhöhe (297mm) überschreiten
+- Erste Page-Break-Check war zu spät (y > 250 in KVA-Tabelle)
+- Resultat: Erste Seite wurde abgeschnitten
+
+**Lösung:**
+- Frühere Page-Break-Checks vor jedem variablen Content-Block
+- Konservativer Threshold (y > 200 statt 240) für Prozess-Fotos
+- Verhindert Overflow bereits vor kritischen Bereichen
+
+**Letzte Session:** [2025-11-02 - PDF Pagination Fix](#session-2025-11-02-pdf-pagination-fix)
+
+---
+
 **Version 4.0 - QR-Code Partner Auto-Login System** (2025-11-01)
 
 🚀 **QR-CODE PARTNER AUTO-LOGIN KOMPLETT IMPLEMENTIERT!**
@@ -519,6 +546,93 @@ git push origin main
 ---
 
 ## Latest Session
+
+### Session 2025-11-02: PDF Pagination Fix ✅ COMPLETED
+
+**Duration:** ~30 Minuten
+**Status:** ✅ COMPLETED - PDF erste Seite nicht mehr abgeschnitten
+**Commit:** e3af216
+
+**Context:**
+User reported: "das pdf ist leider wieder verbuggt ! die erste seite wird abgeschnitten !"
+
+**Problem:**
+PDF erste Seite wurde abgeschnitten bei langen Inhalten (Schadenbeschreibung + Partner-Anfragen + KVA).
+
+**Root Cause Analysis:**
+- A4 Seitenhöhe: 297mm
+- Y-Start: 55mm (nach 40mm Header)
+- Kumulative Content-Höhe OHNE Page-Break:
+  - Header: 40mm
+  - Fahrzeugdaten: ~50mm
+  - Service-Section: ~20mm
+  - Fahrzeug-Abholung (optional): ~30mm
+  - Schadenbeschreibung: 40-80mm (variabel!)
+  - Partner-Anfragen: ~15mm
+  - **GESAMT: ~195-225mm** (BEVOR erste Page-Break-Check!)
+- Erste Page-Break-Check war bei y > 250 (in KVA-Tabelle)
+- Bei langer Schadenbeschreibung: **Overflow garantiert!**
+
+**Solution Implemented:**
+
+**Change 1: Vor Schadenbeschreibung (Zeile 1866)**
+```javascript
+// Page-Break-Check vor Schadensbeschreibung (Fix: Erste Seite abgeschnitten)
+if (y > 230) {
+    doc.addPage();
+    y = 20;
+}
+```
+
+**Change 2: Vor Partner-Anfragen/KVA (Zeile 1887)**
+```javascript
+// Page-Break-Check vor Partner-Anfragen (Fix: Erste Seite abgeschnitten)
+if (y > 220) {
+    doc.addPage();
+    y = 20;
+}
+```
+
+**Change 3: Vor Prozess-Fotos (Zeile 2042)**
+```javascript
+// Check page overflow before header (Fix: Erste Seite abgeschnitten - von 240 auf 200 reduziert)
+if (y > 200) {
+    doc.addPage();
+    y = 20;
+}
+```
+
+**Testing:**
+1. User cleared browser cache (Cmd+Shift+R)
+2. Generated Abnahme PDF with long content
+3. **Result:** "es funktioniert !! super ...."
+
+**Key Technical Details:**
+- jsPDF Library: Y-Position tracking für Content-Placement
+- A4 Page: 210mm × 297mm
+- Conservative Thresholds: Frühe Checks verhindern Overflow
+- Variable Content: Schadenbeschreibung kann 40-120mm hoch sein
+
+**Files Changed:**
+- `/Users/marcelgaertner/Desktop/Chritstopher Gàrtner /Marketing/06_Digitale_Tools/Fahrzeugannahme_App/abnahme.html`
+  - 3 neue Page-Break-Checks hinzugefügt
+  - Prozess-Fotos Check reduziert (240 → 200)
+
+**Commit Details:**
+```
+Commit: e3af216
+Title: fix: PDF erste Seite wird abgeschnitten - frühere Page-Break-Checks
+Files: 1 file changed, 13 insertions(+), 1 deletion(-)
+- abnahme.html (3 strategische Page-Break-Checks)
+```
+
+**Result:**
+✅ PDF erste Seite nicht mehr abgeschnitten
+✅ User-Bestätigung: "es funktioniert !!"
+✅ Deployed auf GitHub Pages
+✅ Production-Ready
+
+---
 
 ### Session 2025-11-01 (Early Morning): Manual Testing Session #1 ✅ COMPLETED
 
@@ -1133,4 +1247,4 @@ Continuation session focused on comprehensive codebase analysis and fixing Kanba
 
 ---
 
-_Last Updated: 2025-11-01 (QR-Code Auto-Login System v4.0 - Komplett implementiert & deployed) by Claude Code (Sonnet 4.5)_
+_Last Updated: 2025-11-02 (PDF Pagination Fix v4.1 - Erste Seite nicht mehr abgeschnitten) by Claude Code (Sonnet 4.5)_
