@@ -210,7 +210,15 @@ window.firebaseApp = {
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   getAllFahrzeuge: async () => {
     const snapshot = await window.getCollection('fahrzeuge').get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        // 🐛 BUG FIX: Sicherstellen dass statusHistory immer vorhanden ist (für PRODUKTIONSFORTSCHRITT in Abnahme-PDF)
+        statusHistory: data.statusHistory || []
+      };
+    });
   },
 
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
