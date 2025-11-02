@@ -997,41 +997,59 @@
                 const storageRef = storage.ref(storagePath);
                 console.log('✅ [fetchPhotoAsBase64] Storage Ref erstellt für:', storageRef.fullPath);
 
-                // 🔧 CORS-FIX: Firebase SDK getBytes() statt fetch(downloadURL)
-                // Grund: fetch() wird von CORS blockiert (No 'Access-Control-Allow-Origin')
-                // Firebase SDK umgeht CORS intern mit authentifizierten API Calls
-                console.log('📥 [fetchPhotoAsBase64] Lade Bytes von Firebase Storage SDK...');
-                const bytes = await storageRef.getBytes();
-                console.log('✅ [fetchPhotoAsBase64] Bytes geladen:', {
-                    size: bytes.byteLength,
-                    sizeMB: (bytes.byteLength / 1024 / 1024).toFixed(2) + ' MB'
-                });
+                // 🔧 CORS-FIX: Image-Element mit crossOrigin statt getBytes()
+                // Grund 1: fetch() wird von CORS blockiert (No 'Access-Control-Allow-Origin')
+                // Grund 2: getBytes() existiert NUR in Firebase v9+ modular SDK, NICHT in v8 compat
+                // Lösung: <img crossOrigin='anonymous'> → Canvas → Base64 DataURL
 
-                // BLOB: Bytes zu Blob konvertieren
-                const blob = new Blob([bytes], { type: 'image/jpeg' });
-                console.log('✅ [fetchPhotoAsBase64] Blob erstellt:', {
-                    size: blob.size,
-                    type: blob.type
-                });
+                // DOWNLOAD URL: Von Firebase holen
+                const downloadURL = await storageRef.getDownloadURL();
+                console.log('✅ [fetchPhotoAsBase64] Download URL erhalten:', downloadURL.substring(0, 80) + '...');
 
-                // BASE64: FileReader konvertiert Blob zu DataURL
-                console.log('🔄 [fetchPhotoAsBase64] Konvertiere Blob zu Base64 DataURL...');
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const dataURL = reader.result;
-                        console.log('✅ [fetchPhotoAsBase64] Base64 DataURL erstellt:', {
-                            length: dataURL.length,
-                            prefix: dataURL.substring(0, 50) + '...'
+                // IMAGE ELEMENT: Mit CORS laden (erlaubt von Firebase Storage)
+                console.log('🖼️ [fetchPhotoAsBase64] Lade Image mit crossOrigin...');
+                const img = new Image();
+                img.crossOrigin = 'anonymous';  // ✅ KRITISCH: Erlaubt CORS-safe Image-Laden
+                img.src = downloadURL;
+
+                // Warten bis Image geladen
+                await new Promise((resolve, reject) => {
+                    img.onload = () => {
+                        console.log('✅ [fetchPhotoAsBase64] Image geladen:', {
+                            width: img.width,
+                            height: img.height,
+                            naturalWidth: img.naturalWidth,
+                            naturalHeight: img.naturalHeight
                         });
-                        resolve(dataURL);
+                        resolve();
                     };
-                    reader.onerror = () => {
-                        console.error('❌ [fetchPhotoAsBase64] FileReader Error:', reader.error);
-                        reject(reader.error);
+                    img.onerror = (error) => {
+                        console.error('❌ [fetchPhotoAsBase64] Image Load Error:', error);
+                        reject(new Error('Image konnte nicht geladen werden'));
                     };
-                    reader.readAsDataURL(blob);
                 });
+
+                // CANVAS: Image zu Canvas zeichnen
+                console.log('🎨 [fetchPhotoAsBase64] Konvertiere zu Canvas...');
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                console.log('✅ [fetchPhotoAsBase64] Canvas erstellt:', {
+                    width: canvas.width,
+                    height: canvas.height
+                });
+
+                // BASE64: Canvas zu DataURL konvertieren
+                const dataURL = canvas.toDataURL('image/jpeg', 0.95);  // 95% Qualität
+                console.log('✅ [fetchPhotoAsBase64] Base64 DataURL erstellt:', {
+                    length: dataURL.length,
+                    sizeMB: (dataURL.length / 1024 / 1024).toFixed(2) + ' MB',
+                    prefix: dataURL.substring(0, 50) + '...'
+                });
+
+                return dataURL;
             } catch (error) {
                 console.error('❌ [fetchPhotoAsBase64] FEHLER:', {
                     storagePath: storagePath,
