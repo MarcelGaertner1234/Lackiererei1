@@ -34,14 +34,24 @@ let currentMitarbeiter = null;   // Employee data (after Stage 2)
 
 /**
  * Register new Partner/Kunde (Self-Service)
- * @param {Object} userData - { email, password, name, company, role }
+ * @param {Object} userData - { email, password, name, company, role, plz, stadt, region }
  * @returns {Promise<Object>} User data
  */
 async function registerUser(userData) {
-  const { email, password, name, company, role } = userData;
+  const { email, password, name, company, role, plz, stadt, region } = userData;
 
   if (!email || !password || !name || !role) {
     throw new Error('Alle Pflichtfelder müssen ausgefüllt sein!');
+  }
+
+  // 🆕 Validate PLZ + Region for partners
+  if (role === 'partner') {
+    if (!plz || !stadt || !region) {
+      throw new Error('PLZ, Stadt und Region sind Pflichtfelder für Partner-Registrierung!');
+    }
+    if (plz.length !== 5 || !/^\d{5}$/.test(plz)) {
+      throw new Error('PLZ muss genau 5 Ziffern haben!');
+    }
   }
 
   if (password.length < 8) {
@@ -66,14 +76,37 @@ async function registerUser(userData) {
       role: role, // 'partner' or 'kunde'
       status: 'pending', // Admin must approve
       createdAt: new Date().toISOString(),
-      lastLogin: null
+      lastLogin: null,
+      // 🆕 Location fields (for partners - required for werkstatt assignment)
+      plz: plz || null,
+      stadt: stadt || null,
+      region: region || null
     };
 
     // GLOBAL collection (not werkstatt-specific) → use db.collection() directly
     await window.db.collection('users').doc(firebaseUser.uid).set(userDoc);
     console.log('✅ User-Dokument in Firestore erstellt');
 
-    // 3. Send email verification
+    // 🆕 3a. For partners: Also create document in global 'partners' collection
+    if (role === 'partner') {
+      const partnerDoc = {
+        partnerId: firebaseUser.uid,  // Use uid as partnerId
+        kundenname: name,
+        email: email,
+        plz: plz,
+        stadt: stadt,
+        region: region,
+        status: 'pending',  // Admin must assign werkstattId
+        createdAt: new Date().toISOString(),
+        werkstattId: null,  // Will be set by admin in pending-registrations.html
+        assignedAt: null
+      };
+
+      await window.db.collection('partners').doc(firebaseUser.uid).set(partnerDoc);
+      console.log('✅ Partner-Dokument in global partners collection erstellt');
+    }
+
+    // 4. Send email verification
     await firebaseUser.sendEmailVerification();
     console.log('✅ Verifizierungs-E-Mail gesendet');
 

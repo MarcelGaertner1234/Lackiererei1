@@ -91,6 +91,34 @@ service cloud.firestore {
     }
 
     // ============================================
+    // PARTNERS COLLECTION (Global - for pending registrations)
+    // 🆕 Multi-Tenant Registration System: Partners register → Admin assigns werkstattId
+    // ============================================
+
+    match /partners/{partnerId} {
+      // 🆕 Self-Service Registration: Authenticated users can create with status='pending'
+      allow create: if isAuthenticated()
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.partnerId == request.auth.uid
+                    && request.resource.data.werkstattId == null
+                    && request.resource.data.keys().hasAll(['partnerId', 'kundenname', 'email', 'plz', 'stadt', 'region', 'status', 'createdAt']);
+
+      // Admins: Full access (for pending-registrations.html approval)
+      allow read, write: if isAdmin();
+
+      // Partners: Can read ONLY their own document (even when pending)
+      allow read: if isAuthenticated() && isOwner(partnerId);
+
+      // Partners: Can update specific fields after being assigned & active
+      allow update: if isPartner()
+                    && isActive()
+                    && isOwner(partnerId)
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly(['lastLogin', 'requiresPasswordChange', 'passwordChangedAt', 'initialPassword']);
+    }
+
+    // ============================================
     // FAHRZEUGE COLLECTION (Anfragen)
     // ⚠️ DEPRECATED: Use fahrzeuge_mosbach, fahrzeuge_heidelberg, etc. instead
     // This rule exists ONLY for legacy data migration
