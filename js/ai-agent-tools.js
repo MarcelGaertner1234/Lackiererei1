@@ -118,31 +118,54 @@ function getInitialProzessStatus(serviceTyp) {
  * @param {Object} params - Update parameters
  * @returns {Promise<Object>} Result with success status
  */
-async function updateFahrzeugStatus(params) {
+async function updateFahrzeugStatus(paramsOrFahrzeugId, newStatusOrUndefined) {
     try {
+        // ========================================
+        // DELEGATION ZUERST (VOR jeder Fehlerprüfung!)
+        // ========================================
+        if (typeof window.updateFahrzeugStatusKanban === 'function') {
+            console.log('🔄 KI-Agent: Delegiere an kanban.html updateFahrzeugStatus');
+
+            // Intelligente Parameter-Verarbeitung: Unterscheide Object-API vs. Direct-API
+            let fahrzeugId, newStatus;
+
+            if (typeof paramsOrFahrzeugId === 'object' && paramsOrFahrzeugId !== null && !Array.isArray(paramsOrFahrzeugId)) {
+                // Object-API: {vehicleId, status, prozessStatus, notizen}
+                const { vehicleId, status, prozessStatus } = paramsOrFahrzeugId;
+                fahrzeugId = vehicleId;
+                newStatus = prozessStatus || status;
+            } else {
+                // Direct-API: (fahrzeugId, newStatus)
+                fahrzeugId = paramsOrFahrzeugId;
+                newStatus = newStatusOrUndefined;
+            }
+
+            // Delegation an kanban.html Version (mit Photo Modal + Arbeitsschritte-Logik)
+            await window.updateFahrzeugStatusKanban(fahrzeugId, newStatus);
+
+            return {
+                success: true,
+                message: `Status wurde erfolgreich aktualisiert (via Kanban)!`,
+                vehicleId: fahrzeugId,
+                status: newStatus
+            };
+        }
+
+        // ========================================
+        // FALLBACK: Direkte Firestore-Update (nur wenn nicht auf kanban.html Seite)
+        // ========================================
+        console.log('ℹ️ KI-Agent: Direkte Firestore-Update (kein Kanban-Delegation)');
+
+        // Parameter-Verarbeitung für Fallback (erwartet Object-API)
+        const params = (typeof paramsOrFahrzeugId === 'object' && paramsOrFahrzeugId !== null)
+            ? paramsOrFahrzeugId
+            : { vehicleId: paramsOrFahrzeugId, prozessStatus: newStatusOrUndefined };
+
         const { vehicleId, status, prozessStatus, notizen } = params;
 
         if (!vehicleId) {
             throw new Error('vehicleId ist erforderlich');
         }
-
-        // DELEGATION: Wenn kanban.html updateFahrzeugStatus verfügbar ist, delegiere dorthin
-        // Dies stellt sicher, dass Photo Modal und alle Arbeitsschritte-Logik funktioniert
-        if (typeof window.updateFahrzeugStatusKanban === 'function') {
-            console.log('🔄 KI-Agent: Delegiere an kanban.html updateFahrzeugStatus');
-            const newStatus = prozessStatus || status;
-            await window.updateFahrzeugStatusKanban(vehicleId, newStatus);
-
-            return {
-                success: true,
-                message: `Status wurde erfolgreich aktualisiert (via Kanban)!`,
-                vehicleId: vehicleId,
-                status: newStatus
-            };
-        }
-
-        // FALLBACK: Direkte Firestore-Update (wenn nicht auf kanban.html Seite)
-        console.log('ℹ️ KI-Agent: Direkte Firestore-Update (kein Kanban-Delegation)');
 
         // Prepare update data
         const updateData = {
