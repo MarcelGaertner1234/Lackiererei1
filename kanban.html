@@ -3072,32 +3072,30 @@
                 const { fahrzeugId, newStatus, photoFile } = currentPhotoData;
                 const notiz = document.getElementById('photoNotiz').value;
 
-                let photoURL = null;
+                let photoStoragePath = null;
 
-                // Firebase Storage Upload (für Backup)
+                // Firebase Storage Upload (erforderlich für PDF-Generierung)
                 if (firebaseInitialized && firebaseApp) {
                     const storage = firebaseApp.storage();
                     if (storage) {
                         const storageRef = storage.ref(`progress-photos/${fahrzeugId}/${newStatus}_${Date.now()}.jpg`);
                         await storageRef.put(photoFile);
                         const firebaseURL = await storageRef.getDownloadURL();
-                        console.log('✅ Foto in Firebase gespeichert (Backup):', firebaseURL);
-                        // 🐛 FIX: DataURL verwenden statt Firebase URL (jsPDF kann externe URLs nicht laden wegen CORS)
-                        photoURL = currentPhotoData.photoDataURL;
-                        console.log('📄 DataURL für PDF verwendet (jsPDF-kompatibel)');
+                        console.log('✅ Foto in Firebase Storage gespeichert:', firebaseURL);
+                        // 🔧 HYBRID-LÖSUNG: Nur Storage-Path in Firestore speichern (nicht Base64 DataURL)
+                        // Grund: Base64 DataURLs (2-3 MB) überschreiten Firestore 1 MiB Limit
+                        // PDF lädt Fotos on-demand von Firebase Storage
+                        photoStoragePath = storageRef.fullPath;
+                        console.log('📁 Storage-Path für Firestore:', photoStoragePath);
                     } else {
-                        // Storage nicht verfügbar - Fallback zu DataURL
-                        photoURL = currentPhotoData.photoDataURL;
-                        console.log('⚠️ Storage nicht verfügbar, verwende DataURL');
+                        throw new Error('Firebase Storage nicht verfügbar. Fotos können nicht gespeichert werden.');
                     }
                 } else {
-                    // Fallback: DataURL verwenden (LocalStorage)
-                    photoURL = currentPhotoData.photoDataURL;
-                    console.log('⚠️ Foto als DataURL gespeichert (Firebase nicht verfügbar)');
+                    throw new Error('Firebase nicht initialisiert. Fotos können nicht gespeichert werden.');
                 }
 
                 // Fahrzeug-Status mit Foto aktualisieren
-                await updateFahrzeugStatusWithPhoto(fahrzeugId, newStatus, photoURL, notiz);
+                await updateFahrzeugStatusWithPhoto(fahrzeugId, newStatus, photoStoragePath, notiz);
 
                 // Modal schließen
                 closePhotoModal();
@@ -3134,7 +3132,7 @@
                 fahrzeug.statusHistory.push({
                     status: newStatus,
                     timestamp: timestamp,
-                    foto: photoURL,
+                    fotoRef: photoURL,  // 🔧 HYBRID: Firebase Storage Path (nicht Base64 DataURL)
                     notiz: notiz || null
                 });
 

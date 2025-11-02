@@ -964,6 +964,49 @@
             drawPlaceholder();
         }
 
+        // Hilfsfunktion: Firebase Storage Foto zu Base64 DataURL konvertieren
+        async function fetchPhotoAsBase64(storagePath) {
+            try {
+                console.log('📥 Lade Foto von Firebase Storage:', storagePath);
+
+                if (!firebaseApp) {
+                    throw new Error('Firebase nicht initialisiert');
+                }
+
+                const storage = firebaseApp.storage();
+                const storageRef = storage.ref(storagePath);
+                const downloadURL = await storageRef.getDownloadURL();
+
+                console.log('🔗 Download URL erhalten:', downloadURL);
+
+                // Fetch Blob from Firebase Storage
+                const response = await fetch(downloadURL);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const blob = await response.blob();
+                console.log('✅ Blob geladen:', blob.size, 'bytes');
+
+                // Convert Blob to Base64 DataURL
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        console.log('✅ Base64 DataURL erstellt');
+                        resolve(reader.result);
+                    };
+                    reader.onerror = () => {
+                        console.error('❌ FileReader Error:', reader.error);
+                        reject(reader.error);
+                    };
+                    reader.readAsDataURL(blob);
+                });
+            } catch (error) {
+                console.error('❌ Fehler beim Laden von Foto:', storagePath, error);
+                return null;  // Fallback: null wenn Foto nicht geladen werden kann
+            }
+        }
+
         // Form absenden
         async function submitAbnahme() {
             console.log('🔄 Submit gestartet');
@@ -1020,15 +1063,17 @@
 
                     const vorherPhotos = await localFirebaseApp.loadPhotosFromFirestore(currentVehicle.id, 'vorher');
 
-                    // Prozess-Fotos aus statusHistory extrahieren (nur Einträge mit Foto)
-                    const prozessFotos = (currentVehicle.statusHistory || [])
-                        .filter(entry => entry.foto)
-                        .map(entry => ({
-                            status: entry.status,
-                            timestamp: entry.timestamp,
-                            foto: entry.foto,
-                            notiz: entry.notiz || ''
-                        }));
+                    // Prozess-Fotos aus statusHistory extrahieren & von Firebase Storage laden
+                    const prozessFotos = await Promise.all(
+                        (currentVehicle.statusHistory || [])
+                            .filter(entry => entry.fotoRef || entry.foto)  // Neue + alte Einträge
+                            .map(async (entry) => ({
+                                status: entry.status,
+                                timestamp: entry.timestamp,
+                                foto: entry.foto || await fetchPhotoAsBase64(entry.fotoRef),  // Fallback für alte Daten
+                                notiz: entry.notiz || ''
+                            }))
+                    );
 
                     const dataForPDF = {
                         ...abnahmeData,
@@ -1046,15 +1091,17 @@
                     }
                     console.log('ℹ️ Fahrzeug in LocalStorage aktualisiert');
 
-                    // Prozess-Fotos aus statusHistory extrahieren (nur Einträge mit Foto)
-                    const prozessFotos = (currentVehicle.statusHistory || [])
-                        .filter(entry => entry.foto)
-                        .map(entry => ({
-                            status: entry.status,
-                            timestamp: entry.timestamp,
-                            foto: entry.foto,
-                            notiz: entry.notiz || ''
-                        }));
+                    // Prozess-Fotos aus statusHistory extrahieren & von Firebase Storage laden
+                    const prozessFotos = await Promise.all(
+                        (currentVehicle.statusHistory || [])
+                            .filter(entry => entry.fotoRef || entry.foto)  // Neue + alte Einträge
+                            .map(async (entry) => ({
+                                status: entry.status,
+                                timestamp: entry.timestamp,
+                                foto: entry.foto || await fetchPhotoAsBase64(entry.fotoRef),  // Fallback für alte Daten
+                                notiz: entry.notiz || ''
+                            }))
+                    );
 
                     const dataForPDF = {
                         ...abnahmeData,
