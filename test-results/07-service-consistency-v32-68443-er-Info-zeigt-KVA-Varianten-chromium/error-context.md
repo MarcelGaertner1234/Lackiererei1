@@ -1,0 +1,226 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Fortschritt
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: "1"
+          - generic [ref=e8]: Schadensfotos
+          - generic [ref=e9]: ✓
+        - generic [ref=e10]:
+          - generic [ref=e11]: "2"
+          - generic [ref=e12]: Fahrzeug-Ref.
+          - generic [ref=e13]: ✓
+        - generic [ref=e14]:
+          - generic [ref=e15]: "3"
+          - generic [ref=e16]: Identifikation
+          - generic [ref=e17]: ✓
+        - generic [ref=e18]:
+          - generic [ref=e19]: "4"
+          - generic [ref=e20]: Beschreibung
+          - generic [ref=e21]: ✓
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: Karosserie
+          - generic [ref=e25]: ✓
+        - generic [ref=e26]:
+          - generic [ref=e27]: "6"
+          - generic [ref=e28]: Ersatzteile
+          - generic [ref=e29]: ✓
+        - generic [ref=e30]:
+          - generic [ref=e31]: "7"
+          - generic [ref=e32]: Termin
+          - generic [ref=e33]: ✓
+        - generic [ref=e34]:
+          - generic [ref=e35]: "8"
+          - generic [ref=e36]: Lieferung
+          - generic [ref=e37]: ✓
+        - generic [ref=e38]:
+          - generic [ref=e39]: "9"
+          - generic [ref=e40]: Zusammenfassung
+          - generic [ref=e41]: →
+    - generic [ref=e42]:
+      - button "🌙" [ref=e43] [cursor=pointer]
+      - generic [ref=e44]:
+        - heading "Neue Lackier-Anfrage" [level=1] [ref=e45]
+        - paragraph [ref=e46]: Hover Test Partner
+      - generic [ref=e50]: Schritt 9 von 9
+      - generic [ref=e51]:
+        - generic:
+          - generic:
+            - generic: Schadensfotos
+          - generic:
+            - generic:
+              - generic:
+                - text: Klicken Sie hier, um Fotos vom Schaden aufzunehmen
+                - text: (Kamera oder Galerie)
+            - generic:
+              - generic:
+                - img "Foto 1"
+                - button "×"
+          - paragraph: "Tipp: Laden Sie mindestens 1 Foto hoch, um fortzufahren"
+        - generic:
+          - generic:
+            - generic: Fahrzeug-Referenz
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: Kennzeichen
+              - generic: Auftragsnummer
+            - generic:
+              - generic: Kennzeichen
+              - textbox "Kennzeichen":
+                - /placeholder: z.B. MOS-AB 123
+                - text: E2E-HOVER-TEST
+            - generic:
+              - heading "🚗 Fahrzeugdaten für Kalkulation" [level=4]
+              - paragraph: Diese Angaben helfen der Werkstatt, einen genauen Kostenvoranschlag zu erstellen.
+              - generic:
+                - generic:
+                  - generic: Marke *
+                  - combobox "Marke *":
+                    - option "Bitte wählen..."
+                    - option "Audi"
+                    - option "BMW" [selected]
+                    - option "Mercedes-Benz"
+                    - option "Volkswagen"
+                    - option "Porsche"
+                    - option "Opel"
+                    - option "Ford"
+                    - option "Renault"
+                    - option "Peugeot"
+                    - option "Citroën"
+                    - option "Fiat"
+                    - option "Toyota"
+                    - option "Honda"
+                    - option "Mazda"
+                    - option "Nissan"
+                    - option "Hyundai"
+                    - option "Kia"
+                    - option "Skoda"
+                    - option "Seat"
+                    - option "Volvo"
+                    - option "Tesla"
+                    - option "Sonstige"
+                - generic:
+                  - generic: Baujahr *
+                  - spinbutton "Baujahr *": "2020"
+              - generic:
+                - generic: Modell *
+                - textbox "Modell *":
+                  - /placeholder: z.B. Golf 7, 320d, C-Klasse
+                  - text: X5
+              - generic:
+                - generic: Kilometerstand (optional)
+                - spinbutton "Kilometerstand (optional)": "50000"
+        - generic:
+          - generic:
+            - generic: 🔑
+            - generic: Fahrzeugidentifikation
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: VIN-Nummer
+              - generic: Fahrzeugschein-Foto
+            - generic:
+              - generic: VIN-Nummer (17 Zeichen)
+              - textbox "VIN-Nummer (17 Zeichen)":
+                - /placeholder: z.B. WVWZZZ1JZXW123456
+                - text: WVWZZZ1JZXW123456
+              - generic: Fahrzeug-Identifizierungsnummer (17 Zeichen, keine Buchstaben I, O, Q)
+        - generic:
+          - generic:
+            - generic: Schadensbeschreibung
+          - generic:
+            - generic: Beschreiben Sie den Lackschaden
+            - textbox "Beschreiben Sie den Lackschaden":
+              - /placeholder: z.B. Kratzer an der Beifahrertür, ca. 20cm lang, bis aufs Blech...
+              - text: Hover-Info Test
+        - generic:
+          - generic:
+            - generic: Karosserie-Arbeiten
+          - generic:
+            - generic: Werden Demontage-/Montagearbeiten benötigt?
+            - generic:
+              - generic:
+                - generic: Ja, Demontage benötigt
+                - generic: z.B. Stoßfänger demontieren, Türgriffe ausbauen
+              - generic:
+                - generic: Nein, nur Lackierung
+                - generic: Keine zusätzlichen Arbeiten erforderlich
+        - generic:
+          - generic:
+            - generic: 🔩
+            - generic: Ersatzteil-Präferenzen
+          - generic:
+            - generic: Welche Ersatzteile sollen verwendet werden? (optional)
+            - generic:
+              - generic:
+                - generic: Ersatzteil vorhanden
+                - generic: Ich stelle ein Ersatzteil zur Verfügung
+              - generic:
+                - generic: Nur Originalteile
+                - generic: Bitte Originalteile (OEM) verwenden
+              - generic:
+                - generic: Zubehörteil
+                - generic: Günstige Alternative ist OK
+        - generic:
+          - generic:
+            - generic: Gewünschter Termin
+          - generic:
+            - generic: Wann soll das Fahrzeug angeliefert werden?
+            - generic:
+              - generic:
+                - generic: Fehler beim Laden der Termine
+        - generic:
+          - generic:
+            - generic: Lieferoptionen
+          - generic:
+            - generic: Wie soll das Fahrzeug zu uns gelangen?
+            - generic:
+              - generic:
+                - generic: Selbst bringen
+                - generic: Kostenlos - Sie bringen das Fahrzeug vorbei
+              - generic:
+                - generic: Abholservice
+                - generic: Wir holen das Fahrzeug ab (+Aufpreis)
+        - generic [ref=e52]:
+          - generic [ref=e54]: Zusammenfassung
+          - paragraph [ref=e55]: "Bitte überprüfen Sie Ihre Angaben vor dem Absenden:"
+          - generic [ref=e56]:
+            - generic [ref=e57]:
+              - heading "Schadensfotos" [level=3] [ref=e58]
+              - paragraph [ref=e59]: 1 Foto(s) hochgeladen
+            - generic [ref=e60]:
+              - heading "Fahrzeug-Referenz" [level=3] [ref=e61]
+              - paragraph [ref=e62]: Kennzeichen
+              - paragraph [ref=e63]: E2E-HOVER-TEST
+            - generic [ref=e64]:
+              - heading "🚗 Fahrzeugdaten" [level=3] [ref=e65]
+              - paragraph [ref=e66]: Marke & Modell
+              - paragraph [ref=e67]: BMW X5
+              - paragraph [ref=e68]: Baujahr
+              - paragraph [ref=e69]: "2020"
+              - paragraph [ref=e70]: Kilometerstand
+              - paragraph [ref=e71]: 50.000 km
+            - generic [ref=e72]:
+              - heading "🔑 Fahrzeugidentifikation" [level=3] [ref=e73]
+              - paragraph [ref=e74]: VIN-Nummer
+              - paragraph [ref=e75]: WVWZZZ1JZXW123456
+            - generic [ref=e76]:
+              - heading "Schadensbeschreibung" [level=3] [ref=e77]
+              - paragraph [ref=e78]: Hover-Info Test
+            - generic [ref=e79]:
+              - heading "Karosserie-Arbeiten" [level=3] [ref=e80]
+              - paragraph [ref=e81]: Nein, nur Lackierung
+            - generic [ref=e82]:
+              - heading "Lieferoption" [level=3] [ref=e83]
+              - paragraph [ref=e84]: Selbst bringen
+      - generic [ref=e85]:
+        - button "← Zurück" [ref=e86] [cursor=pointer]
+        - button "⏳ Wird gesendet..." [disabled] [ref=e87]
+  - paragraph [ref=e88]: Running in emulator mode. Do not use with production credentials.
+```

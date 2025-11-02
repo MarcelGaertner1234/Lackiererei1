@@ -12,7 +12,8 @@ const { test, expect } = require('@playwright/test');
 const {
   waitForFirebaseReady,
   getVehicleData,
-  deleteVehicle
+  deleteVehicle,
+  loginAsTestAdmin  // RUN #70: Test authentication
 } = require('./helpers/firebase-helper');
 const {
   fillVehicleIntakeForm,
@@ -23,6 +24,15 @@ const {
 test.describe('FLOW 4: Kanban Board Drag & Drop', () => {
   const testKennzeichen = 'KANBAN-E2E-001';
   const testKundenname = 'Kanban Test Kunde';
+
+
+  // RUN #70: Login als Test-Admin VOR allen Tests (ermöglicht Firestore-Zugriff)
+  test.beforeAll(async ({ page }) => {
+    await page.goto('/annahme.html');
+    await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
+    console.log('✅ RUN #70: Test-Suite als Admin authentifiziert');
+  });
 
   test.beforeEach(async ({ page }) => {
     // Setup: Erstelle Test-Fahrzeug
@@ -43,6 +53,7 @@ test.describe('FLOW 4: Kanban Board Drag & Drop', () => {
   test.afterEach(async ({ page }) => {
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
     await deleteVehicle(page, testKennzeichen);
   });
 

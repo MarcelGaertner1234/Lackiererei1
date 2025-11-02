@@ -14,7 +14,8 @@ const {
   checkVehicleExists,
   getVehicleData,
   deleteVehicle,
-  setupConsoleMonitoring
+  setupConsoleMonitoring,
+  loginAsTestAdmin  // RUN #70: Test authentication
 } = require('./helpers/firebase-helper');
 const {
   setPartnerSession,
@@ -26,9 +27,18 @@ test.describe('FLOW 2: Partner-Annahme (B2B)', () => {
   const testKennzeichen = 'HD-E2E-001';
   const testPartnerName = 'E2E Test Partner GmbH';
 
+  // RUN #70: Login as test admin BEFORE all tests (enables Firestore access)
+  test.beforeAll(async ({ page }) => {
+    await page.goto('/annahme.html');
+    await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
+    console.log('✅ RUN #70: Test suite authenticated as admin');
+  });
+
   test.afterEach(async ({ page }) => {
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
     await deleteVehicle(page, testKennzeichen);
 
     // Lösche auch Partner-Anfrage

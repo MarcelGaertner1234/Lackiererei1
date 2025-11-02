@@ -22,6 +22,12 @@ const ImageOptimizer = {
             quality: 0.70,
             description: 'Nachher-Fotos'
         },
+        prozessFoto: {
+            maxWidth: 800,
+            maxHeight: 600,
+            quality: 0.60,
+            description: 'Prozess-Fotos (Firestore-optimiert)'
+        },
         unterschrift: {
             maxWidth: 400,
             maxHeight: 200,

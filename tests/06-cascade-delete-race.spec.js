@@ -19,7 +19,8 @@ const {
   checkVehicleExists,
   getVehicleData,
   deleteVehicle,
-  setupConsoleMonitoring
+  setupConsoleMonitoring,
+  loginAsTestAdmin  // RUN #70: Test authentication
 } = require('./helpers/firebase-helper');
 const {
   setPartnerSession,
@@ -31,6 +32,15 @@ const {
 test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
   const testKennzeichen = 'HD-CAS-001';
   const testPartnerName = 'E2E CASCADE Test GmbH';
+
+
+  // RUN #70: Login als Test-Admin VOR allen Tests (ermöglicht Firestore-Zugriff)
+  test.beforeAll(async ({ page }) => {
+    await page.goto('/annahme.html');
+    await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
+    console.log('✅ RUN #70: Test-Suite als Admin authentifiziert');
+  });
 
   test.beforeEach(async ({ page }) => {
     // RUN #69: EMULATOR RESET - Clear all Firestore data before each test
@@ -102,6 +112,7 @@ test.describe('CRITICAL: CASCADE DELETE & AFTER-DELETE CHECK', () => {
     // Cleanup nach jedem Test
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
     await deleteVehicle(page, testKennzeichen);
 
     await page.evaluate(async (kz) => {

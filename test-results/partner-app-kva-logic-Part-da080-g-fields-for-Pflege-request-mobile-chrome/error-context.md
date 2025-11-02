@@ -1,0 +1,50 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - button "Theme umschalten" [ref=e4] [cursor=pointer]:
+        - img [ref=e5]
+        - img [ref=e11]
+      - img [ref=e14]
+      - heading "Partner Portal" [level=1] [ref=e18]
+      - paragraph [ref=e19]: Auto-Lackierzentrum Mosbach
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - strong [ref=e22]: "Neu:"
+        - text: Wir haben auf ein sicheres Login-System umgestellt. Verwenden Sie Ihre E-Mail und Ihr Passwort, das Sie per Mail erhalten haben.
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]: E-Mail-Adresse
+          - textbox "E-Mail-Adresse" [active] [ref=e26]:
+            - /placeholder: info@autohaus-mustermann.de
+        - generic [ref=e27]:
+          - generic [ref=e28]: Passwort
+          - textbox "Passwort" [ref=e29]:
+            - /placeholder: ••••••••
+          - link "Passwort vergessen?" [ref=e30] [cursor=pointer]:
+            - /url: "#"
+        - button "Anmelden" [ref=e31] [cursor=pointer]
+    - generic [ref=e32]:
+      - paragraph [ref=e33]: "Bei Fragen oder Problemen:"
+      - link "info@auto-lackierzentrum.de" [ref=e34] [cursor=pointer]:
+        - /url: mailto:info@auto-lackierzentrum.de
+    - generic [ref=e35]: ODER
+    - generic [ref=e36]:
+      - generic [ref=e37]:
+        - img [ref=e38]
+        - heading "Schnell-Status prüfen" [level=3] [ref=e41]
+      - paragraph [ref=e42]: Ohne Login - nur mit Kennzeichen
+      - generic [ref=e43]:
+        - textbox "MOS-XX 123" [ref=e44]
+        - button "Status prüfen" [ref=e45] [cursor=pointer]:
+          - img [ref=e46]
+          - text: Status prüfen
+      - paragraph [ref=e48]:
+        - img [ref=e49]
+        - text: Nur Statusinformationen - keine sensiblen Daten
+  - paragraph [ref=e51]: Running in emulator mode. Do not use with production credentials.
+  - iframe [ref=e52]:
+    
+```

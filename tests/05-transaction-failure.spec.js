@@ -20,7 +20,8 @@ const {
   getVehicleData,
   deleteVehicle,
   setupConsoleMonitoring,
-  findPartnerAnfrageWithRetry
+  findPartnerAnfrageWithRetry,
+  loginAsTestAdmin  // RUN #70: Test authentication
 } = require('./helpers/firebase-helper');
 const {
   setPartnerSession,
@@ -31,6 +32,15 @@ const {
 test.describe('CRITICAL: Transaction Failure Tests', () => {
   const testKennzeichen = 'HD-TXN-001';
   const testPartnerName = 'E2E Transaction Test GmbH';
+
+
+  // RUN #70: Login als Test-Admin VOR allen Tests (ermöglicht Firestore-Zugriff)
+  test.beforeAll(async ({ page }) => {
+    await page.goto('/annahme.html');
+    await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
+    console.log('✅ RUN #70: Test-Suite als Admin authentifiziert');
+  });
 
   test.beforeEach(async ({ page }) => {
     // Cleanup vor jedem Test
@@ -67,6 +77,7 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
     // Cleanup nach jedem Test
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
     await deleteVehicle(page, testKennzeichen);
 
     await page.evaluate(async (kz) => {

@@ -1,0 +1,219 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Fortschritt
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: "1"
+          - generic [ref=e8]: Fotos
+          - generic [ref=e9]: ✓
+        - generic [ref=e10]:
+          - generic [ref=e11]: "2"
+          - generic [ref=e12]: Fahrzeug
+          - generic [ref=e13]: →
+        - generic [ref=e14]:
+          - generic [ref=e15]: "3"
+          - generic [ref=e16]: FIN/Schein
+          - generic [ref=e17]: ○
+        - generic [ref=e18]:
+          - generic [ref=e19]: "4"
+          - generic [ref=e20]: Pflege-Typ
+          - generic [ref=e21]: ○
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: Service-Paket
+          - generic [ref=e25]: ○
+        - generic [ref=e26]:
+          - generic [ref=e27]: "6"
+          - generic [ref=e28]: Zusatzleistungen
+          - generic [ref=e29]: ○
+        - generic [ref=e30]:
+          - generic [ref=e31]: "7"
+          - generic [ref=e32]: Termin
+          - generic [ref=e33]: ○
+        - generic [ref=e34]:
+          - generic [ref=e35]: "8"
+          - generic [ref=e36]: Lieferung
+          - generic [ref=e37]: ○
+        - generic [ref=e38]:
+          - generic [ref=e39]: "9"
+          - generic [ref=e40]: Anmerkungen
+          - generic [ref=e41]: ○
+        - generic [ref=e42]:
+          - generic [ref=e43]: "10"
+          - generic [ref=e44]: Zusammenfassung
+          - generic [ref=e45]: ○
+    - generic [ref=e46]:
+      - button "🌙" [ref=e47] [cursor=pointer]
+      - generic [ref=e48]:
+        - heading "🚗 Neue Pflege-Anfrage" [level=1] [ref=e49]
+        - paragraph [ref=e50]: Status Test Pflege
+      - generic [ref=e54]: Schritt 2 von 10
+      - generic [ref=e55]:
+        - generic:
+          - generic:
+            - generic: Fahrzeug-Fotos
+          - generic:
+            - generic:
+              - generic:
+                - text: Klicken Sie hier, um Fotos vom Fahrzeugzustand aufzunehmen
+                - text: (Außen, Innenraum, besondere Verschmutzungen)
+            - generic:
+              - generic:
+                - img "Foto 1"
+                - button "×"
+          - paragraph: "Tipp: Laden Sie mindestens 1 Foto hoch, um fortzufahren"
+        - generic [ref=e56]:
+          - generic [ref=e58]: Fahrzeug-Referenz
+          - generic [ref=e59]:
+            - generic [ref=e60]: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic [ref=e61]:
+              - generic [ref=e62] [cursor=pointer]: Kennzeichen
+              - generic [ref=e63] [cursor=pointer]: Auftragsnummer
+            - generic [ref=e64]:
+              - generic [ref=e65]: Kennzeichen
+              - textbox "Kennzeichen" [active] [ref=e66]:
+                - /placeholder: z.B. MOS-AB 123
+                - text: E2E-STATUS-PFLEGE
+            - generic [ref=e67]:
+              - heading "🚗 Fahrzeugdaten für Kalkulation" [level=4] [ref=e68]
+              - paragraph [ref=e69]: Diese Angaben helfen der Werkstatt, einen genauen Kostenvoranschlag zu erstellen.
+              - generic [ref=e70]:
+                - generic [ref=e71]:
+                  - generic [ref=e72]: Marke *
+                  - combobox "Marke *" [ref=e73]:
+                    - option "Bitte wählen..." [selected]
+                    - option "Audi"
+                    - option "BMW"
+                    - option "Mercedes-Benz"
+                    - option "Volkswagen"
+                    - option "Porsche"
+                    - option "Opel"
+                    - option "Ford"
+                    - option "Renault"
+                    - option "Peugeot"
+                    - option "Citroën"
+                    - option "Fiat"
+                    - option "Toyota"
+                    - option "Honda"
+                    - option "Mazda"
+                    - option "Nissan"
+                    - option "Hyundai"
+                    - option "Kia"
+                    - option "Skoda"
+                    - option "Seat"
+                    - option "Volvo"
+                    - option "Tesla"
+                    - option "Sonstige"
+                - generic [ref=e74]:
+                  - generic [ref=e75]: Baujahr *
+                  - spinbutton "Baujahr *" [ref=e76]
+              - generic [ref=e77]:
+                - generic [ref=e78]: Modell *
+                - textbox "Modell *" [ref=e79]:
+                  - /placeholder: z.B. Golf 7, 320d, C-Klasse
+              - generic [ref=e80]:
+                - generic [ref=e81]: Kilometerstand (optional)
+                - spinbutton "Kilometerstand (optional)" [ref=e82]
+        - generic:
+          - generic:
+            - generic: 🔢
+            - generic: Fahrzeugidentifikation
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: 🔢 FIN/VIN eingeben
+              - generic: 📄 Fahrzeugschein fotografieren
+            - generic:
+              - generic: Fahrzeug-Identifizierungsnummer (FIN/VIN)
+              - textbox "Fahrzeug-Identifizierungsnummer (FIN/VIN)":
+                - /placeholder: z.B. WVWZZZ1KZXW123456
+              - generic: 17-stellige Nummer im Fahrzeugschein (Feld E)
+          - paragraph: "💡 Tipp: Die FIN/VIN hilft bei der exakten Fahrzeugidentifikation für die Pflege"
+        - generic:
+          - generic:
+            - generic: Pflege-Typ
+          - generic:
+            - generic: Welche Art von Pflege wird benötigt?
+            - generic:
+              - generic:
+                - generic: 🧹 Innenreinigung
+                - generic: Innenraum, Polster, Armaturenbrett
+              - generic:
+                - generic: Außenreinigung
+                - generic: Lackpflege, Felgen, Scheiben
+              - generic:
+                - generic: ⭐ Komplett-Aufbereitung
+                - generic: Innen + Außen, professionelle Detailing
+        - generic:
+          - generic:
+            - generic: 📦
+            - generic: Service-Paket
+          - generic:
+            - generic: Welches Paket soll gebucht werden?
+            - generic:
+              - generic:
+                - generic: 🔵 Basic
+                - generic: Standard-Reinigung, ca. 2 Stunden
+              - generic:
+                - generic: 🟣 Premium
+                - generic: Intensive Pflege, inkl. Polierreinigung, ca. 4 Stunden
+              - generic:
+                - generic: ⭐ Deluxe
+                - generic: Komplett-Aufbereitung, Versiegelung, ca. 6-8 Stunden
+        - generic:
+          - generic:
+            - generic: ➕
+            - generic: Zusatzleistungen
+          - generic:
+            - generic: Zusätzliche Leistungen gewünscht? (optional, mehrfach wählbar)
+            - generic:
+              - generic:
+                - generic: 🛋️ Polsterreinigung
+                - generic: Intensive Sitze & Polster-Reinigung
+              - generic:
+                - generic: 👜 Lederpflege
+                - generic: Ledersitze pflegen & imprägnieren
+              - generic:
+                - generic: 🛡️ Lack-Versiegelung
+                - generic: Langzeitschutz für den Lack
+              - generic:
+                - generic: 🌬️ Geruchsentfernung
+                - generic: Ozon-Behandlung gegen Gerüche
+        - generic:
+          - generic:
+            - generic: Gewünschter Termin
+          - generic:
+            - generic: Wann soll der Service durchgeführt werden?
+            - generic:
+              - generic:
+                - generic: Fehler beim Laden der Termine
+        - generic:
+          - generic:
+            - generic: 🚗
+            - generic: Lieferoptionen
+          - generic:
+            - generic: Wie wird das Fahrzeug angeliefert?
+            - generic:
+              - generic: 🚙 Selbst bringen
+              - generic: 🚛 Abholservice gewünscht
+          - paragraph: "💡 Tipp: Während der Pflege kann ein Ersatzfahrzeug bereitgestellt werden"
+        - generic:
+          - generic:
+            - generic: Anmerkungen
+          - generic:
+            - generic: Zusätzliche Anmerkungen (optional)
+            - textbox "Zusätzliche Anmerkungen (optional)":
+              - /placeholder: z.B. besondere Wünsche, Felgen-Informationen, Beschädigungen...
+        - generic:
+          - generic:
+            - generic: Zusammenfassung
+          - paragraph: "Bitte überprüfen Sie Ihre Angaben vor dem Absenden:"
+      - generic [ref=e83]:
+        - button "← Zurück" [ref=e84] [cursor=pointer]
+        - button "Weiter →" [ref=e85] [cursor=pointer]
+  - paragraph [ref=e86]: Running in emulator mode. Do not use with production credentials.
+```

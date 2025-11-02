@@ -18,7 +18,8 @@ const {
   getCustomerData,
   deleteVehicle,
   deleteCustomer,
-  setupConsoleMonitoring
+  setupConsoleMonitoring,
+  loginAsTestAdmin  // RUN #70: Test authentication
 } = require('./helpers/firebase-helper');
 const {
   fillVehicleIntakeForm,
@@ -31,10 +32,19 @@ test.describe('FLOW 1: Manuelle Fahrzeug-Annahme', () => {
   const testKennzeichen = 'TEST-E2E-001';
   const testKundenname = 'E2E Test Kunde';
 
+  // RUN #70: Login as test admin BEFORE all tests (enables Firestore access)
+  test.beforeAll(async ({ page }) => {
+    await page.goto('/annahme.html');
+    await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
+    console.log('✅ RUN #70: Test suite authenticated as admin');
+  });
+
   // Cleanup nach jedem Test
   test.afterEach(async ({ page }) => {
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
     await deleteVehicle(page, testKennzeichen);
     await deleteCustomer(page, testKundenname);
   });

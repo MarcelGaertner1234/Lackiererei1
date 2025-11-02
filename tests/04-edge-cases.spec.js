@@ -13,7 +13,8 @@ const { test, expect } = require('@playwright/test');
 const {
   waitForFirebaseReady,
   checkVehicleExists,
-  deleteVehicle
+  deleteVehicle,
+  loginAsTestAdmin  // RUN #70: Test authentication
 } = require('./helpers/firebase-helper');
 const {
   fillVehicleIntakeForm,
@@ -24,9 +25,18 @@ const {
 test.describe('Edge Cases & Error Handling', () => {
   const testKennzeichen = 'EDGE-TEST-001';
 
+  // RUN #70: Login as test admin BEFORE all tests (enables Firestore access)
+  test.beforeAll(async ({ page }) => {
+    await page.goto('/annahme.html');
+    await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
+    console.log('✅ RUN #70: Test suite authenticated as admin');
+  });
+
   test.afterEach(async ({ page }) => {
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
     await deleteVehicle(page, testKennzeichen);
   });
 

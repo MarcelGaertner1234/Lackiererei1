@@ -1,0 +1,217 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Fortschritt
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: "1"
+          - generic [ref=e8]: Fotos
+          - generic [ref=e9]: →
+        - generic [ref=e10]:
+          - generic [ref=e11]: "2"
+          - generic [ref=e12]: Fahrzeug
+          - generic [ref=e13]: ○
+        - generic [ref=e14]:
+          - generic [ref=e15]: "3"
+          - generic [ref=e16]: FIN/Schein
+          - generic [ref=e17]: ○
+        - generic [ref=e18]:
+          - generic [ref=e19]: "4"
+          - generic [ref=e20]: Service-Art
+          - generic [ref=e21]: ○
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: Fahrzeugtyp
+          - generic [ref=e25]: ○
+        - generic [ref=e26]:
+          - generic [ref=e27]: "6"
+          - generic [ref=e28]: Vorbereitung
+          - generic [ref=e29]: ○
+        - generic [ref=e30]:
+          - generic [ref=e31]: "7"
+          - generic [ref=e32]: Termin
+          - generic [ref=e33]: ○
+        - generic [ref=e34]:
+          - generic [ref=e35]: "8"
+          - generic [ref=e36]: Lieferung
+          - generic [ref=e37]: ○
+        - generic [ref=e38]:
+          - generic [ref=e39]: "9"
+          - generic [ref=e40]: Anmerkungen
+          - generic [ref=e41]: ○
+        - generic [ref=e42]:
+          - generic [ref=e43]: "10"
+          - generic [ref=e44]: Zusammenfassung
+          - generic [ref=e45]: ○
+    - generic [ref=e46]:
+      - button "🌙" [ref=e47] [cursor=pointer]
+      - generic [ref=e48]:
+        - heading "Neue TÜV-Anfrage" [level=1] [ref=e49]
+        - paragraph [ref=e50]: Status Test TÜV
+      - generic [ref=e54]: Schritt 1 von 10
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - generic [ref=e58]: Fahrzeugfotos
+          - generic [ref=e61] [cursor=pointer]:
+            - text: Klicken Sie hier, um Fotos vom Fahrzeug aufzunehmen
+            - text: (Fahrzeugschein, Kennzeichen, ggf. Mängel)
+          - paragraph [ref=e62]: "Tipp: Laden Sie mindestens 1 Foto hoch, um fortzufahren"
+        - generic:
+          - generic:
+            - generic: Fahrzeug-Referenz
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: Kennzeichen
+              - generic: Auftragsnummer
+            - generic:
+              - generic: Kennzeichen
+              - textbox "Kennzeichen" [active]:
+                - /placeholder: z.B. MOS-AB 123
+                - text: E2E-STATUS-TUEV
+          - generic:
+            - heading "🚗 Fahrzeugdaten für Kalkulation" [level=4]
+            - paragraph: Diese Angaben helfen der Werkstatt, einen genauen Kostenvoranschlag zu erstellen.
+            - generic:
+              - generic:
+                - generic: Marke *
+                - combobox "Marke *":
+                  - option "Bitte wählen..." [selected]
+                  - option "Audi"
+                  - option "BMW"
+                  - option "Mercedes-Benz"
+                  - option "Volkswagen"
+                  - option "Opel"
+                  - option "Ford"
+                  - option "Renault"
+                  - option "Peugeot"
+                  - option "Citroën"
+                  - option "Skoda"
+                  - option "Seat"
+                  - option "Toyota"
+                  - option "Mazda"
+                  - option "Honda"
+                  - option "Nissan"
+                  - option "Hyundai"
+                  - option "Kia"
+                  - option "Fiat"
+                  - option "Alfa Romeo"
+                  - option "Volvo"
+                  - option "Porsche"
+                  - option "Sonstige"
+              - generic:
+                - generic: Baujahr *
+                - spinbutton "Baujahr *"
+            - generic:
+              - generic: Modell *
+              - textbox "Modell *":
+                - /placeholder: z.B. Golf 7, 320d, C-Klasse
+            - generic:
+              - generic: Kilometerstand (optional)
+              - spinbutton "Kilometerstand (optional)"
+              - generic: 💡 Wichtig für TÜV/Mechanik-Anfragen
+        - generic:
+          - generic:
+            - generic: 🔢
+            - generic: Fahrzeugidentifikation
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: 🔢 FIN/VIN eingeben
+              - generic: 📄 Fahrzeugschein fotografieren
+            - generic:
+              - generic: Fahrzeug-Identifizierungsnummer (FIN/VIN)
+              - textbox "Fahrzeug-Identifizierungsnummer (FIN/VIN)":
+                - /placeholder: z.B. WVWZZZ1KZXW123456
+              - generic: 17-stellige Nummer im Fahrzeugschein (Feld E)
+          - paragraph: "💡 Tipp: Die FIN/VIN ist wichtig für die korrekte TÜV-Dokumentation"
+        - generic:
+          - generic:
+            - generic: Service-Art
+          - generic:
+            - generic: Welche Untersuchung wird benötigt?
+            - generic:
+              - generic:
+                - generic: TÜV (Hauptuntersuchung)
+                - generic: HU nach §29 StVZO
+              - generic:
+                - generic: AU (Abgasuntersuchung)
+                - generic: Abgastest einzeln
+              - generic:
+                - generic: TÜV + AU Kombi
+                - generic: Hauptuntersuchung inkl. Abgastest
+              - generic:
+                - generic: Nachuntersuchung
+                - generic: Nach Mängelbehebung (4 Wochen)
+          - generic:
+            - generic: TÜV-Fälligkeit (optional)
+            - textbox "TÜV-Fälligkeit (optional)"
+            - generic: 💡 Wann läuft die aktuelle TÜV-Plakette ab? (Falls bekannt)
+        - generic:
+          - generic:
+            - generic: Fahrzeugtyp
+          - generic:
+            - generic: Welcher Fahrzeugtyp soll untersucht werden?
+            - generic:
+              - generic:
+                - generic: PKW
+                - generic: Personenkraftwagen bis 3,5t
+              - generic:
+                - generic: LKW / Transporter
+                - generic: Nutzfahrzeuge über 3,5t
+              - generic:
+                - generic: Motorrad / Kraftrad
+                - generic: Zweiräder
+              - generic:
+                - generic: Anhänger
+                - generic: Anhänger jeder Art
+        - generic:
+          - generic:
+            - generic: Vorbereitung
+          - generic:
+            - generic: Wurde das Fahrzeug bereits auf die Untersuchung vorbereitet?
+            - generic:
+              - generic:
+                - generic: Ja, alles bereit
+                - generic: Fahrzeug ist gereinigt und überprüft
+              - generic:
+                - generic: Nein, Vorbereitung nötig
+                - generic: Wir bereiten das Fahrzeug vor (Reinigung, Sichtprüfung)
+              - generic:
+                - generic: Bekannte Mängel
+                - generic: Es sind Mängel bekannt, die behoben werden müssen
+        - generic:
+          - generic:
+            - generic: Gewünschter Termin
+          - generic:
+            - generic: Wann soll der Service durchgeführt werden?
+            - generic:
+              - generic:
+                - generic: Fehler beim Laden der Termine
+        - generic:
+          - generic:
+            - generic: 🚗
+            - generic: Lieferoptionen
+          - generic:
+            - generic: Wie wird das Fahrzeug angeliefert?
+            - generic:
+              - generic: 🚙 Selbst bringen
+              - generic: 🚛 Abholservice gewünscht
+          - paragraph: "💡 Tipp: Während der TÜV-Prüfung kann ein Ersatzfahrzeug bereitgestellt werden"
+        - generic:
+          - generic:
+            - generic: Anmerkungen
+          - generic:
+            - generic: Zusätzliche Anmerkungen (optional)
+            - textbox "Zusätzliche Anmerkungen (optional)":
+              - /placeholder: z.B. besondere Wünsche, Felgen-Informationen, Beschädigungen...
+        - generic:
+          - generic:
+            - generic: Zusammenfassung
+          - paragraph: "Bitte überprüfen Sie Ihre Angaben vor dem Absenden:"
+      - button "Weiter →" [ref=e64] [cursor=pointer]
+  - paragraph [ref=e65]: Running in emulator mode. Do not use with production credentials.
+```

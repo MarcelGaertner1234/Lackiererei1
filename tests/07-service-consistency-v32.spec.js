@@ -28,7 +28,8 @@ const {
   waitForFirebaseReady,
   checkVehicleExists,
   getVehicleData,
-  setupConsoleMonitoring
+  setupConsoleMonitoring,
+  loginAsTestAdmin  // RUN #70: Test authentication
 } = require('./helpers/firebase-helper');
 const {
   SERVICE_CONFIGS,
@@ -272,6 +273,14 @@ test.describe('V3.2: Service Consistency Tests', () => {
    * CRITICAL für TASK #8 (Commit 1fd40a6)
    */
   test.describe('TC3: Service-Details Formatting', () => {
+
+  // RUN #70: Login as test admin BEFORE all tests (enables Firestore access)
+  test.beforeAll(async ({ page }) => {
+    await page.goto('/annahme.html');
+    await waitForFirebaseReady(page);
+    await loginAsTestAdmin(page);
+    console.log('✅ RUN #70: Test suite authenticated as admin');
+  });
 
     test('Pflege: Multi-Select Details korrekt formatiert', async ({ page }) => {
       const consoleMonitor = setupConsoleMonitoring(page);

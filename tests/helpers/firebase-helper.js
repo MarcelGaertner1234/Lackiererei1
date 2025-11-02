@@ -239,6 +239,91 @@ async function findPartnerAnfrageWithRetry(page, kennzeichen, options = {}) {
   }
 }
 
+/**
+ * CRITICAL FIX: Test Admin Authentication
+ *
+ * Problem: Tests run WITHOUT auth → Firestore Rules DENY list operations
+ * Solution: Login as admin user BEFORE running tests
+ *
+ * This function:
+ * 1. Signs in with admin@test.de (auto-created in Emulator)
+ * 2. Sets admin role in Firestore (/users collection)
+ * 3. Waits for auth state to propagate
+ *
+ * Usage: Call in test.beforeAll() hook (once per test file)
+ *
+ * @param {import('@playwright/test').Page} page
+ * @returns {Promise<void>}
+ */
+async function loginAsTestAdmin(page) {
+  console.log('🔐 RUN #70: loginAsTestAdmin() START');
+
+  try {
+    // Step 1: Sign in with Firebase Auth (creates user if not exists in Emulator)
+    const authResult = await page.evaluate(async () => {
+      const auth = firebase.auth();
+
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword('admin@test.de', 'test123');
+        console.log('✅ Firebase Auth: Signed in as', userCredential.user.email);
+        return {
+          success: true,
+          uid: userCredential.user.uid,
+          email: userCredential.user.email
+        };
+      } catch (error) {
+        console.error('❌ Firebase Auth failed:', error.message);
+        return { success: false, error: error.message };
+      }
+    });
+
+    if (!authResult.success) {
+      throw new Error(`Auth failed: ${authResult.error}`);
+    }
+
+    console.log(`✅ RUN #70: Auth successful - UID: ${authResult.uid}`);
+
+    // Step 2: Set admin role in Firestore /users collection
+    await page.evaluate(async (uid) => {
+      const db = window.firebaseApp.db();
+
+      try {
+        await db.collection('users').doc(uid).set({
+          uid: uid,
+          email: 'admin@test.de',
+          role: 'admin',
+          werkstattId: 'mosbach',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          displayName: 'E2E Test Admin'
+        }, { merge: true });
+
+        console.log('✅ Firestore: Admin role set in /users collection');
+        return true;
+      } catch (error) {
+        console.error('❌ Firestore write failed:', error.message);
+        throw error;
+      }
+    }, authResult.uid);
+
+    console.log('✅ RUN #70: Admin role configured in Firestore');
+
+    // Step 3: Wait for auth state to propagate (Firestore Rules use request.auth)
+    await page.waitForFunction(() => {
+      const auth = firebase.auth();
+      return auth.currentUser !== null && auth.currentUser.email === 'admin@test.de';
+    }, { timeout: 5000, polling: 200 });
+
+    console.log('✅ RUN #70: loginAsTestAdmin() SUCCESS - Auth state propagated');
+
+  } catch (error) {
+    console.error('❌ RUN #70: loginAsTestAdmin() FAILED');
+    console.error('   Error:', error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   waitForFirebaseReady,
   checkVehicleExists,
@@ -249,5 +334,6 @@ module.exports = {
   deleteCustomer,
   waitForRealtimeUpdate,
   setupConsoleMonitoring,
-  findPartnerAnfrageWithRetry
+  findPartnerAnfrageWithRetry,
+  loginAsTestAdmin  // NEW: Test authentication
 };

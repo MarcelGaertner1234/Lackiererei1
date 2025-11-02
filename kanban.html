@@ -1478,6 +1478,9 @@
     <!-- Firebase Konfiguration -->
     <script src="firebase-config.js?v=a4192c4"></script>
 
+    <!-- Image Optimizer - Foto-Komprimierung -->
+    <script src="image-optimizer.js"></script>
+
     <!-- Error Handler & Toast Notifications -->
     <script src="error-handler.js"></script>
 
@@ -3072,34 +3075,58 @@
                 const { fahrzeugId, newStatus, photoFile } = currentPhotoData;
                 const notiz = document.getElementById('photoNotiz').value;
 
-                let photoStoragePath = null;
+                // 🔧 NEUE LÖSUNG: Komprimiertes Foto in Firestore + Vollauflösung in Storage
+                // Grund: CORS-Probleme verhinderten Laden von Storage in PDF
+                // Lösung: Speichere komprimierte DataURL (~50-150 KB) direkt in Firestore
 
-                // Firebase Storage Upload (erforderlich für PDF-Generierung)
+                // Schritt 1: Konvertiere File zu Base64 DataURL
+                console.log('📸 [uploadPhoto] Konvertiere Foto zu Base64...');
+                const originalDataURL = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.onerror = (e) => reject(new Error('FileReader Fehler'));
+                    reader.readAsDataURL(photoFile);
+                });
+                console.log('✅ [uploadPhoto] Original DataURL erstellt:', {
+                    length: originalDataURL.length,
+                    sizeMB: (originalDataURL.length / 1024 / 1024).toFixed(2)
+                });
+
+                // Schritt 2: Komprimiere Foto für Firestore (800x600 @ 60% = ~50-150 KB)
+                console.log('🗜️ [uploadPhoto] Komprimiere Foto für Firestore...');
+                const compressed = await window.ImageOptimizer.compressImage(
+                    originalDataURL,
+                    'prozessFoto'  // 800x600 @ 60% Qualität
+                );
+                console.log('✅ [uploadPhoto] Foto komprimiert:', {
+                    originalMB: (compressed.originalSize / 1024 / 1024).toFixed(2),
+                    compressedMB: (compressed.compressedSize / 1024 / 1024).toFixed(2),
+                    savings: compressed.savings + '%',
+                    dimensions: compressed.dimensions
+                });
+
+                // Schritt 3: Vollauflösung in Firebase Storage speichern (Backup)
                 if (firebaseInitialized && firebaseApp) {
                     const storage = firebaseApp.storage();
                     if (storage) {
                         const storageRef = storage.ref(`progress-photos/${fahrzeugId}/${newStatus}_${Date.now()}.jpg`);
                         await storageRef.put(photoFile);
                         const firebaseURL = await storageRef.getDownloadURL();
-                        console.log('✅ Foto in Firebase Storage gespeichert:', firebaseURL);
-                        // 🔧 HYBRID-LÖSUNG: Nur Storage-Path in Firestore speichern (nicht Base64 DataURL)
-                        // Grund: Base64 DataURLs (2-3 MB) überschreiten Firestore 1 MiB Limit
-                        // PDF lädt Fotos on-demand von Firebase Storage
-                        photoStoragePath = storageRef.fullPath;
-                        console.log('📁 Storage-Path für Firestore:', photoStoragePath);
+                        console.log('✅ [uploadPhoto] Vollauflösung in Firebase Storage gespeichert:', firebaseURL);
                     } else {
-                        throw new Error('Firebase Storage nicht verfügbar. Fotos können nicht gespeichert werden.');
+                        console.warn('⚠️ Firebase Storage nicht verfügbar - nur komprimierte Version wird gespeichert');
                     }
                 } else {
-                    throw new Error('Firebase nicht initialisiert. Fotos können nicht gespeichert werden.');
+                    console.warn('⚠️ Firebase nicht initialisiert - nur komprimierte Version wird gespeichert');
                 }
 
-                // Fahrzeug-Status mit Foto aktualisieren
-                await updateFahrzeugStatusWithPhoto(fahrzeugId, newStatus, photoStoragePath, notiz);
+                // Schritt 4: Fahrzeug-Status mit komprimiertem Foto aktualisieren
+                await updateFahrzeugStatusWithPhoto(fahrzeugId, newStatus, compressed.compressed, notiz);
 
                 // Modal schließen
                 closePhotoModal();
                 document.getElementById('photoLoading').classList.remove('active');
+                showToast('Foto erfolgreich hochgeladen!', 'success');
 
             } catch (error) {
                 console.error('❌ Fehler beim Hochladen:', error);
@@ -3132,7 +3159,7 @@
                 fahrzeug.statusHistory.push({
                     status: newStatus,
                     timestamp: timestamp,
-                    fotoRef: photoURL,  // 🔧 HYBRID: Firebase Storage Path (nicht Base64 DataURL)
+                    foto: photoURL,  // 🔧 NEUE LÖSUNG: Komprimierte DataURL (~50-150 KB) direkt in Firestore
                     notiz: notiz || null
                 });
 

@@ -1126,35 +1126,46 @@
 
                     const vorherPhotos = await localFirebaseApp.loadPhotosFromFirestore(currentVehicle.id, 'vorher');
 
-                    // Prozess-Fotos aus statusHistory extrahieren & von Firebase Storage laden
+                    // Prozess-Fotos aus statusHistory extrahieren
+                    // NEUE LÖSUNG: Komprimierte Fotos direkt in Firestore (entry.foto)
+                    // FALLBACK: Alte Einträge mit fotoRef werden von Firebase Storage geladen
                     console.log('📸 [submitAbnahme] Lade Prozess-Fotos aus statusHistory:', {
                         totalEntries: currentVehicle.statusHistory?.length || 0,
-                        entriesWithFoto: (currentVehicle.statusHistory || []).filter(e => e.fotoRef || e.foto).length
+                        entriesWithFoto: (currentVehicle.statusHistory || []).filter(e => e.foto || e.fotoRef).length
                     });
 
                     const prozessFotos = await Promise.all(
                         (currentVehicle.statusHistory || [])
-                            .filter(entry => entry.fotoRef || entry.foto)  // Neue + alte Einträge
+                            .filter(entry => entry.foto || entry.fotoRef)  // Neue (foto) + alte (fotoRef) Einträge
                             .map(async (entry, index) => {
-                                console.log(`📸 [submitAbnahme] Prozess-Foto ${index + 1}/${(currentVehicle.statusHistory || []).filter(e => e.fotoRef || e.foto).length}:`, {
+                                console.log(`📸 [submitAbnahme] Prozess-Foto ${index + 1}/${(currentVehicle.statusHistory || []).filter(e => e.foto || e.fotoRef).length}:`, {
                                     status: entry.status,
                                     hasFoto: !!entry.foto,
                                     hasFotoRef: !!entry.fotoRef,
-                                    fotoRef: entry.fotoRef || 'N/A'
+                                    method: entry.foto ? 'DIREKT aus Firestore' : 'LEGACY von Storage laden'
                                 });
 
-                                const foto = entry.foto || await fetchPhotoAsBase64(entry.fotoRef);
+                                // NEUE LÖSUNG: entry.foto ist bereits komprimierte DataURL in Firestore
+                                // FALLBACK: entry.fotoRef erfordert Storage-Download (für alte Daten)
+                                let foto = entry.foto;  // Bevorzuge direkte DataURL
+
+                                if (!foto && entry.fotoRef) {
+                                    // Legacy-Fallback: Versuche von Storage zu laden (kann durch CORS fehlschlagen)
+                                    console.log(`⚠️ [submitAbnahme] LEGACY: Lade Foto ${index + 1} von Storage (fotoRef)...`);
+                                    foto = await fetchPhotoAsBase64(entry.fotoRef);
+                                }
 
                                 console.log(`${foto ? '✅' : '❌'} [submitAbnahme] Prozess-Foto ${index + 1} geladen:`, {
                                     status: entry.status,
                                     fotoLoaded: !!foto,
-                                    fotoLength: foto ? foto.length : 0
+                                    fotoLength: foto ? foto.length : 0,
+                                    fotoSizeKB: foto ? (foto.length / 1024).toFixed(1) + ' KB' : 'N/A'
                                 });
 
                                 return {
                                     status: entry.status,
                                     timestamp: entry.timestamp,
-                                    foto: foto,  // Kann null sein wenn fetchPhotoAsBase64 fehlschlägt
+                                    foto: foto,  // Kann null sein wenn fetchPhotoAsBase64 fehlschlägt (nur bei Legacy)
                                     notiz: entry.notiz || ''
                                 };
                             })

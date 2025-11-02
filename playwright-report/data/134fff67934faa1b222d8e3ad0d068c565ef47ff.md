@@ -1,0 +1,251 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Fortschritt
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: "1"
+          - generic [ref=e8]: Fotos
+          - generic [ref=e9]: ✓
+        - generic [ref=e10]:
+          - generic [ref=e11]: "2"
+          - generic [ref=e12]: Fahrzeug
+          - generic [ref=e13]: ✓
+        - generic [ref=e14]:
+          - generic [ref=e15]: "3"
+          - generic [ref=e16]: FIN/Schein
+          - generic [ref=e17]: ✓
+        - generic [ref=e18]:
+          - generic [ref=e19]: "4"
+          - generic [ref=e20]: Pflege-Typ
+          - generic [ref=e21]: ✓
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: Service-Paket
+          - generic [ref=e25]: ✓
+        - generic [ref=e26]:
+          - generic [ref=e27]: "6"
+          - generic [ref=e28]: Zusatzleistungen
+          - generic [ref=e29]: ✓
+        - generic [ref=e30]:
+          - generic [ref=e31]: "7"
+          - generic [ref=e32]: Termin
+          - generic [ref=e33]: ✓
+        - generic [ref=e34]:
+          - generic [ref=e35]: "8"
+          - generic [ref=e36]: Lieferung
+          - generic [ref=e37]: ✓
+        - generic [ref=e38]:
+          - generic [ref=e39]: "9"
+          - generic [ref=e40]: Anmerkungen
+          - generic [ref=e41]: ✓
+        - generic [ref=e42]:
+          - generic [ref=e43]: "10"
+          - generic [ref=e44]: Zusammenfassung
+          - generic [ref=e45]: →
+    - generic [ref=e46]:
+      - button "🌙" [ref=e47] [cursor=pointer]
+      - generic [ref=e48]:
+        - heading "🚗 Neue Pflege-Anfrage" [level=1] [ref=e49]
+        - paragraph [ref=e50]: E2E Test Partner Pflege
+      - generic [ref=e54]: Schritt 10 von 10
+      - generic [ref=e55]:
+        - generic:
+          - generic:
+            - generic: Fahrzeug-Fotos
+          - generic:
+            - generic:
+              - generic:
+                - text: Klicken Sie hier, um Fotos vom Fahrzeugzustand aufzunehmen
+                - text: (Außen, Innenraum, besondere Verschmutzungen)
+            - generic:
+              - generic:
+                - img "Foto 1"
+                - button "×"
+          - paragraph: "Tipp: Laden Sie mindestens 1 Foto hoch, um fortzufahren"
+        - generic:
+          - generic:
+            - generic: Fahrzeug-Referenz
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: Kennzeichen
+              - generic: Auftragsnummer
+            - generic:
+              - generic: Kennzeichen
+              - textbox "Kennzeichen":
+                - /placeholder: z.B. MOS-AB 123
+                - text: E2E-PFLEGE-1761942462715
+            - generic:
+              - heading "🚗 Fahrzeugdaten für Kalkulation" [level=4]
+              - paragraph: Diese Angaben helfen der Werkstatt, einen genauen Kostenvoranschlag zu erstellen.
+              - generic:
+                - generic:
+                  - generic: Marke *
+                  - combobox "Marke *":
+                    - option "Bitte wählen..."
+                    - option "Audi"
+                    - option "BMW" [selected]
+                    - option "Mercedes-Benz"
+                    - option "Volkswagen"
+                    - option "Porsche"
+                    - option "Opel"
+                    - option "Ford"
+                    - option "Renault"
+                    - option "Peugeot"
+                    - option "Citroën"
+                    - option "Fiat"
+                    - option "Toyota"
+                    - option "Honda"
+                    - option "Mazda"
+                    - option "Nissan"
+                    - option "Hyundai"
+                    - option "Kia"
+                    - option "Skoda"
+                    - option "Seat"
+                    - option "Volvo"
+                    - option "Tesla"
+                    - option "Sonstige"
+                - generic:
+                  - generic: Baujahr *
+                  - spinbutton "Baujahr *": "2020"
+              - generic:
+                - generic: Modell *
+                - textbox "Modell *":
+                  - /placeholder: z.B. Golf 7, 320d, C-Klasse
+                  - text: 3er G20
+              - generic:
+                - generic: Kilometerstand (optional)
+                - spinbutton "Kilometerstand (optional)": "50000"
+        - generic:
+          - generic:
+            - generic: 🔢
+            - generic: Fahrzeugidentifikation
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: 🔢 FIN/VIN eingeben
+              - generic: 📄 Fahrzeugschein fotografieren
+            - generic:
+              - generic: Fahrzeug-Identifizierungsnummer (FIN/VIN)
+              - textbox "Fahrzeug-Identifizierungsnummer (FIN/VIN)":
+                - /placeholder: z.B. WVWZZZ1KZXW123456
+                - text: WVWZZZ1JZXW123456
+              - generic: 17-stellige Nummer im Fahrzeugschein (Feld E)
+          - paragraph: "💡 Tipp: Die FIN/VIN hilft bei der exakten Fahrzeugidentifikation für die Pflege"
+        - generic:
+          - generic:
+            - generic: Pflege-Typ
+          - generic:
+            - generic: Welche Art von Pflege wird benötigt?
+            - generic:
+              - generic:
+                - generic: 🧹 Innenreinigung
+                - generic: Innenraum, Polster, Armaturenbrett
+              - generic:
+                - generic: Außenreinigung
+                - generic: Lackpflege, Felgen, Scheiben
+              - generic:
+                - generic: ⭐ Komplett-Aufbereitung
+                - generic: Innen + Außen, professionelle Detailing
+        - generic:
+          - generic:
+            - generic: 📦
+            - generic: Service-Paket
+          - generic:
+            - generic: Welches Paket soll gebucht werden?
+            - generic:
+              - generic:
+                - generic: 🔵 Basic
+                - generic: Standard-Reinigung, ca. 2 Stunden
+              - generic:
+                - generic: 🟣 Premium
+                - generic: Intensive Pflege, inkl. Polierreinigung, ca. 4 Stunden
+              - generic:
+                - generic: ⭐ Deluxe
+                - generic: Komplett-Aufbereitung, Versiegelung, ca. 6-8 Stunden
+        - generic:
+          - generic:
+            - generic: ➕
+            - generic: Zusatzleistungen
+          - generic:
+            - generic: Zusätzliche Leistungen gewünscht? (optional, mehrfach wählbar)
+            - generic:
+              - generic:
+                - generic: 🛋️ Polsterreinigung
+                - generic: Intensive Sitze & Polster-Reinigung
+              - generic:
+                - generic: 👜 Lederpflege
+                - generic: Ledersitze pflegen & imprägnieren
+              - generic:
+                - generic: 🛡️ Lack-Versiegelung
+                - generic: Langzeitschutz für den Lack
+              - generic:
+                - generic: 🌬️ Geruchsentfernung
+                - generic: Ozon-Behandlung gegen Gerüche
+        - generic:
+          - generic:
+            - generic: Gewünschter Termin
+          - generic:
+            - generic: Wann soll der Service durchgeführt werden?
+            - generic:
+              - generic:
+                - generic: Fehler beim Laden der Termine
+        - generic:
+          - generic:
+            - generic: 🚗
+            - generic: Lieferoptionen
+          - generic:
+            - generic: Wie wird das Fahrzeug angeliefert?
+            - generic:
+              - generic: 🚙 Selbst bringen
+              - generic: 🚛 Abholservice gewünscht
+          - paragraph: "💡 Tipp: Während der Pflege kann ein Ersatzfahrzeug bereitgestellt werden"
+        - generic:
+          - generic:
+            - generic: Anmerkungen
+          - generic:
+            - generic: Zusätzliche Anmerkungen (optional)
+            - textbox "Zusätzliche Anmerkungen (optional)":
+              - /placeholder: z.B. besondere Wünsche, Felgen-Informationen, Beschädigungen...
+        - generic [ref=e56]:
+          - generic [ref=e58]: Zusammenfassung
+          - paragraph [ref=e59]: "Bitte überprüfen Sie Ihre Angaben vor dem Absenden:"
+          - generic [ref=e60]:
+            - generic [ref=e61]:
+              - heading "Fahrzeug-Fotos" [level=3] [ref=e62]
+              - paragraph [ref=e63]: 1 Foto(s) hochgeladen
+            - generic [ref=e64]:
+              - heading "Fahrzeug-Referenz" [level=3] [ref=e65]
+              - paragraph [ref=e66]: Kennzeichen
+              - paragraph [ref=e67]: E2E-PFLEGE-1761942462715
+            - generic [ref=e68]:
+              - heading "🚗 Fahrzeugdaten" [level=3] [ref=e69]
+              - paragraph [ref=e70]: Marke & Modell
+              - paragraph [ref=e71]: BMW 3er G20
+              - paragraph [ref=e72]: Baujahr
+              - paragraph [ref=e73]: "2020"
+              - paragraph [ref=e74]: Kilometerstand
+              - paragraph [ref=e75]: 50.000 km
+            - generic [ref=e76]:
+              - heading "🔢 Fahrzeugidentifikation" [level=3] [ref=e77]
+              - paragraph [ref=e78]: FIN/VIN
+              - paragraph [ref=e79]: WVWZZZ1JZXW123456
+            - generic [ref=e80]:
+              - heading "Pflege-Typ" [level=3] [ref=e81]
+              - paragraph [ref=e82]: 🧹 Innenreinigung
+            - generic [ref=e83]:
+              - heading "Service-Paket" [level=3] [ref=e84]
+              - paragraph [ref=e85]: 🔵 Basic
+            - generic [ref=e86]:
+              - heading "🚗 Lieferung & Services" [level=3] [ref=e87]
+              - paragraph [ref=e88]: Anlieferung
+              - paragraph [ref=e89]: ✅ Partner bringt Fahrzeug selbst
+      - generic [ref=e90]:
+        - button "← Zurück" [ref=e91] [cursor=pointer]
+        - button "Anfrage senden" [ref=e92] [cursor=pointer]
+  - paragraph [ref=e93]: Running in emulator mode. Do not use with production credentials.
+```

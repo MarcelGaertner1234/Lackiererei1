@@ -1,0 +1,239 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Fortschritt
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: "1"
+          - generic [ref=e8]: Fotos
+          - generic [ref=e9]: →
+        - generic [ref=e10]:
+          - generic [ref=e11]: "2"
+          - generic [ref=e12]: Fahrzeug
+          - generic [ref=e13]: ○
+        - generic [ref=e14]:
+          - generic [ref=e15]: "3"
+          - generic [ref=e16]: FIN/Schein
+          - generic [ref=e17]: ○
+        - generic [ref=e18]:
+          - generic [ref=e19]: "4"
+          - generic [ref=e20]: Problem-Typ
+          - generic [ref=e21]: ○
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: Service-Art
+          - generic [ref=e25]: ○
+        - generic [ref=e26]:
+          - generic [ref=e27]: "6"
+          - generic [ref=e28]: Beschreibung
+          - generic [ref=e29]: ○
+        - generic [ref=e30]:
+          - generic [ref=e31]: "7"
+          - generic [ref=e32]: Ersatzteil
+          - generic [ref=e33]: ○
+        - generic [ref=e34]:
+          - generic [ref=e35]: "8"
+          - generic [ref=e36]: Termin
+          - generic [ref=e37]: ○
+        - generic [ref=e38]:
+          - generic [ref=e39]: "9"
+          - generic [ref=e40]: Lieferung
+          - generic [ref=e41]: ○
+        - generic [ref=e42]:
+          - generic [ref=e43]: "10"
+          - generic [ref=e44]: Anmerkungen
+          - generic [ref=e45]: ○
+        - generic [ref=e46]:
+          - generic [ref=e47]: "11"
+          - generic [ref=e48]: Zusammenfassung
+          - generic [ref=e49]: ○
+    - generic [ref=e50]:
+      - button "🌙" [ref=e51] [cursor=pointer]
+      - generic [ref=e52]:
+        - heading "🚗 Neue Mechanik-Anfrage" [level=1] [ref=e53]
+        - paragraph [ref=e54]: Lieferzeit Test
+      - generic [ref=e58]: Schritt 1 von 11
+      - generic [ref=e59]:
+        - generic [ref=e60]:
+          - generic [ref=e62]: Problem-Fotos
+          - generic [ref=e65] [cursor=pointer]:
+            - text: Klicken Sie hier, um Fotos vom Problem/Fahrzeug aufzunehmen
+            - text: (Fehlerlampen, beschädigte Teile, Motorraum)
+          - paragraph [ref=e66]: "Tipp: Laden Sie mindestens 1 Foto hoch, um fortzufahren"
+        - generic:
+          - generic:
+            - generic: Fahrzeug-Referenz
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: Kennzeichen
+              - generic: Auftragsnummer
+            - generic:
+              - generic: Kennzeichen
+              - textbox "Kennzeichen":
+                - /placeholder: z.B. MOS-AB 123
+                - text: E2E-LIEFERZEIT
+            - generic:
+              - heading "🚗 Fahrzeugdaten für Kalkulation" [level=4]
+              - paragraph: Diese Angaben helfen der Werkstatt, einen genauen Kostenvoranschlag zu erstellen.
+              - generic:
+                - generic:
+                  - generic: Marke *
+                  - combobox "Marke *":
+                    - option "Bitte wählen..."
+                    - option "Audi"
+                    - option "BMW"
+                    - option "Mercedes-Benz"
+                    - option "Volkswagen"
+                    - option "Porsche"
+                    - option "Opel" [selected]
+                    - option "Ford"
+                    - option "Renault"
+                    - option "Peugeot"
+                    - option "Citroën"
+                    - option "Fiat"
+                    - option "Toyota"
+                    - option "Honda"
+                    - option "Mazda"
+                    - option "Nissan"
+                    - option "Hyundai"
+                    - option "Kia"
+                    - option "Skoda"
+                    - option "Seat"
+                    - option "Volvo"
+                    - option "Tesla"
+                    - option "Sonstige"
+                - generic:
+                  - generic: Baujahr *
+                  - spinbutton "Baujahr *": "2020"
+              - generic:
+                - generic: Modell *
+                - textbox "Modell *":
+                  - /placeholder: z.B. Golf 7, 320d, C-Klasse
+                  - text: Astra
+              - generic:
+                - generic: Kilometerstand (optional)
+                - spinbutton "Kilometerstand (optional)": "50000"
+        - generic:
+          - generic:
+            - generic: 🔢
+            - generic: Fahrzeugidentifikation
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: 🔢 FIN/VIN eingeben
+              - generic: 📄 Fahrzeugschein fotografieren
+            - generic:
+              - generic: Fahrzeug-Identifizierungsnummer (FIN/VIN)
+              - textbox "Fahrzeug-Identifizierungsnummer (FIN/VIN)":
+                - /placeholder: z.B. WVWZZZ1KZXW123456
+                - text: WVWZZZ1JZXW123456
+              - generic: 17-stellige Nummer im Fahrzeugschein (Feld E)
+          - paragraph: "💡 Tipp: Die FIN/VIN hilft uns, die richtigen Ersatzteile zu finden"
+        - generic:
+          - generic:
+            - generic: Problem-Typ
+          - generic:
+            - generic: Welches Problem liegt vor?
+            - generic:
+              - generic:
+                - generic: Motor / Getriebe
+                - generic: Motorleistung, Geräusche, Getriebeschaltung
+              - generic:
+                - generic: Bremsen / ABS
+                - generic: Bremsleistung, Bremsbeläge, ABS-Fehler
+              - generic:
+                - generic: Elektrik / Elektronik
+                - generic: Fehlerlampen, Beleuchtung, Sensoren
+              - generic:
+                - generic: Fahrwerk / Lenkung
+                - generic: Aufhängung, Stoßdämpfer, Spureinstellung
+              - generic:
+                - generic: Klimaanlage / Heizung
+                - generic: Kühlung, Heizung, Belüftung
+              - generic:
+                - generic: Sonstiges
+                - generic: Andere Probleme oder unklar
+        - generic:
+          - generic:
+            - generic: Service-Art
+          - generic:
+            - generic: Welche Dienstleistung wird benötigt?
+            - generic:
+              - generic:
+                - generic: Inspektion
+                - generic: Regelmäßige Wartung nach Herstellervorgaben
+              - generic:
+                - generic: Reparatur
+                - generic: Konkrete Fehler oder Defekte beheben
+              - generic:
+                - generic: Diagnose / Fehlersuche
+                - generic: Problem ermitteln, Fehlerspeicher auslesen
+              - generic:
+                - generic: 🛠️ Wartung / Ölwechsel
+                - generic: Öl-, Brems-, Kühlflüssigkeit wechseln
+        - generic:
+          - generic:
+            - generic: Problem-Beschreibung
+          - generic:
+            - generic: Bitte beschreiben Sie das Problem genauer
+            - textbox "Bitte beschreiben Sie das Problem genauer":
+              - /placeholder: "z.B.\n• Wann tritt das Problem auf?\n• Welche Geräusche/Symptome gibt es?\n• Fehlermeldungen im Display?\n• Wie lange besteht das Problem schon?\n• Kilometerstand?"
+            - generic: Je detaillierter Ihre Beschreibung, desto besser können wir Ihnen helfen.
+        - generic:
+          - generic:
+            - generic: 🔩
+            - generic: Ersatzteil-Präferenz
+          - generic:
+            - generic: Haben Sie bereits ein Ersatzteil für die Reparatur?
+            - generic:
+              - generic:
+                - generic: ✅ Ersatzteil vorhanden
+                - generic: Ich stelle ein Ersatzteil zur Verfügung (nur Arbeitskosten)
+              - generic:
+                - generic: 🔧 Nur Originalteile
+                - generic: Bitte Originalteile (OEM) verwenden
+              - generic:
+                - generic: 💰 Zubehörteil
+                - generic: Günstige Alternative ist OK
+          - paragraph: "💡 Tipp: Mit eigenem Ersatzteil sparen Sie die Teilekosten"
+        - generic:
+          - generic:
+            - generic: Gewünschter Termin
+          - generic:
+            - generic: Wann soll der Service durchgeführt werden?
+            - generic:
+              - generic:
+                - generic: Fehler beim Laden der Termine
+        - generic:
+          - generic:
+            - generic: 🚗
+            - generic: Lieferoptionen
+          - generic:
+            - generic: Wie wird das Fahrzeug angeliefert?
+            - generic:
+              - generic: 🚙 Selbst bringen
+              - generic: 🚛 Abholservice gewünscht
+          - generic:
+            - generic: Ersatzfahrzeug benötigt?
+            - generic:
+              - generic: ❌ Nein
+              - generic: ✅ Ja, benötigt
+          - paragraph: "💡 Tipp: Abholservice & Ersatzfahrzeug können den Preis beeinflussen"
+        - generic:
+          - generic:
+            - generic: Anmerkungen
+          - generic:
+            - generic: Zusätzliche Anmerkungen (optional)
+            - textbox "Zusätzliche Anmerkungen (optional)":
+              - /placeholder: z.B. besondere Wünsche, Felgen-Informationen, Beschädigungen...
+        - generic:
+          - generic:
+            - generic: Zusammenfassung
+          - paragraph: "Bitte überprüfen Sie Ihre Angaben vor dem Absenden:"
+      - button "Weiter →" [active] [ref=e68] [cursor=pointer]
+  - paragraph [ref=e69]: Running in emulator mode. Do not use with production credentials.
+```

@@ -1,0 +1,256 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Fortschritt
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: "1"
+          - generic [ref=e8]: Fotos
+          - generic [ref=e9]: ✓
+        - generic [ref=e10]:
+          - generic [ref=e11]: "2"
+          - generic [ref=e12]: Fahrzeug
+          - generic [ref=e13]: ✓
+        - generic [ref=e14]:
+          - generic [ref=e15]: "3"
+          - generic [ref=e16]: FIN/Schein
+          - generic [ref=e17]: ✓
+        - generic [ref=e18]:
+          - generic [ref=e19]: "4"
+          - generic [ref=e20]: Reifen-Typ
+          - generic [ref=e21]: ✓
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: Service-Art
+          - generic [ref=e25]: ✓
+        - generic [ref=e26]:
+          - generic [ref=e27]: "6"
+          - generic [ref=e28]: Dimension
+          - generic [ref=e29]: ✓
+        - generic [ref=e30]:
+          - generic [ref=e31]: "7"
+          - generic [ref=e32]: Termin
+          - generic [ref=e33]: ✓
+        - generic [ref=e34]:
+          - generic [ref=e35]: "8"
+          - generic [ref=e36]: Lieferung
+          - generic [ref=e37]: ✓
+        - generic [ref=e38]:
+          - generic [ref=e39]: "9"
+          - generic [ref=e40]: Anmerkungen
+          - generic [ref=e41]: ✓
+        - generic [ref=e42]:
+          - generic [ref=e43]: "10"
+          - generic [ref=e44]: Zusammenfassung
+          - generic [ref=e45]: →
+    - generic [ref=e46]:
+      - button "🌙" [ref=e47] [cursor=pointer]
+      - generic [ref=e48]:
+        - heading "🚗 Neue Reifen-Anfrage" [level=1] [ref=e49]
+        - paragraph [ref=e50]: E2E Test Partner Reifen
+      - generic [ref=e54]: Schritt 10 von 10
+      - generic [ref=e55]:
+        - generic:
+          - generic:
+            - generic: Reifenfotos
+          - generic:
+            - generic:
+              - generic:
+                - text: Klicken Sie hier, um Fotos der Reifen aufzunehmen
+                - text: (Profiltiefe, Beschädigungen, DOT-Nummer)
+            - generic:
+              - generic:
+                - img "Foto 1"
+                - button "×"
+          - paragraph: "Tipp: Laden Sie mindestens 1 Foto hoch, um fortzufahren"
+        - generic:
+          - generic:
+            - generic: 🚗
+            - generic: Fahrzeug-Referenz
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: 🚘 Kennzeichen
+              - generic: 📋 Auftragsnummer
+            - generic:
+              - generic: Kennzeichen
+              - textbox "Kennzeichen":
+                - /placeholder: z.B. MOS-AB 123
+                - text: E2E-REIFEN-1761942458432
+            - generic:
+              - heading "🚗 Fahrzeugdaten für Kalkulation" [level=4]
+              - paragraph: Diese Angaben helfen der Werkstatt, einen genauen Kostenvoranschlag zu erstellen.
+              - generic:
+                - generic:
+                  - generic: Marke *
+                  - combobox "Marke *":
+                    - option "Bitte wählen..."
+                    - option "Audi"
+                    - option "BMW" [selected]
+                    - option "Mercedes-Benz"
+                    - option "Volkswagen"
+                    - option "Porsche"
+                    - option "Opel"
+                    - option "Ford"
+                    - option "Renault"
+                    - option "Peugeot"
+                    - option "Citroën"
+                    - option "Fiat"
+                    - option "Toyota"
+                    - option "Honda"
+                    - option "Mazda"
+                    - option "Nissan"
+                    - option "Hyundai"
+                    - option "Kia"
+                    - option "Skoda"
+                    - option "Seat"
+                    - option "Volvo"
+                    - option "Tesla"
+                    - option "Sonstige"
+                - generic:
+                  - generic: Baujahr *
+                  - spinbutton "Baujahr *": "2020"
+              - generic:
+                - generic: Modell *
+                - textbox "Modell *":
+                  - /placeholder: z.B. Golf 7, 320d, C-Klasse
+                  - text: 3er G20
+              - generic:
+                - generic: Kilometerstand (optional)
+                - spinbutton "Kilometerstand (optional)": "50000"
+        - generic:
+          - generic:
+            - generic: 🔢
+            - generic: Fahrzeugidentifikation
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: 🔢 FIN/VIN eingeben
+              - generic: 📄 Fahrzeugschein fotografieren
+            - generic:
+              - generic: Fahrzeug-Identifizierungsnummer (FIN/VIN)
+              - textbox "Fahrzeug-Identifizierungsnummer (FIN/VIN)":
+                - /placeholder: z.B. WVWZZZ1KZXW123456
+                - text: WVWZZZ1JZXW123456
+              - generic: 17-stellige Nummer im Fahrzeugschein (Feld E)
+          - paragraph: "💡 Tipp: Die FIN/VIN hilft uns, die richtigen Ersatzteile zu finden"
+        - generic:
+          - generic:
+            - generic: ❄️
+            - generic: Reifen-Typ
+          - generic:
+            - generic: Welche Art von Reifen wird benötigt?
+            - generic:
+              - generic:
+                - generic: ☀️ Sommerreifen
+                - generic: Für trockene und nasse Straßen
+              - generic:
+                - generic: Winterreifen
+                - generic: Für Schnee, Eis und Kälte
+              - generic:
+                - generic: Ganzjahresreifen
+                - generic: Allwetter, das ganze Jahr nutzbar
+        - generic:
+          - generic:
+            - generic: Service-Art
+          - generic:
+            - generic: Welche Dienstleistung wird benötigt?
+            - generic:
+              - generic:
+                - generic: Reifenwechsel
+                - generic: Sommer ↔ Winter Wechsel
+              - generic:
+                - generic: 🛒 Reifen-Bestellung
+                - generic: Neue Reifen bestellen & montieren
+              - generic:
+                - generic: 🔩 Montage
+                - generic: Reifen auf Felgen montieren
+              - generic:
+                - generic: 📦 Einlagerung
+                - generic: Reifenlagerung (Sommer/Winter)
+        - generic:
+          - generic:
+            - generic: 📐
+            - generic: Reifengröße
+          - generic:
+            - generic: Reifengröße (optional - falls bekannt)
+            - textbox "Reifengröße (optional - falls bekannt)":
+              - /placeholder: z.B. 205/55 R16 91V
+            - generic: Steht an der Reifenflanke, z.B. 205/55 R16 oder 225/45 R17
+          - generic:
+            - generic: Anzahl Reifen
+            - combobox "Anzahl Reifen":
+              - option "2 Reifen"
+              - option "4 Reifen" [selected]
+              - option "5 Reifen (inkl. Ersatzrad)"
+        - generic:
+          - generic:
+            - generic: Gewünschter Termin
+          - generic:
+            - generic: Wann soll der Service durchgeführt werden?
+            - generic:
+              - generic:
+                - generic: Fehler beim Laden der Termine
+        - generic:
+          - generic:
+            - generic: 🚗
+            - generic: Lieferung & Services
+          - generic:
+            - generic: Wie wird das Fahrzeug angeliefert?
+            - generic:
+              - generic: ✅ Selbst bringen
+              - generic: 🚚 Abholservice
+        - generic:
+          - generic:
+            - generic: Anmerkungen
+          - generic:
+            - generic: Zusätzliche Anmerkungen (optional)
+            - textbox "Zusätzliche Anmerkungen (optional)":
+              - /placeholder: z.B. besondere Wünsche, Felgen-Informationen, Beschädigungen...
+        - generic [ref=e56]:
+          - generic [ref=e58]: Zusammenfassung
+          - paragraph [ref=e59]: "Bitte überprüfen Sie Ihre Angaben vor dem Absenden:"
+          - generic [ref=e60]:
+            - generic [ref=e61]:
+              - heading "Reifenfotos" [level=3] [ref=e62]
+              - paragraph [ref=e63]: 1 Foto(s) hochgeladen
+            - generic [ref=e64]:
+              - heading "Fahrzeug-Referenz" [level=3] [ref=e65]
+              - paragraph [ref=e66]: Kennzeichen
+              - paragraph [ref=e67]: E2E-REIFEN-1761942458432
+            - generic [ref=e68]:
+              - heading "🚗 Fahrzeugdaten" [level=3] [ref=e69]
+              - paragraph [ref=e70]: Marke & Modell
+              - paragraph [ref=e71]: BMW 3er G20
+              - paragraph [ref=e72]: Baujahr
+              - paragraph [ref=e73]: "2020"
+              - paragraph [ref=e74]: Kilometerstand
+              - paragraph [ref=e75]: 50.000 km
+            - generic [ref=e76]:
+              - heading "🔢 Fahrzeugidentifikation" [level=3] [ref=e77]
+              - paragraph [ref=e78]: FIN/VIN
+              - paragraph [ref=e79]: WVWZZZ1JZXW123456
+            - generic [ref=e80]:
+              - heading "Reifen-Typ" [level=3] [ref=e81]
+              - paragraph [ref=e82]: ☀️ Sommerreifen
+            - generic [ref=e83]:
+              - heading "Service-Art" [level=3] [ref=e84]
+              - paragraph [ref=e85]: Reifenwechsel
+            - generic [ref=e86]:
+              - heading "📐 Reifengröße & Anzahl" [level=3] [ref=e87]
+              - paragraph [ref=e88]: Dimension
+              - paragraph [ref=e89]: Nicht angegeben
+              - paragraph [ref=e90]: Anzahl
+              - paragraph [ref=e91]: 4 Reifen
+            - generic [ref=e92]:
+              - heading "🚗 Lieferung & Services" [level=3] [ref=e93]
+              - paragraph [ref=e94]: Anlieferung
+              - paragraph [ref=e95]: ✅ Partner bringt Fahrzeug selbst
+      - generic [ref=e96]:
+        - button "← Zurück" [ref=e97] [cursor=pointer]
+        - button "⏳ Wird komprimiert & gesendet..." [disabled] [ref=e98]
+  - paragraph [ref=e99]: Running in emulator mode. Do not use with production credentials.
+```

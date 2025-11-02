@@ -1,0 +1,261 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Fortschritt
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - generic [ref=e7]: "1"
+          - generic [ref=e8]: Fotos
+          - generic [ref=e9]: ✓
+        - generic [ref=e10]:
+          - generic [ref=e11]: "2"
+          - generic [ref=e12]: Fahrzeug
+          - generic [ref=e13]: ✓
+        - generic [ref=e14]:
+          - generic [ref=e15]: "3"
+          - generic [ref=e16]: FIN/Schein
+          - generic [ref=e17]: ✓
+        - generic [ref=e18]:
+          - generic [ref=e19]: "4"
+          - generic [ref=e20]: Service-Art
+          - generic [ref=e21]: ✓
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: Fahrzeugtyp
+          - generic [ref=e25]: ✓
+        - generic [ref=e26]:
+          - generic [ref=e27]: "6"
+          - generic [ref=e28]: Vorbereitung
+          - generic [ref=e29]: ✓
+        - generic [ref=e30]:
+          - generic [ref=e31]: "7"
+          - generic [ref=e32]: Termin
+          - generic [ref=e33]: ✓
+        - generic [ref=e34]:
+          - generic [ref=e35]: "8"
+          - generic [ref=e36]: Lieferung
+          - generic [ref=e37]: ✓
+        - generic [ref=e38]:
+          - generic [ref=e39]: "9"
+          - generic [ref=e40]: Anmerkungen
+          - generic [ref=e41]: ✓
+        - generic [ref=e42]:
+          - generic [ref=e43]: "10"
+          - generic [ref=e44]: Zusammenfassung
+          - generic [ref=e45]: →
+    - generic [ref=e46]:
+      - button "🌙" [ref=e47] [cursor=pointer]
+      - generic [ref=e48]:
+        - heading "Neue TÜV-Anfrage" [level=1] [ref=e49]
+        - paragraph [ref=e50]: E2E Test Partner TÜV
+      - generic [ref=e54]: Schritt 10 von 10
+      - generic [ref=e55]:
+        - generic:
+          - generic:
+            - generic: Fahrzeugfotos
+          - generic:
+            - generic:
+              - generic:
+                - text: Klicken Sie hier, um Fotos vom Fahrzeug aufzunehmen
+                - text: (Fahrzeugschein, Kennzeichen, ggf. Mängel)
+            - generic:
+              - generic:
+                - img "Foto 1"
+                - button "×"
+          - paragraph: "Tipp: Laden Sie mindestens 1 Foto hoch, um fortzufahren"
+        - generic:
+          - generic:
+            - generic: Fahrzeug-Referenz
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: Kennzeichen
+              - generic: Auftragsnummer
+            - generic:
+              - generic: Kennzeichen
+              - textbox "Kennzeichen":
+                - /placeholder: z.B. MOS-AB 123
+                - text: E2E-TUEV-1761942490524
+          - generic:
+            - heading "🚗 Fahrzeugdaten für Kalkulation" [level=4]
+            - paragraph: Diese Angaben helfen der Werkstatt, einen genauen Kostenvoranschlag zu erstellen.
+            - generic:
+              - generic:
+                - generic: Marke *
+                - combobox "Marke *":
+                  - option "Bitte wählen..."
+                  - option "Audi"
+                  - option "BMW" [selected]
+                  - option "Mercedes-Benz"
+                  - option "Volkswagen"
+                  - option "Opel"
+                  - option "Ford"
+                  - option "Renault"
+                  - option "Peugeot"
+                  - option "Citroën"
+                  - option "Skoda"
+                  - option "Seat"
+                  - option "Toyota"
+                  - option "Mazda"
+                  - option "Honda"
+                  - option "Nissan"
+                  - option "Hyundai"
+                  - option "Kia"
+                  - option "Fiat"
+                  - option "Alfa Romeo"
+                  - option "Volvo"
+                  - option "Porsche"
+                  - option "Sonstige"
+              - generic:
+                - generic: Baujahr *
+                - spinbutton "Baujahr *": "2020"
+            - generic:
+              - generic: Modell *
+              - textbox "Modell *":
+                - /placeholder: z.B. Golf 7, 320d, C-Klasse
+                - text: 3er G20
+            - generic:
+              - generic: Kilometerstand (optional)
+              - spinbutton "Kilometerstand (optional)": "50000"
+              - generic: 💡 Wichtig für TÜV/Mechanik-Anfragen
+        - generic:
+          - generic:
+            - generic: 🔢
+            - generic: Fahrzeugidentifikation
+          - generic:
+            - generic: Wie möchten Sie das Fahrzeug identifizieren?
+            - generic:
+              - generic: 🔢 FIN/VIN eingeben
+              - generic: 📄 Fahrzeugschein fotografieren
+            - generic:
+              - generic: Fahrzeug-Identifizierungsnummer (FIN/VIN)
+              - textbox "Fahrzeug-Identifizierungsnummer (FIN/VIN)":
+                - /placeholder: z.B. WVWZZZ1KZXW123456
+                - text: WVWZZZ1JZXW123456
+              - generic: 17-stellige Nummer im Fahrzeugschein (Feld E)
+          - paragraph: "💡 Tipp: Die FIN/VIN ist wichtig für die korrekte TÜV-Dokumentation"
+        - generic:
+          - generic:
+            - generic: Service-Art
+          - generic:
+            - generic: Welche Untersuchung wird benötigt?
+            - generic:
+              - generic:
+                - generic: TÜV (Hauptuntersuchung)
+                - generic: HU nach §29 StVZO
+              - generic:
+                - generic: AU (Abgasuntersuchung)
+                - generic: Abgastest einzeln
+              - generic:
+                - generic: TÜV + AU Kombi
+                - generic: Hauptuntersuchung inkl. Abgastest
+              - generic:
+                - generic: Nachuntersuchung
+                - generic: Nach Mängelbehebung (4 Wochen)
+          - generic:
+            - generic: TÜV-Fälligkeit (optional)
+            - textbox "TÜV-Fälligkeit (optional)"
+            - generic: 💡 Wann läuft die aktuelle TÜV-Plakette ab? (Falls bekannt)
+        - generic:
+          - generic:
+            - generic: Fahrzeugtyp
+          - generic:
+            - generic: Welcher Fahrzeugtyp soll untersucht werden?
+            - generic:
+              - generic:
+                - generic: PKW
+                - generic: Personenkraftwagen bis 3,5t
+              - generic:
+                - generic: LKW / Transporter
+                - generic: Nutzfahrzeuge über 3,5t
+              - generic:
+                - generic: Motorrad / Kraftrad
+                - generic: Zweiräder
+              - generic:
+                - generic: Anhänger
+                - generic: Anhänger jeder Art
+        - generic:
+          - generic:
+            - generic: Vorbereitung
+          - generic:
+            - generic: Wurde das Fahrzeug bereits auf die Untersuchung vorbereitet?
+            - generic:
+              - generic:
+                - generic: Ja, alles bereit
+                - generic: Fahrzeug ist gereinigt und überprüft
+              - generic:
+                - generic: Nein, Vorbereitung nötig
+                - generic: Wir bereiten das Fahrzeug vor (Reinigung, Sichtprüfung)
+              - generic:
+                - generic: Bekannte Mängel
+                - generic: Es sind Mängel bekannt, die behoben werden müssen
+        - generic:
+          - generic:
+            - generic: Gewünschter Termin
+          - generic:
+            - generic: Wann soll der Service durchgeführt werden?
+            - generic:
+              - generic:
+                - generic: Fehler beim Laden der Termine
+        - generic:
+          - generic:
+            - generic: 🚗
+            - generic: Lieferoptionen
+          - generic:
+            - generic: Wie wird das Fahrzeug angeliefert?
+            - generic:
+              - generic: 🚙 Selbst bringen
+              - generic: 🚛 Abholservice gewünscht
+          - paragraph: "💡 Tipp: Während der TÜV-Prüfung kann ein Ersatzfahrzeug bereitgestellt werden"
+        - generic:
+          - generic:
+            - generic: Anmerkungen
+          - generic:
+            - generic: Zusätzliche Anmerkungen (optional)
+            - textbox "Zusätzliche Anmerkungen (optional)":
+              - /placeholder: z.B. besondere Wünsche, Felgen-Informationen, Beschädigungen...
+        - generic [ref=e56]:
+          - generic [ref=e58]: Zusammenfassung
+          - paragraph [ref=e59]: "Bitte überprüfen Sie Ihre Angaben vor dem Absenden:"
+          - generic [ref=e60]:
+            - generic [ref=e61]:
+              - heading "Fahrzeugfotos" [level=3] [ref=e62]
+              - paragraph [ref=e63]: 1 Foto(s) hochgeladen
+            - generic [ref=e64]:
+              - heading "Fahrzeug-Referenz" [level=3] [ref=e65]
+              - paragraph [ref=e66]: Kennzeichen
+              - paragraph [ref=e67]: E2E-TUEV-1761942490524
+            - generic [ref=e68]:
+              - heading "🚗 Fahrzeugdaten" [level=3] [ref=e69]
+              - paragraph [ref=e70]: Marke & Modell
+              - paragraph [ref=e71]:
+                - strong [ref=e72]: BMW 3er G20
+              - paragraph [ref=e73]: Baujahr
+              - paragraph [ref=e74]: "2020"
+              - paragraph [ref=e75]: Kilometerstand
+              - paragraph [ref=e76]: 50.000 km
+            - generic [ref=e77]:
+              - heading "🔢 Fahrzeugidentifikation" [level=3] [ref=e78]
+              - paragraph [ref=e79]: FIN/VIN
+              - paragraph [ref=e80]: WVWZZZ1JZXW123456
+            - generic [ref=e81]:
+              - heading "Service-Art" [level=3] [ref=e82]
+              - paragraph [ref=e83]: TÜV (Hauptuntersuchung)
+            - generic [ref=e84]:
+              - heading "Fahrzeugtyp" [level=3] [ref=e85]
+              - paragraph [ref=e86]: PKW
+            - generic [ref=e87]:
+              - heading "Vorbereitung" [level=3] [ref=e88]
+              - paragraph [ref=e89]: Ja, alles bereit
+            - generic [ref=e90]:
+              - heading "🚗 Lieferung & Services" [level=3] [ref=e91]
+              - paragraph [ref=e92]: Anlieferung
+              - paragraph [ref=e93]: ✅ Partner bringt Fahrzeug selbst
+      - generic [ref=e94]:
+        - button "← Zurück" [ref=e95] [cursor=pointer]
+        - button "⏳ Wird komprimiert & gesendet..." [disabled] [ref=e96]
+  - paragraph [ref=e97]: Running in emulator mode. Do not use with production credentials.
+```
