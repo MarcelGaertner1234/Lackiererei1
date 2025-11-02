@@ -2702,6 +2702,34 @@ exports.ensurePartnerAccount = functions
           console.log(`✅ Edge case: Created users/${userRecord.uid} document`);
         }
 
+        // 🆕 FIX: Ensure users/{uid} exists for ALL partners (new + existing)
+        // This catches the case where:
+        // - Firebase Auth exists ✅
+        // - Custom Claims exist ✅
+        // - partners_mosbach exists ✅
+        // - BUT users/{uid} is missing ❌
+        const userDocRef = db.collection("users").doc(userRecord.uid);
+        const userDoc = await userDocRef.get();
+
+        if (!userDoc.exists) {
+          console.warn(`⚠️ Creating missing users/${userRecord.uid} for existing partner ${partnerId}`);
+          const missingUserData = {
+            uid: userRecord.uid,
+            email: email,
+            name: kundenname,
+            role: "partner",
+            status: "active",
+            partnerId: partnerId,
+            werkstattId: werkstattId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastLogin: null
+          };
+          await userDocRef.set(missingUserData, {merge: true});
+          console.log(`✅ Created missing users/${userRecord.uid} document`);
+        } else {
+          console.log(`✅ users/${userRecord.uid} already exists`);
+        }
+
         return {
           partnerId: partnerId,
           email: email,
