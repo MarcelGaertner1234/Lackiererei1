@@ -4,99 +4,498 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 🧪 **NEXT SESSION: TESTING REQUIRED**
+
+**Status**: ✅ Multi-Tenant Partner Registration System **KOMPLETT IMPLEMENTIERT & DEPLOYED**
+
+**Deployment**:
+- ✅ Frontend: GitHub Pages (Commit `f4ac771`)
+- ✅ Security Rules: Firebase Production (`firebase deploy --only firestore:rules`)
+- ✅ 4 Dateien geändert, 966 neue Zeilen Code
+
+**Was jetzt zu tun ist**: **END-TO-END TESTING** (siehe Testing-Anleitung unten)
+
+---
+
+## 🧪 **TESTING GUIDE - Multi-Tenant Partner Registration System**
+
+### **Test-Umgebung:**
+- **Live App**: https://marcelgaertner1234.github.io/Lackiererei1/
+- **Firestore**: Production (auto-lackierzentrum-mosbach)
+- **Test-Account**: Du kannst neue Test-Partner erstellen (siehe Test 1)
+
+### **Test 1: Partner-Registrierung** ⭐ **START HIER**
+
+**URL**: https://marcelgaertner1234.github.io/Lackiererei1/registrierung.html
+
+**Test-Daten**:
+```
+Name: Test Partner GmbH
+Firma: Test Partner GmbH (optional)
+Email: testpartner123@example.com
+Passwort: TestPasswort123!
+Passwort bestätigen: TestPasswort123!
+Rolle: Partner
+📍 PLZ: 74821
+🏙️ Ort/Stadt: Mosbach
+🗺️ Region: Mosbach / Neckar-Odenwald-Kreis
+```
+
+**✅ Erwartete Ergebnisse**:
+1. Formular akzeptiert alle Felder
+2. Nach Submit: Erfolgsmeldung angezeigt
+3. Email-Verifizierung versendet
+4. **Firestore prüfen**:
+   - `users/{uid}`: Dokument existiert mit `status: "pending"`, `plz: "74821"`, `region: "mosbach"`
+   - `partners/{uid}`: Dokument existiert mit `werkstattId: null`, `status: "pending"`
+
+---
+
+### **Test 2: PLZ-Region Validierung**
+
+**URL**: Gleiche wie Test 1
+
+**Test-Daten** (ABSICHTLICH FALSCH):
+```
+PLZ: 69124 (Heidelberg)
+Region: Mosbach (FALSCH!)
+```
+
+**✅ Erwartete Ergebnisse**:
+1. ⚠️ Warnung erscheint: "PLZ und Region passen möglicherweise nicht zusammen. Bitte prüfen Sie Ihre Eingabe!"
+2. Warnung ist orange/rot gefärbt
+3. Formular kann trotzdem submitted werden (User-Entscheidung)
+
+---
+
+### **Test 3: Admin Dashboard - Badge anzeigen**
+
+**URL**: https://marcelgaertner1234.github.io/Lackiererei1/admin-dashboard.html
+
+**Voraussetzung**: Login als Werkstatt-Admin (werkstatt-mosbach@auto-lackierzentrum.de)
+
+**✅ Erwartete Ergebnisse**:
+1. **Quick Actions Sektion**:
+   - Button "⏳ Neue Registrierungen" ist sichtbar
+   - **Rotes Badge** mit Anzahl (z.B. "1") oben rechts am Button
+   - Badge pulsiert (Animation)
+2. **Stats Grid**:
+   - Stat-Card "Neue Registrierungen" zeigt Anzahl (z.B. "1")
+   - **Rotes Badge** oben rechts an der Card
+   - Text: "Klicken zum Freigeben" (wenn > 0)
+   - Card ist **klickbar** (Cursor: pointer)
+
+---
+
+### **Test 4: Pending Registrations Panel**
+
+**URL**: https://marcelgaertner1234.github.io/Lackiererei1/pending-registrations.html
+
+**Voraussetzung**: Login als Admin + mindestens 1 pending Partner (aus Test 1)
+
+**✅ Erwartete Ergebnisse**:
+1. **Statistiken-Dashboard**:
+   - Ausstehend: 1 (oder mehr)
+   - Heute: 1 (wenn gerade registriert)
+   - Diese Woche: 1
+   - Keine Empfehlung: 0 (wenn PLZ korrekt)
+
+2. **Partner-Card** (testpartner123@example.com):
+   ```
+   📋 Test Partner GmbH
+   📧 testpartner123@example.com
+   📍 74821 • Mosbach • Mosbach
+   📅 Registriert: [heute]
+
+   💡 Empfehlung: Mosbach
+   ✓ 95% Confidence - PLZ 74821 + Region Mosbach → Mosbach
+   ```
+   - Card hat **grünen Rahmen** (95% Confidence)
+   - Dropdown: "Mosbach" ist vorausgewählt
+   - Button: "✅ Zuordnen & Aktivieren"
+
+3. **Filter-Buttons funktionieren**:
+   - "Alle" zeigt alle Partner
+   - "Mosbach" zeigt nur Mosbach-Empfehlungen
+   - "Ohne Empfehlung" zeigt Partner ohne Match
+
+---
+
+### **Test 5: Partner zuordnen & aktivieren** ⭐ **KRITISCH**
+
+**URL**: Gleiche wie Test 4
+
+**Aktion**: Klick "✅ Zuordnen & Aktivieren" bei testpartner123@example.com
+
+**✅ Erwartete Ergebnisse**:
+1. **Toast-Nachricht**: "Partner erfolgreich zugeordnet und aktiviert!"
+2. **Partner verschwindet** aus der Liste
+3. **Statistik "Ausstehend"** → 0 (wird live aktualisiert)
+4. **Firestore prüfen** (wichtig!):
+   - `partners/{uid}`:
+     - `werkstattId: "mosbach"`
+     - `status: "active"`
+     - `assignedAt: [timestamp]`
+   - `partners_mosbach/{uid}`: **NEUES DOKUMENT** erstellt mit allen Partner-Daten
+   - `users/{uid}`:
+     - `status: "active"` (von "pending" geändert)
+
+---
+
+### **Test 6: Partner Login nach Freigabe** ⭐ **KRITISCH**
+
+**URL**: https://marcelgaertner1234.github.io/Lackiererei1/partner-app/index.html
+
+**Voraussetzung**: Partner muss in Test 5 freigegeben worden sein
+
+**Login-Daten**:
+```
+Email: testpartner123@example.com
+Passwort: TestPasswort123!
+```
+
+**✅ Erwartete Ergebnisse**:
+1. Login **erfolgreich** (keine Errors!)
+2. Weiterleitung zu: `partner-app/service-auswahl.html`
+3. **Console prüfen**:
+   - ✅ Custom Claims geladen
+   - ✅ `werkstattId: "mosbach"`
+   - ✅ `role: "partner"`
+   - ✅ `partnerId: "{uid}"`
+   - **KEINE** "Missing or insufficient permissions" Errors
+4. **Dashboard funktioniert**:
+   - Service-Auswahl anzeigbar
+   - Meine Anfragen anzeigbar (leer, aber keine Errors)
+   - Chat-Funktionen laden ohne Permission Errors
+
+---
+
+### **Test 7: Reject-Funktion (Spam)**
+
+**URL**: https://marcelgaertner1234.github.io/Lackiererei1/pending-registrations.html
+
+**Vorbereitung**: Registriere neuen Partner mit Email: `spam@example.com` (Test 1 wiederholen)
+
+**Aktion**: Klick "🗑️ Ablehnen" bei spam@example.com
+
+**✅ Erwartete Ergebnisse**:
+1. **Bestätigungs-Dialog**: "Möchten Sie diese Registrierung wirklich ablehnen?"
+2. Nach "Ja, ablehnen":
+   - Toast: "Registrierung abgelehnt"
+   - Partner verschwindet aus Liste
+   - **Firestore prüfen**:
+     - `partners/{uid}`: **GELÖSCHT**
+     - `users/{uid}`: **GELÖSCHT**
+3. Firebase Auth Account: (optional) kann manuell in Firebase Console gelöscht werden
+
+---
+
+### **📸 Testing Checkliste**
+
+- [ ] Test 1: Registrierung erfolgreich ✅
+- [ ] Test 2: PLZ-Region Warnung funktioniert ⚠️
+- [ ] Test 3: Admin Dashboard Badge sichtbar 🔴
+- [ ] Test 4: Pending Panel zeigt Partner 📋
+- [ ] Test 5: Zuordnung funktioniert (Firestore prüfen!) 🔥
+- [ ] Test 6: Partner Login klappt (KEINE ERRORS!) 🔥
+- [ ] Test 7: Reject löscht Partner 🗑️
+
+---
+
+### **🐛 Falls Fehler auftreten**:
+
+**Problem: Permission Errors nach Partner Login**
+- ✅ Prüfe: Custom Claims gesetzt? (ensurePartnerAccount Cloud Function)
+- ✅ Prüfe: partners_mosbach/{uid} existiert?
+- ✅ Prüfe: Security Rules deployed?
+
+**Problem: Badge zeigt keine Zahl**
+- ✅ Prüfe: Console Errors?
+- ✅ Prüfe: Firestore `partners` collection hat status: "pending"?
+- ✅ Prüfe: Hard Refresh (Cmd+Shift+R)
+
+**Problem: Partner verschwindet nicht nach Zuordnung**
+- ✅ Prüfe: Firestore status changed zu "active"?
+- ✅ Prüfe: Console Errors beim Zuordnen?
+- ✅ Prüfe: Hard Refresh
+
+---
+
 ## ⭐ Was ist NEU?
 
-**Version 4.2 - Partner Account Permission Fixes + Multi-Tenant Registration System** (2025-11-03)
+**Version 5.2 - Multi-Tenant Partner Registration System (KOMPLETT)** (2025-11-03)
 
-🔐 **ALLE PARTNER PERMISSION ERRORS GEFIXT + NEUES REGISTRATION SYSTEM!**
+✅ **SYSTEM KOMPLETT IMPLEMENTIERT & DEPLOYED - READY FOR TESTING!**
 
-**Critical Fixes (6x Deployed):**
+**Deployment-Status**:
+- ✅ Commit: `f4ac771` - "feat: Multi-Tenant Partner Registration System (Complete)"
+- ✅ GitHub Pages: Live deployed (Auto-Deploy nach push)
+- ✅ Firestore Rules: Production deployed (`firebase deploy --only firestore:rules`)
+- ✅ 4 Dateien geändert, 966 neue Zeilen
+- ⏳ Testing: **PENDING** (siehe Testing Guide oben)
+
+**Implementierte Features**:
+
+### 1. **pending-registrations.html** (NEU - 680 Zeilen)
+**Admin-Panel zur Freigabe neuer Partner**
+
+**Features**:
+- ✅ Live-Statistiken: Ausstehend, Heute, Diese Woche, Ohne Empfehlung
+- ✅ Intelligente Werkstatt-Empfehlung basierend auf PLZ + Region
+  - 95% Confidence: PLZ + Region beide korrekt
+  - 80% Confidence: Nur PLZ passt
+  - 60% Confidence: Nur Region passt
+- ✅ Color-Coding: Grün (95%), Gelb (80%), Rot (60% oder weniger)
+- ✅ Filter-Buttons: Alle / Nach Werkstatt / Ohne Empfehlung
+- ✅ Ein-Klick-Zuordnung: "✅ Zuordnen & Aktivieren"
+  - Setzt werkstattId
+  - Kopiert zu partners_{werkstattId}
+  - Aktiviert Account (status → "active")
+- ✅ Reject-Funktion: "🗑️ Ablehnen" löscht Spam-Registrierungen
+- ✅ Real-time Updates: Firestore Listener für Live-Änderungen
+
+**Code-Highlights** (pending-registrations.html):
+```javascript
+// Intelligente Empfehlung
+function suggestWerkstatt(plz, region) {
+    const plzMatch = PLZ_WERKSTATT_MAP[plz.substring(0, 2)];
+    const regionMatch = REGION_WERKSTATT_MAP[region];
+
+    if (plzMatch && regionMatch && plzMatch === regionMatch) {
+        return { werkstatt: plzMatch, confidence: 95 };
+    }
+    // ... weitere Logik
+}
+
+// Assignment
+async function assignPartner(partnerId) {
+    const werkstattId = dropdown.value;
+
+    // 1. Update global partners
+    await db.collection('partners').doc(partnerId).update({
+        werkstattId, status: 'active'
+    });
+
+    // 2. Copy to werkstatt-specific collection
+    await db.collection(`partners_${werkstattId}`).doc(partnerId).set({...});
+}
+```
+
+### 2. **auth-manager.js** - PLZ/Region Support (+35 Zeilen)
+**registerUser() erweitert**
+
+**Änderungen**:
+- ✅ Akzeptiert neue Parameter: `plz`, `stadt`, `region`
+- ✅ Validierung: PLZ muss 5 Ziffern haben
+- ✅ Speichert in **2 Collections**:
+  - `users/{uid}` - Für Auth + Status
+  - `partners/{uid}` - Für Partner-Verwaltung
+- ✅ Default: `status: "pending"`, `werkstattId: null`
+
+**Code-Highlights** (js/auth-manager.js:40-107):
+```javascript
+async function registerUser(userData) {
+  const { email, password, name, company, role, plz, stadt, region } = userData;
+
+  // Validation
+  if (role === 'partner') {
+    if (!plz || !stadt || !region) {
+      throw new Error('PLZ, Stadt und Region sind Pflichtfelder!');
+    }
+    if (plz.length !== 5 || !/^\d{5}$/.test(plz)) {
+      throw new Error('PLZ muss genau 5 Ziffern haben!');
+    }
+  }
+
+  // Create users/{uid}
+  await db.collection('users').doc(uid).set({
+    uid, email, name, company, role,
+    status: 'pending',  // Admin must approve
+    plz, stadt, region
+  });
+
+  // For partners: Create global partners/{uid}
+  if (role === 'partner') {
+    await db.collection('partners').doc(uid).set({
+      partnerId: uid, kundenname: name, email,
+      plz, stadt, region,
+      status: 'pending',
+      werkstattId: null  // Admin assigns
+    });
+  }
+}
+```
+
+### 3. **firestore.rules** - Pending Partners Rules (+28 Zeilen)
+**Neue Security Rules für Self-Registration**
+
+**Änderungen**:
+- ✅ **Global partners collection** (Zeile 93-119):
+  - Allow create: Authenticated users, status='pending', werkstattId=null
+  - Validiert alle Required Fields: partnerId, kundenname, email, plz, stadt, region
+  - Admin: Full access für Approval
+  - Partners: Read-only eigenes Dokument (auch wenn pending)
+
+**Code-Highlights** (firestore.rules:98-119):
+```javascript
+match /partners/{partnerId} {
+  // Self-Service Registration
+  allow create: if isAuthenticated()
+                && request.resource.data.status == 'pending'
+                && request.resource.data.partnerId == request.auth.uid
+                && request.resource.data.werkstattId == null
+                && request.resource.data.keys().hasAll([
+                    'partnerId', 'kundenname', 'email',
+                    'plz', 'stadt', 'region', 'status', 'createdAt'
+                ]);
+
+  // Admin: Full access
+  allow read, write: if isAdmin();
+
+  // Partners: Read own document (even when pending)
+  allow read: if isAuthenticated() && isOwner(partnerId);
+}
+```
+
+### 4. **admin-dashboard.html** - Neue Registrierungen Integration (+50 Zeilen)
+**Dashboard mit Live-Badge**
+
+**Änderungen**:
+- ✅ **Quick Actions Button**: "⏳ Neue Registrierungen"
+  - Live-Badge mit Anzahl pending partners
+  - Pulsiert (Animation)
+  - Verlinkt zu pending-registrations.html
+- ✅ **Stat-Card "Neue Registrierungen"**:
+  - Clickable (cursor: pointer)
+  - Badge oben rechts
+  - Text: "Klicken zum Freigeben" wenn > 0
+- ✅ **updatePendingBadge()** Funktion:
+  - Lädt `.where('status', '==', 'pending')` count
+  - Updates Badge im Button + Stat-Card
+
+**Code-Highlights** (admin-dashboard.html:1378-1398):
+```javascript
+async function updatePendingBadge() {
+  const pendingSnap = await db.collection('partners')
+    .where('status', '==', 'pending')
+    .get();
+
+  const count = pendingSnap.size;
+  const badge = document.getElementById('pendingBadge');
+
+  if (badge && count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'block';
+  }
+}
+
+// CSS
+.notification-badge {
+  position: absolute;
+  top: -8px; right: -8px;
+  background: #ff3b30;
+  animation: pulse 2s ease-in-out infinite;
+}
+```
+
+---
+
+## 🗺️ PLZ-Region Mapping (Referenz)
+
+| PLZ-Bereich | Region | Werkstatt |
+|-------------|--------|-----------|
+| **69xxx** | Heidelberg / Mannheim / Rhein-Neckar | heidelberg |
+| **74xxx** | Mosbach / Neckar-Odenwald-Kreis | mosbach |
+| **76xxx** | Karlsruhe / Mittelbaden | karlsruhe |
+| **70xxx, 71xxx** | Stuttgart / Rems-Murr-Kreis | stuttgart |
+| **79xxx** | Freiburg / Südbaden | freiburg |
+| Andere | Andere Region | (keine Auto-Empfehlung) |
+
+**Mapping-Logik** (integriert in registrierung.html + pending-registrations.html):
+```javascript
+const PLZ_REGION_MAP = {
+    "69": "heidelberg",
+    "74": "mosbach",
+    "76": "karlsruhe",
+    "70": "stuttgart",
+    "71": "stuttgart",
+    "79": "freiburg"
+};
+```
+
+---
+
+## 📋 Workflow: Partner Self-Registration
+
+```
+1. Partner besucht registrierung.html
+   ↓
+2. Füllt Formular aus:
+   - Email, Passwort, Name, Firma
+   - PLZ: "74821"
+   - Stadt: "Mosbach"
+   - Region: "Mosbach / Neckar-Odenwald-Kreis"
+   ↓
+3. Live-Validation: PLZ 74xxx + Region Mosbach = ✅ Match
+   ↓
+4. Submit → registerUser() erstellt:
+   - Firebase Auth Account
+   - users/{uid}: status: "pending", plz, stadt, region
+   - partners/{uid}: status: "pending", werkstattId: null
+   ↓
+5. Admin öffnet pending-registrations.html
+   ↓
+6. Sieht Partner-Card:
+   - Name, Email, PLZ, Stadt, Region
+   - 💡 Empfehlung: Mosbach (95% Confidence)
+   - Dropdown vorausgewählt: "Mosbach"
+   ↓
+7. Admin klickt "✅ Zuordnen & Aktivieren"
+   ↓
+8. System:
+   - partners/{uid}: werkstattId: "mosbach", status: "active"
+   - partners_mosbach/{uid}: Neues Dokument (Kopie)
+   - users/{uid}: status: "active"
+   ↓
+9. Partner kann sich einloggen
+   ↓
+10. Zugriff auf Mosbach-spezifische Daten
+    - partnerAnfragen_mosbach
+    - Custom Claims: werkstattId: "mosbach"
+```
+
+---
+
+## 🔐 Sicherheit
+
+**Multi-Tenant Isolation**:
+- ✅ Collection-basierte Trennung: `partners_mosbach` ≠ `partners_heidelberg`
+- ✅ Security Rules: Nur Admin kann werkstattId zuweisen
+- ✅ Custom Claims: werkstattId in JWT Token (schneller als Firestore)
+- ✅ Application-Level: `window.getCollection()` auto-appends werkstattId
+
+**Pending Partners**:
+- ✅ Können sich NICHT einloggen (getUserStatus() prüft "active")
+- ✅ Können eigenes Dokument lesen (für Status-Check)
+- ✅ Können NICHT werkstattId selbst setzen (Security Rules)
+- ✅ Admin muss explizit freigeben
+
+**Previous Fixes (Version 4.2)**:
 1. ✅ **users/{uid} Security Rules** - exists() check mit fallback zu 'active'
-2. ✅ **Chat-Notifications collectionGroup** - Disabled für Partner, refactored zu direct queries
-3. ✅ **partner-chat-notifications.js** - Removed collectionGroup, verwendet jetzt partnerAnfragen queries
-4. ✅ **Fix-Tool firebase.functions()** - Korrigiert zu firebase.app().functions('europe-west3')
-5. ✅ **ensurePartnerAccount users/{uid}** - Erstellt jetzt users/{uid} für ALLE Partner (neu + existing)
-6. ✅ **partnerAnfragen Query Permissions** - Security Rule erlaubt jetzt partnerEmail queries
+2. ✅ **Chat-Notifications collectionGroup** - Disabled für Partner, refactored
+3. ✅ **partner-chat-notifications.js** - Direct queries statt collectionGroup
+4. ✅ **Fix-Tool firebase.functions()** - firebase.app().functions() syntax
+5. ✅ **ensurePartnerAccount users/{uid}** - Erstellt users/{uid} für ALLE Partner
+6. ✅ **partnerAnfragen Query Permissions** - Email-based queries erlaubt
 
-**Neue Features (In Progress):**
-- ✅ **Self-Registration mit PLZ + Region** - registrierung.html erweitert
-- 🚧 **Admin Approval System** - pending-registrations.html (80% fertig)
-- 🚧 **Multi-Tenant Registration** - Endkunden registrieren → Admin weist werkstattId zu
-
-**Commits:**
+**Commits (Version 4.2 + 5.2)**:
+- f4ac771 (Multi-Tenant Registration System - Complete)
+- da5908e (registrierung.html PLZ + Region - Work in Progress)
 - 5ec7974 (partnerAnfragen query permissions fix)
 - 53b51ef (ensurePartnerAccount users/{uid} creation)
 - d50f4a2 (fix-tool firebase.app().functions() syntax)
-- 25cc619 (fix-tool firebase.functions() undefined)
-- [TBD] (registrierung.html PLZ + Region fields)
 
-**Gelöste Probleme:**
-1. **Permission Errors** - "Missing or insufficient permissions" in Partner-Portal komplett behoben
-2. **users/{uid} fehlte** - Cloud Function erstellt jetzt automatisch für alle Partner
-3. **collectionGroup Security** - Zu permissiv, jetzt disabled + refactored
-4. **Query by Email** - Security Rules erlauben jetzt `.where('partnerEmail', '==', ...)`
-
-**Multi-Tenant Registration System (NEU):**
-
-**Problem erkannt:**
-- Werkstätten können sich nicht selbst registrieren (korrekt, nur Super-Admin)
-- Kunden konnten sich registrieren, aber ohne werkstattId → unbrauchbar
-- Frage: "Welche Werkstatt sieht welche Aufträge?" → Nur die eigene! (verifiziert)
-
-**Lösung implementiert:**
-1. **registrierung.html** - Neue Felder:
-   - PLZ (5-stellig, validiert)
-   - Stadt/Ort
-   - Region (Dropdown: Mosbach, Heidelberg, Karlsruhe, Stuttgart, Freiburg, Andere)
-   - Live PLZ-Region Validation (warnt bei Mismatch)
-
-2. **pending-registrations.html** (in Arbeit):
-   - Admin-Panel für neue Registrierungen
-   - Liste aller Partner mit status: "pending"
-   - Intelligente Werkstatt-Empfehlung basierend auf PLZ + Region
-   - Confidence Score (95% = beide stimmen überein, 80% = nur PLZ, 60% = nur Region)
-   - One-Click Zuordnung: werkstattId setzen, zu partners_{werkstattId} kopieren, Custom Claims setzen
-
-3. **PLZ-Region Mapping:**
-   ```javascript
-   69xxx → Heidelberg/Rhein-Neckar
-   74xxx → Mosbach/Neckar-Odenwald
-   76xxx → Karlsruhe/Mittelbaden
-   70-71xxx → Stuttgart
-   79xxx → Freiburg/Südbaden
-   ```
-
-**Workflow:**
-1. Endkunde registriert sich → PLZ "69124", Stadt "Heidelberg", Region "Heidelberg/Rhein-Neckar"
-2. Validation: PLZ 69xxx + Region Heidelberg = ✅ Match
-3. Gespeichert als: `partners/{partnerId}` mit `status: "pending"`, keine werkstattId
-4. Admin öffnet pending-registrations.html
-5. Sieht: "💡 Empfehlung: Heidelberg (95% Confidence)"
-6. Klick "Zuordnen" → werkstattId: "heidelberg" gesetzt, status: "active"
-7. Kunde kann sich einloggen und Service-Anfragen an Heidelberg senden
-
-**Aktueller Implementierungsstand:**
-- ✅ registrierung.html (PLZ + Region Felder, Validation)
-- 🚧 pending-registrations.html (80% - UI fertig, Backend-Integration fehlt)
-- ⏳ admin-dashboard.html (Kachel "Neue Registrierungen" mit Badge)
-- ⏳ auth-manager.js (status: "pending" Support prüfen)
-- ⏳ firestore.rules (Pending partners Security Rules)
-- ⏳ Cloud Function assignPartnerToWerkstatt (optional, kann auch Client-seitig)
-
-**Was noch zu tun ist:**
-1. pending-registrations.html fertigstellen (ca. 800 Zeilen, komplexes UI)
-2. admin-dashboard.html Kachel hinzufügen
-3. auth-manager.js checken ob status: "pending" unterstützt wird
-4. Security Rules für pending partners (allow create if status == "pending")
-5. Testing: Kompletter Flow End-to-End
-6. Deploy: GitHub Pages + Firestore Rules
-
-**Known Issues:**
-- ❌ registrierung.html nutzt auth-manager.registerUser() - muss PLZ/Region/pending Support haben
-- ⚠️ Aktuell speichert registerUser möglicherweise status: "active" statt "pending"
-- ⚠️ Zu prüfen: Wird werkstattId aktuell hardcoded oder kann es null sein?
-
-**Letzte Session:** [2025-11-03 - Partner Permissions + Multi-Tenant Registration](#session-2025-11-03-partner-permissions-multi-tenant-registration)
+**Letzte Session**: [2025-11-03 - Multi-Tenant Registration System (Complete)](#session-2025-11-03-multi-tenant-registration-complete)
 
 ---
 
