@@ -997,30 +997,21 @@
                 const storageRef = storage.ref(storagePath);
                 console.log('✅ [fetchPhotoAsBase64] Storage Ref erstellt für:', storageRef.fullPath);
 
-                // DOWNLOAD URL: Von Firebase holen
-                const downloadURL = await storageRef.getDownloadURL();
-                console.log('✅ [fetchPhotoAsBase64] Download URL erhalten:', downloadURL.substring(0, 80) + '...');
-
-                // FETCH: Blob von URL laden
-                console.log('🌐 [fetchPhotoAsBase64] Fetching blob from URL...');
-                const response = await fetch(downloadURL);
-                console.log('✅ [fetchPhotoAsBase64] Fetch response:', {
-                    status: response.status,
-                    ok: response.ok,
-                    statusText: response.statusText,
-                    contentType: response.headers.get('content-type')
+                // 🔧 CORS-FIX: Firebase SDK getBytes() statt fetch(downloadURL)
+                // Grund: fetch() wird von CORS blockiert (No 'Access-Control-Allow-Origin')
+                // Firebase SDK umgeht CORS intern mit authentifizierten API Calls
+                console.log('📥 [fetchPhotoAsBase64] Lade Bytes von Firebase Storage SDK...');
+                const bytes = await storageRef.getBytes();
+                console.log('✅ [fetchPhotoAsBase64] Bytes geladen:', {
+                    size: bytes.byteLength,
+                    sizeMB: (bytes.byteLength / 1024 / 1024).toFixed(2) + ' MB'
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                // BLOB: Konvertieren
-                const blob = await response.blob();
-                console.log('✅ [fetchPhotoAsBase64] Blob geladen:', {
+                // BLOB: Bytes zu Blob konvertieren
+                const blob = new Blob([bytes], { type: 'image/jpeg' });
+                console.log('✅ [fetchPhotoAsBase64] Blob erstellt:', {
                     size: blob.size,
-                    type: blob.type,
-                    sizeMB: (blob.size / 1024 / 1024).toFixed(2) + ' MB'
+                    type: blob.type
                 });
 
                 // BASE64: FileReader konvertiert Blob zu DataURL
