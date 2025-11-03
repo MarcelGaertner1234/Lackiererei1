@@ -537,9 +537,76 @@
             await loadPendingRegistrations();
         });
 
+        // ============================================
+        // LOAD ALL WERKSTÄTTEN (Dynamic from Firestore)
+        // ============================================
+        let allWerkstaetten = [];
+
+        async function loadAllWerkstaetten() {
+            try {
+                console.log('🏢 Lade alle Werkstätten...');
+
+                const snapshot = await window.db.collection('users')
+                    .where('role', '==', 'werkstatt')
+                    .where('status', '==', 'active')
+                    .get();
+
+                allWerkstaetten = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: data.werkstattId,
+                        name: data.name,
+                        email: data.email,
+                        plz: data.adresse?.plz || null,
+                        stadt: data.adresse?.stadt || null,
+                        strasse: data.adresse?.strasse || null,
+                        hausnummer: data.adresse?.hausnummer || null,
+                        telefon: data.adresse?.telefon || null
+                    };
+                });
+
+                console.log(`✅ ${allWerkstaetten.length} Werkstätten geladen:`, allWerkstaetten);
+                return allWerkstaetten;
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Werkstätten:', error);
+                return [];
+            }
+        }
+
+        // ============================================
+        // HELPER FUNCTIONS FOR WERKSTATT DISPLAY
+        // ============================================
+
+        // Get Werkstatt Display Name
+        function getWerkstattDisplayName(werkstattId) {
+            const werkstatt = allWerkstaetten.find(w => w.id === werkstattId);
+            return werkstatt ? werkstatt.name : werkstattId;
+        }
+
+        // Get Werkstatt Address
+        function getWerkstattAddress(werkstattId) {
+            const werkstatt = allWerkstaetten.find(w => w.id === werkstattId);
+            if (!werkstatt) return 'Adresse nicht verfügbar';
+
+            const strasse = werkstatt.strasse || '?';
+            const hausnummer = werkstatt.hausnummer || '?';
+            const plz = werkstatt.plz || '?';
+            const stadt = werkstatt.stadt || '?';
+
+            return `${strasse} ${hausnummer}, ${plz} ${stadt}`;
+        }
+
+        // ============================================
+        // LOAD PENDING REGISTRATIONS
+        // ============================================
+
         // Load Pending Registrations
         async function loadPendingRegistrations() {
             try {
+                // 🆕 Load werkstätten first
+                await loadAllWerkstaetten();
+
                 const snapshot = await window.db.collection('partners')
                     .where('status', '==', 'pending')
                     .orderBy('createdAt', 'desc')
@@ -573,44 +640,76 @@
             }
         }
 
-        // Suggest Werkstatt based on PLZ + Region
-        function suggestWerkstatt(plz, region) {
-            if (!plz && !region) {
+        // ============================================
+        // SUGGEST WERKSTATT (Dynamic PLZ-based matching)
+        // ============================================
+
+        // Suggest Werkstatt based on PLZ (dynamic lookup from Firestore)
+        function suggestWerkstatt(partnerPlz, partnerRegion) {
+            if (!partnerPlz && !partnerRegion) {
                 return { werkstatt: null, confidence: 0, reason: 'Keine PLZ/Region angegeben' };
             }
 
-            const plzPrefix = plz ? plz.substring(0, 2) : null;
-            const plzMatch = plzPrefix ? PLZ_WERKSTATT_MAP[plzPrefix] : null;
-            const regionMatch = region ? REGION_WERKSTATT_MAP[region] : null;
-
-            // Both match
-            if (plzMatch && regionMatch && plzMatch === regionMatch) {
-                return {
-                    werkstatt: plzMatch,
-                    confidence: 95,
-                    reason: `PLZ ${plz} + Region ${region} → ${WERKSTATT_NAMES[plzMatch]}`
-                };
+            if (!allWerkstaetten || allWerkstaetten.length === 0) {
+                console.warn('⚠️ Keine Werkstätten verfügbar für Matching');
+                return { werkstatt: null, confidence: 0, reason: 'Keine Werkstätten verfügbar' };
             }
 
-            // Only PLZ match
-            if (plzMatch) {
-                return {
-                    werkstatt: plzMatch,
-                    confidence: 80,
-                    reason: `PLZ ${plz} → ${WERKSTATT_NAMES[plzMatch]} (Region nicht überprüft)`
-                };
+            // Try exact PLZ match first
+            if (partnerPlz) {
+                const exactMatch = allWerkstaetten.find(w => w.plz === partnerPlz);
+                if (exactMatch) {
+                    return {
+                        werkstatt: exactMatch.id,
+                        confidence: 98,
+                        reason: `PLZ ${partnerPlz} → ${exactMatch.name} (${exactMatch.stadt})`
+                    };
+                }
+
+                // Try PLZ prefix match (first 2 digits)
+                const plzPrefix = partnerPlz.substring(0, 2);
+                const prefixMatches = allWerkstaetten.filter(w => w.plz && w.plz.substring(0, 2) === plzPrefix);
+
+                if (prefixMatches.length === 1) {
+                    return {
+                        werkstatt: prefixMatches[0].id,
+                        confidence: 85,
+                        reason: `PLZ-Region ${plzPrefix}xxx → ${prefixMatches[0].name} (${prefixMatches[0].stadt})`
+                    };
+                }
+
+                if (prefixMatches.length > 1) {
+                    // Multiple matches - return closest by distance (simplified: alphabetical)
+                    const closest = prefixMatches.sort((a, b) => {
+                        const distA = Math.abs(parseInt(a.plz) - parseInt(partnerPlz));
+                        const distB = Math.abs(parseInt(b.plz) - parseInt(partnerPlz));
+                        return distA - distB;
+                    })[0];
+
+                    return {
+                        werkstatt: closest.id,
+                        confidence: 70,
+                        reason: `PLZ-Nähe → ${closest.name} (${closest.plz} ${closest.stadt}) - Bitte prüfen!`
+                    };
+                }
             }
 
-            // Only Region match
-            if (regionMatch) {
-                return {
-                    werkstatt: regionMatch,
-                    confidence: 60,
-                    reason: `Region ${region} → ${WERKSTATT_NAMES[regionMatch]} (PLZ nicht überprüft)`
-                };
+            // Fallback: Stadt-Name matching (if region provided)
+            if (partnerRegion) {
+                const regionMatch = allWerkstaetten.find(w =>
+                    w.stadt && partnerRegion.toLowerCase().includes(w.stadt.toLowerCase())
+                );
+
+                if (regionMatch) {
+                    return {
+                        werkstatt: regionMatch.id,
+                        confidence: 60,
+                        reason: `Stadt-Match → ${regionMatch.name} (${regionMatch.stadt})`
+                    };
+                }
             }
 
-            // No match
+            // No match found
             return {
                 werkstatt: null,
                 confidence: 0,
@@ -699,8 +798,11 @@
                 <div class="recommendation ${confidenceClass}">
                     <i data-feather="${suggestion.confidence >= 90 ? 'check-circle' : suggestion.confidence >= 60 ? 'alert-circle' : 'alert-triangle'}"></i>
                     <div class="text">
-                        <strong>${suggestion.werkstatt ? `Empfehlung: ${WERKSTATT_NAMES[suggestion.werkstatt]}` : 'Manuelle Prüfung erforderlich'}</strong>
+                        <strong>${suggestion.werkstatt ? `Empfehlung: ${getWerkstattDisplayName(suggestion.werkstatt)}` : 'Manuelle Prüfung erforderlich'}</strong>
                         <small>${suggestion.reason}</small>
+                        ${suggestion.werkstatt ? `<small style="display: block; margin-top: 5px; color: var(--color-text-secondary);">
+                            📍 ${getWerkstattAddress(suggestion.werkstatt)}
+                        </small>` : ''}
                     </div>
                     <span class="confidence-badge ${confidenceClass}">${suggestion.confidence}%</span>
                 </div>
@@ -708,11 +810,11 @@
                 <div class="assignment-section">
                     <select id="werkstatt-${partner.id}">
                         <option value="">Werkstatt auswählen...</option>
-                        <option value="mosbach" ${suggestion.werkstatt === 'mosbach' ? 'selected' : ''}>Mosbach / Neckar-Odenwald</option>
-                        <option value="heidelberg" ${suggestion.werkstatt === 'heidelberg' ? 'selected' : ''}>Heidelberg / Rhein-Neckar</option>
-                        <option value="karlsruhe" ${suggestion.werkstatt === 'karlsruhe' ? 'selected' : ''}>Karlsruhe / Mittelbaden</option>
-                        <option value="stuttgart" ${suggestion.werkstatt === 'stuttgart' ? 'selected' : ''}>Stuttgart / Rems-Murr</option>
-                        <option value="freiburg" ${suggestion.werkstatt === 'freiburg' ? 'selected' : ''}>Freiburg / Südbaden</option>
+                        ${allWerkstaetten.map(w => `
+                            <option value="${w.id}" ${suggestion.werkstatt === w.id ? 'selected' : ''}>
+                                ${w.name} (${w.plz || '?'} ${w.stadt || 'N/A'})
+                            </option>
+                        `).join('')}
                     </select>
                     <button class="btn btn-primary" onclick="assignPartner('${partner.id}')">
                         <i data-feather="check"></i>
