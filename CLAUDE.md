@@ -1201,16 +1201,14 @@ allow create: if mitarbeiterCollection.matches('mitarbeiter_.*')
 #### Werkstätten in System
 
 **mosbach** (Owner, isOwner=true)
-- ⚠️ **ACTION REQUIRED:** Add address manually in Firebase Console
-- Required fields for next session:
-  ```
-  adresse (map):
-    - strasse: "Industriestraße" (string)
-    - hausnummer: "12" (string)
-    - plz: "74821" (string)
-    - stadt: "Mosbach" (string)
-    - telefon: "+49 6261 123456" (string)
-  ```
+- ✅ **COMPLETED (2025-11-03 16:36):** Address added in Firebase Console
+- Address fields:
+  - strasse: "Industriestraße"
+  - hausnummer: "12"
+  - plz: "74821"
+  - stadt: "Mosbach"
+  - telefon: "+49 6261 123456"
+- **Status:** Ready for Testing Session
 
 **testnov11** (Normal, isOwner=false)
 - Address: Teststrasse 12, 74821 Mosbach
@@ -1224,20 +1222,25 @@ allow create: if mitarbeiterCollection.matches('mitarbeiter_.*')
 
 **Klaus Mark**
 - PLZ: 74821
-- Status: pending
-- Awaiting assignment to mosbach werkstatt
-- **Next Session Task:** Test pending-registrations.html dynamic matching
+- Stadt: Mosbach
+- Region: mosbach
+- ✅ **Status:** pending (reset 2025-11-03 16:40)
+- ✅ **werkstattId:** null (field deleted)
+- Email: werkstatt-Obrigheim@auto-lackierzentrum.de
+- **Ready for:** Assignment testing (Test 4-7)
+- **Expected Result:** 98% Confidence Match (PLZ 74821 = mosbach PLZ 74821)
 
 ---
 
 #### Next Session Tasks
 
 **Priority 1: Partner Assignment Testing**
-1. Add mosbach address in Firebase Console (see format above)
-2. Test pending-registrations.html dynamic werkstatt matching
-3. Assign Klaus Mark to mosbach werkstatt
-4. Verify PLZ-based recommendation shows 98% confidence
-5. Verify address display in recommendation cards
+1. ✅ ~~Add mosbach address in Firebase Console~~ **DONE (2025-11-03 16:36)**
+2. ✅ ~~Verify Klaus Mark pending partner exists~~ **DONE (2025-11-03 16:40)**
+3. Test pending-registrations.html dynamic werkstatt matching
+4. Assign Klaus Mark to mosbach werkstatt
+5. Verify PLZ-based recommendation shows 98% confidence
+6. Verify address display in recommendation cards
 
 **Priority 2: Production Verification**
 - Test complete multi-werkstatt workflow
@@ -1338,9 +1341,17 @@ allow create: if mitarbeiterCollection.matches('mitarbeiter_.*')
 
 ---
 
-**Session End:** 2025-11-03
+**Session End:** 2025-11-03 16:40 UTC+1
 **Status:** ✅ Ready for partner assignment testing in next session
-**Critical Path:** Add mosbach address → Test Klaus Mark assignment → Verify PLZ matching
+**Critical Path:** ~~Add mosbach address~~ → Test Klaus Mark assignment → Verify PLZ matching
+
+---
+
+**Session End Update (16:40 UTC+1):**
+- ✅ Quick Win #1: Mosbach address added in Firebase Console (16:36)
+- ✅ Quick Win #2: Klaus Mark reset to pending status (16:40)
+- ✅ All testing prerequisites completed
+- 🚀 Next session can start immediately with Test 1 (Test 0 can be skipped, already done)
 
 ---
 
