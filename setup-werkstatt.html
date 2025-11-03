@@ -310,6 +310,18 @@
                     </small>
                 </div>
 
+                <div class="form-group" style="margin-top: 20px;">
+                    <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="isOwner" style="margin-right: 10px; width: 20px; height: 20px; cursor: pointer;">
+                        <span style="font-size: 14px;">
+                            🔐 Diese Werkstatt ist Owner/Super-Admin
+                            <small style="display: block; color: var(--color-text-secondary); font-size: 12px; margin-top: 5px;">
+                                Owner-Werkstätten können Partner-Registrierungen verwalten und neue Werkstätten erstellen
+                            </small>
+                        </span>
+                    </label>
+                </div>
+
                 <div id="werkstattError" class="error-message"></div>
 
                 <button type="submit" class="btn" id="werkstattSubmitBtn">
@@ -355,6 +367,41 @@
     </div>
 
     <script>
+        // ============================================
+        // OWNER ACCESS CONTROL (CRITICAL SECURITY)
+        // ============================================
+
+        // Check Owner Access before showing setup page
+        async function checkOwnerAccess() {
+            // Wait for auth state to be loaded
+            let attempts = 0;
+            while (!window.authManager || attempts < 20) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+
+            const currentUser = window.authManager?.getCurrentUser();
+
+            if (!currentUser || !currentUser.isOwner) {
+                console.error('⛔ Access denied: Only owner can access setup page');
+                alert('⛔ Zugriff verweigert!\n\nNur der Super-Admin (Owner) kann Werkstätten erstellen.\n\nSie werden zur Startseite weitergeleitet.');
+                window.location.href = 'admin-dashboard.html';
+                return false;
+            }
+
+            console.log('✅ Owner access verified - setup page accessible');
+            return true;
+        }
+
+        // Wait for Firebase and check access
+        window.addEventListener('firebaseReady', async () => {
+            const hasAccess = await checkOwnerAccess();
+            if (!hasAccess) {
+                // Hide all UI elements to prevent interaction
+                document.body.style.display = 'none';
+            }
+        });
+
         // Warte auf Firebase
         let adminUid = null;
         let adminData = {};
@@ -465,6 +512,7 @@
             const password = document.getElementById('werkstattPassword').value;
             const name = document.getElementById('werkstattName').value.trim();
             const werkstattId = document.getElementById('werkstattId').value.trim().toLowerCase();
+            const isOwner = document.getElementById('isOwner').checked;  // Read isOwner checkbox
 
             // Validation
             if (!email || !password || !name || !werkstattId) {
@@ -500,11 +548,12 @@
                     werkstattId: werkstattId,
                     role: 'werkstatt',
                     status: 'active',
+                    isOwner: isOwner,  // Add isOwner flag for access control
                     createdAt: new Date().toISOString(),
                     createdBy: adminUid || 'setup-tool'
                 });
 
-                console.log('✅ Firestore Dokument erstellt');
+                console.log('✅ Firestore Dokument erstellt (isOwner:', isOwner, ')');
 
                 // 3. Create mitarbeiter collection (init document)
                 const mitarbeiterCollectionName = `mitarbeiter_${werkstattId}`;
@@ -515,8 +564,29 @@
 
                 console.log('✅ Mitarbeiter-Collection erstellt:', mitarbeiterCollectionName);
 
+                // 4. Audit Logging
+                try {
+                    const currentUser = window.authManager?.getCurrentUser();
+                    await window.db.collection('audit_logs').add({
+                        action: 'create_werkstatt',
+                        createdBy: currentUser?.uid || adminUid || 'setup-tool',
+                        createdByEmail: currentUser?.email || 'unknown',
+                        targetUserId: uid,
+                        targetEmail: email,
+                        targetName: name,
+                        werkstattId: werkstattId,
+                        isOwner: isOwner,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        createdAt: new Date().toISOString(),
+                        success: true
+                    });
+                    console.log('✅ Audit Log erstellt');
+                } catch (auditError) {
+                    console.warn('⚠️ Audit Log failed (non-critical):', auditError);
+                }
+
                 // Save for later
-                werkstattData = { email, password, name, werkstattId };
+                werkstattData = { email, password, name, werkstattId, isOwner };
 
                 // Go to Step 3
                 document.getElementById('step2').classList.remove('active');
