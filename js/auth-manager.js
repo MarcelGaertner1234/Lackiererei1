@@ -196,7 +196,8 @@ async function loginWerkstatt(email, password) {
       name: userData.name,
       werkstattId: userData.werkstattId,
       role: 'werkstatt',
-      authType: 'firebase'
+      authType: 'firebase',
+      isOwner: userData.isOwner || false  // Owner flag for access control
     };
 
     // 7. Set currentAuthUser (for Firebase Auth state)
@@ -372,6 +373,7 @@ function getCurrentUser() {
       berechtigungen: {},
       werkstattName: currentWerkstatt.name,
       email: currentWerkstatt.email,
+      isOwner: currentWerkstatt.isOwner || false,  // Owner flag for access control
       loginStage: 1  // Only Stage 1 completed
     };
   }
@@ -385,6 +387,7 @@ function getCurrentUser() {
     mitarbeiterId: currentMitarbeiter.id,
     werkstattName: currentWerkstatt.name,
     email: currentWerkstatt.email,
+    isOwner: currentWerkstatt.isOwner || false,  // Owner flag inherited from werkstatt
     loginStage: 2  // Both stages completed
   };
 }
@@ -468,7 +471,8 @@ window.addEventListener('firebaseReady', () => {
               name: userData.name,
               werkstattId: userData.werkstattId,
               role: 'werkstatt',
-              authType: 'firebase'
+              authType: 'firebase',
+              isOwner: userData.isOwner || false  // Owner flag for access control
             };
             currentAuthUser = currentWerkstatt;
             console.log('✅ Current Auth User (Werkstatt):', currentAuthUser);

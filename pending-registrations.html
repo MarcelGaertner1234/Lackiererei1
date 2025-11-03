@@ -503,9 +503,37 @@
         let pendingRegistrations = [];
         let currentFilter = 'all';
 
+        // Check Owner Access
+        async function checkOwnerAccess() {
+            // Wait for auth state to be loaded
+            let attempts = 0;
+            while (!window.authManager || attempts < 20) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+
+            const currentUser = window.authManager?.getCurrentUser();
+
+            if (!currentUser || !currentUser.isOwner) {
+                console.error('⛔ Access denied: User is not owner');
+                alert('⛔ Zugriff verweigert!\n\nDiese Seite ist nur für den Super-Admin (Owner) sichtbar.\n\nSie werden zur Dashboard-Seite weitergeleitet.');
+                window.location.href = 'admin-dashboard.html';
+                return false;
+            }
+
+            console.log('✅ Owner access verified');
+            return true;
+        }
+
         // Wait for Firebase
         window.addEventListener('firebaseReady', async () => {
-            console.log('✅ Firebase ready - loading pending registrations');
+            console.log('✅ Firebase ready - checking access...');
+
+            // Check owner access first
+            const hasAccess = await checkOwnerAccess();
+            if (!hasAccess) return;
+
+            console.log('✅ Access granted - loading pending registrations');
             await loadPendingRegistrations();
         });
 
