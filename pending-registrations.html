@@ -509,42 +509,44 @@
 
         // Check Owner Access
         async function checkOwnerAccess() {
-            console.log('⏳ Waiting for authManager to initialize...');
+            console.log('⏳ Waiting for Firebase + Auth to initialize...');
 
-            // Wait for auth state to be loaded (extended timeout: 5 seconds)
-            let attempts = 0;
-            while (!window.authManager && attempts < 50) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                attempts++;
+            // STEP 1: Wait for Firebase to be ready
+            await window.initFirebase();
 
-                if (attempts % 10 === 0) {
-                    console.log(`⏳ Still waiting for authManager... (${attempts}/50 attempts)`);
-                }
-            }
-
-            // DEFENSIVE: Check if authManager initialization completed
-            if (!window.authManager) {
-                console.error('❌ RACE CONDITION DETECTED: window.authManager never initialized');
-                console.error('   Pending-registrations.html fired before auth-manager.js exported window.authManager');
-                console.error('   Waited 5 seconds (50 attempts) but authManager still not available');
-                alert('⛔ Kritischer Fehler!\n\nAuthentifizierung konnte nicht initialisiert werden.\n\nMögliche Ursache: Race Condition beim Laden.\n\nBitte aktualisieren Sie die Seite (Cmd+Shift+R).');
+            if (!window.firebaseInitialized || !window.authManager) {
+                console.error('❌ Firebase or authManager not initialized');
+                alert('⛔ Kritischer Fehler!\n\nAuthentifizierung konnte nicht initialisiert werden.\n\nBitte aktualisieren Sie die Seite (Cmd+Shift+R).');
                 window.location.href = 'index.html';
                 return false;
             }
 
-            console.log('✅ authManager ready after', attempts, 'attempts');
+            console.log('✅ Firebase + authManager ready');
 
-            const currentUser = window.authManager.getCurrentUser();
+            // STEP 2: Wait for user data (Stage 1 = Werkstatt OR Stage 2 = Mitarbeiter)
+            let currentUser = null;
+            let attempts = 0;
+            const maxAttempts = 20;
+
+            while (!currentUser && attempts < maxAttempts) {
+                currentUser = window.authManager.getCurrentUser();
+                if (!currentUser) {
+                    console.log(`⏳ Waiting for Auth State Listener (attempt ${attempts + 1}/${maxAttempts})...`);
+                    await new Promise(resolve => setTimeout(resolve, 250));
+                    attempts++;
+                }
+            }
 
             console.log('🔍 Access Check:', {
                 userExists: !!currentUser,
                 role: currentUser?.role,
                 isOwner: currentUser?.isOwner,
+                loginStage: currentUser?.loginStage,
                 email: currentUser?.email
             });
 
             if (!currentUser) {
-                console.error('⛔ Access denied: No user logged in');
+                console.error('⛔ Access denied: Auth timeout - no user logged in after 5 seconds');
                 alert('⛔ Zugriff verweigert!\n\nSie müssen eingeloggt sein.\n\nSie werden zur Startseite weitergeleitet.');
                 window.location.href = 'index.html';
                 return false;
@@ -557,14 +559,15 @@
             if (!isAdmin && !isOwner) {
                 console.error('⛔ Access denied: User is not admin or owner', {
                     role: currentUser.role,
-                    isOwner: currentUser.isOwner
+                    isOwner: currentUser.isOwner,
+                    loginStage: currentUser.loginStage
                 });
                 alert('⛔ Zugriff verweigert!\n\nDiese Seite ist nur für Admins und Owner sichtbar.\n\nSie werden zur Dashboard-Seite weitergeleitet.');
                 window.location.href = 'admin-dashboard.html';
                 return false;
             }
 
-            console.log('✅ Access granted - User:', currentUser.role, isOwner ? '(Owner)' : '');
+            console.log('✅ Access granted - User:', currentUser.role, isOwner ? '(Owner)' : '', `[Stage ${currentUser.loginStage}]`);
             return true;
         }
 
