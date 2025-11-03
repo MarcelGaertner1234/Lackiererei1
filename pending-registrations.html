@@ -506,14 +506,32 @@
 
         // Check Owner Access
         async function checkOwnerAccess() {
-            // Wait for auth state to be loaded
+            console.log('⏳ Waiting for authManager to initialize...');
+
+            // Wait for auth state to be loaded (extended timeout: 5 seconds)
             let attempts = 0;
-            while (!window.authManager || attempts < 20) {
+            while (!window.authManager && attempts < 50) {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 attempts++;
+
+                if (attempts % 10 === 0) {
+                    console.log(`⏳ Still waiting for authManager... (${attempts}/50 attempts)`);
+                }
             }
 
-            const currentUser = window.authManager?.getCurrentUser();
+            // DEFENSIVE: Check if authManager initialization completed
+            if (!window.authManager) {
+                console.error('❌ RACE CONDITION DETECTED: window.authManager never initialized');
+                console.error('   Pending-registrations.html fired before auth-manager.js exported window.authManager');
+                console.error('   Waited 5 seconds (50 attempts) but authManager still not available');
+                alert('⛔ Kritischer Fehler!\n\nAuthentifizierung konnte nicht initialisiert werden.\n\nMögliche Ursache: Race Condition beim Laden.\n\nBitte aktualisieren Sie die Seite (Cmd+Shift+R).');
+                window.location.href = 'index.html';
+                return false;
+            }
+
+            console.log('✅ authManager ready after', attempts, 'attempts');
+
+            const currentUser = window.authManager.getCurrentUser();
 
             console.log('🔍 Access Check:', {
                 userExists: !!currentUser,
