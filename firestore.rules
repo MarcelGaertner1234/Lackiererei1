@@ -314,6 +314,14 @@ service cloud.firestore {
       allow read, write: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
       allow read: if mitarbeiterCollection.matches('mitarbeiter_.*') && isMitarbeiter() && isActive();
       allow create, delete: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
+
+      // 🆕 Allow werkstatt accounts to create _init placeholder during setup
+      // This is needed because setup-werkstatt.html auto-logs in as the NEW account
+      // Only allows creation of the special _init document, not actual mitarbeiter records
+      allow create: if mitarbeiterCollection.matches('mitarbeiter_.*')
+                    && mitarbeiterId == '_init'
+                    && isAuthenticated()
+                    && request.resource.data.keys().hasOnly(['info', 'createdAt']);
     }
 
     // Kalender Collections: kalender_mosbach, kalender_heidelberg, etc.
@@ -547,6 +555,21 @@ service cloud.firestore {
       // ONLY Cloud Functions can read/write tokens
       // Partners should NOT have direct access (security: tokens are one-time use)
       allow read, write: if false;
+    }
+
+    // ============================================
+    // AUDIT_LOGS COLLECTION
+    // ============================================
+
+    match /audit_logs/{logId} {
+      // Admins can read audit logs
+      allow read: if isAdmin();
+
+      // Allow authenticated users to create audit logs (for setup-werkstatt.html)
+      allow create: if isAuthenticated();
+
+      // Only admins can write/update/delete
+      allow write: if isAdmin();
     }
 
     // ============================================
