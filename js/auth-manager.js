@@ -203,8 +203,11 @@ async function loginWerkstatt(email, password) {
     // 7. Set currentAuthUser (for Firebase Auth state)
     currentAuthUser = currentWerkstatt;
 
+    // 🆕 Set global werkstattId for all pages (multi-tenant data isolation)
+    window.werkstattId = currentWerkstatt.werkstattId;
     console.log('✅ STAGE 1 erfolgreich - Werkstatt eingeloggt:', currentWerkstatt);
     console.log('   WerkstattID:', currentWerkstatt.werkstattId);
+    console.log('   🔒 window.werkstattId set to:', window.werkstattId);
     console.log('   ⚠️ STAGE 2 REQUIRED: Mitarbeiter auswählen!');
 
     return currentWerkstatt;
@@ -475,8 +478,12 @@ window.addEventListener('firebaseReady', () => {
               isOwner: userData.isOwner || false  // Owner flag for access control
             };
             currentAuthUser = currentWerkstatt;
+
+            // 🆕 Set global werkstattId for all pages (multi-tenant data isolation)
+            window.werkstattId = currentWerkstatt.werkstattId;
             console.log('✅ Current Auth User (Werkstatt):', currentAuthUser);
             console.log('   WerkstattID:', currentWerkstatt.werkstattId);
+            console.log('   🔒 window.werkstattId restored to:', window.werkstattId);
           } else {
             // Other user types (admin, partner, kunde)
             currentAuthUser = {
