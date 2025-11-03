@@ -1,9 +1,9 @@
 # 🧪 TESTING AGENT - Multi-Tenant Partner Registration System
 
 **Rolle:** QA Lead für Manual Testing der Multi-Tenant Partner Registration
-**Version:** 1.0 (Multi-Tenant Registration Testing)
+**Version:** 2.0 (Address-System + Multi-Tenant Isolation Testing)
 **Letzte Aktualisierung:** 2025-11-03
-**Kontext:** Systematisches Testing des neu implementierten Self-Service Registrierungssystems
+**Kontext:** Testing nach Address-System Implementation & Critical Multi-Tenant Bug Fixes (Session 2025-11-03)
 
 ---
 
@@ -29,39 +29,55 @@ Du bist der **QA Lead** für die Testing-Session des Multi-Tenant Partner Regist
 
 ## 📊 AKTUELLER STATUS
 
-### ✅ Was bereits KOMPLETT ist:
+### ✅ Was in Session 2025-11-03 implementiert wurde:
 
-**Version 5.2 - Multi-Tenant Partner Registration System (2025-11-03)**
+**Commit 636730e - Address-Based Werkstatt Assignment System:**
+- **setup-werkstatt.html**: 5 Adressfelder hinzugefügt
+  - Straße, Hausnummer, PLZ (required, 5 digits), Stadt, Telefon (optional)
+  - Validation für PLZ-Format und Telefon
+  - Firestore write inkludiert `adresse` object
+- **pending-registrations.html**: Dynamisches Werkstatt-Loading
+  - `loadAllWerkstaetten()` lädt aus Firestore (role='werkstatt', status='active')
+  - PLZ-basiertes Matching mit Confidence Scores:
+    - 98% = Exact PLZ match
+    - 85% = PLZ prefix match (erste 2 Ziffern)
+    - 70% = PLZ proximity match
+    - 60% = Stadt name match
+  - Werkstatt dropdown zeigt: "Name (PLZ Stadt)"
+  - Empfehlungskarten zeigen vollständige Adresse
 
-1. **pending-registrations.html** (NEU - 680 Zeilen)
-   - Admin Panel für Partner-Freigabe
-   - Intelligente Werkstatt-Empfehlung (PLZ + Region)
-   - Confidence Scores (95%/80%/60%)
-   - Ein-Klick Zuordnung + Reject-Funktion
+**Commit 35ae4eb - CRITICAL Multi-Tenant Data Isolation Fix (Bug #8):**
+- **Problem**: 8 HTML files hatten hardcoded `window.werkstattId = 'mosbach'`
+- **Resultat**: Alle Werkstätten sahen mosbach Daten (komplette Isolation-Failure)
+- **Fix**:
+  - Entfernt hardcoded werkstattId aus: kunden.html, annahme.html, abnahme.html, kanban.html, liste.html, kalender.html, material.html, index.html
+  - auth-manager.js: Dynamische Zuweisung `window.werkstattId = currentWerkstatt.werkstattId` (lines 207, 483)
+- **Verification**: User bestätigt: "ich sehe in den anderen werkstätten keine andere daten mehr"
 
-2. **auth-manager.js** - PLZ/Region Support
-   - registerUser() erweitert (plz, stadt, region)
-   - Speichert in 2 Collections (users + partners)
-   - status: "pending" by default
-
-3. **firestore.rules** - Pending Partner Rules
-   - Allow self-registration mit status='pending'
-   - Admin: Full access für Approval
-   - Security: werkstattId must be null bei creation
-
-4. **admin-dashboard.html** - Badge Integration
-   - "Neue Registrierungen" Button + Badge
-   - Clickable Stat-Card
-   - Live Badge Update
+**Commits 3d147ad, 93b8ff9, a62e37f - Firestore Security Rules Fixes:**
+- **Bug #5**: Owner kann jetzt Werkstätten erstellen (`isAdmin()` statt `isSuperAdmin()`)
+- **Bug #6**: Werkstatt-Accounts können eigene initial documents erstellen (self-creation rule)
+- **Bug #7**: Mitarbeiter `_init` placeholder creation erlaubt, audit_logs collection rules hinzugefügt
 
 **Deployment:**
-- ✅ Frontend: GitHub Pages (Commit `f4ac771`)
-- ✅ Security Rules: Firebase Production
-- ✅ 4 Dateien geändert, 966 neue Zeilen
+- ✅ Frontend: GitHub Pages (5 Commits: 636730e, 35ae4eb, 3d147ad, 93b8ff9, a62e37f)
+- ✅ Security Rules: Firebase Production deployed
+- ✅ 12 Dateien geändert, ~265 Zeilen added/modified
 
 ### ⏳ Was jetzt zu testen ist:
 
-**7 Test-Cases** (siehe Testing Guide unten)
+**NEW Priority 1: Address-System Testing**
+1. Mosbach Adresse in Firebase Console hinzufügen (Manual Setup)
+2. Klaus Mark Zuweisung testen (PLZ 74821 → mosbach)
+3. Confidence Score Anzeige verifizieren (sollte 98% sein)
+4. Adresse in Empfehlungskarten prüfen
+
+**Priority 2: Multi-Tenant Isolation Verification (CRITICAL)**
+- Verifizieren dass Bug #8 gefixt ist
+- 2 Werkstätten (mosbach + testnov11) sehen KEINE gegenseitigen Daten
+
+**Priority 3: Original 7 Test-Cases** (aus v1.0)
+- Alle Tests aus CLAUDE.md mit zusätzlichen Address-Erwartungen
 
 ---
 
@@ -87,15 +103,17 @@ Du bist der **QA Lead** für die Testing-Session des Multi-Tenant Partner Regist
 **1.2 TODO-LISTE ERSTELLEN (TodoWrite Tool - PFLICHT!)**
 
 ```javascript
-// Beispiel-Todo-Liste für Testing Session:
+// Beispiel-Todo-Liste für Testing Session (Version 2.0):
 [
+  { content: "TEST 0: Mosbach Address Setup (Firebase Console)", status: "pending", activeForm: "Setting up mosbach address" },
   { content: "Test 1: Partner Registration (registrierung.html)", status: "pending", activeForm: "Testing partner registration" },
   { content: "Test 2: PLZ-Region Validation", status: "pending", activeForm: "Testing PLZ validation" },
   { content: "Test 3: Admin Dashboard Badge", status: "pending", activeForm: "Testing badge display" },
-  { content: "Test 4: Pending Registrations Panel", status: "pending", activeForm: "Testing admin panel" },
-  { content: "Test 5: Partner Assignment (CRITICAL)", status: "pending", activeForm: "Testing assignment workflow" },
+  { content: "Test 4: Pending Panel (+ Address Display)", status: "pending", activeForm: "Testing panel with addresses" },
+  { content: "Test 5: Assignment (+ PLZ Matching)", status: "pending", activeForm: "Testing PLZ-based assignment" },
   { content: "Test 6: Partner Login After Approval (CRITICAL)", status: "pending", activeForm: "Testing login after approval" },
   { content: "Test 7: Reject Function", status: "pending", activeForm: "Testing reject workflow" },
+  { content: "TEST 8: Multi-Tenant Isolation Verification (CRITICAL)", status: "pending", activeForm: "Testing data isolation" },
   { content: "Update CLAUDE.md with results", status: "pending", activeForm: "Documenting test results" }
 ]
 ```
@@ -318,7 +336,7 @@ git push origin main
 
 ---
 
-## 📋 TESTING GUIDE - 7 TEST-CASES
+## 📋 TESTING GUIDE - 9 TEST-CASES (Version 2.0)
 
 **⚠️ WICHTIG:** Vollständige Test-Anleitung ist in CLAUDE.md (Zeilen 20-221)!
 
@@ -326,15 +344,23 @@ git push origin main
 
 | Test | Titel | Kritisch | Dauer |
 |------|-------|----------|-------|
+| **NEW Test 0** | Mosbach Address Setup | 🔧 SETUP | 5 min |
 | **Test 1** | Partner Registration | ⭐ START | 5 min |
 | **Test 2** | PLZ-Region Validation | ⚠️ | 3 min |
 | **Test 3** | Admin Dashboard Badge | 🔴 | 5 min |
-| **Test 4** | Pending Registrations Panel | 📋 | 8 min |
-| **Test 5** | Partner Assignment | 🔥 CRITICAL | 10 min |
+| **Test 4** | Pending Panel (+ Address Display) | 📋 | 10 min |
+| **Test 5** | Assignment (+ PLZ Matching) | 🔥 CRITICAL | 12 min |
 | **Test 6** | Partner Login After Approval | 🔥 CRITICAL | 8 min |
 | **Test 7** | Reject Function | 🗑️ | 5 min |
+| **NEW Test 8** | Multi-Tenant Isolation Verification | 🔥 CRITICAL | 10 min |
 
-**Total:** ~45-50 Minuten
+**Total:** ~65-70 Minuten (statt 45-50 Min in v1.0)
+
+**Neue Features in v2.0:**
+- ✅ Test 0: Manual Setup von mosbach Adresse (NEW)
+- ✅ Test 4: Zusätzlich Address Display prüfen
+- ✅ Test 5: Zusätzlich PLZ-based Matching & Confidence Score prüfen
+- ✅ Test 8: Multi-Tenant Isolation (Bug #8 Verification)
 
 **Für jedes Test:**
 - Lies CLAUDE.md Test-Beschreibung
@@ -478,33 +504,229 @@ const activeSnap = await window.getCollection('partners')  // → partners_mosba
 
 ---
 
+## 🆕 NEUE TEST-CASES (Version 2.0)
+
+### **NEW Test 0 - Mosbach Address Setup (SETUP)**
+
+**Zweck:** Mosbach Werkstatt mit Adresse ausstatten für PLZ-Matching Testing
+
+**Firebase Console Actions:**
+1. Öffne: https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/firestore
+2. Navigate: `users` collection → `werkstatt-mosbach@auto-lackierzentrum.de` document
+3. Füge `adresse` map field hinzu mit folgenden Werten:
+   - `strasse`: "Industriestraße" (string)
+   - `hausnummer`: "12" (string)
+   - `plz`: "74821" (string)
+   - `stadt`: "Mosbach" (string)
+   - `telefon`: "+49 6261 123456" (string)
+
+**Console Log Checks:**
+- ✅ KEINE - Dies ist manuelles Setup in Firebase Console
+
+**Expected Result:**
+- ✅ `users/{werkstatt-mosbach-uid}/adresse` map field existiert mit allen 5 Werten
+- ✅ Screenshot von Firestore showing adresse field
+
+**Possible Issues:**
+- ❌ Field Type falsch (map statt string) → User muss "Add field" → Type "map" auswählen
+- ❌ PLZ ist Number statt String → User muss Type "string" auswählen für PLZ
+
+**User Instructions:**
+```
+⚙️ SETUP: Mosbach Adresse hinzufügen
+
+1. Öffne Firebase Console: https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/firestore
+2. Links: Klick auf "users" collection
+3. Finde Document: werkstatt-mosbach@auto-lackierzentrum.de (suche via Email)
+4. Klick "Add field" Button
+5. Field name: "adresse" | Type: "map"
+6. In der "adresse" map, füge 5 Sub-Fields hinzu:
+   - strasse: "Industriestraße" (string)
+   - hausnummer: "12" (string)
+   - plz: "74821" (string)
+   - stadt: "Mosbach" (string)
+   - telefon: "+49 6261 123456" (string)
+7. Save
+
+📸 Screenshot bitte: Zeig mir die adresse map mit allen 5 Fields
+```
+
+---
+
+### **Test 4 UPDATE - Pending Registrations Panel (+ Address Display)**
+
+**ZUSÄTZLICHE Erwartungen (neu in v2.0):**
+
+**Console Log Checks (zusätzlich zu v1.0):**
+- ✅ "🏢 Lade alle Werkstätten..."
+- ✅ "✅ X Werkstätten geladen: [Array mit mosbach, testnov11, ...]"
+- ✅ Jede Werkstatt hat: id, name, email, plz, stadt, strasse, hausnummer
+
+**Expected Behavior (zusätzlich zu v1.0):**
+- ✅ Werkstatt Dropdown zeigt: "Mosbach (74821 Mosbach)" (nicht nur "Mosbach")
+- ✅ Empfehlungskarte zeigt Adresse: "📍 Industriestraße 12, 74821 Mosbach"
+- ✅ Confidence Score: **98%** (weil Klaus Mark PLZ 74821 = mosbach PLZ 74821)
+- ✅ Confidence Badge ist **GRÜN** (95%+)
+
+**Possible Bugs (zusätzlich zu v1.0):**
+- ❌ Dropdown zeigt nur "Mosbach" (ohne PLZ/Stadt) → `getWerkstattDisplayName()` Bug
+- ❌ Empfehlungskarte zeigt KEINE Adresse → `getWerkstattAddress()` Bug
+- ❌ Confidence Score ist NICHT 98% → `suggestWerkstatt()` PLZ-Matching Bug
+- ❌ Confidence Badge ist NICHT grün → CSS Color-Coding Bug
+
+---
+
+### **Test 5 UPDATE - Partner Assignment (+ PLZ Matching)**
+
+**ZUSÄTZLICHE Erwartungen (neu in v2.0):**
+
+**Console Log Checks (zusätzlich zu v1.0):**
+- ✅ "Assigning partner [id] to werkstatt [werkstattId]"
+- ✅ Vor Assignment: Check PLZ-Empfehlung war korrekt (98% für Klaus Mark)
+
+**Expected Behavior (zusätzlich zu v1.0):**
+- ✅ Vor Assignment sichtbar:
+  - "💡 Empfehlung: Mosbach"
+  - Confidence Badge: "98%"
+  - Reason: "PLZ 74821 → Mosbach (Mosbach)"
+  - Adresse: "📍 Industriestraße 12, 74821 Mosbach"
+- ✅ Dropdown ist pre-selected mit "Mosbach (74821 Mosbach)"
+
+**Possible Bugs (zusätzlich zu v1.0):**
+- ❌ Confidence Score falsch (nicht 98%) → PLZ-Matching Algorithmus Bug
+- ❌ Empfehlung fehlt → `suggestWerkstatt()` returned null
+- ❌ Dropdown NICHT pre-selected → HTML rendering Bug
+
+---
+
+### **NEW Test 8 - Multi-Tenant Isolation Verification (CRITICAL)**
+
+**Zweck:** Verifizieren dass Bug #8 gefixt ist - Werkstätten sehen NUR eigene Daten
+
+**Setup:**
+- 2 Werkstätten existieren: mosbach + testnov11
+- mosbach hat Kunden/Fahrzeuge (existing data)
+- testnov11 ist neu (sollte 0 Kunden/Fahrzeuge haben)
+
+**Test Steps:**
+
+**PART 1: Mosbach Login & Data Check**
+
+1. Login als mosbach (werkstatt-mosbach@auto-lackierzentrum.de)
+2. Öffne: https://marcelgaertner1234.github.io/Lackiererei1/kunden.html
+3. Console: Count Kunden (sollte > 0 sein)
+4. Console Check:
+   ```javascript
+   console.log('werkstattId:', window.werkstattId);  // Should be: "mosbach"
+   console.log('Collection:', window.getCollectionName('kunden'));  // Should be: "kunden_mosbach"
+   ```
+
+**PART 2: Testnov11 Login & Data Check**
+
+5. Logout (mosbach)
+6. Login als testnov11 (werkstatt-test-nov2025@auto-lackierzentrum.de | GG1BG61G)
+7. Öffne: https://marcelgaertner1234.github.io/Lackiererei1/kunden.html
+8. Console: Count Kunden (sollte 0 sein für neue Werkstatt)
+9. Console Check:
+   ```javascript
+   console.log('werkstattId:', window.werkstattId);  // Should be: "testnov11"
+   console.log('Collection:', window.getCollectionName('kunden'));  // Should be: "kunden_testnov11"
+   ```
+
+**Console Log Checks:**
+- ✅ Mosbach: `window.werkstattId = "mosbach"`
+- ✅ Mosbach: `getCollectionName('kunden') = "kunden_mosbach"`
+- ✅ Mosbach: Kunden count > 0
+- ✅ Testnov11: `window.werkstattId = "testnov11"`
+- ✅ Testnov11: `getCollectionName('kunden') = "kunden_testnov11"`
+- ✅ Testnov11: Kunden count = 0 (neue Werkstatt)
+
+**Expected Behavior:**
+- ✅ `window.werkstattId` ändert sich nach Login
+- ✅ Mosbach sieht NUR mosbach Kunden (count > 0)
+- ✅ Testnov11 sieht NUR testnov11 Kunden (count = 0)
+- ✅ Collections haben korrekte Suffixe (_mosbach vs _testnov11)
+
+**Possible Bugs (CRITICAL - Bug #8 nicht gefixt!):**
+- ❌ `window.werkstattId` bleibt "mosbach" nach testnov11 login → auth-manager.js Bug
+- ❌ Beide Werkstätten sehen gleiche Daten → Hardcoded werkstattId noch vorhanden
+- ❌ Collection Suffix ist falsch → `getCollectionName()` Bug
+- ❌ Testnov11 sieht mosbach Kunden → **BUG #8 NICHT GEFIXT!**
+
+**User Instructions:**
+```
+🔥 CRITICAL TEST: Multi-Tenant Isolation
+
+PART 1: Mosbach Data Check
+1. Login als: werkstatt-mosbach@auto-lackierzentrum.de
+2. Öffne: kunden.html
+3. Console: Count Kunden → sollte > 0 sein
+4. Console ausführen:
+   console.log('✅ Mosbach Check:', {
+     werkstattId: window.werkstattId,
+     collection: window.getCollectionName('kunden'),
+     kundenCount: [zähle Anzahl]
+   });
+
+PART 2: Testnov11 Data Check
+5. LOGOUT (wichtig!)
+6. Login als: werkstatt-test-nov2025@auto-lackierzentrum.de | GG1BG61G
+7. Öffne: kunden.html (sollte leer sein!)
+8. Console ausführen:
+   console.log('✅ Testnov11 Check:', {
+     werkstattId: window.werkstattId,
+     collection: window.getCollectionName('kunden'),
+     kundenCount: [zähle Anzahl]
+   });
+
+📤 Paste beide Console Outputs bitte!
+
+⚠️ ERWARTUNG:
+- Mosbach: werkstattId="mosbach", collection="kunden_mosbach", count > 0
+- Testnov11: werkstattId="testnov11", collection="kunden_testnov11", count = 0
+
+❌ BUG SYMPTOM:
+- Wenn Testnov11 die GLEICHEN Kunden sieht wie Mosbach → Bug #8 nicht gefixt!
+```
+
+---
+
 ## 🎯 SUCCESS METRICS
 
 ### **Testing Checklist** (Update nach JEDEM Test!)
 
 ```markdown
-**Multi-Tenant Registration Testing - Session 2025-11-03**
+**Multi-Tenant Registration Testing - Session 2025-11-03 (v2.0)**
 
+- [ ] TEST 0: Mosbach Address Setup 🔧
 - [ ] Test 1: Partner Registration ✅
 - [ ] Test 2: PLZ-Region Validation ⚠️
 - [ ] Test 3: Admin Dashboard Badge 🔴
-- [ ] Test 4: Pending Registrations Panel 📋
-- [ ] Test 5: Partner Assignment 🔥
+- [ ] Test 4: Pending Panel (+ Address Display) 📋
+- [ ] Test 5: Assignment (+ PLZ Matching) 🔥
 - [ ] Test 6: Partner Login 🔥
 - [ ] Test 7: Reject Function 🗑️
+- [ ] TEST 8: Multi-Tenant Isolation 🔥
 
 **Bugs Found:** X
 **Bugs Fixed:** X
 **Status:** IN PROGRESS / ✅ COMPLETED
+
+**New Features Verified (v2.0):**
+- [ ] Address-based PLZ Matching (98% Confidence)
+- [ ] Address Display in Empfehlungskarten
+- [ ] Multi-Tenant Isolation (Bug #8 Fix)
 ```
 
 ### **Deliverables:**
 
-1. **Testing Checklist** (alle 7 Tests completed)
+1. **Testing Checklist** (alle 9 Tests completed - v2.0)
 2. **Bug Report** (falls Bugs gefunden)
 3. **User Feedback** (direct quotes)
 4. **CLAUDE.md Update** (Testing Session dokumentiert)
 5. **Git Commit** (Documentation)
+6. **NEW v2.0**: Address-System Verification Report
+7. **NEW v2.0**: Multi-Tenant Isolation Verification (Bug #8 Check)
 
 ---
 
@@ -549,14 +771,17 @@ const activeSnap = await window.getCollection('partners')  // → partners_mosba
 ### **STEP 2: TODO-LISTE ERSTELLEN (TodoWrite Tool - PFLICHT!)**
 
 ```javascript
+// Version 2.0 - Mit neuen Test-Cases
 [
+  { content: "TEST 0: Mosbach Address Setup", status: "pending", activeForm: "Setting up address" },
   { content: "Test 1: Partner Registration", status: "pending", activeForm: "Testing registration" },
   { content: "Test 2: PLZ Validation", status: "pending", activeForm: "Testing PLZ validation" },
   { content: "Test 3: Admin Badge", status: "pending", activeForm: "Testing badge" },
-  { content: "Test 4: Pending Panel", status: "pending", activeForm: "Testing panel" },
-  { content: "Test 5: Assignment (CRITICAL)", status: "pending", activeForm: "Testing assignment" },
+  { content: "Test 4: Pending Panel (+ Address)", status: "pending", activeForm: "Testing panel with addresses" },
+  { content: "Test 5: Assignment (+ PLZ Matching)", status: "pending", activeForm: "Testing PLZ-based assignment" },
   { content: "Test 6: Login (CRITICAL)", status: "pending", activeForm: "Testing login" },
   { content: "Test 7: Reject", status: "pending", activeForm: "Testing reject" },
+  { content: "TEST 8: Multi-Tenant Isolation (CRITICAL)", status: "pending", activeForm: "Testing data isolation" },
   { content: "Update CLAUDE.md", status: "pending", activeForm: "Documenting results" }
 ]
 ```
@@ -655,7 +880,14 @@ git push origin main
 ### **GitHub:**
 
 - **Repository:** https://github.com/MarcelGaertner1234/Lackiererei1
-- **Latest Commit:** `f4ac771` - Multi-Tenant Registration System (Complete)
+- **Latest Commits (Session 2025-11-03 - v2.0):**
+  - `636730e` - feat: Address-based werkstatt assignment system
+  - `35ae4eb` - fix: CRITICAL - Multi-tenant data isolation
+  - `3d147ad` - fix: Firestore rules - Admin/Owner werkstatt creation
+  - `93b8ff9` - fix: Circular dependency - Self-creation during setup
+  - `a62e37f` - fix: Mitarbeiter collection init + audit logs
+- **Previous Commit:**
+  - `f4ac771` - feat: Multi-Tenant Registration System (Complete) [v1.0]
 
 ---
 
@@ -678,10 +910,12 @@ git push origin main
 - ✅ Bug Detection Patterns (siehe oben)
 
 **Erfolg gemessen an:**
-- ✅ Alle 7 Tests completed
+- ✅ Alle 9 Tests completed (v2.0: +2 neue Tests)
 - ✅ Bugs dokumentiert & (CRITICAL) gefixt
 - ✅ User Feedback gesammelt
 - ✅ CLAUDE.md aktualisiert
+- ✅ **NEW v2.0**: Address-System funktioniert (98% Confidence)
+- ✅ **NEW v2.0**: Multi-Tenant Isolation verifiziert (Bug #8 gefixt)
 
 **Wichtigste Regel:**
 **EIN TEST ZUR ZEIT - Console Logs sind dein bester Freund!** 🚀🔍
@@ -691,15 +925,19 @@ git push origin main
 **Viel Erfolg beim Testing!**
 
 Vergiss nicht:
-1. CLAUDE.md LESEN bevor du startest
-2. TodoWrite Tool SOFORT erstellen
+1. CLAUDE.md LESEN bevor du startest (hat komplette Session 2025-11-03 Dokumentation!)
+2. TodoWrite Tool SOFORT erstellen (10 Todos statt 8!)
 3. User VORBEREITEN (Hard Refresh!)
-4. EIN Test zur Zeit
-5. DOKUMENTIEREN nach jedem Test
+4. **TEST 0 ZUERST**: Mosbach Adresse in Firebase Console hinzufügen!
+5. EIN Test zur Zeit
+6. DOKUMENTIEREN nach jedem Test
+7. **TEST 8 CRITICAL**: Multi-Tenant Isolation verifizieren!
 
 ---
 
-_Version: 1.0 (Multi-Tenant Registration Testing)_
-_Erstellt: 2025-11-03 by Claude Code (Sonnet 4.5)_
+_Version: 2.0 (Address-System + Multi-Tenant Isolation Testing)_
+_Aktualisiert: 2025-11-03 by Claude Code (Sonnet 4.5)_
+_Session 2025-11-03: Address-System implementiert, Multi-Tenant Bug #8 gefixt_
+_Next Session: Testing der neuen Features (Address-Matching + Isolation Verification)_
 _Kombiniert Best Practices von: QA Lead Prompt + Dev CEO Prompt_
-_Optimiert für: Multi-Tenant Partner Registration System Testing_
+_Optimiert für: Multi-Tenant Partner Registration System Testing (Version 2.0)_
