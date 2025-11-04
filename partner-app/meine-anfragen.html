@@ -3282,7 +3282,7 @@
 
             if (isEmulator) {
                 console.log('🧪 RUN #62: Emulator-Modus erkannt - Firestore Partner-Check wird übersprungen');
-                console.log('   Partner aus LocalStorage:', partner.id);
+                console.log('   Partner aus LocalStorage:', partner.partnerId);
                 console.log('   Hostname:', window.location.hostname);
                 document.getElementById('partnerName').textContent = partner.name;
                 return; // Skip Firestore check in tests
@@ -3291,14 +3291,14 @@
             // NEU: Aktuelle Partner-Daten aus Firestore laden (nur Production)
             // 🐛 BUG #14 DEBUG: Erweiterte Logs für Partner-Loading
             console.log('\n🔍 ========== PARTNER-LOADING DEBUG ==========');
-            console.log('   partner.id:', partner.id || 'FEHLT! ❌');
+            console.log('   partner.partnerId:', partner.partnerId || 'FEHLT! ❌');
             console.log('   partner.email:', partner.email || 'FEHLT! ❌');
             console.log('   db vorhanden:', !!db);
 
             try {
-                if (db && partner.id) {
-                    console.log('🔄 Lade aktuelle Partner-Daten aus Firestore für ID:', partner.id);
-                    const partnerDoc = await window.getCollection('partners').doc(partner.id).get();
+                if (db && partner.partnerId) {
+                    console.log('🔄 Lade aktuelle Partner-Daten aus Firestore für ID:', partner.partnerId);
+                    const partnerDoc = await window.getCollection('partners').doc(partner.partnerId).get();
 
                     if (partnerDoc.exists) {
                         const firestoreData = partnerDoc.data();
@@ -3309,7 +3309,7 @@
 
                         // Partner-Objekt mit Firestore-Daten aktualisieren
                         partner = {
-                            id: partner.id,
+                            partnerId: partner.partnerId,
                             ...firestoreData
                         };
                         // LocalStorage aktualisieren
@@ -3319,14 +3319,14 @@
                         console.log('   📊 konditionenGeprueft:', partner.konditionenGeprueft ? 'JA ✅' : 'NEIN ❌');
                     } else {
                         console.warn('❌ Partner-Dokument NICHT GEFUNDEN in Firestore!');
-                        console.warn('   Partner-ID:', partner.id);
+                        console.warn('   Partner-ID:', partner.partnerId);
                         console.warn('   ⚠️ MÖGLICHE URSACHE: kunden.html hat mit anderem partnerCode synchronisiert!');
                         console.warn('   ⚠️ RESULTAT: Keine Rabatt-Konditionen verfügbar! 🐛');
                         // RUN #62: Kein Redirect - fahre mit LocalStorage-Daten fort
                     }
                 } else {
                     if (!db) console.warn('❌ Firebase DB nicht verfügbar!');
-                    if (!partner.id) console.warn('❌ Partner-ID fehlt!');
+                    if (!partner.partnerId) console.warn('❌ Partner-ID fehlt!');
                 }
             } catch (error) {
                 console.warn('⚠️ Fehler beim Laden der Partner-Daten aus Firestore:', error);
@@ -3412,7 +3412,7 @@
 
                 // ✅ REALTIME LISTENER: Automatically updates UI when data changes
                 anfrageNUnsubscribe = window.getCollection('partnerAnfragen')
-                    .where('partnerId', '==', partner.id)
+                    .where('partnerId', '==', partner.partnerId)
                     .onSnapshot(async (snapshot) => {
                         console.log('🔄 Realtime Update: Received', snapshot.size, 'anfragen');
 
@@ -6326,7 +6326,7 @@
          * @returns {Promise<number>} Anzahl gespeicherter Bonuses
          */
         async function saveBonusToFirestore(partner, umsatzMonat) {
-            if (!partner || !partner.id || !partner.rabattKonditionen) {
+            if (!partner || !partner.partnerId || !partner.rabattKonditionen) {
                 console.log('⚠️ saveBonusToFirestore: Ungültige Partner-Daten');
                 return 0;
             }
@@ -6335,7 +6335,7 @@
             let savedCount = 0;
 
             console.log('\n💾 ========== BONUS-TO-FIRESTORE CHECK ==========');
-            console.log(`   Partner: ${partner.name} (${partner.id})`);
+            console.log(`   Partner: ${partner.name} (${partner.partnerId})`);
             console.log(`   Monatsumsatz: ${umsatzMonat}€`);
 
             // Prüfe JEDE Stufe einzeln
@@ -6355,7 +6355,7 @@
                     try {
                         // 1. Prüfe ob Bonus bereits in bonusAuszahlungen existiert
                         const existingBonus = await window.getCollection('bonusAuszahlungen')
-                            .where('partnerId', '==', partner.id)
+                            .where('partnerId', '==', partner.partnerId)
                             .where('stufe', '==', stufeKey)
                             .limit(1)
                             .get();
@@ -6367,8 +6367,8 @@
 
                         // 2. Erstelle neuen Bonus-Eintrag
                         const bonusData = {
-                            partnerId: partner.id,
-                            partnerName: partner.name || partner.email || partner.id,
+                            partnerId: partner.partnerId,
+                            partnerName: partner.name || partner.email || partner.partnerId,
                             stufe: stufeKey,
                             bonusBetrag: stufeBonus,
                             umsatzBeimErreichen: umsatzMonat,
@@ -6381,7 +6381,7 @@
                         console.log(`      ✅ Bonus in Firestore gespeichert! ID: ${bonusRef.id}`);
 
                         // 3. Setze bonusErhalten Flag im Partner-Dokument
-                        await window.getCollection('partners').doc(partner.id).update({
+                        await window.getCollection('partners').doc(partner.partnerId).update({
                             [`rabattKonditionen.${stufeKey}.bonusErhalten`]: true
                         });
                         console.log(`      ✅ bonusErhalten Flag gesetzt in Partner-Dokument`);
@@ -6707,12 +6707,12 @@
             console.log(`   💰 Gesamt: ${formatCurrency(umsatzGesamt)}`);
 
             // ✅ NEU: Lade einmalige Bonuses aus Firestore
-            console.log('\n🎁 Lade Bonuses für Partner:', partner.id);
+            console.log('\n🎁 Lade Bonuses für Partner:', partner.partnerId);
             let gesamtBonus = 0;
             try {
                 const db = firebase.firestore();
                 const bonusSnapshot = await window.getCollection('bonusAuszahlungen')
-                    .where('partnerId', '==', partner.id)
+                    .where('partnerId', '==', partner.partnerId)
                     .get();
 
                 gesamtBonus = bonusSnapshot.docs.reduce((sum, doc) => {
