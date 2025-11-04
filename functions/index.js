@@ -2639,7 +2639,10 @@ exports.ensurePartnerAccount = functions
               uid: userRecord.uid,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
               bonusPunkte: 0,
-              status: "active"
+              status: "active",
+              // ✅ FIX: Add password change fields to GLOBAL collection too
+              initialPassword: generatedPassword,
+              requiresPasswordChange: true
             };
 
             // Write to GLOBAL collection
