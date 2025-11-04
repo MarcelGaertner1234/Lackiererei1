@@ -296,10 +296,29 @@ service cloud.firestore {
       allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 
+      // 🆕 BUGFIX 2025-11-04: Partners können ihre eigenen Fahrzeuge lesen
+      // Security: Matching via partnerEmail oder kundenEmail (für direkte Kunden)
+      allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
+                  && isPartner()
+                  && isActive()
+                  && (
+                    resource.data.partnerEmail == request.auth.token.email
+                    || resource.data.kundenEmail == request.auth.token.email
+                  );
+
       // Subcollections: Fotos
       match /fotos/{photoId} {
         allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
                            && (isAdmin() || (isMitarbeiter() && isActive()));
+
+        // 🆕 BUGFIX 2025-11-04: Partners können Fotos ihrer eigenen Fahrzeuge lesen
+        allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
+                    && isPartner()
+                    && isActive()
+                    && (
+                      get(/databases/$(database)/documents/$(fahrzeugeCollection)/$(vehicleId)).data.partnerEmail == request.auth.token.email
+                      || get(/databases/$(database)/documents/$(fahrzeugeCollection)/$(vehicleId)).data.kundenEmail == request.auth.token.email
+                    );
       }
     }
 
