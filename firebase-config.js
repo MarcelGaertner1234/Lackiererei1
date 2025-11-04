@@ -359,11 +359,20 @@ window.firebaseApp = {
 
         // Update with new data if provided
         if (typeof kundeData === 'object') {
-          if (kundeData.email && !existingData.email) updates.email = kundeData.email;
+          if (kundeData.email && !existingData.email) {
+            updates.email = kundeData.email;
+            // BUGFIX 2025-11-04: Auto-generate partnerCode from email
+            if (!existingData.partnerCode) {
+              updates.partnerCode = kundeData.email.split('@')[0].toLowerCase();
+            }
+          }
           if (kundeData.telefon && !existingData.telefon) updates.telefon = kundeData.telefon;
-          if (kundeData.partnerId && !existingData.partnerId) updates.partnerId = kundeData.partnerId;
           if (kundeData.notizen) {
             updates.notizen = (existingData.notizen || '') + '\n' + kundeData.notizen;
+          }
+          // BUGFIX 2025-11-04: Support tags if provided
+          if (kundeData.tags && !existingData.tags) {
+            updates.tags = kundeData.tags;
           }
         }
 
@@ -372,13 +381,17 @@ window.firebaseApp = {
         return kundeId;
       } else {
         // Create new customer
+        const email = typeof kundeData === 'object' ? (kundeData.email || '') : '';
         const neuerKunde = {
           id: 'kunde_' + Date.now(),
           name: kundenname,
           telefon: typeof kundeData === 'object' ? (kundeData.telefon || '') : '',
-          email: typeof kundeData === 'object' ? (kundeData.email || '') : '',
-          partnerId: typeof kundeData === 'object' ? (kundeData.partnerId || '') : '',
+          email: email,
+          // BUGFIX 2025-11-04: Use partnerCode (not partnerId) - auto-generate from email
+          partnerCode: email ? email.split('@')[0].toLowerCase() : '',
           notizen: typeof kundeData === 'object' ? (kundeData.notizen || '') : '',
+          // BUGFIX 2025-11-04: Support tags
+          tags: typeof kundeData === 'object' ? (kundeData.tags || []) : [],
           erstbesuch: new Date().toISOString(),
           letzterBesuch: new Date().toISOString(),
           anzahlBesuche: 1
@@ -388,6 +401,7 @@ window.firebaseApp = {
         console.log(`✅ Neuer Kunde erstellt: ${kundenname} (ID: ${neuerKunde.id})`);
         console.log(`   📧 Email: ${neuerKunde.email || 'N/A'}`);
         console.log(`   📞 Telefon: ${neuerKunde.telefon || 'N/A'}`);
+        console.log(`   🔑 Partner-Code: ${neuerKunde.partnerCode || 'N/A'}`);
         return neuerKunde.id;
       }
     } catch (error) {
