@@ -346,14 +346,20 @@
                     await user.updatePassword(newPw);
                     console.log('✅ Passwort in Firebase Auth aktualisiert');
 
-                    // Firestore aktualisieren (partners_mosbach)
-                    const partnerRef = window.getCollection('partners').doc(partnerId);
-                    await partnerRef.update({
+                    // Firestore aktualisieren - BEIDE Collections (multi-tenant + global)
+                    const updateData = {
                         requiresPasswordChange: false,
                         passwordChangedAt: new Date().toISOString(),
                         initialPassword: firebase.firestore.FieldValue.delete() // Initial-Passwort löschen!
-                    });
-                    console.log('✅ Firestore aktualisiert - requiresPasswordChange = false');
+                    };
+
+                    await Promise.all([
+                        // Multi-tenant collection (z.B. partners_mosbach)
+                        window.getCollection('partners').doc(partnerId).update(updateData),
+                        // Globale collection (partner)
+                        db.collection('partner').doc(partnerId).update(updateData)
+                    ]);
+                    console.log('✅ Firestore aktualisiert - requiresPasswordChange = false (beide Collections)');
 
                     // Success
                     alert('✅ Passwort erfolgreich geändert! Sie werden zum Dashboard weitergeleitet.');
