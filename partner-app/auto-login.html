@@ -210,7 +210,27 @@
                         window.werkstattId = result.data.werkstattId;
                         console.log('✅ [AUTO-LOGIN] window.werkstattId gesetzt:', window.werkstattId);
 
-                        // STEP 4: Show success and redirect
+                        // 🆕 BUGFIX 2025-11-04 (FIX #20B): Check if password change required
+                        try {
+                            console.log('🔍 Prüfe ob Passwort-Reset erforderlich...');
+                            const partnerDoc = await window.getCollection('partners').doc(result.data.partnerId).get();
+                            if (partnerDoc.exists && partnerDoc.data().requiresPasswordChange) {
+                                console.log('⚠️ Partner muss Passwort ändern - zeige Modal');
+                                showSuccess(); // Show success briefly
+
+                                setTimeout(() => {
+                                    document.getElementById('success').style.display = 'none';
+                                    showForcePasswordChangeModal(result.data.email, result.data.partnerId);
+                                }, 1000);
+                                return; // STOP - no redirect!
+                            }
+                            console.log('✅ Kein Passwort-Reset erforderlich - fahre fort mit Redirect');
+                        } catch (error) {
+                            console.error('⚠️ Fehler beim Password-Check:', error);
+                            // Continue with redirect if check fails (don't block login)
+                        }
+
+                        // STEP 4: Show success and redirect (only if no password reset needed)
                         showSuccess();
 
                         setTimeout(() => {
@@ -269,6 +289,179 @@
             document.getElementById('error').style.display = 'none';
             document.getElementById('success').style.display = 'block';
         }
+
+        /**
+         * 🆕 BUGFIX 2025-11-04: Zeigt das Force Password Change Modal an
+         * @param {string} email - Partner email
+         * @param {string} partnerId - Partner ID
+         */
+        function showForcePasswordChangeModal(email, partnerId) {
+            console.log('🔐 Zeige Force Password Change Modal für:', email);
+
+            const modal = document.getElementById('forcePasswordChangeModal');
+            modal.style.display = 'flex';
+
+            // Form Submit Handler
+            const form = document.getElementById('changePasswordForm');
+            form.onsubmit = async (e) => {
+                e.preventDefault();
+
+                const currentPw = document.getElementById('currentPassword').value;
+                const newPw = document.getElementById('newPassword').value;
+                const confirmPw = document.getElementById('confirmPassword').value;
+                const submitBtn = document.getElementById('pwChangeSubmitBtn');
+                const errorDiv = document.getElementById('pwChangeError');
+                const errorText = document.getElementById('pwChangeErrorText');
+
+                // Validierung
+                if (newPw !== confirmPw) {
+                    errorText.textContent = 'Die Passwörter stimmen nicht überein!';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+
+                if (newPw.length < 8) {
+                    errorText.textContent = 'Das Passwort muss mindestens 8 Zeichen lang sein!';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+
+                // Button deaktivieren
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span style="display: inline-block; animation: spin 1s linear infinite;">⏳</span> Passwort wird geändert...';
+                errorDiv.style.display = 'none';
+
+                try {
+                    // Re-authenticate mit aktuellem Passwort
+                    const user = firebase.auth().currentUser;
+                    if (!user) {
+                        throw new Error('Kein Benutzer eingeloggt');
+                    }
+
+                    const credential = firebase.auth.EmailAuthProvider.credential(email, currentPw);
+                    await user.reauthenticateWithCredential(credential);
+                    console.log('✅ Re-Authentifizierung erfolgreich');
+
+                    // Passwort aktualisieren
+                    await user.updatePassword(newPw);
+                    console.log('✅ Passwort in Firebase Auth aktualisiert');
+
+                    // Firestore aktualisieren (partners_mosbach)
+                    const partnerRef = window.getCollection('partners').doc(partnerId);
+                    await partnerRef.update({
+                        requiresPasswordChange: false,
+                        passwordChangedAt: new Date().toISOString(),
+                        initialPassword: firebase.firestore.FieldValue.delete() // Initial-Passwort löschen!
+                    });
+                    console.log('✅ Firestore aktualisiert - requiresPasswordChange = false');
+
+                    // Success
+                    alert('✅ Passwort erfolgreich geändert! Sie werden zum Dashboard weitergeleitet.');
+                    modal.style.display = 'none';
+                    window.location.href = './meine-anfragen.html';
+
+                } catch (error) {
+                    console.error('❌ Fehler beim Passwort ändern:', error);
+
+                    let errorMessage = 'Fehler beim Ändern des Passworts.';
+                    if (error.code === 'auth/wrong-password') {
+                        errorMessage = 'Das aktuelle Passwort ist falsch!';
+                    } else if (error.code === 'auth/weak-password') {
+                        errorMessage = 'Das neue Passwort ist zu schwach!';
+                    } else if (error.code === 'auth/requires-recent-login') {
+                        errorMessage = 'Bitte loggen Sie sich erneut ein und versuchen Sie es nochmal.';
+                    } else {
+                        errorMessage = error.message || errorMessage;
+                    }
+
+                    errorText.textContent = errorMessage;
+                    errorDiv.style.display = 'block';
+
+                    // Button wieder aktivieren
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = 'Passwort ändern';
+                }
+            };
+        }
     </script>
+
+    <!-- 🆕 BUGFIX 2025-11-04: Force Password Change Modal -->
+    <div id="forcePasswordChangeModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 10000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 12px; max-width: 500px; width: 90%; padding: 0; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3); animation: modalFadeIn 0.3s ease;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px 12px 0 0;">
+                <h2 style="margin: 0; font-size: 22px; font-weight: 600;">🔐 Passwort ändern erforderlich</h2>
+                <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.95;">Aus Sicherheitsgründen müssen Sie Ihr Initial-Passwort ändern.</p>
+            </div>
+
+            <!-- Content -->
+            <div style="padding: 25px;">
+                <form id="changePasswordForm">
+                    <div style="margin-bottom: 18px;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 6px; color: #333; font-size: 14px;">
+                            Aktuelles Passwort
+                        </label>
+                        <input type="password" id="currentPassword" required
+                               style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; transition: border 0.2s;"
+                               onfocus="this.style.borderColor='#667eea'"
+                               onblur="this.style.borderColor='#e0e0e0'">
+                    </div>
+
+                    <div style="margin-bottom: 18px;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 6px; color: #333; font-size: 14px;">
+                            Neues Passwort (mind. 8 Zeichen)
+                        </label>
+                        <input type="password" id="newPassword" minlength="8" required
+                               style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; transition: border 0.2s;"
+                               onfocus="this.style.borderColor='#667eea'"
+                               onblur="this.style.borderColor='#e0e0e0'">
+                        <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">
+                            Mindestens 8 Zeichen, Groß-/Kleinbuchstaben und Zahlen empfohlen
+                        </small>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 6px; color: #333; font-size: 14px;">
+                            Neues Passwort bestätigen
+                        </label>
+                        <input type="password" id="confirmPassword" minlength="8" required
+                               style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; transition: border 0.2s;"
+                               onfocus="this.style.borderColor='#667eea'"
+                               onblur="this.style.borderColor='#e0e0e0'">
+                    </div>
+
+                    <div id="pwChangeError" style="display: none; background: #fee; border-left: 4px solid #dc3545; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                        <p style="margin: 0; color: #721c24; font-size: 13px; font-weight: 500;" id="pwChangeErrorText"></p>
+                    </div>
+
+                    <button type="submit" id="pwChangeSubmitBtn"
+                            style="width: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;"
+                            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.4)'"
+                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                        Passwort ändern
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+
 </body>
 </html>
