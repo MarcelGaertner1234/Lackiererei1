@@ -6065,7 +6065,64 @@
                     }
                 }
 
-                if (['beauftragt', 'in_arbeit', 'abholung', 'fertig'].includes(dynamicStatus) && anfrage.kva) {
+                // 🆕 BUGFIX 2025-11-04 (FIX #24): Werkstatt-initiierte Anfragen berücksichtigen
+                if (['beauftragt', 'in_arbeit', 'abholung', 'fertig'].includes(dynamicStatus) &&
+                    anfrage.werkstattInitiiert && anfrage.vereinbarterPreis) {
+
+                    console.log('   ✅ Werkstatt-initiiert → Nutze vereinbarten Preis...');
+
+                    const preis = parseFloat(anfrage.vereinbarterPreis) || 0;
+                    console.log(`   💰 Vereinbarter Preis: ${preis}€`);
+
+                    // Datum aus Anfrage (createdAt oder erstelltAm)
+                    let erstelltAm = null;
+                    const dateField = anfrage.createdAt || anfrage.erstelltAm;
+
+                    if (dateField) {
+                        if (typeof dateField.toDate === 'function') {
+                            erstelltAm = dateField.toDate();
+                        } else if (typeof dateField === 'string') {
+                            erstelltAm = new Date(dateField);
+                        } else if (typeof dateField === 'number') {
+                            erstelltAm = new Date(dateField);
+                        } else if (dateField instanceof Date) {
+                            erstelltAm = dateField;
+                        }
+                    }
+
+                    if (!erstelltAm || isNaN(erstelltAm.getTime())) {
+                        console.warn('   ❌ Ungültiges Datum für werkstatt-initiierte Anfrage:', anfrage.id);
+                        return;
+                    }
+
+                    console.log(`   📅 Datum: ${erstelltAm.toLocaleDateString('de-DE')}`);
+
+                    // Gesamt (dieses Jahr)
+                    if (erstelltAm.getFullYear() === currentYear) {
+                        console.log(`   ✅ Jahr ${currentYear} passt → GEZÄHLT in Gesamt!`);
+                        umsatzGesamt += preis;
+
+                        // Monat
+                        if (erstelltAm.getMonth() === currentMonth) {
+                            console.log(`   ✅ Monat ${currentMonth + 1} passt → GEZÄHLT in Monat!`);
+                            umsatzMonat += preis;
+
+                            // Woche
+                            if (erstelltAm >= currentWeekStart) {
+                                console.log(`   ✅ Woche passt → GEZÄHLT in Woche!`);
+                                umsatzWoche += preis;
+                            } else {
+                                console.log(`   ⏭️ Nicht in aktueller Woche`);
+                            }
+                        } else {
+                            console.log(`   ⏭️ Nicht im aktuellen Monat`);
+                        }
+                    } else {
+                        console.log(`   ❌ ÜBERSPRUNGEN: Falsches Jahr (${erstelltAm.getFullYear()} ≠ ${currentYear})`);
+                    }
+                }
+                // KVA-basierte Anfragen (bestehende Logik)
+                else if (['beauftragt', 'in_arbeit', 'abholung', 'fertig'].includes(dynamicStatus) && anfrage.kva) {
                     console.log('   ✅ Status + KVA OK → Prüfe Preis...');
 
                     // FIX: Preis aus gewählter Variante oder gesamt (mit allen möglichen Feldnamen)
@@ -6194,7 +6251,7 @@
                 } else {
                     const grund = !['beauftragt', 'in_arbeit', 'fertig'].includes(dynamicStatus)
                         ? `Status "${dynamicStatus}" nicht zählbar`
-                        : 'KVA fehlt';
+                        : (anfrage.werkstattInitiiert ? 'Preis fehlt' : 'KVA fehlt');
                     console.log(`   ❌ ÜBERSPRUNGEN: ${grund}`);
                 }
             });
