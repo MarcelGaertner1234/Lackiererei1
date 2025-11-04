@@ -680,6 +680,26 @@
             if (window.firebaseInitialized && window.firebaseApp) {
                 db = window.db;  // ✅ FIX: Use global db from firebase-config.js (not firebase.firestore()!)
                 console.log('✅ Firebase verbunden');
+
+                // 🆕 BUGFIX 2025-11-04 (FIX #39): Owner/Admin-Check - nur Owner & Admins dürfen Bonuses verwalten
+                const currentUser = await window.getCurrentUser();
+                if (!currentUser) {
+                    console.error('❌ Kein User eingeloggt!');
+                    window.location.href = '/index.html';
+                    return;
+                }
+
+                const userRole = currentUser.role;
+                const isAuthorized = userRole === 'owner' || userRole === 'admin' || userRole === 'werkstatt' || userRole === 'superadmin';
+
+                if (!isAuthorized) {
+                    console.error('❌ Zugriff verweigert! Nur Owner & Admins dürfen Bonuses verwalten.');
+                    alert('⛔ Zugriff verweigert! Diese Seite ist nur für Administratoren.');
+                    window.location.href = '/index.html';
+                    return;
+                }
+
+                console.log('✅ User autorisiert:', userRole);
                 loadBonuses();
             } else {
                 document.getElementById('loading').innerHTML = '<p style="color: #dc3545;">❌ Firebase Fehler - kann nicht fortfahren!</p>';
@@ -690,7 +710,8 @@
         function loadBonuses() {
             console.log('🔄 Setup Realtime Listener für bonusAuszahlungen...');
 
-            unsubscribe = db.collection('bonusAuszahlungen')
+            // 🆕 BUGFIX 2025-11-04 (FIX #39): Multi-Tenant Collection verwenden (bonusAuszahlungen_mosbach)
+            unsubscribe = window.getCollection('bonusAuszahlungen')
                 .orderBy('createdAt', 'desc')
                 .onSnapshot((snapshot) => {
                     console.log('🔄 Realtime Update: Received', snapshot.size, 'bonuses');
