@@ -522,6 +522,38 @@ service cloud.firestore {
       allow delete: if notificationsCollection.matches('mitarbeiterNotifications_.*') && isAdmin();
     }
 
+    // ============================================
+    // BONUS AUSZAHLUNGEN (Global + Multi-Tenant)
+    // 🆕 BUGFIX 2025-11-04 (FIX #21): Security Rules für Partner-Bonus-Auszahlungen
+    // Collections: bonusAuszahlungen (global) + bonusAuszahlungen_mosbach (tenant)
+    // ============================================
+
+    // Global Collection (legacy - für existierende Daten)
+    match /bonusAuszahlungen/{bonusId} {
+      // Admins: Full access
+      allow read, write: if isAdmin();
+
+      // Mitarbeiter: Read access (können alle Bonuses sehen)
+      allow read: if isMitarbeiter() && isActive();
+
+      // Partners: Can read ONLY their own bonuses
+      allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
+    }
+
+    // Multi-Tenant Collections (bonusAuszahlungen_mosbach, bonusAuszahlungen_heidelberg, etc.)
+    match /{bonusCollection}/{bonusId} {
+      // Admins: Full access
+      allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*') && isAdmin();
+
+      // Mitarbeiter: Read access (können alle Bonuses sehen)
+      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
+                  && isMitarbeiter() && isActive();
+
+      // Partners: Can read ONLY their own bonuses
+      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
+                  && isPartner() && isActive()
+                  && resource.data.partnerId == request.auth.uid;
+    }
 
     // ============================================
     // COLLECTION GROUP: chat (ALL chat subcollections)
