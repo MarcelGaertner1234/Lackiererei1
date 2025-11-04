@@ -681,13 +681,28 @@
                 db = window.db;  // ✅ FIX: Use global db from firebase-config.js (not firebase.firestore()!)
                 console.log('✅ Firebase verbunden');
 
-                // 🆕 BUGFIX 2025-11-04 (FIX #39): Owner/Admin-Check - nur Owner & Admins dürfen Bonuses verwalten
-                const currentUser = await window.getCurrentUser();
+                // 🆕 BUGFIX 2025-11-04 (FIX #39 + #REDIRECT): Auth State Polling - warte auf Auth State Listener
+                let currentUser = null;
+                let authAttempts = 0;
+                const maxAttempts = 20;  // 5 Sekunden total (20 * 250ms)
+
+                while (!currentUser && authAttempts < maxAttempts) {
+                    currentUser = await window.getCurrentUser();
+                    if (!currentUser) {
+                        console.log(`⏳ Warte auf Auth State (Versuch ${authAttempts + 1}/${maxAttempts})...`);
+                        await new Promise(resolve => setTimeout(resolve, 250));
+                        authAttempts++;
+                    }
+                }
+
                 if (!currentUser) {
-                    console.error('❌ Kein User eingeloggt!');
-                    window.location.href = '/index.html';
+                    console.error('❌ Kein User eingeloggt! (Timeout nach 5 Sekunden)');
+                    alert('❌ Bitte melden Sie sich an!');
+                    window.location.href = 'index.html';  // ✅ FIX #5: Relativer Pfad
                     return;
                 }
+
+                console.log('✅ Auth State geladen:', currentUser.email);
 
                 const userRole = currentUser.role;
                 const isAuthorized = userRole === 'owner' || userRole === 'admin' || userRole === 'werkstatt' || userRole === 'superadmin';
@@ -695,7 +710,7 @@
                 if (!isAuthorized) {
                     console.error('❌ Zugriff verweigert! Nur Owner & Admins dürfen Bonuses verwalten.');
                     alert('⛔ Zugriff verweigert! Diese Seite ist nur für Administratoren.');
-                    window.location.href = '/index.html';
+                    window.location.href = 'index.html';  // ✅ FIX #6: Relativer Pfad
                     return;
                 }
 
