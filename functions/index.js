@@ -2764,6 +2764,25 @@ exports.createPartnerAutoLoginToken = functions
     .https.onCall(async (data, context) => {
       console.log("🔑 createPartnerAutoLoginToken called");
 
+      // ✅ SECURITY: Authentication check - only werkstatt accounts can create tokens
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated",
+            "Authentifizierung erforderlich"
+        );
+      }
+
+      const userRole = context.auth.token.role;
+      const allowedRoles = ["werkstatt", "admin", "owner", "superadmin"];
+      if (!allowedRoles.includes(userRole)) {
+        throw new functions.https.HttpsError(
+            "permission-denied",
+            `Keine Berechtigung. Rolle '${userRole}' darf keine Tokens erstellen.`
+        );
+      }
+
+      console.log(`✅ Auth check passed - Role: ${userRole}`);
+
       // Validate input
       const { partnerId, werkstattId, fahrzeugId = null, expiresInDays = 30 } = data;
 
@@ -2791,7 +2810,7 @@ exports.createPartnerAutoLoginToken = functions
           expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
           usedAt: null,
           usedCount: 0,
-          maxUses: 999 // Practically unlimited within 30 days
+          maxUses: 10 // ✅ SECURITY: Limited reuse (was 999) - reduces risk if PDF is leaked
         };
 
         await db.collection("partnerAutoLoginTokens").doc(token).set(tokenData);

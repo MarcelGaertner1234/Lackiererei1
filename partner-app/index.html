@@ -541,9 +541,17 @@
             const token = urlParams.get('token');
 
             if (token) {
-                console.log('🔐 QR-Code detected - redirecting to auto-login...');
-                window.location.href = `auto-login.html?token=${token}`;
-                return; // Stop normal login flow
+                // ✅ SECURITY: Validate token format (32 hex characters)
+                if (token.length === 32 && /^[a-f0-9]{32}$/.test(token)) {
+                    console.log('🔐 QR-Code detected - redirecting to auto-login...');
+                    // ✅ SECURITY: Use encodeURIComponent for XSS protection
+                    window.location.href = `auto-login.html?token=${encodeURIComponent(token)}`;
+                    return; // Stop normal login flow
+                } else {
+                    console.error('❌ Ungültiges Token-Format:', token);
+                    alert('❌ Ungültiger QR-Code. Bitte melden Sie sich normal an.');
+                    // Continue with normal login flow
+                }
             }
 
             await initFirebase();
@@ -1050,6 +1058,9 @@
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<span style="display: inline-block; animation: spin 1s linear infinite;">⏳</span> Passwort wird geändert...';
                 errorDiv.style.display = 'none';
+
+                // ✅ FIX: Define db reference for global collection access
+                const db = firebase.firestore();
 
                 try {
                     // Re-authenticate mit aktuellem Passwort
