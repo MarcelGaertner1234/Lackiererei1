@@ -558,13 +558,17 @@ service cloud.firestore {
                   && request.auth != null
                   && resource.data.partnerEmail == request.auth.token.email;
 
-      // 🆕 BUGFIX 2025-11-04 (FIX #38, #40, #41, #42, #43, #44): Partners können eigene Bonuses erstellen
+      // 🆕 BUGFIX 2025-11-04 (FIX #38, #46): Partners können eigene Bonuses erstellen
       // Partner dürfen Bonus-Einträge für sich selbst anlegen (status: pending)
       // Admin muss diese dann genehmigen/auszahlen
-      // FIX #44: REMOVED pattern matching - using explicit collections instead
-      // Pattern matching may not work as expected in Security Rules
-      allow create: if request.auth != null
-                    && request.auth.token.role == 'partner';
+      // FIX #46: RESTORED pattern matching from 99db287 (worked for Christopher)
+      // Pattern matching IS required, simplified version (FIX #44) was broken
+      allow create: if bonusCollection.matches('bonusAuszahlungen_.*')
+                    && isPartner()
+                    && isActive()
+                    && request.resource.data.partnerEmail == request.auth.token.email
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasAll(['partnerId', 'partnerEmail', 'partnerName', 'stufe', 'bonusBetrag', 'umsatzBeimErreichen', 'erreichtAm', 'status', 'createdAt']);
     }
 
     // ============================================
