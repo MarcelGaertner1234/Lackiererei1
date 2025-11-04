@@ -1756,6 +1756,65 @@
                                 annahmeData.isNewPartner = partnerResult.data.isNewPartner;
                                 annahmeData.partnerPassword = partnerResult.data.generatedPassword || null; // nur bei neuen Partnern
 
+                                // STEP 2.5: Create partnerAnfrage for customer portal
+                                console.log('   🔧 [STEP 2.5] Creating partnerAnfrage for customer portal...');
+                                try {
+                                    const anfrageId = 'req_' + Date.now();
+
+                                    const anfrageData = {
+                                        id: anfrageId,
+                                        partnerId: partnerResult.data.partnerId,
+                                        partnerName: annahmeData.kundenname,
+                                        serviceTyp: annahmeData.serviceTyp || 'lackier',
+                                        timestamp: new Date().toISOString(),
+                                        erstelltAm: new Date().toISOString(),
+
+                                        // Vehicle reference
+                                        referenzType: 'kennzeichen',
+                                        kennzeichen: annahmeData.kennzeichen,
+                                        auftragsnummer: null,
+
+                                        // Vehicle data from intake form
+                                        marke: annahmeData.marke || null,
+                                        modell: annahmeData.modell || null,
+                                        baujahr: annahmeData.baujahrVon ? parseInt(annahmeData.baujahrVon) : null,
+                                        kilometerstand: annahmeData.kmstand ? parseInt(annahmeData.kmstand) : null,
+                                        vin: annahmeData.vin || null,
+                                        farbe: annahmeData.farbe || null,
+
+                                        // Service description
+                                        schadenBeschreibung: annahmeData.notizen || 'Fahrzeug zur Begutachtung eingereicht',
+                                        serviceData: annahmeData.serviceDetails || {},
+
+                                        // Delivery options
+                                        lieferoption: annahmeData.fahrzeugAbholung === 'ja' ? 'abholung' : 'selbst',
+                                        abholserviceGewuenscht: annahmeData.fahrzeugAbholung === 'ja',
+                                        abholtermin: annahmeData.abholdatum || null,
+                                        abholadresse: annahmeData.abholadresse || null,
+                                        abholzeit: annahmeData.abholzeit || null,
+                                        abholnotiz: annahmeData.abholnotiz || null,
+                                        ersatzfahrzeugGewuenscht: false,
+
+                                        fotos: annahmeData.photos || [],
+
+                                        // Status
+                                        status: 'neu',
+                                        statusText: 'Neu eingegangen',
+                                        kva: null,
+                                        fahrzeugId: annahmeData.id // Link back to vehicle intake
+                                    };
+
+                                    // Save to Firestore
+                                    await window.getCollection('partnerAnfragen').doc(anfrageId).set(anfrageData);
+                                    console.log('   ✅ [STEP 2.5] partnerAnfrage created:', anfrageId);
+                                    console.log('   📊 Data:', { partnerId: anfrageData.partnerId, status: anfrageData.status, kennzeichen: anfrageData.kennzeichen });
+
+                                } catch (error) {
+                                    console.error('   ❌ [STEP 2.5] Failed to create partnerAnfrage:', error);
+                                    // Continue anyway - not critical for vehicle intake
+                                    // User can still login and create manual requests
+                                }
+
                                 console.log('   ✅ QR-Code Daten bereit für PDF');
 
                                 if (annahmeData.isNewPartner) {
