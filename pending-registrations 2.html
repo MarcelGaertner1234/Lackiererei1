@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neue Registrierungen - Admin Panel</title>
+
+    <!-- Design System CSS -->
+    <link rel="stylesheet" href="design-system.css">
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="animations.css">
+    <link rel="stylesheet" href="mobile-first.css">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+    <script src="firebase-config.js?v=4412ea9"></script>
+
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <style>
+        body {
+            background: var(--color-background);
+            font-family: var(--font-body);
+            padding: var(--space-4);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 20px;
+            padding: var(--space-6);
+            margin-bottom: var(--space-6);
+            backdrop-filter: blur(25px);
+        }
+
+        .header h1 {
+            font-size: var(--text-3xl);
+            color: var(--color-text-primary);
+            margin: 0 0 var(--space-2) 0;
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .header p {
+            color: var(--color-text-secondary);
+            margin: 0;
+            font-size: var(--text-base);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-4);
+            margin-bottom: var(--space-6);
+        }
+
+        .stat-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 15px;
+            padding: var(--space-4);
+            backdrop-filter: blur(25px);
+        }
+
+        .stat-card .label {
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-2);
+        }
+
+        .stat-card .value {
+            font-size: var(--text-2xl);
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+
+        .filters {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 15px;
+            padding: var(--space-4);
+            margin-bottom: var(--space-4);
+            display: flex;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+            backdrop-filter: blur(25px);
+        }
+
+        .filter-btn {
+            padding: var(--space-2) var(--space-4);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 10px;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: var(--text-sm);
+            font-weight: 600;
+        }
+
+        .filter-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--color-text-primary);
+        }
+
+        .filter-btn.active {
+            background: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
+
+        .pending-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-4);
+        }
+
+        .pending-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 15px;
+            padding: var(--space-5);
+            backdrop-filter: blur(25px);
+            transition: all 0.2s;
+        }
+
+        .pending-card:hover {
+            border-color: var(--color-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: var(--space-4);
+        }
+
+        .user-info h3 {
+            font-size: var(--text-xl);
+            color: var(--color-text-primary);
+            margin: 0 0 var(--space-1) 0;
+        }
+
+        .user-info .email {
+            color: var(--color-text-secondary);
+            font-size: var(--text-sm);
+        }
+
+        .registered-date {
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+            display: flex;
+            align-items: center;
+            gap: var(--space-1);
+        }
+
+        .location-info {
+            display: flex;
+            gap: var(--space-6);
+            margin-bottom: var(--space-4);
+            padding: var(--space-3);
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+        }
+
+        .location-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .location-item i {
+            width: 18px;
+            height: 18px;
+            color: var(--color-primary);
+        }
+
+        .location-item .label {
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+        }
+
+        .location-item .value {
+            font-size: var(--text-sm);
+            color: var(--color-text-primary);
+            font-weight: 600;
+        }
+
+        .recommendation {
+            padding: var(--space-3);
+            border-radius: 10px;
+            margin-bottom: var(--space-4);
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .recommendation.high {
+            background: rgba(52, 199, 89, 0.1);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+        }
+
+        .recommendation.medium {
+            background: rgba(255, 204, 0, 0.1);
+            border: 1px solid rgba(255, 204, 0, 0.3);
+        }
+
+        .recommendation.low {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+        }
+
+        .recommendation i {
+            width: 24px;
+            height: 24px;
+        }
+
+        .recommendation.high i { color: #34c759; }
+        .recommendation.medium i { color: #ffcc00; }
+        .recommendation.low i { color: #ff3b30; }
+
+        .recommendation .text {
+            flex: 1;
+        }
+
+        .recommendation .text strong {
+            display: block;
+            font-size: var(--text-base);
+            margin-bottom: var(--space-1);
+        }
+
+        .recommendation.high .text strong { color: #34c759; }
+        .recommendation.medium .text strong { color: #ffcc00; }
+        .recommendation.low .text strong { color: #ff3b30; }
+
+        .recommendation .text small {
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+        }
+
+        .confidence-badge {
+            padding: var(--space-1) var(--space-3);
+            border-radius: 20px;
+            font-size: var(--text-xs);
+            font-weight: 700;
+        }
+
+        .confidence-badge.high {
+            background: rgba(52, 199, 89, 0.2);
+            color: #34c759;
+        }
+
+        .confidence-badge.medium {
+            background: rgba(255, 204, 0, 0.2);
+            color: #ffcc00;
+        }
+
+        .confidence-badge.low {
+            background: rgba(255, 59, 48, 0.2);
+            color: #ff3b30;
+        }
+
+        .assignment-section {
+            display: flex;
+            gap: var(--space-3);
+            align-items: center;
+        }
+
+        .assignment-section select {
+            flex: 1;
+            padding: var(--space-3);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 10px;
+            color: var(--color-text-primary);
+            font-size: var(--text-base);
+        }
+
+        .assignment-section select:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn {
+            padding: var(--space-3) var(--space-5);
+            border: none;
+            border-radius: 10px;
+            font-size: var(--text-sm);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 4px 20px rgba(46, 200, 255, 0.4);
+        }
+
+        .btn-danger {
+            background: rgba(255, 59, 48, 0.1);
+            color: #ff3b30;
+            border: 1px solid rgba(255, 59, 48, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(255, 59, 48, 0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: var(--space-8);
+            background: var(--color-surface);
+            border: 1px dashed var(--color-border-glass);
+            border-radius: 15px;
+        }
+
+        .empty-state i {
+            width: 80px;
+            height: 80px;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-4);
+        }
+
+        .empty-state h3 {
+            font-size: var(--text-xl);
+            color: var(--color-text-primary);
+            margin: 0 0 var(--space-2) 0;
+        }
+
+        .empty-state p {
+            color: var(--color-text-secondary);
+            font-size: var(--text-base);
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--color-text-primary);
+            margin-top: var(--space-4);
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .loading {
+            text-align: center;
+            padding: var(--space-8);
+            color: var(--color-text-secondary);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>
+                <i data-feather="user-check"></i>
+                Neue Registrierungen
+            </h1>
+            <p>Ordnen Sie neue Kunden der passenden Werkstatt zu</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="label">Ausstehend</div>
+                <div class="value" id="statPending">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Heute</div>
+                <div class="value" id="statToday">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Diese Woche</div>
+                <div class="value" id="statWeek">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Ohne Empfehlung</div>
+                <div class="value" id="statNoRecommendation">0</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters">
+            <button class="filter-btn active" data-filter="all">
+                Alle (<span id="filterAllCount">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="mosbach">
+                Mosbach (<span id="filterMosbachCount">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="heidelberg">
+                Heidelberg (<span id="filterHeidelbergCount">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="karlsruhe">
+                Karlsruhe (<span id="filterKarlsruheCount">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="stuttgart">
+                Stuttgart (<span id="filterStuttgartCount">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="freiburg">
+                Freiburg (<span id="filterFreiburgCount">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="none">
+                Keine Empfehlung (<span id="filterNoneCount">0</span>)
+            </button>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="loading">
+            <i data-feather="loader" class="spinner" style="width: 48px; height: 48px;"></i>
+            <p>Lade Registrierungen...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <i data-feather="check-circle"></i>
+            <h3>Keine ausstehenden Registrierungen</h3>
+            <p>Alle neuen Kunden wurden bereits zugeordnet.</p>
+            <button class="btn back-btn" onclick="window.location.href='admin-dashboard.html'">
+                <i data-feather="arrow-left"></i>
+                Zurück zum Dashboard
+            </button>
+        </div>
+
+        <!-- Pending Registrations List -->
+        <div id="pendingList" class="pending-list" style="display: none;">
+            <!-- Cards will be inserted here by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        // Initialize Feather Icons
+        feather.replace();
+
+        // PLZ-Werkstatt Mapping (same as in registrierung.html)
+        const PLZ_WERKSTATT_MAP = {
+            "69": "heidelberg",
+            "74": "mosbach",
+            "76": "karlsruhe",
+            "70": "stuttgart",
+            "71": "stuttgart",
+            "79": "freiburg"
+        };
+
+        const REGION_WERKSTATT_MAP = {
+            "mosbach": "mosbach",
+            "heidelberg": "heidelberg",
+            "karlsruhe": "karlsruhe",
+            "stuttgart": "stuttgart",
+            "freiburg": "freiburg",
+            "andere": null
+        };
+
+        const WERKSTATT_NAMES = {
+            "mosbach": "Auto-Lackierzentrum Mosbach",
+            "heidelberg": "Auto-Lackierzentrum Heidelberg",
+            "karlsruhe": "Auto-Lackierzentrum Karlsruhe",
+            "stuttgart": "Auto-Lackierzentrum Stuttgart",
+            "freiburg": "Auto-Lackierzentrum Freiburg"
+        };
+
+        let pendingRegistrations = [];
+        let currentFilter = 'all';
+
+        // Check Owner Access
+        async function checkOwnerAccess() {
+            // Wait for auth state to be loaded
+            let attempts = 0;
+            while (!window.authManager || attempts < 20) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+
+            const currentUser = window.authManager?.getCurrentUser();
+
+            if (!currentUser || !currentUser.isOwner) {
+                console.error('⛔ Access denied: User is not owner');
+                alert('⛔ Zugriff verweigert!\n\nDiese Seite ist nur für den Super-Admin (Owner) sichtbar.\n\nSie werden zur Dashboard-Seite weitergeleitet.');
+                window.location.href = 'admin-dashboard.html';
+                return false;
+            }
+
+            console.log('✅ Owner access verified');
+            return true;
+        }
+
+        // Wait for Firebase
+        window.addEventListener('firebaseReady', async () => {
+            console.log('✅ Firebase ready - checking access...');
+
+            // Check owner access first
+            const hasAccess = await checkOwnerAccess();
+            if (!hasAccess) return;
+
+            console.log('✅ Access granted - loading pending registrations');
+            await loadPendingRegistrations();
+        });
+
+        // ============================================
+        // LOAD ALL WERKSTÄTTEN (Dynamic from Firestore)
+        // ============================================
+        let allWerkstaetten = [];
+
+        async function loadAllWerkstaetten() {
+            try {
+                console.log('🏢 Lade alle Werkstätten...');
+
+                const snapshot = await window.db.collection('users')
+                    .where('role', '==', 'werkstatt')
+                    .where('status', '==', 'active')
+                    .get();
+
+                allWerkstaetten = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: data.werkstattId,
+                        name: data.name,
+                        email: data.email,
+                        plz: data.adresse?.plz || null,
+                        stadt: data.adresse?.stadt || null,
+                        strasse: data.adresse?.strasse || null,
+                        hausnummer: data.adresse?.hausnummer || null,
+                        telefon: data.adresse?.telefon || null
+                    };
+                });
+
+                console.log(`✅ ${allWerkstaetten.length} Werkstätten geladen:`, allWerkstaetten);
+                return allWerkstaetten;
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Werkstätten:', error);
+                return [];
+            }
+        }
+
+        // ============================================
+        // HELPER FUNCTIONS FOR WERKSTATT DISPLAY
+        // ============================================
+
+        // Get Werkstatt Display Name
+        function getWerkstattDisplayName(werkstattId) {
+            const werkstatt = allWerkstaetten.find(w => w.id === werkstattId);
+            return werkstatt ? werkstatt.name : werkstattId;
+        }
+
+        // Get Werkstatt Address
+        function getWerkstattAddress(werkstattId) {
+            const werkstatt = allWerkstaetten.find(w => w.id === werkstattId);
+            if (!werkstatt) return 'Adresse nicht verfügbar';
+
+            const strasse = werkstatt.strasse || '?';
+            const hausnummer = werkstatt.hausnummer || '?';
+            const plz = werkstatt.plz || '?';
+            const stadt = werkstatt.stadt || '?';
+
+            return `${strasse} ${hausnummer}, ${plz} ${stadt}`;
+        }
+
+        // ============================================
+        // LOAD PENDING REGISTRATIONS
+        // ============================================
+
+        // Load Pending Registrations
+        async function loadPendingRegistrations() {
+            try {
+                const snapshot = await window.db.collection('partners')
+                    .where('status', '==', 'pending')
+                    .orderBy('createdAt', 'desc')
+                    .get();
+
+                pendingRegistrations = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log(`📋 Loaded ${pendingRegistrations.length} pending registrations`);
+
+                updateStats();
+                renderPendingList();
+                updateFilterCounts();
+
+                // Hide loading, show content
+                document.getElementById('loadingState').style.display = 'none';
+
+                if (pendingRegistrations.length === 0) {
+                    document.getElementById('emptyState').style.display = 'block';
+                } else {
+                    document.getElementById('pendingList').style.display = 'flex';
+                }
+
+                feather.replace();
+
+            } catch (error) {
+                console.error('❌ Error loading pending registrations:', error);
+                alert('Fehler beim Laden der Registrierungen: ' + error.message);
+            }
+        }
+
+        // Suggest Werkstatt based on PLZ + Region
+        function suggestWerkstatt(plz, region) {
+            if (!plz && !region) {
+                return { werkstatt: null, confidence: 0, reason: 'Keine PLZ/Region angegeben' };
+            }
+
+            const plzPrefix = plz ? plz.substring(0, 2) : null;
+            const plzMatch = plzPrefix ? PLZ_WERKSTATT_MAP[plzPrefix] : null;
+            const regionMatch = region ? REGION_WERKSTATT_MAP[region] : null;
+
+            // Both match
+            if (plzMatch && regionMatch && plzMatch === regionMatch) {
+                return {
+                    werkstatt: plzMatch,
+                    confidence: 95,
+                    reason: `PLZ ${plz} + Region ${region} → ${WERKSTATT_NAMES[plzMatch]}`
+                };
+            }
+
+            // Only PLZ match
+            if (plzMatch) {
+                return {
+                    werkstatt: plzMatch,
+                    confidence: 80,
+                    reason: `PLZ ${plz} → ${WERKSTATT_NAMES[plzMatch]} (Region nicht überprüft)`
+                };
+            }
+
+            // Only Region match
+            if (regionMatch) {
+                return {
+                    werkstatt: regionMatch,
+                    confidence: 60,
+                    reason: `Region ${region} → ${WERKSTATT_NAMES[regionMatch]} (PLZ nicht überprüft)`
+                };
+            }
+
+            // No match
+            return {
+                werkstatt: null,
+                confidence: 0,
+                reason: 'Keine passende Werkstatt gefunden - Manuelle Zuordnung nötig'
+            };
+        }
+
+        // Render Pending List
+        function renderPendingList() {
+            const listContainer = document.getElementById('pendingList');
+            listContainer.innerHTML = '';
+
+            const filtered = currentFilter === 'all'
+                ? pendingRegistrations
+                : currentFilter === 'none'
+                    ? pendingRegistrations.filter(p => !suggestWerkstatt(p.plz, p.region).werkstatt)
+                    : pendingRegistrations.filter(p => suggestWerkstatt(p.plz, p.region).werkstatt === currentFilter);
+
+            filtered.forEach(partner => {
+                const suggestion = suggestWerkstatt(partner.plz, partner.region);
+                const card = createPendingCard(partner, suggestion);
+                listContainer.appendChild(card);
+            });
+
+            feather.replace();
+        }
+
+        // Create Pending Card
+        function createPendingCard(partner, suggestion) {
+            const card = document.createElement('div');
+            card.className = 'pending-card';
+            card.dataset.partnerId = partner.id;
+
+            const confidenceClass = suggestion.confidence >= 90 ? 'high' :
+                                   suggestion.confidence >= 60 ? 'medium' : 'low';
+
+            const registeredDate = partner.createdAt?.toDate
+                ? partner.createdAt.toDate().toLocaleString('de-DE')
+                : partner.createdAt || 'Unbekannt';
+
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="user-info">
+                        <h3>${partner.name || 'Unbekannt'}</h3>
+                        <div class="email">${partner.email || 'Keine Email'}</div>
+                    </div>
+                    <div class="registered-date">
+                        <i data-feather="calendar" style="width: 14px; height: 14px;"></i>
+                        ${registeredDate}
+                    </div>
+                </div>
+
+                <div class="location-info">
+                    <div class="location-item">
+                        <i data-feather="map-pin"></i>
+                        <div>
+                            <div class="label">PLZ</div>
+                            <div class="value">${partner.plz || 'N/A'}</div>
+                        </div>
+                    </div>
+                    <div class="location-item">
+                        <i data-feather="home"></i>
+                        <div>
+                            <div class="label">Stadt</div>
+                            <div class="value">${partner.stadt || 'N/A'}</div>
+                        </div>
+                    </div>
+                    <div class="location-item">
+                        <i data-feather="map"></i>
+                        <div>
+                            <div class="label">Region</div>
+                            <div class="value">${partner.region || 'N/A'}</div>
+                        </div>
+                    </div>
+                    ${partner.role ? `
+                    <div class="location-item">
+                        <i data-feather="user"></i>
+                        <div>
+                            <div class="label">Rolle</div>
+                            <div class="value">${partner.role === 'partner' ? 'Partner' : 'Kunde'}</div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div class="recommendation ${confidenceClass}">
+                    <i data-feather="${suggestion.confidence >= 90 ? 'check-circle' : suggestion.confidence >= 60 ? 'alert-circle' : 'alert-triangle'}"></i>
+                    <div class="text">
+                        <strong>${suggestion.werkstatt ? `Empfehlung: ${WERKSTATT_NAMES[suggestion.werkstatt]}` : 'Manuelle Prüfung erforderlich'}</strong>
+                        <small>${suggestion.reason}</small>
+                    </div>
+                    <span class="confidence-badge ${confidenceClass}">${suggestion.confidence}%</span>
+                </div>
+
+                <div class="assignment-section">
+                    <select id="werkstatt-${partner.id}">
+                        <option value="">Werkstatt auswählen...</option>
+                        <option value="mosbach" ${suggestion.werkstatt === 'mosbach' ? 'selected' : ''}>Mosbach / Neckar-Odenwald</option>
+                        <option value="heidelberg" ${suggestion.werkstatt === 'heidelberg' ? 'selected' : ''}>Heidelberg / Rhein-Neckar</option>
+                        <option value="karlsruhe" ${suggestion.werkstatt === 'karlsruhe' ? 'selected' : ''}>Karlsruhe / Mittelbaden</option>
+                        <option value="stuttgart" ${suggestion.werkstatt === 'stuttgart' ? 'selected' : ''}>Stuttgart / Rems-Murr</option>
+                        <option value="freiburg" ${suggestion.werkstatt === 'freiburg' ? 'selected' : ''}>Freiburg / Südbaden</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="assignPartner('${partner.id}')">
+                        <i data-feather="check"></i>
+                        Zuordnen & Aktivieren
+                    </button>
+                    <button class="btn btn-danger" onclick="rejectPartner('${partner.id}')">
+                        <i data-feather="x"></i>
+                        Ablehnen
+                    </button>
+                </div>
+            `;
+
+            return card;
+        }
+
+        // Assign Partner to Werkstatt
+        async function assignPartner(partnerId) {
+            const selectElement = document.getElementById(`werkstatt-${partnerId}`);
+            const werkstattId = selectElement.value;
+
+            if (!werkstattId) {
+                alert('Bitte wählen Sie eine Werkstatt aus!');
+                return;
+            }
+
+            if (!confirm(`Partner der Werkstatt "${WERKSTATT_NAMES[werkstattId]}" zuordnen?`)) {
+                return;
+            }
+
+            try {
+                const partner = pendingRegistrations.find(p => p.id === partnerId);
+
+                // 1. Update global partners collection
+                await window.db.collection('partners').doc(partnerId).update({
+                    werkstattId: werkstattId,
+                    status: 'active',
+                    assignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    assignedBy: firebase.auth().currentUser?.email || 'admin'
+                });
+
+                // 2. Copy to werkstatt-specific collection
+                await window.db.collection(`partners_${werkstattId}`).doc(partnerId).set({
+                    ...partner,
+                    werkstattId: werkstattId,
+                    status: 'active',
+                    assignedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                // 3. Update users collection status (CRITICAL for login!)
+                await window.db.collection('users').doc(partnerId).update({
+                    status: 'active',
+                    werkstattId: werkstattId,
+                    approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    approvedBy: firebase.auth().currentUser?.email || 'admin'
+                });
+
+                console.log(`✅ Partner ${partnerId} assigned to ${werkstattId}`);
+                console.log(`✅ users/${partnerId} status updated to 'active'`);
+
+                alert(`✅ Partner erfolgreich zugeordnet!\n\nWerkstatt: ${WERKSTATT_NAMES[werkstattId]}\nDer Partner kann sich jetzt einloggen.`);
+
+                // Reload list
+                await loadPendingRegistrations();
+
+            } catch (error) {
+                console.error('❌ Error assigning partner:', error);
+                alert('Fehler bei der Zuordnung: ' + error.message);
+            }
+        }
+
+        // Reject Partner
+        async function rejectPartner(partnerId) {
+            if (!confirm('Partner-Registrierung wirklich ablehnen und löschen?')) {
+                return;
+            }
+
+            try {
+                await window.db.collection('partners').doc(partnerId).delete();
+                console.log(`✅ Partner ${partnerId} rejected and deleted`);
+
+                alert('Partner-Registrierung wurde abgelehnt und gelöscht.');
+
+                // Reload list
+                await loadPendingRegistrations();
+
+            } catch (error) {
+                console.error('❌ Error rejecting partner:', error);
+                alert('Fehler beim Ablehnen: ' + error.message);
+            }
+        }
+
+        // Update Stats
+        function updateStats() {
+            const total = pendingRegistrations.length;
+            const today = pendingRegistrations.filter(p => isToday(p.createdAt)).length;
+            const week = pendingRegistrations.filter(p => isThisWeek(p.createdAt)).length;
+            const noRecommendation = pendingRegistrations.filter(p => !suggestWerkstatt(p.plz, p.region).werkstatt).length;
+
+            document.getElementById('statPending').textContent = total;
+            document.getElementById('statToday').textContent = today;
+            document.getElementById('statWeek').textContent = week;
+            document.getElementById('statNoRecommendation').textContent = noRecommendation;
+        }
+
+        // Update Filter Counts
+        function updateFilterCounts() {
+            const all = pendingRegistrations.length;
+            const mosbach = pendingRegistrations.filter(p => suggestWerkstatt(p.plz, p.region).werkstatt === 'mosbach').length;
+            const heidelberg = pendingRegistrations.filter(p => suggestWerkstatt(p.plz, p.region).werkstatt === 'heidelberg').length;
+            const karlsruhe = pendingRegistrations.filter(p => suggestWerkstatt(p.plz, p.region).werkstatt === 'karlsruhe').length;
+            const stuttgart = pendingRegistrations.filter(p => suggestWerkstatt(p.plz, p.region).werkstatt === 'stuttgart').length;
+            const freiburg = pendingRegistrations.filter(p => suggestWerkstatt(p.plz, p.region).werkstatt === 'freiburg').length;
+            const none = pendingRegistrations.filter(p => !suggestWerkstatt(p.plz, p.region).werkstatt).length;
+
+            document.getElementById('filterAllCount').textContent = all;
+            document.getElementById('filterMosbachCount').textContent = mosbach;
+            document.getElementById('filterHeidelbergCount').textContent = heidelberg;
+            document.getElementById('filterKarlsruheCount').textContent = karlsruhe;
+            document.getElementById('filterStuttgartCount').textContent = stuttgart;
+            document.getElementById('filterFreiburgCount').textContent = freiburg;
+            document.getElementById('filterNoneCount').textContent = none;
+        }
+
+        // Filter Button Handlers
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                renderPendingList();
+            });
+        });
+
+        // Helper Functions
+        function isToday(timestamp) {
+            if (!timestamp) return false;
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            const today = new Date();
+            return date.toDateString() === today.toDateString();
+        }
+
+        function isThisWeek(timestamp) {
+            if (!timestamp) return false;
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            const today = new Date();
+            const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            return date >= weekAgo;
+        }
+    </script>
+</body>
+</html>
