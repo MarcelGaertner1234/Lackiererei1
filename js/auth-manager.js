@@ -465,6 +465,26 @@ window.addEventListener('firebaseReady', () => {
         if (userDoc.exists) {
           const userData = userDoc.data();
 
+          // 🆕 BUGFIX 2025-11-04 (FIX #31): Auto-Sync Firebase Auth email with Firestore
+          // If Firebase Auth email differs from Firestore users collection, update Firestore
+          if (firebaseUser.email !== userData.email) {
+            console.warn('⚠️ Email mismatch detected between Firebase Auth and Firestore:');
+            console.warn('   Firebase Auth email:', firebaseUser.email);
+            console.warn('   Firestore users email:', userData.email);
+            console.log('🔄 Auto-updating Firestore users collection with Firebase Auth email...');
+
+            try {
+              await window.db.collection('users').doc(firebaseUser.uid).update({
+                email: firebaseUser.email
+              });
+              console.log('✅ Firestore users collection email updated to:', firebaseUser.email);
+              userData.email = firebaseUser.email;  // Update local copy
+            } catch (updateError) {
+              console.error('❌ Failed to auto-update Firestore email:', updateError);
+              // Continue with old email from Firestore (non-breaking)
+            }
+          }
+
           // Check if this is a werkstatt user
           if (userData.role === 'werkstatt' && userData.werkstattId) {
             // Set currentWerkstatt for Multi-Tenant

@@ -296,14 +296,18 @@ service cloud.firestore {
       allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 
-      // 🆕 BUGFIX 2025-11-04 (v2): Partners können ihre eigenen Fahrzeuge lesen
-      // Security: Email-basiert (kein Custom Claims check mehr)
-      // Simplified: Nur Auth + Email-Matching (funktioniert sofort nach Partner-Account-Creation)
+      // 🆕 BUGFIX 2025-11-04 (FIX #26): Partners können ihre eigenen Fahrzeuge lesen
+      // Security: Email-basiert mit Cross-Collection-Check Fallback
+      // Priority 1: Direct partnerEmail matching (fast)
+      // Priority 2: partnerId → partners_mosbach email lookup (fallback for old data)
       allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
                   && request.auth != null
                   && (
                     resource.data.partnerEmail == request.auth.token.email
                     || resource.data.kundenEmail == request.auth.token.email
+                    || (resource.data.partnerId != null
+                        && exists(/databases/$(database)/documents/partners_mosbach/$(resource.data.partnerId))
+                        && get(/databases/$(database)/documents/partners_mosbach/$(resource.data.partnerId)).data.email == request.auth.token.email)
                   );
 
       // Subcollections: Fotos
@@ -536,8 +540,16 @@ service cloud.firestore {
       // Mitarbeiter: Read access (können alle Bonuses sehen)
       allow read: if isMitarbeiter() && isActive();
 
-      // Partners: Can read ONLY their own bonuses
-      allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
+      // 🆕 BUGFIX 2025-11-04 (FIX #26): Partners - Email-basiert mit Cross-Collection Fallback
+      // Priority 1: Direct partnerEmail matching (fast)
+      // Priority 2: partnerId → partners_mosbach email lookup (fallback for old data without partnerEmail)
+      allow read: if request.auth != null
+                  && (
+                    resource.data.partnerEmail == request.auth.token.email
+                    || (resource.data.partnerId != null
+                        && exists(/databases/$(database)/documents/partners_mosbach/$(resource.data.partnerId))
+                        && get(/databases/$(database)/documents/partners_mosbach/$(resource.data.partnerId)).data.email == request.auth.token.email)
+                  );
     }
 
     // Multi-Tenant Collections (bonusAuszahlungen_mosbach, bonusAuszahlungen_heidelberg, etc.)
@@ -549,10 +561,17 @@ service cloud.firestore {
       allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
                   && isMitarbeiter() && isActive();
 
-      // Partners: Can read ONLY their own bonuses
+      // 🆕 BUGFIX 2025-11-04 (FIX #26): Partners - Email-basiert mit Cross-Collection Fallback
+      // Priority 1: Direct partnerEmail matching (fast)
+      // Priority 2: partnerId → partners_mosbach email lookup (fallback for old data without partnerEmail)
       allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
-                  && isPartner() && isActive()
-                  && resource.data.partnerId == request.auth.uid;
+                  && request.auth != null
+                  && (
+                    resource.data.partnerEmail == request.auth.token.email
+                    || (resource.data.partnerId != null
+                        && exists(/databases/$(database)/documents/partners_mosbach/$(resource.data.partnerId))
+                        && get(/databases/$(database)/documents/partners_mosbach/$(resource.data.partnerId)).data.email == request.auth.token.email)
+                  );
     }
 
     // ============================================
