@@ -173,6 +173,11 @@ async function loginWerkstatt(email, password) {
 
     const userData = userDoc.data();
 
+    // 🆕 BUGFIX 2025-11-04 (FIX #40): Partner-Accounts dürfen sich nicht über Werkstatt-Login anmelden
+    if (userData.role === 'partner') {
+      throw new Error('Partner-Accounts können sich nicht im Werkstatt-Dashboard anmelden. Bitte nutzen Sie das Partner-Portal.');
+    }
+
     // 3. Check if workshop is active
     if (userData.status !== 'active') {
       throw new Error(`Account ist ${userData.status}. Bitte warten Sie auf Freigabe durch Admin.`);
