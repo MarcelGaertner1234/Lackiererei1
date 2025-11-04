@@ -1781,6 +1781,12 @@
                                 try {
                                     const anfrageId = 'req_' + Date.now();
 
+                                    // 🆕 BUGFIX 2025-11-04: Werkstatt-initiiert workflow
+                                    // If price is agreed on-site (vereinbarterPreis > 0), directly mark as "beauftragt"
+                                    // Otherwise, normal flow: "neu" → customer confirms → "beauftragt"
+                                    const hasAgreedPrice = annahmeData.vereinbarterPreis && parseFloat(annahmeData.vereinbarterPreis) > 0;
+                                    const isWerkstattInitiiert = hasAgreedPrice;
+
                                     const anfrageData = {
                                         id: anfrageId,
                                         partnerId: partnerResult.data.partnerId,
@@ -1800,11 +1806,20 @@
                                         baujahr: annahmeData.baujahrVon ? parseInt(annahmeData.baujahrVon) : null,
                                         kilometerstand: annahmeData.kmstand ? parseInt(annahmeData.kmstand) : null,
                                         vin: annahmeData.vin || null,
-                                        farbe: annahmeData.farbe || null,
+
+                                        // 🆕 BUGFIX 2025-11-04: Add missing paint fields (CRITICAL for paint shop!)
+                                        farbname: annahmeData.farbname || null,           // Paint name (e.g., "Silber Metallic")
+                                        farbnummer: annahmeData.farbnummer || null,       // Paint code (e.g., "LC9Z") - CRITICAL!
+                                        lackart: annahmeData.lackart || null,             // Paint type (Uni/Metallic/Perleffekt)
+                                        farbvariante: annahmeData.farbvariante || null,   // Paint variant details
 
                                         // Service description
                                         schadenBeschreibung: annahmeData.notizen || 'Fahrzeug zur Begutachtung eingereicht',
                                         serviceData: annahmeData.serviceDetails || {},
+
+                                        // 🆕 BUGFIX 2025-11-04: Add missing customer & delivery fields
+                                        kundenEmail: annahmeData.kundenEmail || null,
+                                        geplantesAbnahmeDatum: annahmeData.geplantesAbnahmeDatum || null,
 
                                         // Delivery options
                                         lieferoption: annahmeData.fahrzeugAbholung === 'ja' ? 'abholung' : 'selbst',
@@ -1817,9 +1832,13 @@
 
                                         fotos: annahmeData.photos || [],
 
-                                        // Status
-                                        status: 'neu',
-                                        statusText: 'Neu eingegangen',
+                                        // 🆕 BUGFIX 2025-11-04: Werkstatt-initiiert workflow
+                                        // If price agreed on-site, directly mark as "beauftragt" (no customer confirmation needed)
+                                        status: isWerkstattInitiiert ? 'beauftragt' : 'neu',
+                                        statusText: isWerkstattInitiiert ? 'Beauftragt (Werkstatt-initiiert)' : 'Neu eingegangen',
+                                        werkstattInitiiert: isWerkstattInitiiert,
+                                        vereinbarterPreis: hasAgreedPrice ? parseFloat(annahmeData.vereinbarterPreis) : null,
+
                                         kva: null,
                                         fahrzeugId: annahmeData.id // Link back to vehicle intake
                                     };
@@ -1827,7 +1846,14 @@
                                     // Save to Firestore
                                     await window.getCollection('partnerAnfragen').doc(anfrageId).set(anfrageData);
                                     console.log('   ✅ [STEP 2.5] partnerAnfrage created:', anfrageId);
-                                    console.log('   📊 Data:', { partnerId: anfrageData.partnerId, status: anfrageData.status, kennzeichen: anfrageData.kennzeichen });
+                                    console.log('   📊 Data:', {
+                                        partnerId: anfrageData.partnerId,
+                                        status: anfrageData.status,
+                                        werkstattInitiiert: anfrageData.werkstattInitiiert,
+                                        vereinbarterPreis: anfrageData.vereinbarterPreis,
+                                        kennzeichen: anfrageData.kennzeichen,
+                                        farbnummer: anfrageData.farbnummer
+                                    });
 
                                 } catch (error) {
                                     console.error('   ❌ [STEP 2.5] Failed to create partnerAnfrage:', error);
