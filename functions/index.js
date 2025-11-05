@@ -3082,18 +3082,27 @@ exports.monthlyBonusReset = functions.pubsub
 // ============================================
 
 /**
- * Callable function to manually trigger bonus reset for testing
+ * HTTP function to manually trigger bonus reset for testing
  *
- * Usage via Firebase CLI:
- *   firebase functions:call testMonthlyBonusReset --project auto-lackierzentrum-mosbach
+ * Usage via curl:
+ *   curl https://us-central1-auto-lackierzentrum-mosbach.cloudfunctions.net/testMonthlyBonusReset
  *
- * Or via HTTP:
- *   POST https://europe-west3-auto-lackierzentrum-mosbach.cloudfunctions.net/testMonthlyBonusReset
+ * Or open in browser (GET):
+ *   https://us-central1-auto-lackierzentrum-mosbach.cloudfunctions.net/testMonthlyBonusReset
  *
  * Implementation: FIX #55 (Manual test trigger)
  */
-exports.testMonthlyBonusReset = functions.https.onCall(async (data, context) => {
+exports.testMonthlyBonusReset = functions.https.onRequest(async (req, res) => {
   console.log('🧪 Manual bonus reset test triggered...');
+
+  // Set CORS headers
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'GET, POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    res.status(204).send('');
+    return;
+  }
 
   try {
     // Multi-Tenant: Reset bonuses for ALL werkstatt instances
@@ -3168,12 +3177,12 @@ exports.testMonthlyBonusReset = functions.https.onCall(async (data, context) => 
 
     console.log(`🎉 Manual bonus reset test completed! ${totalPartnersUpdated} partners updated.`);
 
-    return {
+    res.status(200).json({
       success: true,
       totalPartnersUpdated: totalPartnersUpdated,
       results: results,
       message: `✅ Bonus reset successful! ${totalPartnersUpdated} partners updated across all werkstatt instances.`
-    };
+    });
   } catch (error) {
     console.error('❌ Manual bonus reset test failed:', error);
 
@@ -3186,9 +3195,10 @@ exports.testMonthlyBonusReset = functions.https.onCall(async (data, context) => 
       error: error.message
     });
 
-    throw new functions.https.HttpsError(
-      'internal',
-      `Bonus reset failed: ${error.message}`
-    );
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: `❌ Bonus reset failed: ${error.message}`
+    });
   }
 });
