@@ -3076,3 +3076,119 @@ exports.monthlyBonusReset = functions.pubsub
         throw error;
       }
     });
+
+// ============================================
+// TEST FUNCTION: Manual Bonus Reset Trigger
+// ============================================
+
+/**
+ * Callable function to manually trigger bonus reset for testing
+ *
+ * Usage via Firebase CLI:
+ *   firebase functions:call testMonthlyBonusReset --project auto-lackierzentrum-mosbach
+ *
+ * Or via HTTP:
+ *   POST https://europe-west3-auto-lackierzentrum-mosbach.cloudfunctions.net/testMonthlyBonusReset
+ *
+ * Implementation: FIX #55 (Manual test trigger)
+ */
+exports.testMonthlyBonusReset = functions.https.onCall(async (data, context) => {
+  console.log('🧪 Manual bonus reset test triggered...');
+
+  try {
+    // Multi-Tenant: Reset bonuses for ALL werkstatt instances
+    const werkstattIds = ['mosbach', 'heidelberg', 'mannheim', 'test'];
+    let totalPartnersUpdated = 0;
+    const results = {};
+
+    for (const werkstattId of werkstattIds) {
+      const collectionName = `partners_${werkstattId}`;
+
+      try {
+        // Get all partners for this werkstatt
+        const partnersRef = db.collection(collectionName);
+        const snapshot = await partnersRef.get();
+
+        if (snapshot.empty) {
+          console.log(`ℹ️  No partners found in ${collectionName}`);
+          results[collectionName] = { count: 0, status: 'empty' };
+          continue;
+        }
+
+        // Batch update
+        const batch = db.batch();
+        let operationCount = 0;
+
+        snapshot.forEach(doc => {
+          const data = doc.data();
+
+          // Only reset if partner has rabattKonditionen
+          if (data.rabattKonditionen) {
+            batch.update(doc.ref, {
+              'rabattKonditionen.stufe1.bonusErhalten': false,
+              'rabattKonditionen.stufe2.bonusErhalten': false,
+              'rabattKonditionen.stufe3.bonusErhalten': false
+            });
+            operationCount++;
+            totalPartnersUpdated++;
+          }
+        });
+
+        // Commit batch
+        if (operationCount > 0) {
+          await batch.commit();
+        }
+
+        results[collectionName] = {
+          total: snapshot.size,
+          updated: operationCount,
+          status: 'success'
+        };
+
+        console.log(`✅ ${collectionName}: ${operationCount}/${snapshot.size} partners updated`);
+      } catch (error) {
+        console.error(`❌ Error resetting bonuses for ${collectionName}:`, error);
+        results[collectionName] = {
+          status: 'error',
+          error: error.message
+        };
+      }
+    }
+
+    // Create log entry
+    await db.collection('system_logs').add({
+      type: 'bonus_reset',
+      action: 'manual_test',
+      timestamp: admin.firestore.Timestamp.now(),
+      partnersUpdated: totalPartnersUpdated,
+      success: true,
+      results: results,
+      message: `🧪 Manual test: ${totalPartnersUpdated} partners updated`
+    });
+
+    console.log(`🎉 Manual bonus reset test completed! ${totalPartnersUpdated} partners updated.`);
+
+    return {
+      success: true,
+      totalPartnersUpdated: totalPartnersUpdated,
+      results: results,
+      message: `✅ Bonus reset successful! ${totalPartnersUpdated} partners updated across all werkstatt instances.`
+    };
+  } catch (error) {
+    console.error('❌ Manual bonus reset test failed:', error);
+
+    // Log failure
+    await db.collection('system_logs').add({
+      type: 'bonus_reset',
+      action: 'manual_test',
+      timestamp: admin.firestore.Timestamp.now(),
+      success: false,
+      error: error.message
+    });
+
+    throw new functions.https.HttpsError(
+      'internal',
+      `Bonus reset failed: ${error.message}`
+    );
+  }
+});
