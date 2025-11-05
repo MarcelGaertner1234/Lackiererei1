@@ -2968,3 +2968,111 @@ exports.validatePartnerAutoLoginToken = functions
         );
       }
     });
+
+// ============================================
+// SCHEDULED FUNCTION: Monthly Bonus Reset
+// ============================================
+
+/**
+ * Monthly Bonus Reset - Runs on the 1st of every month at 00:00 (Europe/Berlin)
+ *
+ * Resets all `bonusErhalten` flags for all partners across all werkstatt instances.
+ * This allows partners to earn bonuses EVERY month (recurring incentive system).
+ *
+ * Cron Schedule: '0 0 1 * *' = 00:00 on the 1st day of every month
+ *
+ * Implementation: FIX #55 (2025-11-05)
+ * User Request: "Monatliche Reset-Bonuses" for recurring partner motivation
+ */
+exports.monthlyBonusReset = functions.pubsub
+    .schedule('0 0 1 * *')  // Runs at 00:00 on the 1st of every month
+    .timeZone('Europe/Berlin')
+    .onRun(async (context) => {
+      console.log('🔄 Starting monthly bonus reset...');
+
+      try {
+        // Multi-Tenant: Reset bonuses for ALL werkstatt instances
+        const werkstattIds = ['mosbach', 'heidelberg', 'mannheim', 'test'];  // Add more as needed
+        let totalPartnersUpdated = 0;
+
+        for (const werkstattId of werkstattIds) {
+          const collectionName = `partners_${werkstattId}`;
+
+          try {
+            // Get all partners for this werkstatt
+            const partnersRef = db.collection(collectionName);
+            const snapshot = await partnersRef.get();
+
+            if (snapshot.empty) {
+              console.log(`ℹ️  No partners found in ${collectionName}`);
+              continue;
+            }
+
+            // Batch update (max 500 operations per batch)
+            const batchSize = 500;
+            let batch = db.batch();
+            let operationCount = 0;
+
+            snapshot.forEach(doc => {
+              const data = doc.data();
+
+              // Only reset if partner has rabattKonditionen
+              if (data.rabattKonditionen) {
+                batch.update(doc.ref, {
+                  'rabattKonditionen.stufe1.bonusErhalten': false,
+                  'rabattKonditionen.stufe2.bonusErhalten': false,
+                  'rabattKonditionen.stufe3.bonusErhalten': false
+                });
+
+                operationCount++;
+                totalPartnersUpdated++;
+
+                // Commit batch if size limit reached
+                if (operationCount >= batchSize) {
+                  batch.commit();
+                  batch = db.batch();
+                  operationCount = 0;
+                }
+              }
+            });
+
+            // Commit remaining operations
+            if (operationCount > 0) {
+              await batch.commit();
+            }
+
+            console.log(`✅ ${collectionName}: ${snapshot.size} partners processed`);
+          } catch (error) {
+            console.error(`❌ Error resetting bonuses for ${collectionName}:`, error);
+            // Continue with next werkstatt even if one fails
+          }
+        }
+
+        // Create log entry in Firestore
+        await db.collection('system_logs').add({
+          type: 'bonus_reset',
+          action: 'monthly_reset',
+          timestamp: admin.firestore.Timestamp.now(),
+          partnersUpdated: totalPartnersUpdated,
+          success: true,
+          message: `✅ Monthly bonus reset completed. ${totalPartnersUpdated} partners updated across all werkstatt instances.`
+        });
+
+        console.log(`🎉 Monthly bonus reset completed! ${totalPartnersUpdated} partners updated.`);
+        return null;
+      } catch (error) {
+        console.error('❌ Monthly bonus reset failed:', error);
+
+        // Log failure
+        await db.collection('system_logs').add({
+          type: 'bonus_reset',
+          action: 'monthly_reset',
+          timestamp: admin.firestore.Timestamp.now(),
+          success: false,
+          error: error.message,
+          stack: error.stack
+        });
+
+        throw error;
+      }
+    });
