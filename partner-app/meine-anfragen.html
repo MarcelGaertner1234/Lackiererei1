@@ -3276,9 +3276,10 @@
             }
             console.log('✅ [MEINE-ANFRAGEN] werkstattId initialized:', window.werkstattId);
 
-            // 🔒 SECURITY: Button-Visibility wird pro Anfrage geprüft (kein globaler isPartnerPortal)
-            // Jeder Button prüft: currentUserEmail !== anfrage.partnerEmail
-            console.log('🔒 [SECURITY] Annehmen-Buttons: Pro Anfrage prüfen ob User === partnerEmail');
+            // 🔒 SECURITY: isPartnerPortal wird DYNAMISCH in loadAnfragen() gesetzt
+            // (Partner vs Kunde Unterscheidung basierend auf kundenEmail vs partnerEmail)
+            window.isPartnerPortal = null; // Wird später gesetzt
+            console.log('🔒 [SECURITY] Partner/Kunde-Rolle wird dynamisch erkannt in loadAnfragen()');
 
             // RUN #62: Emulator-Detection - Skip Firestore Check in Test-Umgebung
             const isEmulator = window.location.hostname === 'localhost' ||
@@ -3439,8 +3440,19 @@
                             return timeB - timeA;
                         });
 
-                        // 🔒 SECURITY: Button-Visibility wird pro Anfrage geprüft (kein globaler isPartnerPortal)
-                        // Jeder Button prüft: currentUserEmail !== anfrage.partnerEmail
+                        // 🔒 SECURITY: Dynamische Partner/Kunde-Erkennung
+                        const userEmail = firebase.auth().currentUser.email.toLowerCase();
+
+                        // Partner: Erstellt Anfragen FÜR SICH SELBST (kundenEmail === partnerEmail)
+                        // Kunde: Wurde von Partner eingeladen (kundenEmail !== partnerEmail)
+                        const istPartner = alleAnfragen.every(a => {
+                            const kundenEmail = String(a.kundenEmail || a.partnerEmail).toLowerCase();
+                            const partnerEmail = String(a.partnerEmail).toLowerCase();
+                            return kundenEmail === userEmail && partnerEmail === userEmail;
+                        });
+
+                        window.isPartnerPortal = istPartner;
+                        console.log('🔒 [SECURITY] User-Rolle erkannt:', istPartner ? 'Partner (kann KVAs NICHT annehmen)' : 'Kunde (kann KVAs annehmen)', '(' + userEmail + ')');
 
                         // NEU: Fahrzeug-Daten für Live-Produktionsfortschritt laden
                         await loadFahrzeugeForAnfragen(alleAnfragen);
@@ -4475,12 +4487,7 @@
                         💬 Chat
                         ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
                     </button>
-                    ${(() => {
-                        // 🔒 SECURITY: Prüfe pro Anfrage ob User = Partner
-                        const currentUserEmail = firebase.auth().currentUser.email.toLowerCase();
-                        const istPartnerDerAnfrage = String(anfrage.partnerEmail).toLowerCase() === currentUserEmail;
-                        return anfrage.status === 'kva_gesendet' && !istPartnerDerAnfrage;
-                    })() ? `
+                    ${anfrage.status === 'kva_gesendet' && !window.isPartnerPortal ? `
                         <button class="card-btn card-btn-accept" onclick="annehmenKVA('${anfrage.id}', event)">
                             ✅ Annehmen
                         </button>
@@ -4601,12 +4608,7 @@
                         💬
                         ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
                     </button>
-                    ${(() => {
-                        // 🔒 SECURITY: Prüfe pro Anfrage ob User = Partner
-                        const currentUserEmail = firebase.auth().currentUser.email.toLowerCase();
-                        const istPartnerDerAnfrage = String(anfrage.partnerEmail).toLowerCase() === currentUserEmail;
-                        return anfrage.status === 'kva_gesendet' && !istPartnerDerAnfrage;
-                    })() ? `
+                    ${anfrage.status === 'kva_gesendet' && !window.isPartnerPortal ? `
                         <button class="card-btn card-btn-accept" onclick="annehmenKVA('${anfrage.id}', event)">✅</button>
                     ` : ''}
                     <button class="card-btn card-btn-details" onclick="openDetails('${anfrage.id}', event)">→</button>
@@ -4707,12 +4709,7 @@
                         💬
                         ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
                     </button>
-                    ${(() => {
-                        // 🔒 SECURITY: Prüfe pro Anfrage ob User = Partner
-                        const currentUserEmail = firebase.auth().currentUser.email.toLowerCase();
-                        const istPartnerDerAnfrage = String(anfrage.partnerEmail).toLowerCase() === currentUserEmail;
-                        return anfrage.status === 'kva_gesendet' && !istPartnerDerAnfrage;
-                    })() ? `
+                    ${anfrage.status === 'kva_gesendet' && !window.isPartnerPortal ? `
                         <button class="card-btn card-btn-accept" onclick="annehmenKVA('${anfrage.id}', event)">✅</button>
                     ` : ''}
                     <button class="card-btn card-btn-details" onclick="openDetails('${anfrage.id}', event)">→</button>
