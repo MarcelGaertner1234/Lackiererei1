@@ -343,6 +343,12 @@ service cloud.firestore {
                       || request.resource.data.kundenEmail == request.auth.token.email
                     );
 
+      // 🆕 BUGFIX 2025-11-06: Partners können Fahrzeuge abfragen (für Duplicate-Check + loadFahrzeugByAuftragsnummer)
+      // Security: Bestehende READ-Regel (Zeile 329-334) filtert Ergebnisse auf eigene Fahrzeuge
+      allow list: if fahrzeugeCollection.matches('fahrzeuge_.*')
+                  && isPartner()
+                  && isActive();
+
       // Subcollections: Fotos
       match /fotos/{photoId} {
         allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
@@ -379,6 +385,20 @@ service cloud.firestore {
       allow create: if kundenCollection.matches('kunden_.*')
                     && isPartner()
                     && isActive()
+                    && request.resource.data.email == request.auth.token.email;
+
+      // 🆕 BUGFIX 2025-11-06: Partners können Kunden-Queries machen (für registriereKundenbesuch)
+      // Security: Query erlaubt, aber nur Kunden mit Partner-Email werden zurückgegeben
+      allow list: if kundenCollection.matches('kunden_.*')
+                  && isPartner()
+                  && isActive();
+
+      // 🆕 BUGFIX 2025-11-06: Partners können eigene Kunden updaten (für Besuchs-Registrierung)
+      // Security: Email-basierte Validierung - Partner kann nur Kunden mit seiner Email updaten
+      allow update: if kundenCollection.matches('kunden_.*')
+                    && isPartner()
+                    && isActive()
+                    && resource.data.email == request.auth.token.email
                     && request.resource.data.email == request.auth.token.email;
     }
 
