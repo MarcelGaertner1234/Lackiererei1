@@ -333,6 +333,16 @@ service cloud.firestore {
                     || resource.data.kundenEmail == request.auth.token.email
                   );
 
+      // 🆕 BUGFIX 2025-11-06: Partners können Fahrzeuge erstellen (für KVA-Annahme)
+      // Security: Partner kann nur Fahrzeuge mit seiner eigenen Email erstellen
+      allow create: if fahrzeugeCollection.matches('fahrzeuge_.*')
+                    && isPartner()
+                    && isActive()
+                    && (
+                      request.resource.data.partnerEmail == request.auth.token.email
+                      || request.resource.data.kundenEmail == request.auth.token.email
+                    );
+
       // Subcollections: Fotos
       match /fotos/{photoId} {
         allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
@@ -353,6 +363,13 @@ service cloud.firestore {
     match /{kundenCollection}/{kundeId} {
       allow read, write: if kundenCollection.matches('kunden_.*')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
+
+      // 🆕 BUGFIX 2025-11-06: Partners können Kunden erstellen (für KVA-Annahme)
+      // Security: Partner kann nur Kunden mit seiner eigenen Email erstellen
+      allow create: if kundenCollection.matches('kunden_.*')
+                    && isPartner()
+                    && isActive()
+                    && request.resource.data.email == request.auth.token.email;
     }
 
     // Mitarbeiter Collections: mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.
@@ -401,14 +418,15 @@ service cloud.firestore {
                   && isActive()
                   && isOwner(partnerId);
 
-      // Partners: Can update password-related fields ONLY
+      // Partners: Can update password-related fields + bonus-fields
+      // 🆕 BUGFIX 2025-11-06: Added bonus-related fields für KVA-Annahme
       allow update: if partnersCollection.matches('partners_.*')
                     && isPartner()
                     && isActive()
                     && isOwner(partnerId)
                     && request.resource.data.diff(resource.data)
                         .affectedKeys()
-                        .hasOnly(['requiresPasswordChange', 'passwordChangedAt', 'initialPassword', 'lastLogin']);
+                        .hasOnly(['requiresPasswordChange', 'passwordChangedAt', 'initialPassword', 'lastLogin', 'bonusErhalten', 'rabattKonditionen']);
     }
 
     // Global Partner Collection (used by Cloud Functions for Auth data)
@@ -503,6 +521,16 @@ service cloud.firestore {
                     isOwner(resource.data.partnerId)  // Direct document reads by partnerId
                     || resource.data.partnerEmail == request.auth.token.email  // Queries by partnerEmail
                   );
+
+      // 🆕 BUGFIX 2025-11-06: Partners können ihre eigenen Anfragen updaten (für KVA-Annahme)
+      // Security: Partner kann nur seine eigenen Anfragen updaten (partnerEmail match)
+      allow update: if anfrageCollection.matches('partnerAnfragen_.*')
+                    && isPartner()
+                    && isActive()
+                    && (
+                      isOwner(resource.data.partnerId)
+                      || resource.data.partnerEmail == request.auth.token.email
+                    );
 
       // Subcollection: Chat Messages
       match /chat/{messageId} {
