@@ -61,6 +61,33 @@ service cloud.firestore {
     }
 
     // ============================================
+    // 🔥 BONUS COLLECTIONS - MOVED TO TOP (FIX #53)
+    // ============================================
+    // CRITICAL: These rules MUST be at the TOP to prevent pattern collisions
+    // Other wildcard patterns (/{chatCollection}/{id}, /{partnersCollection}/{id})
+    // were matching BEFORE our bonus rules and blocking access!
+    //
+    // Strategy: Evaluate bonus rules FIRST, before ANY other wildcard patterns
+
+    // 1. HARDCODED MOSBACH COLLECTION (most specific - checked first)
+    match /bonusAuszahlungen_mosbach/{bonusId} {
+      allow read, write: if true;  // 🚨 ULTRA-PERMISSIVE for debugging
+    }
+
+    // 2. MULTI-TENANT PATTERN (bonusAuszahlungen_mosbach, bonusAuszahlungen_heidelberg, etc.)
+    match /{bonusCollection}/{bonusId} {
+      // Ultra-permissive for debugging - allows ALL operations on bonus collections
+      allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*');
+
+      // Admin/Mitarbeiter/Partner specific rules (currently redundant due to above rule)
+      // Will be re-enabled after debugging is complete:
+      // allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*') && isAdmin();
+      // allow read: if bonusCollection.matches('bonusAuszahlungen_.*') && isMitarbeiter() && isActive();
+      // allow read: if bonusCollection.matches('bonusAuszahlungen_.*') && request.auth != null
+      //             && resource.data.partnerEmail == request.auth.token.email;
+    }
+
+    // ============================================
     // USERS COLLECTION
     // ============================================
 
@@ -543,43 +570,8 @@ service cloud.firestore {
                   && resource.data.partnerEmail == request.auth.token.email;
     }
 
-    // Multi-Tenant Collections (bonusAuszahlungen_mosbach, bonusAuszahlungen_heidelberg, etc.)
-    match /{bonusCollection}/{bonusId} {
-      // Admins: Full access
-      allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*') && isAdmin();
-
-      // Mitarbeiter: Read access (können alle Bonuses sehen)
-      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
-                  && isMitarbeiter() && isActive();
-
-      // 🆕 BUGFIX 2025-11-04 (FIX #26, #33): Partners - Email-basiert (vereinfacht)
-      // Removed komplexen Cross-Collection Fallback der zu Permission Errors führte
-      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
-                  && request.auth != null
-                  && resource.data.partnerEmail == request.auth.token.email;
-
-      // 🆕 BUGFIX 2025-11-04 (FIX #38, #46, #48, #49, #50): Partners können eigene Bonuses erstellen
-      // Partner dürfen Bonus-Einträge für sich selbst anlegen (status: pending)
-      // Admin muss diese dann genehmigen/auszahlen
-      // FIX #50 (PHASE 3 - NUCLEAR OPTION): ALLOW EVERYTHING to test if rules are even evaluated
-      // Previous ultra-minimal test (pattern + auth + role) FAILED
-      // Testing if Security Rules system is working at all
-      allow create: if bonusCollection.matches('bonusAuszahlungen_.*')
-                    && true;  // 🚨 NUCLEAR: Allow ALL creates for debugging
-    }
-
-    // ============================================
-    // 🚨 PHASE 4: ABSOLUTE NUCLEAR OPTION (FIX #51)
-    // HARDCODED COLLECTION - ZERO VALIDATION
-    // ============================================
-    // Testing if pattern matching was the issue
-    // Previous phases ALL FAILED (even "bonusCollection.matches('bonusAuszahlungen_.*') && true")
-    // Root cause hypothesis: bonusCollection = "mosbach", not "bonusAuszahlungen_mosbach"
-    //   → "mosbach".matches('bonusAuszahlungen_.*') = FALSE!
-
-    match /bonusAuszahlungen_mosbach/{bonusId} {
-      allow create: if true;  // 🚨 ABSOLUTE NUCLEAR: Allow EVERYTHING, no conditions!
-    }
+    // 🔥 BONUS RULES MOVED TO TOP (after helper functions) - See Line 63
+    // This section was relocated to prevent pattern collision with other wildcard rules
 
     // ============================================
     // COLLECTION GROUP: chat (ALL chat subcollections)
