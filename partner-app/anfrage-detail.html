@@ -1003,16 +1003,31 @@
         }
 
         // NEU: Live-Updates für Fahrzeug (Real-Time Produktionsfortschritt)
+        // 🆕 BUGFIX 2025-11-05 (FIX #54b): Query-Rule Compliance für Partner-Zugriff
         function setupLiveFahrzeugUpdates(kennzeichen) {
             console.log('🔍 DEBUG: setupLiveFahrzeugUpdates() gestartet für kennzeichen:', kennzeichen);
 
             // Alte Listener entfernen falls vorhanden
             if (window.unsubscribeFahrzeug) window.unsubscribeFahrzeug();
 
-            window.unsubscribeFahrzeug = window.getCollection('fahrzeuge')
+            // Get current user email (lowercase for case-insensitive comparison)
+            const currentUserEmail = firebase.auth().currentUser.email.toLowerCase();
+
+            // Versuch 1: Query mit partnerEmail (Query-Rule Compliance)
+            let queryRef = window.getCollection('fahrzeuge')
+                .where('partnerEmail', '==', currentUserEmail)
                 .where('kennzeichen', '==', kennzeichen.toUpperCase())
-                .limit(1)
-                .onSnapshot((snapshot) => {
+                .limit(1);
+
+            console.log('🔍 DEBUG: Live-Updates Query (partnerEmail):', {
+                userEmail: currentUserEmail,
+                kennzeichen: kennzeichen.toUpperCase()
+            });
+
+            // Track if we tried fallback to avoid infinite loop
+            let hasTriedKundenEmailFallback = false;
+
+            window.unsubscribeFahrzeug = queryRef.onSnapshot((snapshot) => {
                     // DEBUG: onSnapshot triggered
                     console.log('🔍 DEBUG: onSnapshot triggered:', {
                         snapshotSize: snapshot.size,
@@ -1046,7 +1061,54 @@
                         anfrage.fahrzeug = newData;
                         renderAnfrage(true);  // true = Live-Update
                     } else {
-                        console.warn('⚠️ DEBUG: onSnapshot triggered but snapshot is empty!');
+                        // Fallback: Versuch mit kundenEmail
+                        if (!hasTriedKundenEmailFallback) {
+                            hasTriedKundenEmailFallback = true;
+                            console.log('ℹ️ Nicht als partnerEmail gefunden, versuche kundenEmail für Live-Updates...');
+
+                            // Alte Listener entfernen
+                            if (window.unsubscribeFahrzeug) window.unsubscribeFahrzeug();
+
+                            // Neue Query mit kundenEmail
+                            const fallbackQueryRef = window.getCollection('fahrzeuge')
+                                .where('kundenEmail', '==', currentUserEmail)
+                                .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                                .limit(1);
+
+                            console.log('🔍 DEBUG: Live-Updates Fallback Query (kundenEmail):', {
+                                userEmail: currentUserEmail,
+                                kennzeichen: kennzeichen.toUpperCase()
+                            });
+
+                            // Neue Listener mit kundenEmail registrieren (ohne Fallback)
+                            window.unsubscribeFahrzeug = fallbackQueryRef.onSnapshot((snapshot) => {
+                                if (!snapshot.empty) {
+                                    const fahrzeugDoc = snapshot.docs[0];
+                                    const newData = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+
+                                    console.log('🔍 DEBUG: Fahrzeug onSnapshot Data (kundenEmail):', {
+                                        fahrzeugId: fahrzeugDoc.id,
+                                        prozessStatus: fahrzeugDoc.data().prozessStatus,
+                                        statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0
+                                    });
+
+                                    if (anfrage.fahrzeug &&
+                                        JSON.stringify(anfrage.fahrzeug.statusHistory) !== JSON.stringify(newData.statusHistory)) {
+                                        console.log('🔄 Fahrzeug aktualisiert - neue statusHistory');
+                                        showUpdateNotification('Neuer Produktionsfortschritt!');
+                                    }
+
+                                    anfrage.fahrzeug = newData;
+                                    renderAnfrage(true);
+                                } else {
+                                    console.warn('⚠️ DEBUG: Auch mit kundenEmail kein Fahrzeug gefunden!');
+                                }
+                            }, (error) => {
+                                console.error('❌ Fehler beim Live-Update (kundenEmail):', error);
+                            });
+                        } else {
+                            console.warn('⚠️ DEBUG: onSnapshot triggered but snapshot is empty (Fallback bereits versucht)!');
+                        }
                     }
                 }, (error) => {
                     console.error('❌ Fehler beim Live-Update des Fahrzeugs:', error);
