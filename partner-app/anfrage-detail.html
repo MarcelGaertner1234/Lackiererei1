@@ -853,12 +853,34 @@
         }
 
         // NEU: Fahrzeug per Kennzeichen laden
+        // 🆕 BUGFIX 2025-11-05 (FIX #54): Query-Rule Compliance für Partner-Zugriff
+        // Security Rules prüfen partnerEmail/kundenEmail → Query MUSS auch danach filtern
         async function loadFahrzeugByKennzeichen(kennzeichen) {
             try {
-                const snapshot = await window.getCollection('fahrzeuge')
+                // Get current user email (lowercase for case-insensitive comparison)
+                const currentUserEmail = firebase.auth().currentUser.email.toLowerCase();
+
+                console.log('🔍 DEBUG: Lade Fahrzeug mit Query-Rule Compliance:', {
+                    kennzeichen: kennzeichen.toUpperCase(),
+                    userEmail: currentUserEmail
+                });
+
+                // Query 1: Als partnerEmail (Partner hat Anfrage erstellt)
+                let snapshot = await window.getCollection('fahrzeuge')
+                    .where('partnerEmail', '==', currentUserEmail)
                     .where('kennzeichen', '==', kennzeichen.toUpperCase())
                     .limit(1)
                     .get();
+
+                // Query 2: Als kundenEmail (Fallback - Partner ist gleichzeitig Kunde)
+                if (snapshot.empty) {
+                    console.log('ℹ️ Nicht als partnerEmail gefunden, versuche kundenEmail...');
+                    snapshot = await window.getCollection('fahrzeuge')
+                        .where('kundenEmail', '==', currentUserEmail)
+                        .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                        .limit(1)
+                        .get();
+                }
 
                 // DEBUG: Verify Firestore query
                 console.log('🔍 DEBUG: Fahrzeug-Query Result:', {
@@ -879,7 +901,9 @@
                         kennzeichen: fahrzeugDoc.data().kennzeichen,
                         prozessStatus: fahrzeugDoc.data().prozessStatus,
                         statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0,
-                        quelle: fahrzeugDoc.data().quelle
+                        quelle: fahrzeugDoc.data().quelle,
+                        partnerEmail: fahrzeugDoc.data().partnerEmail,
+                        kundenEmail: fahrzeugDoc.data().kundenEmail
                     });
 
                     // Re-render nach erfolgreichem Laden
@@ -897,6 +921,11 @@
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Fahrzeugs:', error);
+                console.error('🔍 DEBUG: Error details:', {
+                    code: error.code,
+                    message: error.message,
+                    kennzeichen: kennzeichen
+                });
             }
         }
 
