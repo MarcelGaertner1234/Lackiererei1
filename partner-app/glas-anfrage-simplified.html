@@ -24,7 +24,7 @@
                 </div>
                 <div class="sidebar-step pending" data-step="3">
                     <div class="step-number">3</div>
-                    <div class="step-label">Glasart &amp; Schaden</div>
+                    <div class="step-label">Glasart & Schaden</div>
                     <div class="step-icon"></div>
                 </div>
                 <div class="sidebar-step pending" data-step="4">
@@ -175,9 +175,562 @@
                 <button class="btn btn-primary" onclick="window.location.href='meine-anfragen.html'">Zu meinen Anfragen</button>
             </div>
         </div>
-    </div>
+    </div><!-- End main-layout -->
 
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 
+    <script src="../firebase-config.js?v=a4192c4"></script>
+    <script src="../js/auth-manager.js"></script>
+    <script>
+        // Global Variables
+        let currentStep = 1;
+        const totalSteps = 5;
+        let partner = null;
+        let photos = [];
+        let selectedTermin = null;
+
+        // ============================================
+        // PRE-INITIALIZE werkstattId from localStorage
+        // ============================================
+        // CRITICAL: Set werkstattId BEFORE auth-check polling!
+        const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+        window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+        console.log('✅ [GLAS-ANFRAGE] werkstattId pre-initialized:', window.werkstattId);
+
+        // AUTH-CHECK POLLING
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 20;
+
+        const authCheckInterval = setInterval(async () => {
+            authCheckAttempts++;
+
+            if (window.firebaseInitialized && window.werkstattId) {
+                clearInterval(authCheckInterval);
+                console.log('✅ [GLAS-ANFRAGE] Firebase ready');
+
+                await initAuth();
+                await initFirebase();
+                setupPhotoUpload();
+
+                // Show step 4 content when reached
+                const observer = new MutationObserver(() => {
+                    if (currentStep === 4 && !document.getElementById('terminGrid').classList.contains('loaded')) {
+                        loadTermine();
+                        document.getElementById('terminGrid').classList.add('loaded');
+                    }
+                });
+
+                observer.observe(document.querySelector('.wizard-container'), {
+                    childList: true,
+                    subtree: true,
+                    attributes: true
+                });
+            }
+
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.error('❌ [GLAS-ANFRAGE] Firebase initialization timeout');
+                alert('Fehler: Firebase konnte nicht initialisiert werden. Bitte laden Sie die Seite neu.');
+            }
+        }, 250);
+
+        // Auth Check
+        async function initAuth() {
+            partner = JSON.parse(localStorage.getItem('partner'));
+
+            if (!partner || !partner.id) {
+                console.error('❌ Partner nicht eingeloggt!');
+                alert('Bitte melden Sie sich zunächst an.');
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // werkstattId initialization (Multi-Tenant)
+            if (!partner.werkstattId) {
+                console.error('❌ Partner-Daten unvollständig - werkstattId fehlt!');
+                alert('Fehler: Partner-Daten unvollständig. Bitte melden Sie sich erneut an.');
+                window.location.href = 'index.html';
+                return;
+            }
+            window.werkstattId = partner.werkstattId || 'mosbach'; // Fallback to 'mosbach'
+            console.log('✅ [GLAS-ANFRAGE] werkstattId initialized:', window.werkstattId);
+
+            // Display partner name
+            document.getElementById('partnerName').textContent = `Partner: ${partner.name}`;
+        }
+
+        // Initialize Firebase
+        async function initFirebase() {
+            if (typeof firebase === 'undefined') {
+                console.error('Firebase SDK not loaded');
+                return;
+            }
+
+            // Wait for firebase-config.js to initialize
+            if (window.firebaseInitialized) {
+                await window.firebaseInitialized;
+            }
+        }
+
+        // ============================================
+        // PROGRESS & NAVIGATION
+        // ============================================
+        function updateProgress() {
+            const percent = (currentStep / totalSteps) * 100;
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressText').textContent = `Schritt ${currentStep} von ${totalSteps}`;
+        }
+
+        function updateButtons() {
+            const btnBack = document.getElementById('btnBack');
+            const btnNext = document.getElementById('btnNext');
+
+            if (currentStep === 1) {
+                btnBack.style.display = 'none';
+            } else {
+                btnBack.style.display = 'inline-flex';
+            }
+
+            if (currentStep === totalSteps) {
+                btnNext.textContent = 'Anfrage senden';
+            } else {
+                btnNext.textContent = 'Weiter →';
+            }
+        }
+
+        function updateSidebar() {
+            const sidebarSteps = document.querySelectorAll('.sidebar-step');
+
+            sidebarSteps.forEach((step, index) => {
+                const stepNumber = index + 1;
+
+                // Remove all state classes
+                step.classList.remove('completed', 'active', 'pending');
+
+                // Add appropriate class based on current step
+                if (stepNumber < currentStep) {
+                    step.classList.add('completed');
+                } else if (stepNumber === currentStep) {
+                    step.classList.add('active');
+                } else {
+                    step.classList.add('pending');
+                }
+            });
+        }
+
+        // Validation per Step
+        function validateStep(step) {
+            switch(step) {
+                case 1: // Photos optional for glas
+                    return true;
+
+                case 2: // Fahrzeug
+                    const kennzeichen = document.getElementById('kennzeichen').value.trim();
+                    const marke = document.getElementById('marke').value;
+                    const modell = document.getElementById('modell').value.trim();
+
+                    if (!kennzeichen) {
+                        alert('Bitte geben Sie das Kennzeichen ein.');
+                        return false;
+                    }
+                    if (!marke || marke === '') {
+                        alert('Bitte wählen Sie die Fahrzeugmarke aus.');
+                        return false;
+                    }
+                    if (!modell) {
+                        alert('Bitte geben Sie das Fahrzeugmodell ein.');
+                        return false;
+                    }
+                    return true;
+
+                case 3: // Glasart & Schaden
+                    const glasArt = document.querySelector('input[name="glasArt"]:checked');
+                    if (!glasArt) {
+                        alert('Bitte wählen Sie die Art der Reparatur aus.');
+                        return false;
+                    }
+                    const scheibenTyp = document.querySelector('input[name="scheibenTyp"]:checked');
+                    if (!scheibenTyp) {
+                        alert('Bitte wählen Sie den Scheibentyp aus.');
+                        return false;
+                    }
+                    return true;
+
+                case 4: // Termin
+                    if (!selectedTermin) {
+                        alert('Bitte wählen Sie einen Wunschtermin aus.');
+                        return false;
+                    }
+                    return true;
+
+                default:
+                    return true;
+            }
+        }
+
+        // Navigation Functions
+        function nextStep() {
+            // Validate current step
+            if (!validateStep(currentStep)) {
+                return;
+            }
+
+            if (currentStep === totalSteps) {
+                submitAnfrage();
+                return;
+            }
+
+            // Move to next step
+            const currentStepEl = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
+            const nextStepEl = document.querySelector(`.wizard-step[data-step="${currentStep + 1}"]`);
+
+            currentStepEl.classList.remove('active');
+            currentStepEl.classList.add('prev');
+
+            setTimeout(() => {
+                currentStepEl.classList.remove('prev');
+            }, 400);
+
+            nextStepEl.classList.add('active');
+
+            currentStep++;
+            updateProgress();
+            updateButtons();
+            updateSidebar();
+
+            // Load termine on step 4
+            if (currentStep === 4) {
+                loadTermine();
+            }
+
+            // Generate summary on step 5
+            if (currentStep === totalSteps) {
+                generateSummary();
+            }
+
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function prevStep() {
+            if (currentStep === 1) return;
+
+            const currentStepEl = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
+            const prevStepEl = document.querySelector(`.wizard-step[data-step="${currentStep - 1}"]`);
+
+            currentStepEl.classList.remove('active');
+            prevStepEl.classList.add('active');
+
+            currentStep--;
+            updateProgress();
+            updateButtons();
+            updateSidebar();
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ============================================
+        // PHOTO UPLOAD
+        // ============================================
+        function setupPhotoUpload() {
+            const input = document.getElementById('photoInput');
+            window.listenerRegistry.registerDOM(input, 'change', handlePhotoUpload, 'input change');
+        }
+
+        async function handlePhotoUpload(event) {
+            const files = Array.from(event.target.files);
+
+            for (const file of files) {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        photos.push(e.target.result);
+                        displayPhotos();
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+        }
+
+        function displayPhotos() {
+            const preview = document.getElementById('photoPreview');
+            preview.innerHTML = '';
+
+            photos.forEach((photo, index) => {
+                const div = document.createElement('div');
+                div.className = 'photo-preview-item';
+                div.innerHTML = `
+                    <img src="${photo}" alt="Foto ${index + 1}">
+                    <button type="button" class="remove-btn" onclick="removePhoto(${index})">×</button>
+                `;
+                preview.appendChild(div);
+            });
+        }
+
+        function removePhoto(index) {
+            photos.splice(index, 1);
+            displayPhotos();
+        }
+
+        // ============================================
+        // RADIO OPTION SELECTION
+        // ============================================
+        function selectGlasArt(element, value) {
+            // Remove selected class from all options
+            element.closest('.radio-group').querySelectorAll('.radio-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            // Add selected class to clicked option
+            element.classList.add('selected');
+            // Check the radio input
+            element.querySelector('input[type="radio"]').checked = true;
+        }
+
+        function selectScheibenTyp(value) {
+            // Remove selected class from all options
+            document.querySelectorAll('.toggle-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            // Add selected class to clicked option
+            const option = document.querySelector(`.toggle-option input[value="${value}"]`).closest('.toggle-option');
+            option.classList.add('selected');
+            // Check the radio input
+            document.querySelector(`input[name="scheibenTyp"][value="${value}"]`).checked = true;
+        }
+
+        // ============================================
+        // TERMIN SELECTION
+        // ============================================
+        async function loadTermine() {
+            const terminGrid = document.getElementById('terminGrid');
+
+            if (!window.db) {
+                console.error('Firebase nicht initialisiert');
+                terminGrid.innerHTML = '<div class="loading"><div style="color: red;">Fehler beim Laden der Termine</div></div>';
+                return;
+            }
+
+            try {
+                const heute = new Date();
+                heute.setHours(0, 0, 0, 0);
+
+                const endDate = new Date(heute);
+                endDate.setDate(endDate.getDate() + 21);
+
+                // Query Firestore for existing appointments
+                const snapshot = await window.getCollection('fahrzeuge')
+                    .where('anliefertermin', '>=', heute.toISOString())
+                    .where('anliefertermin', '<=', endDate.toISOString())
+                    .get();
+
+                // Calculate workload per day
+                const auslastung = {};
+                snapshot.forEach(doc => {
+                    const termin = doc.data().anliefertermin;
+                    if (termin) {
+                        const date = termin.split('T')[0];
+                        auslastung[date] = (auslastung[date] || 0) + 1;
+                    }
+                });
+
+                // Generate available dates (exclude Sundays)
+                const dates = [];
+                for (let i = 1; i <= 21; i++) {
+                    const date = new Date(heute);
+                    date.setDate(date.getDate() + i);
+                    if (date.getDay() !== 0) { // Skip Sundays
+                        const dateStr = date.toISOString().split('T')[0];
+                        const workload = auslastung[dateStr] || 0;
+                        dates.push({
+                            datum: date,
+                            dateStr: dateStr,
+                            auslastung: workload === 0 ? 'frei' : workload <= 2 ? 'normal' : 'voll'
+                        });
+                    }
+                }
+
+                // Show 4 intelligently selected dates
+                const selectedTermine = [
+                    dates.find(d => d.auslastung === 'frei') || dates[0], // First free date
+                    dates[Math.floor(dates.length * 0.33)], // ~1 week
+                    dates[Math.floor(dates.length * 0.66)], // ~2 weeks
+                    dates[dates.length - 1] // Last available
+                ];
+
+                terminGrid.innerHTML = selectedTermine.map((t, idx) => {
+                    const auslastungIcon = t.auslastung === 'frei' ? '🟢' : t.auslastung === 'normal' ? '🟡' : '🔴';
+                    const auslastungText = t.auslastung === 'frei' ? 'Freie Kapazität' : t.auslastung === 'normal' ? 'Normale Auslastung' : 'Ausgelastet';
+                    const wochentag = t.datum.toLocaleDateString('de-DE', { weekday: 'short' });
+                    const tag = t.datum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+
+                    return `
+                        <label class="termin-option" onclick="selectTermin('${t.dateStr}')">
+                            <input type="radio" name="termin" value="${t.dateStr}">
+                            <div class="weekday">${wochentag}</div>
+                            <div class="day">${tag}</div>
+                            <div class="indicator">${auslastungIcon} ${auslastungText}</div>
+                        </label>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Error loading termine:', error);
+                terminGrid.innerHTML = '<div class="loading"><div style="color: red;">Fehler beim Laden der Termine</div></div>';
+            }
+        }
+
+        function selectTermin(dateStr) {
+            // Remove previous selection
+            document.querySelectorAll('.termin-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+
+            // Select clicked termin
+            const option = document.querySelector(`.termin-option input[value="${dateStr}"]`).closest('.termin-option');
+            option.classList.add('selected');
+            selectedTermin = dateStr;
+        }
+
+        // ============================================
+        // SUMMARY GENERATION
+        // ============================================
+        function generateSummary() {
+            const glasArt = document.querySelector('input[name="glasArt"]:checked').value;
+            const glasArtLabels = {
+                'steinschlag': '🔹 Steinschlag reparieren',
+                'riss': '⚡ Riss/Sprung',
+                'ersatz': '🔄 Komplett-Austausch'
+            };
+
+            const scheibenTyp = document.querySelector('input[name="scheibenTyp"]:checked').value;
+            const scheibenTypLabels = {
+                'windschutzscheibe': '🚗 Windschutzscheibe',
+                'seitenfenster': '🚪 Seitenfenster',
+                'heckscheibe': '🔙 Heckscheibe'
+            };
+
+            const sensorVorhanden = document.getElementById('sensorVorhanden').checked;
+
+            const summaryContent = document.getElementById('summaryContent');
+            summaryContent.innerHTML = `
+                <div class="summary-section">
+                    <h3>🚗 Fahrzeug</h3>
+                    <p><strong>Kennzeichen:</strong> ${document.getElementById('kennzeichen').value}</p>
+                    <p><strong>Marke:</strong> ${document.getElementById('marke').value}</p>
+                    <p><strong>Modell:</strong> ${document.getElementById('modell').value}</p>
+                </div>
+                <div class="summary-section">
+                    <h3>🪟 Glasschaden</h3>
+                    <p><strong>Art der Reparatur:</strong> ${glasArtLabels[glasArt]}</p>
+                    <p><strong>Scheibe:</strong> ${scheibenTypLabels[scheibenTyp]}</p>
+                    <p><strong>Regensensor/Spurhalteassistent:</strong> ${sensorVorhanden ? '✅ Ja' : '❌ Nein'}</p>
+                </div>
+                <div class="summary-section">
+                    <h3>📅 Termin</h3>
+                    <p><strong>Wunschtermin:</strong> ${new Date(selectedTermin).toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    ${document.getElementById('anmerkungen').value ? `
+                        <p><strong>Anmerkungen:</strong> ${document.getElementById('anmerkungen').value}</p>
+                    ` : ''}
+                </div>
+                <div class="summary-section">
+                    <h3>📷 Fotos</h3>
+                    <p>${photos.length} Foto(s) hochgeladen</p>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // SUBMIT ANFRAGE
+        // ============================================
+        async function submitAnfrage() {
+            const btnNext = document.getElementById('btnNext');
+            btnNext.disabled = true;
+            btnNext.textContent = 'Wird gesendet...';
+
+            try {
+                // Compress photos
+                const compressedPhotos = await Promise.all(photos.map(photo => compressImage(photo)));
+
+                // Get form data
+                const glasArt = document.querySelector('input[name="glasArt"]:checked').value;
+                const scheibenTyp = document.querySelector('input[name="scheibenTyp"]:checked').value;
+                const sensorVorhanden = document.getElementById('sensorVorhanden').checked;
+
+                // Create anfrage data
+                const anfrageData = {
+                    id: 'req_' + Date.now(),
+                    partnerId: partner.id,
+                    partnerName: partner.name,
+                    serviceTyp: 'glas',
+                    serviceData: {
+                        glasArt: glasArt,
+                        scheibenTyp: scheibenTyp,
+                        sensorVorhanden: sensorVorhanden
+                    },
+                    kennzeichen: document.getElementById('kennzeichen').value.trim(),
+                    marke: document.getElementById('marke').value,
+                    modell: document.getElementById('modell').value.trim(),
+                    anliefertermin: selectedTermin,
+                    anmerkungen: document.getElementById('anmerkungen').value.trim(),
+                    fotos: compressedPhotos,
+                    status: 'neu',
+                    timestamp: new Date().toISOString()
+                };
+
+                // Save to Firestore
+                await window.getCollection('partnerAnfragen').doc(anfrageData.id).set(anfrageData);
+
+                // Show success message
+                document.getElementById('successMessage').style.display = 'flex';
+                document.querySelector('.wizard-container').style.display = 'none';
+                document.querySelector('.wizard-nav').style.display = 'none';
+
+            } catch (error) {
+                console.error('Error submitting anfrage:', error);
+                alert('❌ Fehler beim Senden der Anfrage: ' + error.message);
+                btnNext.disabled = false;
+                btnNext.textContent = 'Anfrage senden';
+            }
+        }
+
+        // ============================================
+        // IMAGE COMPRESSION
+        // ============================================
+        function compressImage(base64Image) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    // Max dimensions
+                    const maxWidth = 1920;
+                    const maxHeight = 1080;
+
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth || height > maxHeight) {
+                        const ratio = Math.min(maxWidth / width, maxHeight / height);
+                        width = width * ratio;
+                        height = height * ratio;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Compress to 85% quality
+                    resolve(canvas.toDataURL('image/jpeg', 0.85));
+                };
+                img.src = base64Image;
+            });
+        }
 
         // Theme Toggle Function
         function toggleTheme() {
