@@ -2970,6 +2970,25 @@
                         // Atomic Update
                         transaction.update(fahrzeugRef, updateData);
                         console.log('   🔒 Transaction: Status + Timestamps atomic update');
+
+                        // 🆕 BUGFIX 2025-11-06: Sync zu partnerAnfragen wenn Anfrage verknüpft ist
+                        const fahrzeugData = doc.data();
+                        if (fahrzeugData.fahrzeugAnfrageId) {
+                            const anfrageRef = window.getCollection('partnerAnfragen')
+                                .doc(fahrzeugData.fahrzeugAnfrageId);
+                            transaction.update(anfrageRef, {
+                                status: mappedStatus,
+                                prozessStatus: newStatus,
+                                lastModified: timestamp,
+                                statusHistory: firebase.firestore.FieldValue.arrayUnion({
+                                    status: mappedStatus,
+                                    prozessStatus: newStatus,
+                                    timestamp: new Date(timestamp).toISOString(),
+                                    user: firebaseApp.auth.currentUser?.email || 'system'
+                                })
+                            });
+                            console.log('   🔄 Synced status to partnerAnfragen:', fahrzeugData.fahrzeugAnfrageId);
+                        }
                     });
 
                     console.log('✅ Status + Timestamps in Firebase aktualisiert (via Transaction)');
