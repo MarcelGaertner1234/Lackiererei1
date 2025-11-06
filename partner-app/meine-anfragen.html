@@ -4229,9 +4229,13 @@
             } else if (anfrage.kva) {
                 // Single-Service KVA mit Varianten (aktuelles Format)
                 if (anfrage.kva.varianten) {
+                    // 🆕 DYNAMIC: Get all variants instead of hard-coding
+                    const variantEntries = Object.entries(anfrage.kva.varianten);
+                    const gewaehlte = anfrage.kva.gewaehlteVariante;
+
+                    // Map variant keys to known types for backward compatibility
                     const original = anfrage.kva.varianten.original;
                     const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
-                    const gewaehlte = anfrage.kva.gewaehlteVariante;
 
                     if (original && aftermarket) {
                         // BEIDE Optionen verfügbar → Vergleich anzeigen mit Hover-Info
@@ -4366,16 +4370,50 @@
                             </div>
                         `;
                     } else {
-                        // Nur EINE Option verfügbar → Einzelpreis wie bisher
+                        // 🆕 DYNAMIC: Handle single variant OR new service types
                         let preis = 'k.A.';
+                        let variantLabel = '';
+
+                        // Variant label mapping for ALL service types
+                        const variantLabelMap = {
+                            // Old services (backward compatible)
+                            original: '⭐ Original',
+                            zubehoer: '🔧 Aftermarket',
+                            partner: '🤝 Partner',
+                            // New services - Folierung
+                            standard: '📐 Standard',
+                            premium: '✨ Premium',
+                            teilbereich: '🎯 Teilbereich',
+                            akzent: '💫 Akzent',
+                            // New services - Steinschutz
+                            vollverklebung: '🛡️ Vollverklebung',
+                            frontpaket: '🚗 Front-Paket',
+                            // New services - Werbebeklebung
+                            einfach: '✅ Einfach',
+                            komplex: '🎨 Komplex',
+                            teilbeklebung: '📌 Teilbeklebung',
+                            magnetschilder: '🧲 Magnetschilder',
+                            logo: '🏷️ Logo'
+                        };
+
+                        // Try gewaehlte first, then first available variant
                         if (gewaehlte && anfrage.kva.varianten[gewaehlte]) {
                             preis = anfrage.kva.varianten[gewaehlte].gesamt.toFixed(2) + '€';
+                            variantLabel = variantLabelMap[gewaehlte] || gewaehlte;
                         } else if (original) {
                             preis = original.gesamt.toFixed(2) + '€';
+                            variantLabel = '⭐ Original';
                         } else if (aftermarket) {
                             preis = aftermarket.gesamt.toFixed(2) + '€';
+                            variantLabel = anfrage.kva.varianten.zubehoer ? '🔧 Aftermarket' : '🤝 Partner';
+                        } else if (variantEntries.length > 0) {
+                            // Fallback: Use first available variant (for new services)
+                            const [firstKey, firstVariant] = variantEntries[0];
+                            preis = firstVariant.gesamt ? firstVariant.gesamt.toFixed(2) + '€' : 'k.A.';
+                            variantLabel = variantLabelMap[firstKey] || firstKey;
                         }
-                        preisHTML = `<div class="card-preis">💶 ${preis}</div>`;
+
+                        preisHTML = `<div class="card-preis">💶 ${preis}${variantLabel ? ` <span style="font-size: 0.85em; opacity: 0.8;">${variantLabel}</span>` : ''}</div>`;
                     }
                 } else if (anfrage.kva.gesamt) {
                     // Legacy KVA Format (falls direkt gesamt gespeichert)
