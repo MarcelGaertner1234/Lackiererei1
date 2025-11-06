@@ -2986,7 +2986,9 @@
                                     status: mappedStatus,
                                     prozessStatus: newStatus,
                                     timestamp: new Date(timestamp).toISOString(),
-                                    user: firebaseApp.auth.currentUser?.email || 'system'
+                                    user: firebaseApp.auth.currentUser?.email || 'system',
+                                    foto: null,  // 🔧 NEU: Konsistente Datenstruktur (kein Foto bei direktem Update)
+                                    notiz: null  // 🔧 NEU: Konsistente Datenstruktur
                                 })
                             });
                             console.log('   🔄 Synced status to partnerAnfragen:', partnerAnfrageId);
@@ -3224,6 +3226,29 @@
                         // Atomic Update
                         transaction.update(fahrzeugRef, updateData);
                         console.log('   🔒 Transaction: Status + Foto atomic update');
+
+                        // 🆕 BUGFIX 2025-11-06: Sync zu partnerAnfragen wenn Anfrage verknüpft ist (MIT Foto!)
+                        const fahrzeugData = doc.data();
+                        // 🔧 BUGFIX: Support both field names (anfrageId from prepareFahrzeugData, fahrzeugAnfrageId legacy)
+                        const partnerAnfrageId = fahrzeugData.anfrageId || fahrzeugData.fahrzeugAnfrageId;
+                        if (partnerAnfrageId) {
+                            const anfrageRef = window.getCollection('partnerAnfragen')
+                                .doc(partnerAnfrageId);
+                            transaction.update(anfrageRef, {
+                                status: mappedStatus,
+                                prozessStatus: newStatus,
+                                lastModified: timestamp,
+                                statusHistory: firebase.firestore.FieldValue.arrayUnion({
+                                    status: mappedStatus,
+                                    prozessStatus: newStatus,
+                                    timestamp: new Date(timestamp).toISOString(),
+                                    user: firebaseApp.auth.currentUser?.email || 'system',
+                                    foto: photoURL,  // 🔧 NEU: Foto-URL mit syncen
+                                    notiz: notiz || null  // 🔧 NEU: Notiz mit syncen
+                                })
+                            });
+                            console.log('   🔄 Synced status + foto to partnerAnfragen:', partnerAnfrageId);
+                        }
                     });
 
                     console.log('✅ Status + Foto in Firebase gespeichert (via Transaction)');
