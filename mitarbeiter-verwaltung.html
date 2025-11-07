@@ -540,6 +540,8 @@
 
     <!-- jsPDF Library for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- jsPDF AutoTable Plugin for professional tables -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
     <!-- Firebase Konfiguration -->
     <script src="firebase-config.js?v=4412ea9"></script>
@@ -1140,6 +1142,32 @@
                 </button>
                 <button onclick="closeStundenabrechnungModal()" class="btn" style="flex: 1; padding: 12px; font-size: 15px; background: rgba(255,255,255,0.2); color: white; border: none;">
                     ❌ Abbrechen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIGNATURE CANVAS MODAL -->
+    <div id="signatureModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 10002; overflow-y: auto; padding: 20px;">
+        <div style="max-width: 550px; margin: 50px auto; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 12px; padding: 30px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+            <h2 style="color: white; margin: 0 0 15px 0; font-size: 24px;">✍️ Digitale Unterschrift</h2>
+            <p style="color: rgba(255,255,255,0.9); margin-bottom: 20px; font-size: 14px;">
+                Unterschreiben Sie mit der Maus oder per Touch auf dem Canvas
+            </p>
+
+            <div style="background: white; border-radius: 8px; padding: 10px; margin-bottom: 20px;">
+                <canvas id="signatureCanvas" width="500" height="200" style="border: 2px dashed #ddd; border-radius: 6px; cursor: crosshair; display: block; touch-action: none;"></canvas>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button onclick="clearSignature()" class="btn" style="flex: 1; padding: 12px; font-size: 14px; background: rgba(255,255,255,0.2); color: white; border: none;">
+                    🗑️ Löschen
+                </button>
+                <button onclick="cancelSignature()" class="btn" style="flex: 1; padding: 12px; font-size: 14px; background: rgba(255,255,255,0.2); color: white; border: none;">
+                    ❌ Abbrechen
+                </button>
+                <button onclick="saveSignature()" class="btn btn-success" style="flex: 1; padding: 12px; font-size: 14px;">
+                    ✅ Übernehmen
                 </button>
             </div>
         </div>
@@ -1765,6 +1793,132 @@
             document.getElementById('stundenabrechnungModal').style.display = 'none';
         }
 
+        // ============================================
+        // SIGNATURE CANVAS LOGIC
+        // ============================================
+
+        let signatureCanvas, signatureCtx;
+        let isDrawing = false;
+        let signatureData = null; // Stores the signature as Base64 PNG
+
+        function initSignatureCanvas() {
+            signatureCanvas = document.getElementById('signatureCanvas');
+            signatureCtx = signatureCanvas.getContext('2d');
+
+            // Set drawing style
+            signatureCtx.strokeStyle = '#000';
+            signatureCtx.lineWidth = 2;
+            signatureCtx.lineCap = 'round';
+            signatureCtx.lineJoin = 'round';
+
+            // Mouse events
+            signatureCanvas.addEventListener('mousedown', startDrawing);
+            signatureCanvas.addEventListener('mousemove', draw);
+            signatureCanvas.addEventListener('mouseup', stopDrawing);
+            signatureCanvas.addEventListener('mouseleave', stopDrawing);
+
+            // Touch events for mobile
+            signatureCanvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = signatureCanvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                signatureCtx.beginPath();
+                signatureCtx.moveTo(x, y);
+                isDrawing = true;
+            });
+
+            signatureCanvas.addEventListener('touchmove', (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = signatureCanvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                signatureCtx.lineTo(x, y);
+                signatureCtx.stroke();
+            });
+
+            signatureCanvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                stopDrawing();
+            });
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const rect = signatureCanvas.getBoundingClientRect();
+            signatureCtx.beginPath();
+            signatureCtx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const rect = signatureCanvas.getBoundingClientRect();
+            signatureCtx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+            signatureCtx.stroke();
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            signatureCtx.closePath();
+        }
+
+        function clearSignature() {
+            signatureCtx.clearRect(0, 0, signatureCanvas.width, signatureCanvas.height);
+            console.log('🗑️ Signature cleared');
+        }
+
+        function cancelSignature() {
+            console.log('❌ Signature cancelled');
+            signatureData = null;
+            clearSignature();
+            document.getElementById('signatureModal').style.display = 'none';
+        }
+
+        function saveSignature() {
+            // Check if canvas is empty
+            const imageData = signatureCtx.getImageData(0, 0, signatureCanvas.width, signatureCanvas.height);
+            const pixels = imageData.data;
+            let isEmpty = true;
+
+            for (let i = 0; i < pixels.length; i += 4) {
+                // Check alpha channel (opacity)
+                if (pixels[i + 3] !== 0) {
+                    isEmpty = false;
+                    break;
+                }
+            }
+
+            if (isEmpty) {
+                alert('⚠️ Bitte unterschreiben Sie zuerst!');
+                return;
+            }
+
+            // Save signature as Base64 PNG
+            signatureData = signatureCanvas.toDataURL('image/png');
+            console.log('✅ Signature saved:', signatureData.substring(0, 50) + '...');
+
+            // Close modal and proceed to PDF generation
+            document.getElementById('signatureModal').style.display = 'none';
+
+            // Now generate the PDF with signature
+            actuallyGeneratePDFNew(); // Use new professional version
+        }
+
+        function openSignatureModal() {
+            console.log('✍️ Opening signature modal');
+            document.getElementById('signatureModal').style.display = 'block';
+            clearSignature(); // Clear any previous signature
+
+            // Initialize canvas if not done yet
+            if (!signatureCanvas) {
+                initSignatureCanvas();
+            }
+        }
+
+        // Step 1: Validate and open signature modal
         async function generateStundenabrechnungPDF() {
             const mitarbeiterId = document.getElementById('pdfMitarbeiterId').value;
             const startDatum = document.getElementById('pdfStartDatum').value;
@@ -1779,6 +1933,19 @@
                 showToast('⚠️ Startdatum muss vor Enddatum liegen', 'error', 3000);
                 return;
             }
+
+            console.log('📄 Öffne Unterschriften-Modal...');
+
+            // Close date modal and open signature modal
+            closeStundenabrechnungModal();
+            openSignatureModal();
+        }
+
+        // Step 2: Actually generate PDF with signature (renamed from old generateStundenabrechnungPDF)
+        async function actuallyGeneratePDF() {
+            const mitarbeiterId = document.getElementById('pdfMitarbeiterId').value;
+            const startDatum = document.getElementById('pdfStartDatum').value;
+            const endDatum = document.getElementById('pdfEndDatum').value;
 
             console.log('📄 Generiere Stundenabrechnung-PDF für:', mitarbeiterId, startDatum, 'bis', endDatum);
 
@@ -1926,6 +2093,235 @@
                 console.error('❌ Fehler beim Erstellen der PDF:', error);
                 showToast('❌ Fehler beim Erstellen der PDF: ' + error.message, 'error', 5000);
             }
+        }
+
+        // ============================================
+        // NEW PROFESSIONAL PDF GENERATION WITH AUTOTABLE
+        // ============================================
+
+        async function actuallyGeneratePDFNew() {
+            const mitarbeiterId = document.getElementById('pdfMitarbeiterId').value;
+            const startDatum = document.getElementById('pdfStartDatum').value;
+            const endDatum = document.getElementById('pdfEndDatum').value;
+
+            console.log('📄 Generiere professionelle Stundenabrechnung-PDF für:', mitarbeiterId, startDatum, 'bis', endDatum);
+
+            try {
+                // Parse dates
+                const startDate = new Date(startDatum);
+                const endDate = new Date(endDatum);
+                const year = startDate.getFullYear();
+                const month = startDate.getMonth() + 1; // 1-12
+
+                // Load all data in parallel
+                const [schichtenSnapshot, schichtTypenSnapshot, mitarbeiterDoc] = await Promise.all([
+                    window.getCollection('schichten')
+                        .where('mitarbeiterId', '==', mitarbeiterId)
+                        .where('datum', '>=', startDatum)
+                        .where('datum', '<=', endDatum)
+                        .get(),
+                    window.getCollection('schichtTypen').get(),
+                    window.getCollection('mitarbeiter').doc(mitarbeiterId).get()
+                ]);
+
+                const schichten = schichtenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const schichtTypen = schichtTypenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const mitarbeiter = { id: mitarbeiterDoc.id, ...mitarbeiterDoc.data() };
+
+                // Create schicht lookup map for fast access
+                const schichtenByDate = {};
+                schichten.forEach(schicht => {
+                    schichtenByDate[schicht.datum] = schicht;
+                });
+
+                // Get all days in month
+                const allDays = getAllDaysInMonth(year, month);
+
+                // Build table data
+                const tableData = allDays.map(date => {
+                    const dateStr = formatDate(date, 'YYYY-MM-DD');
+                    const weekday = formatDate(date, 'dddd');
+                    const schicht = schichtenByDate[dateStr];
+
+                    if (!schicht) {
+                        // Empty row for days without shifts
+                        return [formatDate(date, 'DD.MM.YYYY'), weekday, '', '', '', ''];
+                    }
+
+                    const schichtTyp = schichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                    if (!schichtTyp) {
+                        return [formatDate(date, 'DD.MM.YYYY'), weekday, '', '', '', ''];
+                    }
+
+                    // For special shifts (Urlaub/Krank/Frei)
+                    if (schichtTyp.isSpecial) {
+                        return [
+                            formatDate(date, 'DD.MM.YYYY'),
+                            weekday,
+                            schichtTyp.name,  // Show "Urlaub", "Krank", "Frei" in Start column
+                            '',
+                            '',
+                            ''
+                        ];
+                    }
+
+                    // For regular work shifts
+                    const start = schichtTyp.startzeit || '';
+                    const stop = schichtTyp.endzeit || '';
+                    const totalHours = calculateShiftHours(start, stop);
+                    const breakTime = getBreakTime(totalHours + getBreakTime(totalHours)); // Reverse calculation
+                    const workTime = totalHours;
+
+                    return [
+                        formatDate(date, 'DD.MM.YYYY'),
+                        weekday,
+                        start,
+                        stop,
+                        breakTime > 0 ? `${(breakTime * 60).toFixed(0)} min` : '',
+                        workTime > 0 ? `${workTime.toFixed(2)}h` : ''
+                    ];
+                });
+
+                // Calculate totals
+                const totalHours = schichten
+                    .map(s => {
+                        const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
+                        return st && !st.isSpecial ? calculateShiftHours(st.startzeit, st.endzeit) : 0;
+                    })
+                    .reduce((sum, h) => sum + h, 0);
+
+                const urlaubDays = schichten.filter(s => {
+                    const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
+                    return st && st.type === 'urlaub';
+                }).length;
+
+                const krankDays = schichten.filter(s => {
+                    const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
+                    return st && st.type === 'krank';
+                }).length;
+
+                // Create PDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                // Header
+                doc.setFontSize(20);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Arbeitszeiterfassung', 105, 20, { align: 'center' });
+
+                // Employee info
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'normal');
+                const infoY = 35;
+                doc.text(`Name: ${mitarbeiter.name || 'Unbekannt'}`, 20, infoY);
+                doc.text(`Pers-Nr: ${mitarbeiter.id}`, 20, infoY + 6);
+                doc.text(`Abteilung: ${mitarbeiter.rolle || 'N/A'}`, 20, infoY + 12);
+                doc.text(`Vorgesetzte/r: Christopher Gärtner`, 20, infoY + 18);
+                doc.text(`Monat: ${formatDate(startDate, 'MMMM')}`, 20, infoY + 24);
+                doc.text(`Jahr: ${year}`, 20, infoY + 30);
+
+                // Summary box
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.text(`Stunden Total: ${totalHours.toFixed(2)}`, 20, infoY + 40);
+
+                // Table with autoTable
+                doc.autoTable({
+                    startY: infoY + 48,
+                    head: [['Datum', 'Wochentag', 'Start', 'Stop', 'Pause', 'Arbeitszeit']],
+                    body: tableData,
+                    theme: 'grid',
+                    styles: {
+                        fontSize: 9,
+                        cellPadding: 3,
+                        lineColor: [200, 200, 200],
+                        lineWidth: 0.1
+                    },
+                    headStyles: {
+                        fillColor: [50, 50, 50],
+                        textColor: 255,
+                        fontStyle: 'bold',
+                        halign: 'center'
+                    },
+                    columnStyles: {
+                        0: { halign: 'center', cellWidth: 28 },  // Datum
+                        1: { halign: 'left', cellWidth: 30 },    // Wochentag
+                        2: { halign: 'center', cellWidth: 22 },  // Start
+                        3: { halign: 'center', cellWidth: 22 },  // Stop
+                        4: { halign: 'center', cellWidth: 22 },  // Pause
+                        5: { halign: 'center', cellWidth: 26 }   // Arbeitszeit
+                    },
+                    didDrawCell: (data) => {
+                        // Highlight weekends (Saturday = 6, Sunday = 0)
+                        if (data.section === 'body' && data.column.index === 1) {
+                            const weekday = data.cell.text[0];
+                            if (weekday === 'Samstag' || weekday === 'Sonntag') {
+                                doc.setFillColor(240, 240, 240);
+                                doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+                                // Redraw text
+                                doc.setTextColor(100, 100, 100);
+                                doc.text(weekday, data.cell.x + 2, data.cell.y + data.cell.height / 2 + 2);
+                                doc.setTextColor(0, 0, 0);
+                            }
+                        }
+                    }
+                });
+
+                // Signature section
+                const finalY = doc.lastAutoTable.finalY + 15;
+
+                // Add signature image if available
+                if (signatureData) {
+                    doc.setFontSize(10);
+                    doc.text('Unterschrift Mitarbeiter:', 20, finalY);
+                    doc.addImage(signatureData, 'PNG', 20, finalY + 2, 50, 15); // Signature image
+                    doc.text(`Datum: ______________`, 120, finalY + 10);
+                } else {
+                    doc.setFontSize(10);
+                    doc.text('Unterschrift Mitarbeiter: __________________________', 20, finalY);
+                    doc.text(`Datum: ______________`, 120, finalY);
+                }
+
+                doc.text('Unterschrift Vorgesetzte/r: __________________________', 20, finalY + 25);
+                doc.text(`Datum: ______________`, 120, finalY + 25);
+
+                // Footer
+                doc.setFontSize(8);
+                doc.setTextColor(128, 128, 128);
+                doc.text(`Erstellt am: ${formatDate(new Date(), 'DD.MM.YYYY HH:mm')} Uhr`, 20, 285);
+                doc.text('Seite 1 von 1', 170, 285);
+
+                // Save
+                const filename = `Arbeitszeiterfassung_${mitarbeiter.name.replace(/\s+/g, '_')}_${year}_${String(month).padStart(2, '0')}.pdf`;
+                doc.save(filename);
+
+                showToast('✅ Professionelle Stundenabrechnung erfolgreich erstellt!', 'success', 5000);
+                closeStundenabrechnungModal();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der PDF:', error);
+                showToast('❌ Fehler beim Erstellen der PDF: ' + error.message, 'error', 5000);
+            }
+        }
+
+        // Helper function to get all days in a month (for full calendar PDF)
+        function getAllDaysInMonth(year, month) {
+            const days = [];
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                days.push(new Date(year, month - 1, day));
+            }
+
+            return days;
+        }
+
+        // Helper function to get break time from total hours
+        function getBreakTime(totalHours) {
+            if (totalHours >= 9) return 0.75; // 45 min
+            if (totalHours >= 6) return 0.5;  // 30 min
+            return 0;
         }
 
         // Helper function to calculate shift hours (same logic as dienstplan.html)
