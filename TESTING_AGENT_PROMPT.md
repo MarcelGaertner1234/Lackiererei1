@@ -312,6 +312,81 @@ if (fahrzeugData.kennzeichen) {
 - 🔧 **TODO**: Verify status sync works end-to-end (Partner Portal → Kanban → back to Partner Portal)
 - 🔧 **TODO**: Test duplicate prevention (try creating vehicle simultaneously from Partner + Admin)
 
+### **SESSION 2025-11-07 (Evening) - PDF ANNOTATIONS FEATURE** ✅
+
+**Status**: ✅ **FEATURE COMPLETED** - PDF Modal with Error Reporting
+
+**What Was Built:**
+- ✅ **3rd Button** "💬 Anmerkungen" in PDF modal (alongside Vorschau & Signieren)
+- ✅ **Annotations Modal** with date picker, error type dropdown (6 types), free-text description
+- ✅ **PDF Integration** - Annotations appear as section "📋 Anmerkungen und Korrekturen" below signatures
+- ✅ **In-Memory Storage** - `currentAnnotations` array (no Firestore persistence in v1)
+- ✅ **Multiple Annotations** - Add/remove multiple error reports for different dates
+
+**Key Learnings from This Session:**
+
+1. **CRITICAL BUG: Modal Initialization Order** (Fixed in commit `d82b662`)
+   ```javascript
+   // ❌ WRONG - Causes "Cannot read 'clearRect' of undefined"
+   function openSignatureModal() {
+     clearSignature();           // signatureCtx is undefined!
+     if (!signatureCanvas) {
+       initSignatureCanvas();    // Too late
+     }
+   }
+
+   // ✅ CORRECT - Initialize dependencies FIRST
+   function openSignatureModal() {
+     if (!signatureCanvas) {
+       initSignatureCanvas();    // Initialize FIRST
+     }
+     clearSignature();           // NOW safe to call
+     document.getElementById('signatureModal').style.display = 'block';
+   }
+   ```
+   **Lesson**: Always initialize dependencies BEFORE calling functions that use them.
+
+2. **UX BUG: Illogical Workflow** (Fixed in commit `ba59085`)
+   - **Problem**: User had to sign BEFORE seeing the PDF content
+   - **User Feedback**: "Was soll er denn unterschreiben wenn er seine Stunden nicht sieht??"
+   - **Solution**: 2-button workflow:
+     1. **"📄 Vorschau"** → Download PDF without signature, modal stays open
+     2. **"✍️ Signieren"** → Open signature modal, then download signed PDF
+   - **Lesson**: Always let users preview data before requiring commitment (signature, payment, etc.)
+
+3. **Date Timezone Bug** (Prevention)
+   ```javascript
+   // ❌ WRONG - Timezone issues
+   const dateObj = new Date(ann.date);
+
+   // ✅ CORRECT - Force local timezone
+   const dateObj = new Date(ann.date + 'T00:00:00');
+   ```
+   **Lesson**: Append `'T00:00:00'` to date strings to avoid UTC conversion issues.
+
+4. **Modal State Management**
+   - Store annotations in global array: `let currentAnnotations = []`
+   - Clear form fields after adding annotation (UX improvement)
+   - Sort by date when displaying (chronological order)
+   - Confirm before discarding annotations on cancel
+
+**Files Modified:**
+- `mitarbeiter-verwaltung.html` (Lines 1139-1152, 1182-1249, 1878, 2001-2144, 2541-2597)
+
+**Testing TODO (Next Session):**
+- ⏳ Add **Test Case 10**: PDF Annotations Feature End-to-End
+- ⏳ Verify annotations appear in both Preview and Signed PDFs
+- ⏳ Test date range validation (annotations only within selected period)
+- ⏳ Test multiple annotations (3+) and verify PDF formatting
+- ⏳ Test page break behavior (when annotations exceed one page)
+
+**Next Session Features:**
+- ⏳ Copy to employee-facing view
+- ⏳ Firestore persistence for admin review
+- ⏳ Admin interface to manage reported errors
+
+---
+
 **Priority 2: Service Integration Testing (12 Services)** 🔧
 - Test all 12 services in werkstatt intake (annahme.html)
 - Verify custom Kanban workflows for 3 new services (Folierung, Steinschutz, Werbebeklebung)
@@ -766,7 +841,161 @@ steps: [
 
 ---
 
-## 💡 DEBUGGING BEST PRACTICES (from Session 2025-11-03 + 2025-11-05 + 2025-11-06)
+## 🎓 CRITICAL LEARNINGS FROM SESSION 2025-11-07 (Evening)
+
+### **9. Modal Initialization Race Conditions**
+
+**Context:** PDF annotations feature with signature capture modal
+
+**Bug Symptom:**
+```
+TypeError: Cannot read properties of undefined (reading 'clearRect')
+    at clearSignature (mitarbeiter-verwaltung.html:1869:26)
+    at openSignatureModal (mitarbeiter-verwaltung.html:1913:13)
+```
+
+**Root Cause:**
+Function `clearSignature()` was called BEFORE canvas context was initialized.
+
+**The Problem Pattern:**
+```javascript
+// ❌ WRONG - Initialization order bug
+function openSignatureModal() {
+    clearSignature();           // ❌ signatureCtx is undefined here!
+
+    if (!signatureCanvas) {
+        initSignatureCanvas();  // ⚠️ Too late - already crashed
+    }
+
+    document.getElementById('signatureModal').style.display = 'block';
+}
+```
+
+**The Fix:**
+```javascript
+// ✅ CORRECT - Initialize FIRST, then use
+function openSignatureModal() {
+    // Step 1: Initialize canvas FIRST if not done yet
+    if (!signatureCanvas) {
+        initSignatureCanvas();
+    }
+
+    // Step 2: NOW safe to clear (signatureCtx exists)
+    clearSignature();
+
+    // Step 3: Show modal
+    document.getElementById('signatureModal').style.display = 'block';
+}
+```
+
+**General Rule for Modals:**
+1. **Check** if dependencies exist
+2. **Initialize** dependencies if missing
+3. **Use** dependencies only after initialization
+4. **Never** assume initialization happened elsewhere
+
+**Debugging Pattern:**
+```javascript
+function openModal() {
+    console.log('🔍 Modal Pre-Check:', {
+        canvasExists: !!signatureCanvas,
+        contextExists: !!signatureCtx,
+        canDrawReady: signatureCtx && typeof signatureCtx.clearRect === 'function'
+    });
+
+    if (!signatureCanvas) {
+        console.log('⚠️ Canvas not initialized, initializing now...');
+        initSignatureCanvas();
+    }
+
+    console.log('✅ Canvas ready, opening modal');
+    // Rest of function...
+}
+```
+
+**Lesson Learned:**
+> **"Dependencies must be initialized BEFORE they are used, not AFTER they crash."**
+
+---
+
+### **10. Logical Workflow & UX Thinking**
+
+**Context:** PDF signature workflow
+
+**User Feedback:**
+> "Ich verstehe deine Logik erlichgesagt jetzt gerade nicht der Mitarbeiter sieht doch seine Stunden garnicht was soll er den unterschreiben??"
+
+**The Problem:**
+Original workflow forced user to **sign BEFORE seeing the PDF content** - completely backwards!
+
+**Original (Bad) Flow:**
+1. Select date range
+2. Click "PDF Erstellen" → **Signature modal opens immediately**
+3. User signs (without seeing hours!)
+4. PDF downloads
+
+**Improved (Logical) Flow:**
+1. Select date range
+2. Click "📄 Vorschau" → PDF downloads → User reviews
+3. Click "✍️ Signieren" → Signature modal → Signed PDF downloads
+
+**Key UX Principles:**
+1. **Preview before commitment** - Always show data before requiring signature/payment
+2. **User choice** - Optional signature vs forced signature
+3. **Modal keeps context** - Preview doesn't close modal (user can still sign after reviewing)
+
+**Implementation:**
+```javascript
+// Preview: No signature, modal stays open
+async function generatePreviewPDF() {
+    signatureData = null;                    // No signature
+    await actuallyGeneratePDFNew(false);     // closeModal = false
+    showToast('📄 Vorschau heruntergeladen. Prüfen Sie die Stunden...', 'info', 6000);
+}
+
+// Signature: Sign first, then generate
+function generateStundenabrechnungPDF() {
+    openSignatureModal();  // User signs
+    // After signing → actuallyGeneratePDFNew(true) with signature
+}
+```
+
+**Lesson Learned:**
+> **"If the user says 'This makes no sense', they're right. Redesign the workflow."**
+
+---
+
+### **11. Date Timezone Bugs Prevention**
+
+**Context:** Annotations date display
+
+**Problem:**
+JavaScript Date objects auto-convert to UTC, causing "2025-11-03" to display as "Nov 2" in some timezones.
+
+**The Bug:**
+```javascript
+// ❌ WRONG - Timezone conversion can shift date
+const dateObj = new Date(ann.date);  // "2025-11-03" → Nov 2 in some zones!
+const dateStr = dateObj.toLocaleDateString('de-DE');
+```
+
+**The Fix:**
+```javascript
+// ✅ CORRECT - Force local timezone interpretation
+const dateObj = new Date(ann.date + 'T00:00:00');  // "2025-11-03T00:00:00" = local midnight
+const dateStr = dateObj.toLocaleDateString('de-DE');
+```
+
+**Why This Works:**
+- Without time: `new Date("2025-11-03")` → treated as UTC, converts to local
+- With time: `new Date("2025-11-03T00:00:00")` → treated as local timezone already
+
+**Lesson Learned:**
+> **"Always append 'T00:00:00' to date-only strings to prevent timezone shifts."**
+
+---
+
+## 💡 DEBUGGING BEST PRACTICES (from Session 2025-11-03 + 2025-11-05 + 2025-11-06 + 2025-11-07)
 
 ### **When stuck for >15 minutes:**
 
@@ -1954,12 +2183,14 @@ Vergiss nicht:
 
 ---
 
-_Version: 3.3 (Complete Service Integration Edition)_
-_Aktualisiert: 2025-11-06 by Claude Code (Sonnet 4.5)_
-_Session 2025-11-06 Part 2: All 12 Services Fully Integrated (Partner + Werkstatt), Bi-Directional Sync Complete_
+_Version: 3.5 (PDF Annotations & Modal Testing Edition)_
+_Aktualisiert: 2025-11-07 (Evening Session) by Claude Code (Sonnet 4.5)_
+_Session 2025-11-07 (Evening): PDF Annotations Feature (Signature Modal + Error Reporting + 3-Button Workflow), Modal Initialization Bug Fixed, UX Workflow Redesign_
+_Session 2025-11-07 (Day): Status Synchronization (12 Services) + Duplicate Prevention (3-Layer Check)_
+_Session 2025-11-06: All 12 Services Fully Integrated (Partner + Werkstatt), Bi-Directional Sync Complete_
 _Session 2025-11-05: Bonus System 100% Functional, Security Rules Pattern Collision Fixed, Monthly Reset Deployed_
 _Session 2025-11-04: Security Hardening (8 Vulnerabilities Fixed, Defense in Depth)_
 _Session 2025-11-03: Address-System implementiert, Multi-Tenant Bug #8 gefixt_
-_Next Session: Service Integration Testing (12 Services - Folierung, Steinschutz, Werbebeklebung workflows) + Bonus System Automated Testing_
+_Next Session: **Test Case 10** (PDF Annotations E2E), Employee-Facing Annotations View, Firestore Persistence for Admin Review_
 _Kombiniert Best Practices von: QA Lead Prompt + Dev CEO Prompt + Debugging Session Learnings_
-_Optimiert für: Multi-Tenant Partner Registration + Security Hardening + Bonus System + Complete Service Integration Testing (Version 3.3)_
+_Optimiert für: Multi-Tenant + Security + Bonus System + Service Integration + **Modal Testing & PDF Generation** (Version 3.5)_
