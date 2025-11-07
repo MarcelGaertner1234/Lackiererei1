@@ -1328,6 +1328,7 @@
                         endzeit: '23:59',
                         farbe: '#34a853',
                         isSpecial: true,
+                        isSystemType: true,
                         type: 'urlaub',
                         sortierung: 1000
                     },
@@ -1337,6 +1338,7 @@
                         endzeit: '23:59',
                         farbe: '#9aa0a6',
                         isSpecial: true,
+                        isSystemType: true,
                         type: 'frei',
                         sortierung: 1001
                     },
@@ -1346,6 +1348,7 @@
                         endzeit: '23:59',
                         farbe: '#ea4335',
                         isSpecial: true,
+                        isSystemType: true,
                         type: 'krank',
                         sortierung: 1002
                     }
@@ -1368,7 +1371,20 @@
                         });
                         console.log(`✅ Special Schicht-Typ "${specialType.name}" erstellt`);
                     } else {
-                        console.log(`ℹ️ Special Schicht-Typ "${specialType.name}" existiert bereits`);
+                        // Update existing to ensure type field and isSystemType flag exist
+                        const needsUpdate = !existing.type || !existing.isSpecial || !existing.isSystemType;
+                        if (needsUpdate) {
+                            console.log(`🔧 Updating "${specialType.name}" with missing fields...`);
+                            await window.getCollection('schichtTypen').doc(existing.id).update({
+                                type: specialType.type,
+                                isSpecial: true,
+                                isSystemType: true,
+                                sortierung: specialType.sortierung
+                            });
+                            console.log(`✅ Updated "${specialType.name}" with type: ${specialType.type}, isSystemType: true`);
+                        } else {
+                            console.log(`ℹ️ Special Schicht-Typ "${specialType.name}" existiert bereits und ist aktuell`);
+                        }
                     }
                 }
 
@@ -1814,9 +1830,11 @@
                             <button class="icon-btn" onclick="editSchichtTyp('${schichtTyp.id}'); event.stopPropagation();" title="Bearbeiten">
                                 ✏️
                             </button>
+                            ${schichtTyp.isSystemType ? '' : `
                             <button class="icon-btn" onclick="deleteSchichtTyp('${schichtTyp.id}'); event.stopPropagation();" title="Löschen">
                                 🗑️
                             </button>
+                            `}
                         </div>
                     </div>
                 `;
@@ -2145,10 +2163,28 @@
                     const hours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
                     if (hours > 0) {
                         const currentGesamtstunden = mitarbeiter.gesamtstunden || 0;
+
+                        // Monthly reset logic: Check if we need to reset monatlicheStunden
+                        const now = new Date();
+                        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                        const letzterResetMonat = mitarbeiter.letzterResetMonat || '';
+
+                        let monatlicheStunden = mitarbeiter.monatlicheStunden || 0;
+
+                        // Reset if new month
+                        if (currentMonth !== letzterResetMonat) {
+                            monatlicheStunden = 0;
+                            console.log(`🔄 Monatlicher Reset für ${mitarbeiter.name}: Stunden auf 0 zurückgesetzt`);
+                        }
+
+                        // Increment both lifetime and monthly hours
                         await window.getCollection('mitarbeiter').doc(mitarbeiterId).update({
-                            gesamtstunden: Math.round((currentGesamtstunden + hours) * 100) / 100
+                            gesamtstunden: Math.round((currentGesamtstunden + hours) * 100) / 100,
+                            monatlicheStunden: Math.round((monatlicheStunden + hours) * 100) / 100,
+                            letzterResetMonat: currentMonth
                         });
                         console.log(`✅ Gesamtstunden aktualisiert: +${hours}h = ${(currentGesamtstunden + hours).toFixed(2)}h`);
+                        console.log(`✅ Monatliche Stunden: ${monatlicheStunden.toFixed(2)}h → ${(monatlicheStunden + hours).toFixed(2)}h`);
                         await loadMitarbeiter(); // Reload to get updated gesamtstunden
                     }
                 }
@@ -2305,6 +2341,12 @@
             const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schichtTypId));
             if (!schichtTyp) return;
 
+            // Prevent deletion of system types (Urlaub/Krank/Frei)
+            if (schichtTyp.isSystemType) {
+                alert('⚠️ System-Schichttypen (Urlaub/Krank/Frei) können nicht gelöscht werden!');
+                return;
+            }
+
             // Check if schichtTyp is used
             const used = allSchichten.some(s => String(s.schichtTypId) === String(schichtTypId));
             if (used) {
@@ -2369,15 +2411,19 @@
                         console.log(`✅ Krankheitstage zurückgebucht: ${newKrank}`);
                     }
                 } else if (schichtTyp && !schichtTyp.isSpecial && mitarbeiter) {
-                    // Handle regular shifts - revert gesamtstunden
+                    // Handle regular shifts - revert gesamtstunden and monatlicheStunden
                     const hours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
                     if (hours > 0) {
                         const currentGesamtstunden = mitarbeiter.gesamtstunden || 0;
+                        const currentMonatlicheStunden = mitarbeiter.monatlicheStunden || 0;
                         const newGesamtstunden = Math.max(0, Math.round((currentGesamtstunden - hours) * 100) / 100);
+                        const newMonatlicheStunden = Math.max(0, Math.round((currentMonatlicheStunden - hours) * 100) / 100);
                         await window.getCollection('mitarbeiter').doc(schicht.mitarbeiterId).update({
-                            gesamtstunden: newGesamtstunden
+                            gesamtstunden: newGesamtstunden,
+                            monatlicheStunden: newMonatlicheStunden
                         });
                         console.log(`✅ Gesamtstunden zurückgebucht: -${hours}h = ${newGesamtstunden.toFixed(2)}h`);
+                        console.log(`✅ Monatliche Stunden zurückgebucht: ${currentMonatlicheStunden.toFixed(2)}h → ${newMonatlicheStunden.toFixed(2)}h`);
                     }
                 }
 
