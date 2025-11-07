@@ -621,6 +621,53 @@
         }
 
         // ============================================
+        // FIREBASE STORAGE UPLOAD (FIX: 1MB Firestore Limit)
+        // ============================================
+        async function uploadPhotosToStorage(photoBase64Array, anfrageId) {
+            if (!firebase.storage) {
+                console.warn('⚠️ Firebase Storage not available - fallback to Base64');
+                return photoBase64Array;
+            }
+
+            const storage = firebase.storage();
+            const uploadedURLs = [];
+            const btnNext = document.getElementById('btnNext');
+
+            console.log(`📤 Uploading ${photoBase64Array.length} photos to Firebase Storage...`);
+
+            for (let i = 0; i < photoBase64Array.length; i++) {
+                try {
+                    const base64 = photoBase64Array[i];
+
+                    if (btnNext) {
+                        btnNext.textContent = `Fotos hochladen (${i + 1}/${photoBase64Array.length})...`;
+                    }
+
+                    const response = await fetch(base64);
+                    const blob = await response.blob();
+
+                    const timestamp = Date.now();
+                    const filename = `photo_${i}_${timestamp}.jpg`;
+                    const storagePath = `partner-anfragen/${partner.werkstattId}/${anfrageId}/${filename}`;
+                    const storageRef = storage.ref(storagePath);
+
+                    console.log(`  📤 Uploading photo ${i + 1}/${photoBase64Array.length}: ${storagePath}`);
+                    await storageRef.put(blob);
+
+                    const downloadURL = await storageRef.getDownloadURL();
+                    uploadedURLs.push(downloadURL);
+                    console.log(`  ✅ Photo ${i + 1} uploaded: ${downloadURL.substring(0, 60)}...`);
+
+                } catch (error) {
+                    console.error(`❌ Error uploading photo ${i + 1}:`, error);
+                }
+            }
+
+            console.log(`✅ All ${uploadedURLs.length}/${photoBase64Array.length} photos uploaded successfully`);
+            return uploadedURLs;
+        }
+
+        // ============================================
         // RADIO OPTION SELECTION
         // ============================================
         function selectSchutzUmfang(element, value) {
@@ -868,8 +915,18 @@
             btnNext.textContent = 'Wird gesendet...';
 
             try {
+                // Generate anfrage ID first (needed for Storage path)
+                const anfrageId = 'req_' + Date.now();
+
                 // Compress photos
+                btnNext.textContent = 'Fotos komprimieren...';
                 const compressedPhotos = await Promise.all(photos.map(photo => compressImage(photo)));
+                console.log(`✅ ${compressedPhotos.length} Fotos komprimiert`);
+
+                // ✅ FIX: Upload photos to Firebase Storage
+                btnNext.textContent = 'Fotos hochladen...';
+                const photoURLs = await uploadPhotosToStorage(compressedPhotos, anfrageId);
+                console.log(`✅ ${photoURLs.length} Foto-URLs erhalten`);
 
                 // Get form data
                 const schutzUmfang = document.querySelector('input[name="schutzUmfang"]:checked').value;
@@ -880,9 +937,10 @@
                 const optionen = Array.from(document.querySelectorAll('input[name="optionen"]:checked')).map(cb => cb.value);
 
                 // Create anfrage data
+                btnNext.textContent = 'Anfrage speichern...';
                 const timestamp = new Date().toISOString();
                 const anfrageData = {
-                    id: 'req_' + Date.now(),
+                    id: anfrageId,  // Use pre-generated ID
                     partnerId: partner.partnerId || partner.id,
                     partnerName: partner.name,
                     partnerEmail: firebase.auth().currentUser.email.toLowerCase(),
@@ -903,7 +961,8 @@
                     modell: document.getElementById('modell').value.trim(),
                     anliefertermin: selectedTermin,
                     anmerkungen: document.getElementById('anmerkungen').value.trim(),
-                    fotos: compressedPhotos,
+                    fotos: photoURLs,  // ✅ CHANGED: Store URLs instead of Base64
+                    fotoCount: photoURLs.length,  // ✅ ADDED: Quick count
                     status: 'neu',
                     statusText: 'Neu eingegangen',
                     kva: null,
