@@ -1566,24 +1566,76 @@
             const userId = document.getElementById('editId').value;
             const userName = document.getElementById('editName').value;
 
-            if (!confirm(`⚠️ Mitarbeiter "${userName}" wirklich löschen?\n\nDieser Vorgang kann nicht rückgängig gemacht werden!`)) {
-                return;
-            }
-
-            console.log('🗑️ Lösche Mitarbeiter:', userId);
+            console.log('🔍 Prüfe Schichten für Mitarbeiter:', userId);
 
             try {
-                const mitarbeiterCollection = window.getCollection('mitarbeiter');
-                await mitarbeiterCollection.doc(userId).delete();
-                console.log('✅ Mitarbeiter erfolgreich gelöscht:', userId);
+                // 1. Zähle Schichten des Mitarbeiters
+                const schichtenCollection = window.getCollection('schichten');
+                const schichtenSnapshot = await schichtenCollection
+                    .where('mitarbeiterId', '==', userId)
+                    .get();
+
+                const schichtenCount = schichtenSnapshot.size;
+
+                // 2. Erweiterte Bestätigung mit Schicht-Warnung
+                let confirmMessage = `⚠️ Mitarbeiter "${userName}" wirklich löschen?\n\n`;
+
+                if (schichtenCount > 0) {
+                    confirmMessage += `🗓️ ACHTUNG: ${schichtenCount} Schicht(en) werden ebenfalls gelöscht!\n\n`;
+                }
+
+                confirmMessage += `Dieser Vorgang kann nicht rückgängig gemacht werden!`;
+
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+
+                console.log(`🗑️ Lösche Mitarbeiter: ${userId} (${schichtenCount} Schichten)`);
+
+                // 3. CASCADE DELETE: Alle Schichten des Mitarbeiters löschen
+                const batch = db.batch();
+
+                // Batch-Splitting für viele Schichten (max 500 ops pro Batch)
+                const batchSize = 500;
+                const schichtenDocs = schichtenSnapshot.docs;
+
+                for (let i = 0; i < schichtenDocs.length; i += batchSize) {
+                    const currentBatch = i === 0 ? batch : db.batch();
+                    const chunk = schichtenDocs.slice(i, Math.min(i + batchSize, schichtenDocs.length));
+
+                    chunk.forEach(doc => {
+                        currentBatch.delete(doc.ref);
+                    });
+
+                    // Mitarbeiter nur im letzten Batch löschen
+                    if (i + batchSize >= schichtenDocs.length) {
+                        const mitarbeiterCollection = window.getCollection('mitarbeiter');
+                        currentBatch.delete(mitarbeiterCollection.doc(userId));
+                    }
+
+                    await currentBatch.commit();
+                }
+
+                // Falls keine Schichten: Mitarbeiter direkt löschen
+                if (schichtenCount === 0) {
+                    const mitarbeiterCollection = window.getCollection('mitarbeiter');
+                    await mitarbeiterCollection.doc(userId).delete();
+                }
+
+                console.log(`✅ Mitarbeiter + ${schichtenCount} Schichten erfolgreich gelöscht`);
 
                 // Close modal (realtime listener will update table)
                 closeEditModal();
 
-                showToast(`✅ Mitarbeiter "${userName}" erfolgreich gelöscht!`, 'success', 4000);
+                const successMsg = schichtenCount > 0
+                    ? `✅ Mitarbeiter "${userName}" und ${schichtenCount} Schicht(en) erfolgreich gelöscht!`
+                    : `✅ Mitarbeiter "${userName}" erfolgreich gelöscht!`;
+
+                showToast(successMsg, 'success', 4000);
+
             } catch (error) {
                 console.error('❌ Fehler beim Löschen:', error);
-                showToast('❌ Fehler beim Löschen. Siehe Console für Details.', 'error', 5000);
+                showToast('❌ Fehler beim Löschen: ' + error.message, 'error', 5000);
             }
         }
 

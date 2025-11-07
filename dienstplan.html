@@ -1463,7 +1463,17 @@
 
         function calculateBereichStats(datum) {
             // Count schichten per bereich for a specific date
-            const daySchichten = allSchichten.filter(s => s.datum === datum);
+            // DEFENSIVE: Nur Schichten mit gültigem Mitarbeiter zählen
+            const daySchichten = allSchichten.filter(s => {
+                if (s.datum !== datum) return false;
+
+                // Prüfe ob Mitarbeiter noch existiert
+                const mitarbeiterExists = allMitarbeiter.some(m => String(m.id) === String(s.mitarbeiterId));
+                if (!mitarbeiterExists) {
+                    console.warn('⚠️ Verwaiste Schicht gefunden (Mitarbeiter gelöscht):', s.id);
+                }
+                return mitarbeiterExists;
+            });
             const bereichCount = {};
 
             for (const schicht of daySchichten) {
@@ -1689,6 +1699,12 @@
 
         function renderSchichtBadge(schicht, schichtTyp) {
             const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(schicht.mitarbeiterId));
+
+            // DEFENSIVE: Return empty wenn Mitarbeiter nicht existiert (gelöscht)
+            if (!mitarbeiter) {
+                console.warn('⚠️ Verwaiste Schicht gefunden (Mitarbeiter gelöscht):', schicht.id, 'mitarbeiterId:', schicht.mitarbeiterId);
+                return '';  // Badge nicht rendern
+            }
 
             // 🆕 Bereich-Info
             let bereichInfo = '';
