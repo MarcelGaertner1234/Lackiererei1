@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [Essential Commands](#-essential-commands) - Build, test, deploy, Firebase emulators
 - [Documentation Status](#-documentation-status) - Which docs to use (CLAUDE.md vs README.md)
 - [Recent Updates](#-recent-updates) - Last 3 sessions (Nov 5-7, 2025)
+  - [PDF Anmerkungen-Feature](#pdf-anmerkungen-feature-2025-11-07) - Employee error reporting in timesheet PDFs
 - [Core Architecture](#-core-architecture) - Multi-tenant, Firebase patterns, Security Rules
 - [File Structure](#-file-structure) - Visual tree of project organization
 - [Testing Guide](#-testing-guide) - 9 test cases for Multi-Tenant system
@@ -145,6 +146,56 @@ curl -I https://marcelgaertner1234.github.io/Lackiererei1/
 - `kanban.html` (Lines 3087, 3343)
 - `partner-app/admin-anfragen.html` (Lines 2244-2290)
 - `migrate-partneranfrageid.html` (NEW - migration tool)
+
+---
+
+### **PDF ANMERKUNGEN-FEATURE (2025-11-07)**
+
+**Status**: ✅ **IMPLEMENTIERT** (Admin-Seite mitarbeiter-verwaltung.html)
+
+**Neue Funktionalität:**
+- 3. Button **"💬 Anmerkungen"** im PDF-Modal (neben Vorschau & Signieren)
+- Mitarbeiter können Fehler in ihrer Stundenabrechnung melden
+- **6 Fehlertypen:** Zu wenig/viel Stunden, Falsche Schicht, Fehlende Pause, Falsches Datum, Sonstiges
+- Anmerkungen erscheinen im PDF als eigene Sektion unter den Unterschriften
+- **In-Memory Storage** (keine Firestore-Persistenz in dieser Version)
+
+**Workflow:**
+1. PDF-Modal öffnen → Zeitraum wählen
+2. **"Anmerkungen"** klicken → Modal öffnet sich
+3. Datum + Fehlertyp + Beschreibung eingeben → Hinzufügen
+4. Mehrere Anmerkungen möglich (mit Löschen-Funktion)
+5. "Speichern & Zurück" → Zurück zum PDF-Modal
+6. "Vorschau" oder "Signieren" → PDF enthält Anmerkungen-Sektion
+
+**Modified Files:**
+- `mitarbeiter-verwaltung.html` (Lines 1139-1152: 3-Button Modal Layout)
+- `mitarbeiter-verwaltung.html` (Lines 1182-1249: Annotations Modal HTML)
+- `mitarbeiter-verwaltung.html` (Lines 1878: Global `currentAnnotations` array)
+- `mitarbeiter-verwaltung.html` (Lines 2001-2144: JavaScript Functions)
+- `mitarbeiter-verwaltung.html` (Lines 2541-2597: PDF Generation Integration)
+
+**JavaScript Functions:**
+- `openAnnotationsModal()` - Öffnet Modal mit Datumsbereich-Limits
+- `addAnnotation()` - Validiert & fügt zur Liste hinzu
+- `removeAnnotation(index)` - Löscht mit Bestätigung
+- `renderAnnotationsList()` - Rendert sortiert nach Datum
+- `saveAnnotations()` - Speichert & kehrt zurück
+- `cancelAnnotations()` - Verwirft mit Bestätigung
+
+**PDF Integration:**
+- Neue Sektion **"📋 Anmerkungen und Korrekturen"** nach Unterschriften
+- Jede Anmerkung in grauem Box mit Datum, Fehlertyp, Beschreibung
+- Automatischer Seitenumbruch bei Bedarf
+- Sortierung nach Datum (chronologisch)
+
+**Next Session TODO:**
+- ⏳ **Mitarbeiter-Ansicht:** Code kopieren für employee-facing view
+- ⏳ **Firestore-Speicherung:** Admin kann gemeldete Fehler reviewen
+- ⏳ **Admin-Interface:** Anmerkungen bearbeiten/auflösen in mitarbeiter-verwaltung.html
+- ⏳ **E-Mail-Notification:** Admin wird bei neuer Anmerkung benachrichtigt
+
+**Commit:** `706df2c`
 
 ---
 
@@ -621,7 +672,7 @@ await window.getCollection('fahrzeuge').add(fahrzeugData);
 
 ---
 
-_Last Updated: 2025-11-07 (Added Documentation Status Section) by Claude Code (Sonnet 4.5)_
-_Version: v2025.11.07.2 | File Size: 630 lines (concise & up-to-date)_
-_Recent Sessions: Nov 6-7 (Status Sync + Service Integration) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
+_Last Updated: 2025-11-07 (PDF Anmerkungen-Feature) by Claude Code (Sonnet 4.5)_
+_Version: v2025.11.07.3 | File Size: ~720 lines (concise & up-to-date)_
+_Recent Sessions: Nov 7 (PDF Annotations + Status Sync) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
 _Note: README.md is outdated (v1.0/2.0) - Always use CLAUDE.md for development guidance_
