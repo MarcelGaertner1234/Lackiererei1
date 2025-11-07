@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📑 Quick Navigation
 
 - [Essential Commands](#-essential-commands) - Build, test, deploy, Firebase emulators
+- [Documentation Status](#-documentation-status) - Which docs to use (CLAUDE.md vs README.md)
 - [Recent Updates](#-recent-updates) - Last 3 sessions (Nov 5-7, 2025)
 - [Core Architecture](#-core-architecture) - Multi-tenant, Firebase patterns, Security Rules
 - [File Structure](#-file-structure) - Visual tree of project organization
@@ -80,6 +81,33 @@ git add . && git commit -m "feat: description" && git push
 # Verify deployment
 curl -I https://marcelgaertner1234.github.io/Lackiererei1/
 ```
+
+---
+
+## 📚 Documentation Status
+
+**⚠️ IMPORTANT: Use CLAUDE.md, NOT README.md**
+
+| File | Status | Use Case |
+|------|--------|----------|
+| **CLAUDE.md** | ✅ **UP-TO-DATE** (v3.2.0) | **Primary technical reference** - Use this for all development work |
+| README.md | ❌ **OUTDATED** (v1.0/2.0) | Legacy end-user documentation - Ignore for development |
+| CLAUDE_SESSIONS_ARCHIVE.md | ✅ Current | Full session history (Oct 30 - Nov 5, 2025) |
+| CODEBASE-ANALYSE-REPORT.md | ✅ Current | Comprehensive codebase analysis |
+| TESTING_AGENT_PROMPT.md | ✅ Current | QA testing guide (1,966 lines) |
+
+**Why README.md is outdated:**
+- Describes localStorage version (v1.0/2.0) - App now uses Firebase (v3.2.0)
+- Missing: Multi-tenant architecture, Partner Portal, 12 services, Cloud Functions
+- Missing: 618 Playwright tests, Bonus System, Status Synchronization
+- Missing: GitHub Pages deployment, Firebase Security Rules
+
+**What to use:**
+- For development: **CLAUDE.md** (this file)
+- For testing: **TESTING_AGENT_PROMPT.md** or Testing Guide section below
+- For architecture: **Core Architecture** section below
+- For deployment: **Essential Commands** section above
+- For bug fixes: **Recent Updates** section below + **CLAUDE_SESSIONS_ARCHIVE.md**
 
 ---
 
@@ -593,7 +621,7 @@ await window.getCollection('fahrzeuge').add(fahrzeugData);
 
 ---
 
-_Last Updated: 2025-11-07 (CLAUDE.md Restructured for Better Navigation) by Claude Code (Sonnet 4.5)_
-_Version: v2025.11.07 | File Size: ~1,200 lines (down from 2,773 lines)_
+_Last Updated: 2025-11-07 (Added Documentation Status Section) by Claude Code (Sonnet 4.5)_
+_Version: v2025.11.07.2 | File Size: 630 lines (concise & up-to-date)_
 _Recent Sessions: Nov 6-7 (Status Sync + Service Integration) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
-_Restructuring: Added TOC, moved Commands to top, consolidated Architecture, archived old sessions_
+_Note: README.md is outdated (v1.0/2.0) - Always use CLAUDE.md for development guidance_

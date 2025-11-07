@@ -354,6 +354,7 @@
         /* Schicht Badge */
         .schicht-badge {
             padding: 6px 10px;
+            padding-right: 24px; /* 🆕 Space for auto-fill handle */
             border-radius: 6px;
             font-size: 12px;
             font-weight: 500;
@@ -364,11 +365,41 @@
             gap: 6px;
             border: 1px solid rgba(255,255,255,0.1);
             transition: all 0.2s;
+            position: relative; /* 🆕 For absolute positioned handle */
         }
 
         .schicht-badge:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        /* 🆕 Auto-Fill Handle */
+        .auto-fill-handle {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: col-resize;
+            opacity: 0;
+            transition: opacity 0.2s;
+            padding: 2px 4px;
+            font-size: 14px;
+            line-height: 1;
+            user-select: none;
+        }
+
+        .schicht-badge:hover .auto-fill-handle {
+            opacity: 0.7;
+        }
+
+        .auto-fill-handle:hover {
+            opacity: 1 !important;
+        }
+
+        /* 🆕 Auto-Fill Preview (during drag) */
+        .auto-fill-preview {
+            border: 2px solid #34a853 !important;
+            background: rgba(52, 168, 83, 0.1) !important;
         }
 
         .schicht-badge.dragging {
@@ -741,6 +772,9 @@
                 <button class="btn btn-primary" onclick="openSchichtTypModal()">
                     + Schicht-Typ erstellen
                 </button>
+                <button class="btn btn-primary" onclick="openBereichModal()">
+                    + Bereich erstellen
+                </button>
             </div>
         </div>
 
@@ -826,6 +860,14 @@
                                 <!-- Rendered dynamically -->
                             </div>
                         </div>
+
+                        <!-- 🆕 Bereiche-Palette -->
+                        <div class="schichttypen-palette" style="margin-top: 20px;">
+                            <h3>🏢 Bereiche</h3>
+                            <div id="bereicheList">
+                                <!-- Rendered dynamically -->
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -846,6 +888,11 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- 🆕 CONTEXT MENU: Urlaub/Frei/Krank -->
+    <div id="contextMenu" style="display: none; position: fixed; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; padding: 8px; z-index: 100002; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+        <div id="contextMenuOptions"></div>
     </div>
 
     <!-- MODAL: Schicht-Typ erstellen/bearbeiten -->
@@ -921,8 +968,110 @@
                     </select>
                 </div>
 
+                <!-- 🆕 Multi-Day Auswahl -->
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="multiDayCheckbox" onchange="toggleMultiDaySelection()">
+                        📅 Für mehrere Tage erstellen
+                    </label>
+                </div>
+
+                <div id="multiDaySelection" style="display: none; margin-top: 10px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 600;">Tage auswählen:</label>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" class="multiday-checkbox" value="1" id="day-mo"> Mo
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" class="multiday-checkbox" value="2" id="day-di"> Di
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" class="multiday-checkbox" value="3" id="day-mi"> Mi
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" class="multiday-checkbox" value="4" id="day-do"> Do
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" class="multiday-checkbox" value="5" id="day-fr"> Fr
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" class="multiday-checkbox" value="6" id="day-sa"> Sa
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox" class="multiday-checkbox" value="0" id="day-so"> So
+                        </label>
+                    </div>
+                </div>
+
                 <div class="form-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeSchichtZuweisenModal()">
+                        Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Zuweisen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 🆕 MODAL: Bereich erstellen/bearbeiten -->
+    <div id="bereichModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><span id="modalBereichTitle">🏢 Bereich erstellen</span></h2>
+                <button class="close-btn" onclick="closeBereichModal()">×</button>
+            </div>
+            <form id="bereichForm" onsubmit="saveBereich(event)">
+                <input type="hidden" id="editBereichId" value="">
+
+                <div class="form-group">
+                    <label for="bereichName">Name des Bereichs *</label>
+                    <input type="text" id="bereichName" class="form-control" placeholder="z.B. Lackierung, Mechanik, Karosserie" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="bereichFarbe">Farbe *</label>
+                    <input type="color" id="bereichFarbe" class="form-control" value="#1a73e8" required>
+                </div>
+
+                <div class="form-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeBereichModal()">
+                        Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <span id="btnBereichText">Erstellen</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 🆕 MODAL: Bereich zu Schicht zuweisen -->
+    <div id="bereichZuweisenModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🏢 Bereich zuweisen</h2>
+                <button class="close-btn" onclick="closeBereichZuweisenModal()">×</button>
+            </div>
+            <form id="bereichZuweisenForm" onsubmit="saveBereichZuweisung(event)">
+                <input type="hidden" id="zuweisenSchichtId">
+
+                <div class="form-group">
+                    <label>Schicht</label>
+                    <p id="zuweisenSchichtInfo" style="font-weight: 600; font-size: 16px;">-</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="zuweisenBereich">Bereich *</label>
+                    <select id="zuweisenBereich" class="form-control" required>
+                        <option value="">-- Bitte wählen --</option>
+                        <!-- Rendered dynamically -->
+                    </select>
+                </div>
+
+                <div class="form-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeBereichZuweisenModal()">
                         Abbrechen
                     </button>
                     <button type="submit" class="btn btn-primary">
@@ -945,6 +1094,7 @@
         let allSchichten = [];
         let allWuensche = [];
         let allTausche = [];
+        let allBereiche = []; // 🆕 Feature 1: Bereiche-System
 
         // Firebase & Auth Check
         let authCheckInterval;
@@ -995,13 +1145,18 @@
                     loadSchichtTypen(),
                     loadSchichten(),
                     loadWuensche(),
-                    loadTausche()
+                    loadTausche(),
+                    loadBereiche() // 🆕 Feature 1: Bereiche
                 ]);
+
+                // 🆕 Feature 2: Ensure special schicht-typen exist
+                await ensureSpecialSchichtTypen();
 
                 // Render initial view
                 renderCalendar();
                 renderMitarbeiterSidebar();
                 renderSchichttypenPalette();
+                renderBereichePalette(); // 🆕 Feature 1
                 renderWuensche();
                 renderTausche();
 
@@ -1085,6 +1240,89 @@
                 console.log(`✅ ${allTausche.length} Tausch-Anfragen geladen`);
             } catch (error) {
                 console.error('❌ Fehler beim Laden der Tausch-Anfragen:', error);
+            }
+        }
+
+        async function loadBereiche() {
+            try {
+                const snapshot = await window.getCollection('bereiche').get();
+                allBereiche = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                console.log(`✅ ${allBereiche.length} Bereiche geladen`);
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Bereiche:', error);
+                allBereiche = []; // Set to empty array on error
+            }
+        }
+
+        // === 🆕 SPECIAL SCHICHT-TYPEN (Urlaub/Frei/Krank) ===
+
+        async function ensureSpecialSchichtTypen() {
+            try {
+                console.log('🎯 [DEBUG] Starting ensureSpecialSchichtTypen...');
+                console.log('🎯 [DEBUG] allSchichtTypen length:', allSchichtTypen.length);
+                console.log('🎯 [DEBUG] allSchichtTypen:', allSchichtTypen);
+
+                const specialTypes = [
+                    {
+                        name: 'Urlaub',
+                        startzeit: '00:00',
+                        endzeit: '23:59',
+                        farbe: '#34a853',
+                        isSpecial: true,
+                        type: 'urlaub',
+                        sortierung: 1000
+                    },
+                    {
+                        name: 'Frei',
+                        startzeit: '00:00',
+                        endzeit: '23:59',
+                        farbe: '#9aa0a6',
+                        isSpecial: true,
+                        type: 'frei',
+                        sortierung: 1001
+                    },
+                    {
+                        name: 'Krank',
+                        startzeit: '00:00',
+                        endzeit: '23:59',
+                        farbe: '#ea4335',
+                        isSpecial: true,
+                        type: 'krank',
+                        sortierung: 1002
+                    }
+                ];
+
+                for (const specialType of specialTypes) {
+                    // Check if exists by name (not type field, which doesn't exist yet)
+                    const existing = allSchichtTypen.find(st =>
+                        st.name === specialType.name
+                    );
+
+                    console.log(`🎯 [DEBUG] Checking "${specialType.name}", exists:`, !!existing);
+
+                    if (!existing) {
+                        // Create
+                        console.log(`🎯 [DEBUG] Creating "${specialType.name}"...`);
+                        await window.getCollection('schichtTypen').add({
+                            ...specialType,
+                            werkstattId: window.werkstattId
+                        });
+                        console.log(`✅ Special Schicht-Typ "${specialType.name}" erstellt`);
+                    } else {
+                        console.log(`ℹ️ Special Schicht-Typ "${specialType.name}" existiert bereits`);
+                    }
+                }
+
+                // Reload to include new special types
+                console.log('🎯 [DEBUG] Reloading Schicht-Typen...');
+                await loadSchichtTypen();
+                console.log('🎯 [DEBUG] Schicht-Typen reloaded, new length:', allSchichtTypen.length);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der Special Schicht-Typen:', error);
             }
         }
 
@@ -1196,9 +1434,10 @@
                         <div class="week-cell drop-zone ${isToday ? 'today' : ''}"
                              data-mitarbeiter-id="${mitarbeiter.id}"
                              data-datum="${dateStr}"
-                             ondrop="handleDrop(event)"
-                             ondragover="handleDragOver(event)"
-                             ondragleave="handleDragLeave(event)">
+                             ondrop="handleDrop(event); handleAutoFillDrop(event, '${mitarbeiter.id}', '${dateStr}');"
+                             ondragover="handleDragOver(event); handleAutoFillDragOver(event, '${mitarbeiter.id}', '${dateStr}');"
+                             ondragleave="handleDragLeave(event)"
+                             oncontextmenu="showContextMenu(event, '${mitarbeiter.id}', '${dateStr}')">
                     `;
 
                     // Render schicht badges
@@ -1314,13 +1553,29 @@
 
         function renderSchichtBadge(schicht, schichtTyp) {
             const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(schicht.mitarbeiterId));
+
+            // 🆕 Bereich-Info
+            let bereichInfo = '';
+            if (schicht.bereichId) {
+                const bereich = allBereiche.find(b => String(b.id) === String(schicht.bereichId));
+                if (bereich) {
+                    bereichInfo = `<span style="font-size: 10px; opacity: 0.9;"> • ${bereich.name}</span>`;
+                }
+            }
+
             return `
                 <div class="schicht-badge"
-                     style="background: ${schichtTyp.farbe}; color: white;"
+                     style="background: ${schichtTyp.farbe}; color: white; cursor: pointer;"
                      draggable="true"
-                     ondragstart="handleSchichtDragStart(event, '${schicht.id}')">
-                    ${schichtTyp.name}
+                     ondragstart="handleSchichtDragStart(event, '${schicht.id}')"
+                     onclick="event.stopPropagation(); openBereichZuweisenModal('${schicht.id}');">
+                    ${schichtTyp.name}${bereichInfo}
                     <span class="schicht-badge-time">${schichtTyp.startzeit}-${schichtTyp.endzeit}</span>
+                    <div class="auto-fill-handle"
+                         draggable="true"
+                         ondragstart="handleAutoFillDragStart(event, '${schicht.id}'); event.stopPropagation();"
+                         onclick="event.stopPropagation();"
+                         title="Über Woche ziehen">⋮</div>
                 </div>
             `;
         }
@@ -1384,11 +1639,52 @@
             container.innerHTML = html;
         }
 
+        function renderBereichePalette() {
+            const container = document.getElementById('bereicheList');
+
+            if (!container) return; // Falls HTML noch nicht hinzugefügt wurde
+
+            if (allBereiche.length === 0) {
+                container.innerHTML = '<p style="opacity: 0.7; font-size: 14px;">Noch keine Bereiche erstellt</p>';
+                return;
+            }
+
+            let html = '';
+            for (const bereich of allBereiche) {
+                html += `
+                    <div class="bereich-item"
+                         style="background: ${bereich.farbe}; color: white; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,0.1);">
+                        <div>
+                            <strong>${bereich.name}</strong>
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="icon-btn" onclick="editBereich('${bereich.id}'); event.stopPropagation();" title="Bearbeiten">
+                                ✏️
+                            </button>
+                            <button class="icon-btn" onclick="deleteBereich('${bereich.id}'); event.stopPropagation();" title="Löschen">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
         // === DRAG & DROP HANDLERS ===
 
         let draggedData = {
             type: null, // 'mitarbeiter', 'schichtTyp', 'schicht'
             id: null
+        };
+
+        // 🆕 Auto-Fill Data
+        let autoFillData = {
+            schicht: null,
+            startDatum: null,
+            mitarbeiterId: null,
+            previewCells: [] // Array of cell elements being previewed
         };
 
         function handleMitarbeiterDragStart(event, mitarbeiterId) {
@@ -1489,6 +1785,128 @@
 
             // Reset dragged data
             draggedData = { type: null, id: null };
+        }
+
+        // === 🆕 AUTO-FILL DRAG & DROP ===
+
+        function handleAutoFillDragStart(event, schichtId) {
+            event.stopPropagation(); // Prevent normal schicht drag
+
+            const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
+            if (!schicht) {
+                console.error('❌ Schicht nicht gefunden:', schichtId);
+                return;
+            }
+
+            autoFillData = {
+                schicht: schicht,
+                startDatum: schicht.datum,
+                mitarbeiterId: schicht.mitarbeiterId,
+                previewCells: []
+            };
+
+            // Set drag image (small visual feedback)
+            event.dataTransfer.effectAllowed = 'copy';
+            event.dataTransfer.setData('text/plain', schichtId);
+
+            console.log('🎯 Auto-Fill Drag Start:', schicht);
+        }
+
+        function handleAutoFillDragOver(event, mitarbeiterId, datum) {
+            if (!autoFillData.schicht) return; // Not an auto-fill drag
+
+            event.preventDefault();
+
+            // Only allow on same mitarbeiter
+            if (String(mitarbeiterId) !== String(autoFillData.mitarbeiterId)) {
+                return;
+            }
+
+            // Only allow forward dates (or same date)
+            if (datum < autoFillData.startDatum) {
+                return;
+            }
+
+            // Add preview class
+            const cell = event.currentTarget;
+            if (!cell.classList.contains('auto-fill-preview')) {
+                cell.classList.add('auto-fill-preview');
+                autoFillData.previewCells.push(cell);
+            }
+        }
+
+        async function handleAutoFillDrop(event, mitarbeiterId, datum) {
+            if (!autoFillData.schicht) return; // Not an auto-fill drag
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            // Clear preview
+            clearAutoFillPreview();
+
+            // Validate same mitarbeiter
+            if (String(mitarbeiterId) !== String(autoFillData.mitarbeiterId)) {
+                showToast('⚠️ Auto-Fill nur für gleichen Mitarbeiter', 'warning');
+                autoFillData = { schicht: null, startDatum: null, mitarbeiterId: null, previewCells: [] };
+                return;
+            }
+
+            // Get all dates between start and end
+            const startDate = new Date(autoFillData.startDatum);
+            const endDate = new Date(datum);
+
+            if (endDate < startDate) {
+                showToast('⚠️ Bitte nach rechts ziehen (zukünftige Tage)', 'warning');
+                autoFillData = { schicht: null, startDatum: null, mitarbeiterId: null, previewCells: [] };
+                return;
+            }
+
+            const dates = [];
+            let currentDate = new Date(startDate);
+            currentDate.setDate(currentDate.getDate() + 1); // Start from next day
+
+            while (currentDate <= endDate) {
+                dates.push(formatDate(currentDate, 'YYYY-MM-DD'));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            // Batch create schichten
+            let createdCount = 0;
+            let skippedCount = 0;
+
+            for (const dateStr of dates) {
+                // Check if exists
+                const existing = allSchichten.find(s =>
+                    String(s.mitarbeiterId) === String(mitarbeiterId) &&
+                    s.datum === dateStr &&
+                    String(s.schichtTypId) === String(autoFillData.schicht.schichtTypId)
+                );
+
+                if (existing) {
+                    skippedCount++;
+                    continue;
+                }
+
+                // Create copy
+                await createSchicht(mitarbeiterId, dateStr, autoFillData.schicht.schichtTypId);
+                createdCount++;
+            }
+
+            if (createdCount > 0) {
+                showToast(`✅ ${createdCount} Schicht${createdCount > 1 ? 'en' : ''} kopiert${skippedCount > 0 ? `, ${skippedCount} übersprungen` : ''}`, 'success');
+            } else {
+                showToast('ℹ️ Alle Schichten existieren bereits', 'info');
+            }
+
+            // Reset
+            autoFillData = { schicht: null, startDatum: null, mitarbeiterId: null, previewCells: [] };
+        }
+
+        function clearAutoFillPreview() {
+            autoFillData.previewCells.forEach(cell => {
+                cell.classList.remove('auto-fill-preview');
+            });
+            autoFillData.previewCells = [];
         }
 
         // === SCHICHT OPERATIONS ===
@@ -1689,11 +2107,136 @@
             }
         }
 
+        // === 🆕 BEREICH MODAL ===
+
+        function openBereichModal() {
+            document.getElementById('editBereichId').value = '';
+            document.getElementById('modalBereichTitle').textContent = '🏢 Bereich erstellen';
+            document.getElementById('btnBereichText').textContent = 'Erstellen';
+            document.getElementById('bereichForm').reset();
+            document.getElementById('bereichFarbe').value = '#1a73e8';
+            document.getElementById('bereichModal').classList.add('show');
+        }
+
+        function closeBereichModal() {
+            document.getElementById('bereichModal').classList.remove('show');
+        }
+
+        async function editBereich(bereichId) {
+            const bereich = allBereiche.find(b => String(b.id) === String(bereichId));
+            if (!bereich) return;
+
+            document.getElementById('editBereichId').value = bereich.id;
+            document.getElementById('modalBereichTitle').textContent = '🏢 Bereich bearbeiten';
+            document.getElementById('btnBereichText').textContent = 'Speichern';
+            document.getElementById('bereichName').value = bereich.name;
+            document.getElementById('bereichFarbe').value = bereich.farbe;
+            document.getElementById('bereichModal').classList.add('show');
+        }
+
+        async function saveBereich(event) {
+            event.preventDefault();
+
+            const editId = document.getElementById('editBereichId').value;
+            const name = document.getElementById('bereichName').value.trim();
+            const farbe = document.getElementById('bereichFarbe').value;
+
+            if (!name || !farbe) {
+                showToast('❌ Bitte alle Felder ausfüllen', 'error');
+                return;
+            }
+
+            try {
+                const data = {
+                    name: name,
+                    farbe: farbe,
+                    werkstattId: window.werkstattId
+                };
+
+                if (editId) {
+                    // Update
+                    await window.getCollection('bereiche').doc(editId).update(data);
+                    showToast(`✅ Bereich "${name}" aktualisiert`, 'success');
+                } else {
+                    // Create
+                    await window.getCollection('bereiche').add(data);
+                    showToast(`✅ Bereich "${name}" erstellt`, 'success');
+                }
+
+                closeBereichModal();
+                await loadBereiche();
+                renderBereichePalette();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                showToast('❌ Fehler beim Speichern', 'error');
+            }
+        }
+
+        async function deleteBereich(bereichId) {
+            const bereich = allBereiche.find(b => String(b.id) === String(bereichId));
+            if (!bereich) return;
+
+            // Check if bereich is used in schichten
+            const used = allSchichten.some(s => s.bereichId && String(s.bereichId) === String(bereichId));
+            if (used) {
+                alert('⚠️ Dieser Bereich wird noch verwendet und kann nicht gelöscht werden!');
+                return;
+            }
+
+            if (!confirm(`Möchtest du den Bereich "${bereich.name}" wirklich löschen?`)) {
+                return;
+            }
+
+            try {
+                await window.getCollection('bereiche').doc(bereichId).delete();
+                showToast(`✅ Bereich "${bereich.name}" gelöscht`, 'success');
+                await loadBereiche();
+                renderBereichePalette();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen:', error);
+                showToast('❌ Fehler beim Löschen', 'error');
+            }
+        }
+
         // === SCHICHT ZUWEISEN MODAL ===
+
+        function toggleMultiDaySelection() {
+            const checkbox = document.getElementById('multiDayCheckbox');
+            const selection = document.getElementById('multiDaySelection');
+            selection.style.display = checkbox.checked ? 'block' : 'none';
+        }
 
         function openSchichtZuweisenModal(mitarbeiterId, datum, preselectedSchichtTypId = null) {
             document.getElementById('zuweisenMitarbeiterId').value = mitarbeiterId || '';
             document.getElementById('zuweisenDatum').value = datum;
+
+            // 🆕 Reset multi-day selection
+            document.getElementById('multiDayCheckbox').checked = false;
+            document.getElementById('multiDaySelection').style.display = 'none';
+
+            // 🆕 Smart Defaults: Wenn Montag → Mo-Fr vorselektieren
+            const date = new Date(datum);
+            const dayOfWeek = date.getDay(); // 0=So, 1=Mo, 2=Di, ...
+
+            if (dayOfWeek === 1) { // Montag
+                // Auto-check multi-day checkbox
+                document.getElementById('multiDayCheckbox').checked = true;
+                document.getElementById('multiDaySelection').style.display = 'block';
+
+                // Preselect Mo-Fr
+                document.getElementById('day-mo').checked = true;
+                document.getElementById('day-di').checked = true;
+                document.getElementById('day-mi').checked = true;
+                document.getElementById('day-do').checked = true;
+                document.getElementById('day-fr').checked = true;
+                document.getElementById('day-sa').checked = false;
+                document.getElementById('day-so').checked = false;
+            } else {
+                // Reset all checkboxes
+                document.querySelectorAll('.multiday-checkbox').forEach(cb => cb.checked = false);
+            }
 
             const mitarbeiter = mitarbeiterId ? allMitarbeiter.find(m => String(m.id) === String(mitarbeiterId)) : null;
             document.getElementById('zuweisenMitarbeiterName').textContent = mitarbeiter ? mitarbeiter.name : 'Bitte wählen';
@@ -1731,8 +2274,253 @@
                 return;
             }
 
-            await createSchicht(mitarbeiterId, datum, schichtTypId);
+            // 🆕 Multi-Day Handling
+            const multiDayEnabled = document.getElementById('multiDayCheckbox').checked;
+
+            if (multiDayEnabled) {
+                // Get selected days
+                const selectedDays = [];
+                document.querySelectorAll('.multiday-checkbox:checked').forEach(cb => {
+                    selectedDays.push(parseInt(cb.value));
+                });
+
+                if (selectedDays.length === 0) {
+                    showToast('⚠️ Bitte wähle mindestens einen Tag aus', 'warning');
+                    return;
+                }
+
+                // Create schichten for all selected days (next 4 weeks)
+                const startDate = new Date(datum);
+                const createdCount = {
+                    success: 0,
+                    skipped: 0
+                };
+
+                for (let week = 0; week < 4; week++) {
+                    for (const dayOfWeek of selectedDays) {
+                        const targetDate = new Date(startDate);
+                        targetDate.setDate(startDate.getDate() + (week * 7));
+
+                        // Adjust to correct day of week
+                        const currentDay = targetDate.getDay();
+                        const diff = dayOfWeek - currentDay;
+                        targetDate.setDate(targetDate.getDate() + diff);
+
+                        const dateStr = formatDate(targetDate, 'YYYY-MM-DD');
+
+                        // Check if schicht already exists
+                        const existing = allSchichten.find(s =>
+                            String(s.mitarbeiterId) === String(mitarbeiterId) &&
+                            s.datum === dateStr &&
+                            String(s.schichtTypId) === String(schichtTypId)
+                        );
+
+                        if (!existing) {
+                            await createSchicht(mitarbeiterId, dateStr, schichtTypId);
+                            createdCount.success++;
+                        } else {
+                            createdCount.skipped++;
+                        }
+                    }
+                }
+
+                showToast(`✅ ${createdCount.success} Schichten erstellt${createdCount.skipped > 0 ? `, ${createdCount.skipped} übersprungen` : ''}`, 'success');
+
+            } else {
+                // Single day
+                await createSchicht(mitarbeiterId, datum, schichtTypId);
+            }
+
             closeSchichtZuweisenModal();
+        }
+
+        // === 🆕 BEREICH ZUWEISEN MODAL ===
+
+        function openBereichZuweisenModal(schichtId) {
+            const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
+            if (!schicht) {
+                showToast('❌ Schicht nicht gefunden', 'error');
+                return;
+            }
+
+            document.getElementById('zuweisenSchichtId').value = schichtId;
+
+            // Show schicht info
+            const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+            const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(schicht.mitarbeiterId));
+            const infoText = `${mitarbeiter ? mitarbeiter.name : 'Unbekannt'} · ${schichtTyp ? schichtTyp.name : 'Unbekannt'} · ${formatDate(new Date(schicht.datum), 'DD.MM.YYYY')}`;
+            document.getElementById('zuweisenSchichtInfo').textContent = infoText;
+
+            // Populate bereiche dropdown
+            const select = document.getElementById('zuweisenBereich');
+            select.innerHTML = '<option value="">-- Kein Bereich --</option>';
+            for (const bereich of allBereiche) {
+                const option = document.createElement('option');
+                option.value = bereich.id;
+                option.textContent = bereich.name;
+                if (schicht.bereichId && String(bereich.id) === String(schicht.bereichId)) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            }
+
+            document.getElementById('bereichZuweisenModal').classList.add('show');
+        }
+
+        function closeBereichZuweisenModal() {
+            document.getElementById('bereichZuweisenModal').classList.remove('show');
+        }
+
+        async function saveBereichZuweisung(event) {
+            event.preventDefault();
+
+            const schichtId = document.getElementById('zuweisenSchichtId').value;
+            const bereichId = document.getElementById('zuweisenBereich').value;
+
+            if (!schichtId) {
+                showToast('❌ Schicht-ID fehlt', 'error');
+                return;
+            }
+
+            try {
+                const updateData = {
+                    bereichId: bereichId || null,
+                    bereichName: null,
+                    bereichFarbe: null
+                };
+
+                if (bereichId) {
+                    const bereich = allBereiche.find(b => String(b.id) === String(bereichId));
+                    if (bereich) {
+                        updateData.bereichName = bereich.name;
+                        updateData.bereichFarbe = bereich.farbe;
+                    }
+                }
+
+                await window.getCollection('schichten').doc(schichtId).update(updateData);
+
+                showToast(bereichId ? `✅ Bereich zugewiesen` : `✅ Bereich entfernt`, 'success');
+                await loadSchichten();
+                renderCalendar();
+                closeBereichZuweisenModal();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Zuweisen:', error);
+                showToast('❌ Fehler beim Zuweisen', 'error');
+            }
+        }
+
+        // === 🆕 CONTEXT MENU (Urlaub/Frei/Krank) ===
+
+        let contextMenuData = {
+            mitarbeiterId: null,
+            datum: null
+        };
+
+        function showContextMenu(event, mitarbeiterId, datum) {
+            event.preventDefault();
+
+            contextMenuData = { mitarbeiterId, datum };
+
+            const menu = document.getElementById('contextMenu');
+            const optionsContainer = document.getElementById('contextMenuOptions');
+
+            // Get special schicht-typen
+            const urlaubTyp = allSchichtTypen.find(st => st.isSpecial && st.type === 'urlaub');
+            const freiTyp = allSchichtTypen.find(st => st.isSpecial && st.type === 'frei');
+            const krankTyp = allSchichtTypen.find(st => st.isSpecial && st.type === 'krank');
+
+            let html = '';
+            if (urlaubTyp) {
+                html += `<div onclick="createSpecialSchicht('urlaub')" style="padding: 10px; cursor: pointer; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">🏖️ Als Urlaub markieren</div>`;
+            }
+            if (freiTyp) {
+                html += `<div onclick="createSpecialSchicht('frei')" style="padding: 10px; cursor: pointer; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">🌙 Als Frei markieren</div>`;
+            }
+            if (krankTyp) {
+                html += `<div onclick="createSpecialSchicht('krank')" style="padding: 10px; cursor: pointer; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">🤒 Als Krank markieren</div>`;
+            }
+
+            optionsContainer.innerHTML = html;
+
+            // Position menu at mouse
+            menu.style.left = event.pageX + 'px';
+            menu.style.top = event.pageY + 'px';
+            menu.style.display = 'block';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').style.display = 'none';
+        }
+
+        // Hide context menu when clicking anywhere else
+        document.addEventListener('click', hideContextMenu);
+
+        async function createSpecialSchicht(type) {
+            hideContextMenu();
+
+            const { mitarbeiterId, datum } = contextMenuData;
+
+            if (!mitarbeiterId || !datum) {
+                showToast('❌ Fehler: Keine Daten verfügbar', 'error');
+                return;
+            }
+
+            try {
+                // Find special schicht-typ
+                const schichtTyp = allSchichtTypen.find(st => st.isSpecial && st.type === type);
+                if (!schichtTyp) {
+                    showToast('❌ Schicht-Typ nicht gefunden', 'error');
+                    return;
+                }
+
+                // Get mitarbeiter
+                const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(mitarbeiterId));
+                if (!mitarbeiter) {
+                    showToast('❌ Mitarbeiter nicht gefunden', 'error');
+                    return;
+                }
+
+                // Urlaubstage-Check
+                if (type === 'urlaub') {
+                    const urlaubstageJahr = mitarbeiter.urlaubstageJahr || 30;
+                    const urlaubstageVerbraucht = mitarbeiter.urlaubstageVerbraucht || 0;
+                    const verfuegbar = urlaubstageJahr - urlaubstageVerbraucht;
+
+                    if (verfuegbar <= 0) {
+                        const confirm = window.confirm(`⚠️ Warnung: ${mitarbeiter.name} hat alle Urlaubstage verbraucht (${urlaubstageVerbraucht}/${urlaubstageJahr}).\n\nTrotzdem fortfahren?`);
+                        if (!confirm) return;
+                    }
+                }
+
+                // Create schicht
+                await createSchicht(mitarbeiterId, datum, schichtTyp.id);
+
+                // Update counters
+                if (type === 'urlaub') {
+                    // Update urlaubstageVerbraucht
+                    const newVerbraucht = (mitarbeiter.urlaubstageVerbraucht || 0) + 1;
+                    await window.getCollection('mitarbeiter').doc(mitarbeiterId).update({
+                        urlaubstageVerbraucht: newVerbraucht
+                    });
+                    console.log(`✅ Urlaubstage aktualisiert: ${newVerbraucht}`);
+                } else if (type === 'krank') {
+                    // Update krankheitstage
+                    const newKrank = (mitarbeiter.krankheitstage || 0) + 1;
+                    await window.getCollection('mitarbeiter').doc(mitarbeiterId).update({
+                        krankheitstage: newKrank,
+                        letzteKrankheitAm: new Date().toISOString()
+                    });
+                    console.log(`✅ Krankheitstage aktualisiert: ${newKrank}`);
+                }
+
+                // Reload mitarbeiter to reflect changes
+                await loadMitarbeiter();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der Special-Schicht:', error);
+                showToast('❌ Fehler beim Erstellen', 'error');
+            }
         }
 
         // === WÜNSCHE & TAUSCHE RENDERING ===
