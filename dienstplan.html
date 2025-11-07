@@ -1,0 +1,1906 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dienstplan-Verwaltung - Auto-Lackierzentrum Mosbach</title>
+
+    <!-- Firebase SDKs (Compatibility mode for backward compatibility) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+
+    <style>
+        /* === PHASE 2.2: DIENSTPLAN STYLES === */
+
+        :root {
+            --color-primary: #1a73e8;
+            --color-secondary: #34a853;
+            --color-warning: #fbbc04;
+            --color-danger: #ea4335;
+            --color-surface: #1e1e1e;
+            --color-surface-light: #2a2a2a;
+            --color-text: #e8eaed;
+            --color-text-secondary: #9aa0a6;
+            --color-border: rgba(255,255,255,0.1);
+            --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+            color: var(--color-text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: var(--color-surface);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1557b0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(26,115,232,0.4);
+        }
+
+        .btn-secondary {
+            background: var(--color-surface-light);
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+        }
+
+        .btn-secondary:hover {
+            background: #333;
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .btn-success {
+            background: var(--color-secondary);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--color-danger);
+            color: white;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+
+        /* Tab System */
+        .tab-container {
+            background: var(--color-surface);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid var(--color-border);
+            padding-bottom: 0;
+        }
+
+        .tab-button {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: var(--color-text-secondary);
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-button:hover {
+            background: rgba(255,255,255,0.05);
+            color: var(--color-text);
+        }
+
+        .tab-button.active {
+            background: rgba(26,115,232,0.15);
+            color: var(--color-primary);
+            font-weight: 600;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--color-primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* View Toggle */
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: var(--color-surface-light);
+            padding: 4px;
+            border-radius: 8px;
+            width: fit-content;
+        }
+
+        .view-toggle button {
+            padding: 8px 20px;
+            background: transparent;
+            border: none;
+            color: var(--color-text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .view-toggle button.active {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        /* Kalender Container */
+        .kalender-wrapper {
+            background: var(--color-surface-light);
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 600px;
+        }
+
+        .kalender-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .kalender-header h2 {
+            font-size: 22px;
+            font-weight: 600;
+        }
+
+        .kalender-navigation {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .nav-arrow {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            color: var(--color-text);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .nav-arrow:hover {
+            background: #333;
+            border-color: rgba(255,255,255,0.3);
+        }
+
+        /* Week View */
+        .week-view {
+            display: grid;
+            grid-template-columns: 150px repeat(7, 1fr);
+            gap: 2px;
+            background: var(--color-border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .week-header {
+            background: var(--color-surface);
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .week-header.corner {
+            background: var(--color-surface-light);
+        }
+
+        .week-row-header {
+            background: var(--color-surface);
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .week-cell {
+            background: var(--color-surface);
+            padding: 8px;
+            min-height: 80px;
+            position: relative;
+        }
+
+        .week-cell.drop-zone {
+            border: 2px dashed transparent;
+            transition: all 0.2s;
+        }
+
+        .week-cell.drop-zone.drag-over {
+            background: rgba(26,115,232,0.1);
+            border-color: var(--color-primary);
+        }
+
+        /* Month View */
+        .month-view {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            background: var(--color-border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .month-header {
+            background: var(--color-surface);
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .month-cell {
+            background: var(--color-surface);
+            padding: 8px;
+            min-height: 100px;
+            position: relative;
+        }
+
+        .month-cell.other-month {
+            opacity: 0.4;
+        }
+
+        .month-cell.today {
+            background: rgba(26,115,232,0.1);
+        }
+
+        .month-cell-date {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        /* Schicht Badge */
+        .schicht-badge {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            cursor: move;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s;
+        }
+
+        .schicht-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .schicht-badge.dragging {
+            opacity: 0.5;
+        }
+
+        .schicht-badge-time {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        /* Mitarbeiter Sidebar */
+        .mitarbeiter-sidebar {
+            background: var(--color-surface-light);
+            border-radius: 12px;
+            padding: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .mitarbeiter-sidebar h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .mitarbeiter-item {
+            padding: 12px;
+            background: var(--color-surface);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: move;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid transparent;
+        }
+
+        .mitarbeiter-item:hover {
+            background: #2a2a2a;
+            border-color: var(--color-primary);
+        }
+
+        .mitarbeiter-item.dragging {
+            opacity: 0.5;
+        }
+
+        .mitarbeiter-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* Schicht-Typen Palette */
+        .schichttypen-palette {
+            background: var(--color-surface-light);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .schichttypen-palette h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .schichttyp-item {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: move;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .schichttyp-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .schichttyp-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .schichttyp-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .icon-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--color-border);
+            color: var(--color-text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 100000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--color-surface);
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-header h2 {
+            font-size: 24px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .close-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.05);
+            border: none;
+            color: var(--color-text);
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Form */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--color-text-secondary);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--color-surface-light);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            color: var(--color-text);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            background: #2a2a2a;
+        }
+
+        .form-control[type="color"] {
+            height: 50px;
+            cursor: pointer;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 30px;
+        }
+
+        /* Grid Layout */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 250px;
+            gap: 20px;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-primary {
+            background: rgba(26,115,232,0.2);
+            color: var(--color-primary);
+        }
+
+        .badge-success {
+            background: rgba(52,168,83,0.2);
+            color: var(--color-secondary);
+        }
+
+        .badge-warning {
+            background: rgba(251,188,4,0.2);
+            color: var(--color-warning);
+        }
+
+        .badge-danger {
+            background: rgba(234,67,53,0.2);
+            color: var(--color-danger);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--color-surface);
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            z-index: 100001;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 300px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--color-secondary);
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--color-danger);
+        }
+
+        .toast.warning {
+            border-left: 4px solid var(--color-warning);
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--color-text-secondary);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .week-view {
+                grid-template-columns: 100px repeat(7, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .week-view {
+                overflow-x: auto;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📅 Dienstplan-Verwaltung</h1>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="window.location.href='mitarbeiter-verwaltung.html'">
+                    ← Zurück zur Verwaltung
+                </button>
+                <button class="btn btn-primary" onclick="openSchichtTypModal()">
+                    + Schicht-Typ erstellen
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="tab-container">
+            <!-- Tabs -->
+            <div class="tabs">
+                <button id="tabKalender" class="tab-button active" onclick="switchTab('kalender')">
+                    📅 Kalender
+                </button>
+                <button id="tabWuensche" class="tab-button" onclick="switchTab('wuensche')">
+                    💭 Wünsche <span id="wuenscheCount" class="badge badge-warning">0</span>
+                </button>
+                <button id="tabTausche" class="tab-button" onclick="switchTab('tausche')">
+                    🔄 Tausch-Anfragen <span id="tauscheCount" class="badge badge-warning">0</span>
+                </button>
+            </div>
+
+            <!-- Tab Content: Kalender -->
+            <div id="contentKalender" class="tab-content active">
+                <div class="grid-2">
+                    <!-- Kalender View -->
+                    <div>
+                        <!-- View Toggle -->
+                        <div class="view-toggle">
+                            <button id="viewWeek" class="active" onclick="switchView('week')">
+                                📊 Wochenansicht
+                            </button>
+                            <button id="viewMonth" onclick="switchView('month')">
+                                📆 Monatsansicht
+                            </button>
+                        </div>
+
+                        <!-- Kalender Wrapper -->
+                        <div class="kalender-wrapper">
+                            <div class="kalender-header">
+                                <h2 id="kalenderTitle">Loading...</h2>
+                                <div class="kalender-navigation">
+                                    <button class="nav-arrow" onclick="navigateCalendar(-1)">
+                                        ←
+                                    </button>
+                                    <button class="btn btn-small btn-secondary" onclick="navigateToToday()">
+                                        Heute
+                                    </button>
+                                    <button class="nav-arrow" onclick="navigateCalendar(1)">
+                                        →
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Week View Container -->
+                            <div id="weekViewContainer" class="week-view" style="display: none;">
+                                <!-- Rendered dynamically -->
+                            </div>
+
+                            <!-- Month View Container -->
+                            <div id="monthViewContainer" class="month-view" style="display: none;">
+                                <!-- Rendered dynamically -->
+                            </div>
+
+                            <!-- Loading State -->
+                            <div id="kalenderLoading" class="loading">
+                                <div class="spinner"></div>
+                                <p>Kalender wird geladen...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sidebar -->
+                    <div>
+                        <!-- Mitarbeiter List -->
+                        <div class="mitarbeiter-sidebar">
+                            <h3>👥 Mitarbeiter</h3>
+                            <div id="mitarbeiterList">
+                                <!-- Rendered dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Schicht-Typen Palette -->
+                        <div class="schichttypen-palette">
+                            <h3>🎨 Schicht-Typen</h3>
+                            <div id="schichttypenList">
+                                <!-- Rendered dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Wünsche -->
+            <div id="contentWuensche" class="tab-content">
+                <h3 style="margin-bottom: 20px;">💭 Mitarbeiter-Wünsche</h3>
+                <div id="wuenscheList">
+                    <!-- Rendered dynamically -->
+                </div>
+            </div>
+
+            <!-- Tab Content: Tausch-Anfragen -->
+            <div id="contentTausche" class="tab-content">
+                <h3 style="margin-bottom: 20px;">🔄 Tausch-Anfragen</h3>
+                <div id="tauscheList">
+                    <!-- Rendered dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Schicht-Typ erstellen/bearbeiten -->
+    <div id="schichtTypModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><span id="modalSchichtTypTitle">🎨 Schicht-Typ erstellen</span></h2>
+                <button class="close-btn" onclick="closeSchichtTypModal()">×</button>
+            </div>
+            <form id="schichtTypForm" onsubmit="saveSchichtTyp(event)">
+                <input type="hidden" id="editSchichtTypId" value="">
+
+                <div class="form-group">
+                    <label for="schichtName">Name der Schicht *</label>
+                    <input type="text" id="schichtName" class="form-control" placeholder="z.B. Frühschicht, Spätschicht" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="schichtStart">Startzeit *</label>
+                        <input type="time" id="schichtStart" class="form-control" value="08:00" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="schichtEnde">Endzeit *</label>
+                        <input type="time" id="schichtEnde" class="form-control" value="16:00" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="schichtFarbe">Farbe *</label>
+                    <input type="color" id="schichtFarbe" class="form-control" value="#1a73e8" required>
+                </div>
+
+                <div class="form-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeSchichtTypModal()">
+                        Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <span id="btnSchichtTypText">Erstellen</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Schicht zuweisen -->
+    <div id="schichtZuweisenModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📋 Schicht zuweisen</h2>
+                <button class="close-btn" onclick="closeSchichtZuweisenModal()">×</button>
+            </div>
+            <form id="schichtZuweisenForm" onsubmit="saveSchichtZuweisung(event)">
+                <input type="hidden" id="zuweisenMitarbeiterId">
+                <input type="hidden" id="zuweisenDatum">
+
+                <div class="form-group">
+                    <label>Mitarbeiter</label>
+                    <p id="zuweisenMitarbeiterName" style="font-weight: 600; font-size: 16px;">-</p>
+                </div>
+
+                <div class="form-group">
+                    <label>Datum</label>
+                    <p id="zuweisenDatumText" style="font-weight: 600; font-size: 16px;">-</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="zuweisenSchichtTyp">Schicht-Typ *</label>
+                    <select id="zuweisenSchichtTyp" class="form-control" required>
+                        <option value="">-- Bitte wählen --</option>
+                        <!-- Rendered dynamically -->
+                    </select>
+                </div>
+
+                <div class="form-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeSchichtZuweisenModal()">
+                        Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Zuweisen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script>
+        // === PHASE 2.2: DIENSTPLAN JAVASCRIPT ===
+
+        // Global Variables
+        let currentView = 'week'; // 'week' or 'month'
+        let currentDate = new Date();
+        let allMitarbeiter = [];
+        let allSchichtTypen = [];
+        let allSchichten = [];
+        let allWuensche = [];
+        let allTausche = [];
+
+        // Firebase & Auth Check
+        let authCheckInterval;
+        let authCheckAttempts = 0;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // Pre-initialize werkstattId from localStorage
+            const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+            window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+
+            authCheckInterval = setInterval(async () => {
+                authCheckAttempts++;
+
+                if (window.firebaseInitialized && window.werkstattId && window.authManager) {
+                    clearInterval(authCheckInterval);
+
+                    const currentUser = window.authManager.getCurrentUser();
+                    if (!currentUser) {
+                        window.location.href = 'login-werkstatt.html';
+                        return;
+                    }
+
+                    // Check role: Only werkstatt/admin/superadmin allowed
+                    const role = currentUser.role;
+                    if (role !== 'werkstatt' && role !== 'admin' && role !== 'superadmin') {
+                        alert('⛔ Zugriff verweigert! Diese Seite ist nur für Administratoren.');
+                        window.location.href = 'index.html';
+                        return;
+                    }
+
+                    // Initialize
+                    await initDienstplan();
+                }
+
+                if (authCheckAttempts >= 20) {
+                    clearInterval(authCheckInterval);
+                    alert('❌ Firebase-Initialisierung fehlgeschlagen. Bitte lade die Seite neu.');
+                }
+            }, 250);
+        });
+
+        // Initialize Dienstplan
+        async function initDienstplan() {
+            try {
+                // Load all data
+                await Promise.all([
+                    loadMitarbeiter(),
+                    loadSchichtTypen(),
+                    loadSchichten(),
+                    loadWuensche(),
+                    loadTausche()
+                ]);
+
+                // Render initial view
+                renderCalendar();
+                renderMitarbeiterSidebar();
+                renderSchichttypenPalette();
+                renderWuensche();
+                renderTausche();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Initialisieren:', error);
+                showToast('❌ Fehler beim Laden der Daten', 'error');
+            }
+        }
+
+        // === DATA LOADING ===
+
+        async function loadMitarbeiter() {
+            try {
+                const snapshot = await window.getCollection('mitarbeiter').get();
+                allMitarbeiter = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                console.log(`✅ ${allMitarbeiter.length} Mitarbeiter geladen`);
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Mitarbeiter:', error);
+            }
+        }
+
+        async function loadSchichtTypen() {
+            try {
+                const snapshot = await window.getCollection('schichtTypen').get();
+                allSchichtTypen = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                console.log(`✅ ${allSchichtTypen.length} Schicht-Typen geladen`);
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Schicht-Typen:', error);
+            }
+        }
+
+        async function loadSchichten() {
+            try {
+                const snapshot = await window.getCollection('schichten').get();
+                allSchichten = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                console.log(`✅ ${allSchichten.length} Schichten geladen`);
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Schichten:', error);
+            }
+        }
+
+        async function loadWuensche() {
+            try {
+                const snapshot = await window.getCollection('schichtWuensche')
+                    .where('status', '==', 'pending')
+                    .orderBy('createdAt', 'desc')
+                    .get();
+                allWuensche = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                document.getElementById('wuenscheCount').textContent = allWuensche.length;
+                console.log(`✅ ${allWuensche.length} Wünsche geladen`);
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Wünsche:', error);
+            }
+        }
+
+        async function loadTausche() {
+            try {
+                const snapshot = await window.getCollection('schichtTausche')
+                    .where('status', '==', 'pending')
+                    .orderBy('createdAt', 'desc')
+                    .get();
+                allTausche = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                document.getElementById('tauscheCount').textContent = allTausche.length;
+                console.log(`✅ ${allTausche.length} Tausch-Anfragen geladen`);
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Tausch-Anfragen:', error);
+            }
+        }
+
+        // === TAB SWITCHING ===
+
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('content' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+        }
+
+        // === VIEW SWITCHING ===
+
+        function switchView(view) {
+            currentView = view;
+
+            // Update toggle buttons
+            document.querySelectorAll('.view-toggle button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1)).classList.add('active');
+
+            // Render calendar
+            renderCalendar();
+        }
+
+        // === CALENDAR NAVIGATION ===
+
+        function navigateCalendar(direction) {
+            if (currentView === 'week') {
+                currentDate.setDate(currentDate.getDate() + (direction * 7));
+            } else {
+                currentDate.setMonth(currentDate.getMonth() + direction);
+            }
+            renderCalendar();
+        }
+
+        function navigateToToday() {
+            currentDate = new Date();
+            renderCalendar();
+        }
+
+        // === CALENDAR RENDERING ===
+
+        function renderCalendar() {
+            document.getElementById('kalenderLoading').style.display = 'none';
+
+            if (currentView === 'week') {
+                renderWeekView();
+            } else {
+                renderMonthView();
+            }
+        }
+
+        function renderWeekView() {
+            const container = document.getElementById('weekViewContainer');
+            const monthContainer = document.getElementById('monthViewContainer');
+            container.style.display = 'grid';
+            monthContainer.style.display = 'none';
+
+            // Get Monday of current week
+            const monday = getMonday(currentDate);
+
+            // Update title
+            const endDate = new Date(monday);
+            endDate.setDate(endDate.getDate() + 6);
+            document.getElementById('kalenderTitle').textContent =
+                `KW ${getWeekNumber(monday)} · ${formatDate(monday, 'DD.MM')} - ${formatDate(endDate, 'DD.MM.YYYY')}`;
+
+            // Build week grid HTML
+            let html = '';
+
+            // Header row
+            html += '<div class="week-header corner">Mitarbeiter</div>';
+            const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            for (let i = 0; i < 7; i++) {
+                const day = new Date(monday);
+                day.setDate(day.getDate() + i);
+                const isToday = isSameDay(day, new Date());
+                html += `<div class="week-header ${isToday ? 'today' : ''}">${weekdays[i]}<br><small>${formatDate(day, 'DD.MM')}</small></div>`;
+            }
+
+            // Mitarbeiter rows
+            for (const mitarbeiter of allMitarbeiter) {
+                // Row header
+                html += `
+                    <div class="week-row-header">
+                        <div class="mitarbeiter-avatar">${getInitials(mitarbeiter.name)}</div>
+                        ${mitarbeiter.name}
+                    </div>
+                `;
+
+                // Day cells
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(monday);
+                    day.setDate(day.getDate() + i);
+                    const dateStr = formatDate(day, 'YYYY-MM-DD');
+                    const isToday = isSameDay(day, new Date());
+
+                    // Find schichten for this mitarbeiter + date
+                    const schichten = allSchichten.filter(s =>
+                        String(s.mitarbeiterId) === String(mitarbeiter.id) &&
+                        s.datum === dateStr
+                    );
+
+                    html += `
+                        <div class="week-cell drop-zone ${isToday ? 'today' : ''}"
+                             data-mitarbeiter-id="${mitarbeiter.id}"
+                             data-datum="${dateStr}"
+                             ondrop="handleDrop(event)"
+                             ondragover="handleDragOver(event)"
+                             ondragleave="handleDragLeave(event)">
+                    `;
+
+                    // Render schicht badges
+                    for (const schicht of schichten) {
+                        const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                        if (schichtTyp) {
+                            html += renderSchichtBadge(schicht, schichtTyp);
+                        }
+                    }
+
+                    html += '</div>';
+                }
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderMonthView() {
+            const container = document.getElementById('monthViewContainer');
+            const weekContainer = document.getElementById('weekViewContainer');
+            container.style.display = 'grid';
+            weekContainer.style.display = 'none';
+
+            // Update title
+            document.getElementById('kalenderTitle').textContent =
+                formatDate(currentDate, 'MMMM YYYY');
+
+            // Build month grid HTML
+            let html = '';
+
+            // Header row
+            const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            for (const day of weekdays) {
+                html += `<div class="month-header">${day}</div>`;
+            }
+
+            // Get first day of month
+            const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
+            // Adjust to Monday (getDay() returns 0=Sunday, we want Monday=0)
+            let startDay = firstDay.getDay() - 1;
+            if (startDay === -1) startDay = 6;
+
+            // Add previous month days
+            for (let i = 0; i < startDay; i++) {
+                const day = new Date(firstDay);
+                day.setDate(day.getDate() - (startDay - i));
+                html += renderMonthCell(day, true);
+            }
+
+            // Add current month days
+            for (let i = 1; i <= lastDay.getDate(); i++) {
+                const day = new Date(currentDate.getFullYear(), currentDate.getMonth(), i);
+                html += renderMonthCell(day, false);
+            }
+
+            // Add next month days to fill grid
+            const totalCells = startDay + lastDay.getDate();
+            const remainingCells = 7 - (totalCells % 7);
+            if (remainingCells < 7) {
+                for (let i = 1; i <= remainingCells; i++) {
+                    const day = new Date(lastDay);
+                    day.setDate(day.getDate() + i);
+                    html += renderMonthCell(day, true);
+                }
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderMonthCell(date, otherMonth) {
+            const dateStr = formatDate(date, 'YYYY-MM-DD');
+            const isToday = isSameDay(date, new Date());
+
+            // Find all schichten for this date
+            const daySchichten = allSchichten.filter(s => s.datum === dateStr);
+
+            let html = `
+                <div class="month-cell drop-zone ${otherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}"
+                     data-datum="${dateStr}"
+                     ondrop="handleDrop(event)"
+                     ondragover="handleDragOver(event)"
+                     ondragleave="handleDragLeave(event)">
+                    <div class="month-cell-date">${date.getDate()}</div>
+            `;
+
+            // Render schicht badges (max 3, then "+X more")
+            const maxBadges = 3;
+            for (let i = 0; i < Math.min(daySchichten.length, maxBadges); i++) {
+                const schicht = daySchichten[i];
+                const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(schicht.mitarbeiterId));
+                if (schichtTyp && mitarbeiter) {
+                    html += `
+                        <div class="schicht-badge"
+                             style="background: ${schichtTyp.farbe}; color: white; font-size: 11px;"
+                             draggable="true"
+                             ondragstart="handleSchichtDragStart(event, '${schicht.id}')">
+                            ${mitarbeiter.name.split(' ')[0]}
+                        </div>
+                    `;
+                }
+            }
+
+            if (daySchichten.length > maxBadges) {
+                html += `<div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">+${daySchichten.length - maxBadges} mehr</div>`;
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function renderSchichtBadge(schicht, schichtTyp) {
+            const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(schicht.mitarbeiterId));
+            return `
+                <div class="schicht-badge"
+                     style="background: ${schichtTyp.farbe}; color: white;"
+                     draggable="true"
+                     ondragstart="handleSchichtDragStart(event, '${schicht.id}')">
+                    ${schichtTyp.name}
+                    <span class="schicht-badge-time">${schichtTyp.startzeit}-${schichtTyp.endzeit}</span>
+                </div>
+            `;
+        }
+
+        // === SIDEBAR RENDERING ===
+
+        function renderMitarbeiterSidebar() {
+            const container = document.getElementById('mitarbeiterList');
+
+            if (allMitarbeiter.length === 0) {
+                container.innerHTML = '<p style="opacity: 0.7; font-size: 14px;">Keine Mitarbeiter gefunden</p>';
+                return;
+            }
+
+            let html = '';
+            for (const mitarbeiter of allMitarbeiter) {
+                html += `
+                    <div class="mitarbeiter-item"
+                         draggable="true"
+                         ondragstart="handleMitarbeiterDragStart(event, '${mitarbeiter.id}')">
+                        <div class="mitarbeiter-avatar">${getInitials(mitarbeiter.name)}</div>
+                        ${mitarbeiter.name}
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderSchichttypenPalette() {
+            const container = document.getElementById('schichttypenList');
+
+            if (allSchichtTypen.length === 0) {
+                container.innerHTML = '<p style="opacity: 0.7; font-size: 14px;">Noch keine Schicht-Typen erstellt</p>';
+                return;
+            }
+
+            let html = '';
+            for (const schichtTyp of allSchichtTypen) {
+                html += `
+                    <div class="schichttyp-item"
+                         style="background: ${schichtTyp.farbe}; color: white;"
+                         draggable="true"
+                         ondragstart="handleSchichtTypDragStart(event, '${schichtTyp.id}')">
+                        <div class="schichttyp-info">
+                            <strong>${schichtTyp.name}</strong>
+                            <span>${schichtTyp.startzeit} - ${schichtTyp.endzeit}</span>
+                        </div>
+                        <div class="schichttyp-actions">
+                            <button class="icon-btn" onclick="editSchichtTyp('${schichtTyp.id}'); event.stopPropagation();" title="Bearbeiten">
+                                ✏️
+                            </button>
+                            <button class="icon-btn" onclick="deleteSchichtTyp('${schichtTyp.id}'); event.stopPropagation();" title="Löschen">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        // === DRAG & DROP HANDLERS ===
+
+        let draggedData = {
+            type: null, // 'mitarbeiter', 'schichtTyp', 'schicht'
+            id: null
+        };
+
+        function handleMitarbeiterDragStart(event, mitarbeiterId) {
+            draggedData = {
+                type: 'mitarbeiter',
+                id: mitarbeiterId
+            };
+            event.dataTransfer.effectAllowed = 'copy';
+            event.target.classList.add('dragging');
+        }
+
+        function handleSchichtTypDragStart(event, schichtTypId) {
+            draggedData = {
+                type: 'schichtTyp',
+                id: schichtTypId
+            };
+            event.dataTransfer.effectAllowed = 'copy';
+            event.target.classList.add('dragging');
+        }
+
+        function handleSchichtDragStart(event, schichtId) {
+            draggedData = {
+                type: 'schicht',
+                id: schichtId
+            };
+            event.dataTransfer.effectAllowed = 'move';
+            event.target.classList.add('dragging');
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = draggedData.type === 'schicht' ? 'move' : 'copy';
+            event.currentTarget.classList.add('drag-over');
+        }
+
+        function handleDragLeave(event) {
+            event.currentTarget.classList.remove('drag-over');
+        }
+
+        async function handleDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-over');
+
+            // Remove dragging class
+            document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+
+            const dropZone = event.currentTarget;
+            const mitarbeiterId = dropZone.dataset.mitarbeiterId; // Week view has this
+            const datum = dropZone.dataset.datum;
+
+            if (!datum) {
+                showToast('❌ Ungültige Drop-Zone', 'error');
+                return;
+            }
+
+            try {
+                if (draggedData.type === 'mitarbeiter') {
+                    // Scenario 1: Mitarbeiter auf Tag ziehen
+                    const droppedMitarbeiterId = currentView === 'week' ? mitarbeiterId : draggedData.id;
+                    openSchichtZuweisenModal(droppedMitarbeiterId, datum);
+
+                } else if (draggedData.type === 'schichtTyp') {
+                    // Scenario 2: Schicht-Typ auf Tag ziehen
+                    const targetMitarbeiterId = currentView === 'week' ? mitarbeiterId : null;
+
+                    if (!targetMitarbeiterId) {
+                        // Month view: Need to ask which mitarbeiter
+                        // For simplicity, we'll ask via modal
+                        openSchichtZuweisenModal(null, datum, draggedData.id);
+                    } else {
+                        // Week view: Direct assignment
+                        await createSchicht(targetMitarbeiterId, datum, draggedData.id);
+                    }
+
+                } else if (draggedData.type === 'schicht') {
+                    // Scenario 3 or 4: Schicht verschieben oder tauschen
+                    const schicht = allSchichten.find(s => String(s.id) === String(draggedData.id));
+                    const targetMitarbeiterId = currentView === 'week' ? mitarbeiterId : null;
+
+                    if (!schicht) {
+                        showToast('❌ Schicht nicht gefunden', 'error');
+                        return;
+                    }
+
+                    if (targetMitarbeiterId && String(targetMitarbeiterId) !== String(schicht.mitarbeiterId)) {
+                        // Scenario 4: Tausch zwischen Mitarbeitern
+                        await tauschSchicht(schicht.id, targetMitarbeiterId, datum);
+                    } else {
+                        // Scenario 3: Verschieben zu anderem Datum
+                        await verschiebeSchicht(schicht.id, datum);
+                    }
+                }
+
+            } catch (error) {
+                console.error('❌ Drop-Fehler:', error);
+                showToast('❌ Fehler beim Zuweisen', 'error');
+            }
+
+            // Reset dragged data
+            draggedData = { type: null, id: null };
+        }
+
+        // === SCHICHT OPERATIONS ===
+
+        async function createSchicht(mitarbeiterId, datum, schichtTypId) {
+            try {
+                // Check if schicht already exists
+                const existing = allSchichten.find(s =>
+                    String(s.mitarbeiterId) === String(mitarbeiterId) &&
+                    s.datum === datum &&
+                    String(s.schichtTypId) === String(schichtTypId)
+                );
+
+                if (existing) {
+                    showToast('⚠️ Diese Schicht existiert bereits', 'warning');
+                    return;
+                }
+
+                const currentUser = window.authManager.getCurrentUser();
+                const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(mitarbeiterId));
+                const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schichtTypId));
+
+                await window.getCollection('schichten').add({
+                    mitarbeiterId: mitarbeiterId,
+                    mitarbeiterName: mitarbeiter.name,
+                    datum: datum,
+                    schichtTypId: schichtTypId,
+                    schichtTypName: schichtTyp.name,
+                    status: 'active',
+                    erstelltVon: currentUser.uid,
+                    erstelltAm: new Date().toISOString(),
+                    werkstattId: window.werkstattId
+                });
+
+                showToast(`✅ Schicht "${schichtTyp.name}" für ${mitarbeiter.name} erstellt`, 'success');
+                await loadSchichten();
+                renderCalendar();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der Schicht:', error);
+                showToast('❌ Fehler beim Erstellen der Schicht', 'error');
+            }
+        }
+
+        async function verschiebeSchicht(schichtId, neuesDatum) {
+            try {
+                const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
+
+                if (schicht.datum === neuesDatum) {
+                    showToast('⚠️ Schicht ist bereits an diesem Datum', 'warning');
+                    return;
+                }
+
+                await window.getCollection('schichten').doc(schichtId).update({
+                    datum: neuesDatum,
+                    bearbeitetAm: new Date().toISOString()
+                });
+
+                showToast(`✅ Schicht verschoben zu ${formatDate(new Date(neuesDatum), 'DD.MM.YYYY')}`, 'success');
+                await loadSchichten();
+                renderCalendar();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Verschieben:', error);
+                showToast('❌ Fehler beim Verschieben', 'error');
+            }
+        }
+
+        async function tauschSchicht(schichtId, neuerMitarbeiterId, datum) {
+            try {
+                const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
+                const neuerMitarbeiter = allMitarbeiter.find(m => String(m.id) === String(neuerMitarbeiterId));
+
+                await window.getCollection('schichten').doc(schichtId).update({
+                    mitarbeiterId: neuerMitarbeiterId,
+                    mitarbeiterName: neuerMitarbeiter.name,
+                    datum: datum,
+                    bearbeitetAm: new Date().toISOString()
+                });
+
+                showToast(`✅ Schicht zu ${neuerMitarbeiter.name} getauscht`, 'success');
+                await loadSchichten();
+                renderCalendar();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Tauschen:', error);
+                showToast('❌ Fehler beim Tauschen', 'error');
+            }
+        }
+
+        // === SCHICHT-TYP MODAL ===
+
+        function openSchichtTypModal() {
+            document.getElementById('editSchichtTypId').value = '';
+            document.getElementById('modalSchichtTypTitle').textContent = '🎨 Schicht-Typ erstellen';
+            document.getElementById('btnSchichtTypText').textContent = 'Erstellen';
+            document.getElementById('schichtTypForm').reset();
+            document.getElementById('schichtFarbe').value = '#1a73e8';
+            document.getElementById('schichtTypModal').classList.add('show');
+        }
+
+        function closeSchichtTypModal() {
+            document.getElementById('schichtTypModal').classList.remove('show');
+        }
+
+        async function editSchichtTyp(schichtTypId) {
+            const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schichtTypId));
+            if (!schichtTyp) return;
+
+            document.getElementById('editSchichtTypId').value = schichtTyp.id;
+            document.getElementById('modalSchichtTypTitle').textContent = '🎨 Schicht-Typ bearbeiten';
+            document.getElementById('btnSchichtTypText').textContent = 'Speichern';
+            document.getElementById('schichtName').value = schichtTyp.name;
+            document.getElementById('schichtStart').value = schichtTyp.startzeit;
+            document.getElementById('schichtEnde').value = schichtTyp.endzeit;
+            document.getElementById('schichtFarbe').value = schichtTyp.farbe;
+            document.getElementById('schichtTypModal').classList.add('show');
+        }
+
+        async function saveSchichtTyp(event) {
+            event.preventDefault();
+
+            const editId = document.getElementById('editSchichtTypId').value;
+            const name = document.getElementById('schichtName').value.trim();
+            const startzeit = document.getElementById('schichtStart').value;
+            const endzeit = document.getElementById('schichtEnde').value;
+            const farbe = document.getElementById('schichtFarbe').value;
+
+            if (!name || !startzeit || !endzeit || !farbe) {
+                showToast('❌ Bitte alle Felder ausfüllen', 'error');
+                return;
+            }
+
+            try {
+                const data = {
+                    name: name,
+                    startzeit: startzeit,
+                    endzeit: endzeit,
+                    farbe: farbe,
+                    werkstattId: window.werkstattId
+                };
+
+                if (editId) {
+                    // Update
+                    await window.getCollection('schichtTypen').doc(editId).update(data);
+                    showToast(`✅ Schicht-Typ "${name}" aktualisiert`, 'success');
+                } else {
+                    // Create
+                    await window.getCollection('schichtTypen').add(data);
+                    showToast(`✅ Schicht-Typ "${name}" erstellt`, 'success');
+                }
+
+                closeSchichtTypModal();
+                await loadSchichtTypen();
+                renderSchichttypenPalette();
+                renderCalendar();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                showToast('❌ Fehler beim Speichern', 'error');
+            }
+        }
+
+        async function deleteSchichtTyp(schichtTypId) {
+            const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schichtTypId));
+            if (!schichtTyp) return;
+
+            // Check if schichtTyp is used
+            const used = allSchichten.some(s => String(s.schichtTypId) === String(schichtTypId));
+            if (used) {
+                alert('⚠️ Dieser Schicht-Typ wird noch verwendet und kann nicht gelöscht werden!');
+                return;
+            }
+
+            if (!confirm(`Möchtest du den Schicht-Typ "${schichtTyp.name}" wirklich löschen?`)) {
+                return;
+            }
+
+            try {
+                await window.getCollection('schichtTypen').doc(schichtTypId).delete();
+                showToast(`✅ Schicht-Typ "${schichtTyp.name}" gelöscht`, 'success');
+                await loadSchichtTypen();
+                renderSchichttypenPalette();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen:', error);
+                showToast('❌ Fehler beim Löschen', 'error');
+            }
+        }
+
+        // === SCHICHT ZUWEISEN MODAL ===
+
+        function openSchichtZuweisenModal(mitarbeiterId, datum, preselectedSchichtTypId = null) {
+            document.getElementById('zuweisenMitarbeiterId').value = mitarbeiterId || '';
+            document.getElementById('zuweisenDatum').value = datum;
+
+            const mitarbeiter = mitarbeiterId ? allMitarbeiter.find(m => String(m.id) === String(mitarbeiterId)) : null;
+            document.getElementById('zuweisenMitarbeiterName').textContent = mitarbeiter ? mitarbeiter.name : 'Bitte wählen';
+            document.getElementById('zuweisenDatumText').textContent = formatDate(new Date(datum), 'DD.MM.YYYY (dddd)');
+
+            // Populate schichtTypen dropdown
+            const select = document.getElementById('zuweisenSchichtTyp');
+            select.innerHTML = '<option value="">-- Bitte wählen --</option>';
+            for (const schichtTyp of allSchichtTypen) {
+                const option = document.createElement('option');
+                option.value = schichtTyp.id;
+                option.textContent = `${schichtTyp.name} (${schichtTyp.startzeit} - ${schichtTyp.endzeit})`;
+                if (preselectedSchichtTypId && String(schichtTyp.id) === String(preselectedSchichtTypId)) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            }
+
+            document.getElementById('schichtZuweisenModal').classList.add('show');
+        }
+
+        function closeSchichtZuweisenModal() {
+            document.getElementById('schichtZuweisenModal').classList.remove('show');
+        }
+
+        async function saveSchichtZuweisung(event) {
+            event.preventDefault();
+
+            const mitarbeiterId = document.getElementById('zuweisenMitarbeiterId').value;
+            const datum = document.getElementById('zuweisenDatum').value;
+            const schichtTypId = document.getElementById('zuweisenSchichtTyp').value;
+
+            if (!mitarbeiterId || !datum || !schichtTypId) {
+                showToast('❌ Bitte alle Felder ausfüllen', 'error');
+                return;
+            }
+
+            await createSchicht(mitarbeiterId, datum, schichtTypId);
+            closeSchichtZuweisenModal();
+        }
+
+        // === WÜNSCHE & TAUSCHE RENDERING ===
+
+        function renderWuensche() {
+            const container = document.getElementById('wuenscheList');
+
+            if (allWuensche.length === 0) {
+                container.innerHTML = '<p style="opacity: 0.7;">Keine Wünsche vorhanden</p>';
+                return;
+            }
+
+            let html = '';
+            for (const wunsch of allWuensche) {
+                const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(wunsch.mitarbeiterId));
+                html += `
+                    <div style="background: var(--color-surface-light); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div>
+                                <strong>${mitarbeiter ? mitarbeiter.name : 'Unbekannt'}</strong>
+                                <div style="font-size: 14px; opacity: 0.7; margin-top: 4px;">
+                                    ${formatDate(new Date(wunsch.datum), 'DD.MM.YYYY (dddd)')}
+                                </div>
+                            </div>
+                            <span class="badge ${wunsch.praeferenz === 'bevorzugt' ? 'badge-success' : 'badge-warning'}">
+                                ${wunsch.praeferenz === 'bevorzugt' ? '✅ Bevorzugt' : '⛔ Nicht verfügbar'}
+                            </span>
+                        </div>
+                        ${wunsch.grund ? `<p style="opacity: 0.8; margin-bottom: 16px;">${wunsch.grund}</p>` : ''}
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-small btn-success" onclick="bearbeiteWunsch('${wunsch.id}', 'accepted')">
+                                ✅ Berücksichtigen
+                            </button>
+                            <button class="btn btn-small btn-secondary" onclick="bearbeiteWunsch('${wunsch.id}', 'rejected')">
+                                ❌ Ablehnen
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderTausche() {
+            const container = document.getElementById('tauscheList');
+
+            if (allTausche.length === 0) {
+                container.innerHTML = '<p style="opacity: 0.7;">Keine Tausch-Anfragen vorhanden</p>';
+                return;
+            }
+
+            let html = '';
+            for (const tausch of allTausche) {
+                const vonMitarbeiter = allMitarbeiter.find(m => String(m.id) === String(tausch.vonMitarbeiterId));
+                const nachMitarbeiter = allMitarbeiter.find(m => String(m.id) === String(tausch.nachMitarbeiterId));
+                const schicht = allSchichten.find(s => String(s.id) === String(tausch.schichtId));
+
+                html += `
+                    <div style="background: var(--color-surface-light); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                        <div style="margin-bottom: 16px;">
+                            <strong>${vonMitarbeiter ? vonMitarbeiter.name : 'Unbekannt'}</strong> möchte mit
+                            <strong>${nachMitarbeiter ? nachMitarbeiter.name : 'Unbekannt'}</strong> tauschen
+                        </div>
+                        ${tausch.grund ? `<p style="opacity: 0.8; margin-bottom: 16px;">${tausch.grund}</p>` : ''}
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-small btn-success" onclick="bearbeiteTausch('${tausch.id}', 'approved')">
+                                ✅ Genehmigen
+                            </button>
+                            <button class="btn btn-small btn-danger" onclick="bearbeiteTausch('${tausch.id}', 'rejected')">
+                                ❌ Ablehnen
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function bearbeiteWunsch(wunschId, status) {
+            try {
+                await window.getCollection('schichtWuensche').doc(wunschId).update({
+                    status: status,
+                    bearbeitetAm: new Date().toISOString()
+                });
+
+                showToast(`✅ Wunsch ${status === 'accepted' ? 'berücksichtigt' : 'abgelehnt'}`, 'success');
+                await loadWuensche();
+                renderWuensche();
+
+            } catch (error) {
+                console.error('❌ Fehler:', error);
+                showToast('❌ Fehler beim Bearbeiten', 'error');
+            }
+        }
+
+        async function bearbeiteTausch(tauschId, status) {
+            try {
+                if (status === 'approved') {
+                    const tausch = allTausche.find(t => String(t.id) === String(tauschId));
+                    // Execute tausch
+                    await tauschSchicht(tausch.schichtId, tausch.nachMitarbeiterId, tausch.datum);
+                }
+
+                await window.getCollection('schichtTausche').doc(tauschId).update({
+                    status: status,
+                    bearbeitetAm: new Date().toISOString()
+                });
+
+                showToast(`✅ Tausch ${status === 'approved' ? 'genehmigt' : 'abgelehnt'}`, 'success');
+                await loadTausche();
+                renderTausche();
+
+            } catch (error) {
+                console.error('❌ Fehler:', error);
+                showToast('❌ Fehler beim Bearbeiten', 'error');
+            }
+        }
+
+        // === HELPER FUNCTIONS ===
+
+        function getMonday(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(d.setDate(diff));
+        }
+
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+        }
+
+        function isSameDay(date1, date2) {
+            return date1.getFullYear() === date2.getFullYear() &&
+                   date1.getMonth() === date2.getMonth() &&
+                   date1.getDate() === date2.getDate();
+        }
+
+        function formatDate(date, format) {
+            const d = new Date(date);
+            const months = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+            const weekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+            const replacements = {
+                'YYYY': d.getFullYear(),
+                'MM': String(d.getMonth() + 1).padStart(2, '0'),
+                'DD': String(d.getDate()).padStart(2, '0'),
+                'MMMM': months[d.getMonth()],
+                'dddd': weekdays[d.getDay()]
+            };
+
+            let result = format;
+            for (const [key, value] of Object.entries(replacements)) {
+                result = result.replace(key, value);
+            }
+
+            return result;
+        }
+
+        function getInitials(name) {
+            return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+        }
+
+        // Toast notification
+        function showToast(message, type = 'success', duration = 3000) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, duration);
+        }
+    </script>
+</body>
+</html>

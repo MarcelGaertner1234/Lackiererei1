@@ -239,6 +239,195 @@ service cloud.firestore {
     }
 
     // ============================================
+    // SCHICHT-TYPEN COLLECTION (Multi-Tenant)
+    // Phase 2.2 - Dienstplan Feature (Shift Types)
+    // Admin erstellt Schicht-Typen (z.B. Frühschicht 6-14h, Spätschicht 14-22h)
+    // ============================================
+
+    match /{schichtTypenCollection}/{schichtTypId} {
+      // Admin/Werkstatt: Full access (CRUD)
+      allow create, read, update, delete: if schichtTypenCollection.matches('schichtTypen_.*')
+                                          && isAuthenticated()
+                                          && (
+                                            request.auth.token.role == 'werkstatt'
+                                            || request.auth.token.role == 'admin'
+                                            || request.auth.token.role == 'superadmin'
+                                          );
+
+      // Mitarbeiter: Read-only (können Schicht-Typen sehen)
+      allow read: if schichtTypenCollection.matches('schichtTypen_.*')
+                  && isMitarbeiter()
+                  && isActive();
+    }
+
+    // ============================================
+    // SCHICHTEN COLLECTION (Multi-Tenant)
+    // Phase 2.2 - Dienstplan Feature (Shift Assignments)
+    // Admin weist Mitarbeiter zu Schichten zu
+    // ============================================
+
+    match /{schichtenCollection}/{schichtId} {
+      // Admin/Werkstatt: Full access (CRUD)
+      allow create, read, update, delete: if schichtenCollection.matches('schichten_.*')
+                                          && isAuthenticated()
+                                          && (
+                                            request.auth.token.role == 'werkstatt'
+                                            || request.auth.token.role == 'admin'
+                                            || request.auth.token.role == 'superadmin'
+                                          );
+
+      // Mitarbeiter: Read own schichten
+      allow read: if schichtenCollection.matches('schichten_.*')
+                  && isMitarbeiter()
+                  && isActive()
+                  && resource.data.mitarbeiterId == request.auth.uid;
+    }
+
+    // ============================================
+    // SCHICHT-WÜNSCHE COLLECTION (Multi-Tenant)
+    // Phase 2.2 - Dienstplan Feature (Shift Preferences)
+    // Mitarbeiter können Wünsche äußern (bevorzugt/nicht verfügbar)
+    // ============================================
+
+    match /{schichtWuenscheCollection}/{wunschId} {
+      // Mitarbeiter: Create own wünsche
+      // VALIDATION: werkstattId match, mitarbeiterId is current user, status is 'pending'
+      allow create: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+                    && isAuthenticated()
+                    && isMitarbeiter()
+                    && isActive()
+                    && request.resource.data.werkstattId == schichtWuenscheCollection.split('_')[1]
+                    && request.resource.data.mitarbeiterId == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasAll([
+                        'mitarbeiterId', 'mitarbeiterName', 'datum', 'praeferenz',
+                        'grund', 'status', 'werkstattId', 'createdAt'
+                    ]);
+
+      // Mitarbeiter: Read own wünsche
+      allow read: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+                  && isMitarbeiter()
+                  && isActive()
+                  && resource.data.mitarbeiterId == request.auth.uid;
+
+      // Admin/Werkstatt: Read all wünsche
+      allow read: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+                  && isAuthenticated()
+                  && (
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'admin'
+                    || request.auth.token.role == 'superadmin'
+                  );
+
+      // Admin/Werkstatt: Update wünsche (accept/reject)
+      // VALIDATION: Only status, bearbeitetAm can be changed
+      allow update: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    )
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                        'status', 'bearbeitetAm'
+                    ])
+                    && (
+                      request.resource.data.status == 'accepted'
+                      || request.resource.data.status == 'rejected'
+                    );
+
+      // Mitarbeiter: Delete own pending wünsche
+      allow delete: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+                    && isMitarbeiter()
+                    && isActive()
+                    && resource.data.mitarbeiterId == request.auth.uid
+                    && resource.data.status == 'pending';
+
+      // Admin: Delete any wunsch
+      allow delete: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    );
+    }
+
+    // ============================================
+    // SCHICHT-TAUSCHE COLLECTION (Multi-Tenant)
+    // Phase 2.2 - Dienstplan Feature (Shift Swaps)
+    // Mitarbeiter können Schicht-Tausch anfragen, Admin genehmigt
+    // ============================================
+
+    match /{schichtTauscheCollection}/{tauschId} {
+      // Mitarbeiter: Create tausch-anfrage
+      // VALIDATION: vonMitarbeiterId is current user, status is 'pending'
+      allow create: if schichtTauscheCollection.matches('schichtTausche_.*')
+                    && isAuthenticated()
+                    && isMitarbeiter()
+                    && isActive()
+                    && request.resource.data.werkstattId == schichtTauscheCollection.split('_')[1]
+                    && request.resource.data.vonMitarbeiterId == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasAll([
+                        'vonMitarbeiterId', 'vonMitarbeiterName', 'nachMitarbeiterId',
+                        'nachMitarbeiterName', 'schichtId', 'datum', 'grund', 'status',
+                        'werkstattId', 'createdAt'
+                    ]);
+
+      // Mitarbeiter: Read own tausch-anfragen (von or nach)
+      allow read: if schichtTauscheCollection.matches('schichtTausche_.*')
+                  && isMitarbeiter()
+                  && isActive()
+                  && (
+                    resource.data.vonMitarbeiterId == request.auth.uid
+                    || resource.data.nachMitarbeiterId == request.auth.uid
+                  );
+
+      // Admin/Werkstatt: Read all tausch-anfragen
+      allow read: if schichtTauscheCollection.matches('schichtTausche_.*')
+                  && isAuthenticated()
+                  && (
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'admin'
+                    || request.auth.token.role == 'superadmin'
+                  );
+
+      // Admin/Werkstatt: Update tausch-anfragen (approve/reject)
+      // VALIDATION: Only status, bearbeitetAm can be changed
+      allow update: if schichtTauscheCollection.matches('schichtTausche_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    )
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                        'status', 'bearbeitetAm'
+                    ])
+                    && (
+                      request.resource.data.status == 'approved'
+                      || request.resource.data.status == 'rejected'
+                    );
+
+      // Mitarbeiter: Delete own pending tausch-anfragen
+      allow delete: if schichtTauscheCollection.matches('schichtTausche_.*')
+                    && isMitarbeiter()
+                    && isActive()
+                    && resource.data.vonMitarbeiterId == request.auth.uid
+                    && resource.data.status == 'pending';
+
+      // Admin: Delete any tausch-anfrage
+      allow delete: if schichtTauscheCollection.matches('schichtTausche_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    );
+    }
+
+    // ============================================
     // USERS COLLECTION
     // ============================================
 
