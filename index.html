@@ -1362,6 +1362,17 @@
                         📤 Abmelden
                     </button>
                 </div>
+
+                <!-- Active Mitarbeiter List (Multi-Tab Monitoring) -->
+                <div id="activeMitarbeiterSection" style="display: none; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 14px; color: var(--color-text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);"></span>
+                        <span>Aktuell eingeloggte Mitarbeiter (<span id="activeMitarbeiterCount">0</span>):</span>
+                    </div>
+                    <div id="activeMitarbeiterList" style="font-size: 13px; line-height: 1.8; color: var(--color-text-primary);">
+                        <!-- Dynamically filled by JavaScript -->
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -3725,6 +3736,121 @@
         } else {
             console.log('ℹ️ [SW] Service Worker nicht registriert (Test-Modus oder nicht unterstützt)');
         }
+
+        // ============================================
+        // ACTIVE SESSIONS MONITORING (Multi-Tab)
+        // ============================================
+
+        let activeSessionsListener = null;
+
+        /**
+         * Setup realtime listener for active sessions
+         */
+        async function setupActiveSessionsListener() {
+            const currentUser = window.authManager?.getCurrentUser();
+            if (!currentUser || !currentUser.werkstattId) {
+                console.log('ℹ️ No werkstattId - skipping active sessions listener');
+                return;
+            }
+
+            // Cleanup existing listener
+            if (activeSessionsListener) {
+                activeSessionsListener();
+            }
+
+            console.log('🔄 Setting up active sessions listener for:', currentUser.werkstattId);
+
+            // Realtime listener for active sessions
+            activeSessionsListener = window.getCollection('activeSessions')
+                .where('werkstattId', '==', currentUser.werkstattId)
+                .where('status', '==', 'active')
+                .orderBy('loginTime', 'desc')
+                .onSnapshot((snapshot) => {
+                    const activeMitarbeiter = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        activeMitarbeiter.push({
+                            id: doc.id,
+                            name: data.mitarbeiterName || 'Unbekannt',
+                            loginTime: data.loginTime?.toDate(),
+                            mitarbeiterId: data.mitarbeiterId,
+                            lastActivity: data.lastActivity?.toDate()
+                        });
+                    });
+
+                    console.log(`✅ Active sessions updated: ${activeMitarbeiter.length} mitarbeiter(s)`);
+                    renderActiveMitarbeiter(activeMitarbeiter);
+                }, (error) => {
+                    console.error('❌ Active sessions listener error:', error);
+                });
+        }
+
+        /**
+         * Render active mitarbeiter list in UI
+         * @param {Array} mitarbeiterList - List of active mitarbeiter
+         */
+        function renderActiveMitarbeiter(mitarbeiterList) {
+            const section = document.getElementById('activeMitarbeiterSection');
+            const list = document.getElementById('activeMitarbeiterList');
+            const count = document.getElementById('activeMitarbeiterCount');
+
+            if (!section || !list || !count) {
+                console.warn('⚠️ Active sessions UI elements not found');
+                return;
+            }
+
+            // Hide if no active mitarbeiter
+            if (mitarbeiterList.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            // Show section and update count
+            section.style.display = 'block';
+            count.textContent = mitarbeiterList.length;
+
+            // Render list
+            list.innerHTML = mitarbeiterList.map(m => {
+                const timeStr = m.loginTime ?
+                    m.loginTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) :
+                    'unbekannt';
+                return `<div style="padding: 6px 0; display: flex; align-items: center; gap: 8px;">
+                    <span style="width: 6px; height: 6px; background: #10b981; border-radius: 50%;"></span>
+                    <span>${m.name} <span style="color: var(--color-text-secondary);">(seit ${timeStr})</span></span>
+                </div>`;
+            }).join('');
+        }
+
+        /**
+         * Initialize active sessions monitoring after auth
+         */
+        window.addEventListener('authStateChanged', async (event) => {
+            const user = event.detail.user;
+            if (user && user.werkstattId) {
+                // Wait for Firebase to be ready
+                await window.firebaseInitialized;
+                // Setup listener
+                await setupActiveSessionsListener();
+            } else {
+                // Cleanup listener on logout
+                if (activeSessionsListener) {
+                    activeSessionsListener();
+                    activeSessionsListener = null;
+                }
+                // Hide section
+                const section = document.getElementById('activeMitarbeiterSection');
+                if (section) section.style.display = 'none';
+            }
+        });
+
+        // Also setup on page load (if already logged in)
+        (async () => {
+            await window.firebaseInitialized;
+            const currentUser = window.authManager?.getCurrentUser();
+            if (currentUser && currentUser.werkstattId) {
+                await setupActiveSessionsListener();
+            }
+        })();
     </script>
 </body>
 </html>

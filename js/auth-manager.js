@@ -21,12 +21,76 @@
  */
 
 // ============================================
-// AUTHENTICATION STATE
+// AUTHENTICATION STATE (Tab-Isolated via SessionStorage)
 // ============================================
 
-let currentAuthUser = null;     // Workshop account (Firebase Auth)
-let currentWerkstatt = null;     // Workshop data (after Stage 1)
-let currentMitarbeiter = null;   // Employee data (after Stage 2)
+// SessionStorage Keys for Tab-Isolation (prevents cross-tab conflicts)
+const SESSION_KEY_WERKSTATT = 'session_werkstatt';
+const SESSION_KEY_MITARBEITER = 'session_mitarbeiter';
+const SESSION_KEY_ACTIVE_SESSION_ID = 'session_active_id';
+
+// ============================================
+// SESSION STORAGE HELPERS
+// ============================================
+
+/**
+ * Set Werkstatt session data (Stage 1 Login)
+ * @param {Object} data - Werkstatt data
+ */
+function setWerkstattSession(data) {
+  sessionStorage.setItem(SESSION_KEY_WERKSTATT, JSON.stringify(data));
+}
+
+/**
+ * Get Werkstatt session data
+ * @returns {Object|null} Werkstatt data or null
+ */
+function getWerkstattSession() {
+  const data = sessionStorage.getItem(SESSION_KEY_WERKSTATT);
+  return data ? JSON.parse(data) : null;
+}
+
+/**
+ * Set Mitarbeiter session data (Stage 2 Login)
+ * @param {Object} data - Mitarbeiter data
+ */
+function setMitarbeiterSession(data) {
+  sessionStorage.setItem(SESSION_KEY_MITARBEITER, JSON.stringify(data));
+}
+
+/**
+ * Get Mitarbeiter session data
+ * @returns {Object|null} Mitarbeiter data or null
+ */
+function getMitarbeiterSession() {
+  const data = sessionStorage.getItem(SESSION_KEY_MITARBEITER);
+  return data ? JSON.parse(data) : null;
+}
+
+/**
+ * Set active session ID (for Firestore tracking)
+ * @param {string} id - Firestore document ID
+ */
+function setActiveSessionId(id) {
+  sessionStorage.setItem(SESSION_KEY_ACTIVE_SESSION_ID, id);
+}
+
+/**
+ * Get active session ID
+ * @returns {string|null} Session ID or null
+ */
+function getActiveSessionId() {
+  return sessionStorage.getItem(SESSION_KEY_ACTIVE_SESSION_ID);
+}
+
+/**
+ * Clear all session data (logout)
+ */
+function clearSession() {
+  sessionStorage.removeItem(SESSION_KEY_WERKSTATT);
+  sessionStorage.removeItem(SESSION_KEY_MITARBEITER);
+  sessionStorage.removeItem(SESSION_KEY_ACTIVE_SESSION_ID);
+}
 
 // ============================================
 // FIREBASE AUTH - ALL USERS
@@ -194,8 +258,8 @@ async function loginWerkstatt(email, password) {
       lastLogin: new Date().toISOString()
     });
 
-    // 6. Set werkstatt data
-    currentWerkstatt = {
+    // 6. Set werkstatt data (SessionStorage for Tab-Isolation)
+    const werkstattData = {
       uid: firebaseUser.uid,
       email: userData.email,
       name: userData.name,
@@ -205,17 +269,17 @@ async function loginWerkstatt(email, password) {
       isOwner: userData.isOwner || false  // Owner flag for access control
     };
 
-    // 7. Set currentAuthUser (for Firebase Auth state)
-    currentAuthUser = currentWerkstatt;
+    // Store in SessionStorage (Tab-isolated)
+    setWerkstattSession(werkstattData);
 
     // 🆕 Set global werkstattId for all pages (multi-tenant data isolation)
-    window.werkstattId = currentWerkstatt.werkstattId;
-    console.log('✅ STAGE 1 erfolgreich - Werkstatt eingeloggt:', currentWerkstatt);
-    console.log('   WerkstattID:', currentWerkstatt.werkstattId);
+    window.werkstattId = werkstattData.werkstattId;
+    console.log('✅ STAGE 1 erfolgreich - Werkstatt eingeloggt:', werkstattData);
+    console.log('   WerkstattID:', werkstattData.werkstattId);
     console.log('   🔒 window.werkstattId set to:', window.werkstattId);
     console.log('   ⚠️ STAGE 2 REQUIRED: Mitarbeiter auswählen!');
 
-    return currentWerkstatt;
+    return werkstattData;
 
   } catch (error) {
     console.error('❌ Workshop-Login fehlgeschlagen:', error);
@@ -243,12 +307,13 @@ async function loginMitarbeiter(mitarbeiterId, password) {
   try {
     console.log('🔐 STAGE 2: Mitarbeiter Login:', mitarbeiterId);
 
-    // Check if werkstatt is logged in
-    if (!currentWerkstatt || !currentWerkstatt.werkstattId) {
+    // Check if werkstatt is logged in (SessionStorage)
+    const werkstatt = getWerkstattSession();
+    if (!werkstatt || !werkstatt.werkstattId) {
       throw new Error('Werkstatt muss zuerst eingeloggt werden (STAGE 1)!');
     }
 
-    const werkstattId = currentWerkstatt.werkstattId;
+    const werkstattId = werkstatt.werkstattId;
     console.log('   WerkstattID:', werkstattId);
 
     // Get employee from Firestore (werkstatt-specific collection)
@@ -277,8 +342,8 @@ async function loginMitarbeiter(mitarbeiterId, password) {
       lastLogin: new Date().toISOString()
     });
 
-    // Set current employee
-    currentMitarbeiter = {
+    // Set current employee (SessionStorage for Tab-Isolation)
+    const mitarbeiter = {
       id: mitarbeiterId,
       name: mitarbeiterData.name,
       role: 'mitarbeiter',
@@ -286,8 +351,27 @@ async function loginMitarbeiter(mitarbeiterId, password) {
       werkstattId: werkstattId
     };
 
-    console.log('✅ STAGE 2 erfolgreich - Mitarbeiter eingeloggt:', currentMitarbeiter);
-    console.log('   Berechtigungen:', currentMitarbeiter.berechtigungen);
+    // Store in SessionStorage (Tab-isolated)
+    setMitarbeiterSession(mitarbeiter);
+
+    // Create active session in Firestore for monitoring
+    try {
+      const sessionId = await createActiveSession({
+        mitarbeiterId: mitarbeiterId,
+        mitarbeiterName: mitarbeiterData.name,
+        werkstattId: werkstattId
+      });
+      setActiveSessionId(sessionId);
+
+      // Setup heartbeat for session tracking
+      setupSessionHeartbeat(60000);  // 60 seconds
+    } catch (sessionError) {
+      console.warn('⚠️ Could not create active session:', sessionError);
+      // Non-critical: Continue with login even if session tracking fails
+    }
+
+    console.log('✅ STAGE 2 erfolgreich - Mitarbeiter eingeloggt:', mitarbeiter);
+    console.log('   Berechtigungen:', mitarbeiter.berechtigungen);
 
     // Initialize Mitarbeiter Notifications (Phase 3.2.3)
     if (window.mitarbeiterNotifications) {
@@ -311,7 +395,7 @@ async function loginMitarbeiter(mitarbeiterId, password) {
       }
     }
 
-    return currentMitarbeiter;
+    return mitarbeiter;
 
   } catch (error) {
     console.error('❌ Mitarbeiter-Login fehlgeschlagen:', error);
@@ -322,9 +406,25 @@ async function loginMitarbeiter(mitarbeiterId, password) {
 /**
  * Logout employee only (keep workshop logged in)
  */
-function logoutMitarbeiter() {
-  console.log('👋 Mitarbeiter ausloggen:', currentMitarbeiter?.name);
-  currentMitarbeiter = null;
+async function logoutMitarbeiter() {
+  const mitarbeiter = getMitarbeiterSession();
+  console.log('👋 Mitarbeiter ausloggen:', mitarbeiter?.name);
+
+  // Delete active session from Firestore
+  const sessionId = getActiveSessionId();
+  if (sessionId) {
+    await deleteActiveSession(sessionId);
+  }
+
+  // Clear heartbeat interval
+  if (window.sessionHeartbeatInterval) {
+    clearInterval(window.sessionHeartbeatInterval);
+  }
+
+  // Clear only mitarbeiter session (keep werkstatt session)
+  sessionStorage.removeItem(SESSION_KEY_MITARBEITER);
+  sessionStorage.removeItem(SESSION_KEY_ACTIVE_SESSION_ID);
+
   console.log('✅ Mitarbeiter ausgeloggt - Werkstatt bleibt eingeloggt');
 }
 
@@ -335,10 +435,22 @@ async function logout() {
   try {
     console.log('👋 Vollständiger Logout: Werkstatt + Mitarbeiter');
 
+    // Delete active session from Firestore
+    const sessionId = getActiveSessionId();
+    if (sessionId) {
+      await deleteActiveSession(sessionId);
+    }
+
+    // Clear heartbeat interval
+    if (window.sessionHeartbeatInterval) {
+      clearInterval(window.sessionHeartbeatInterval);
+    }
+
+    // Sign out from Firebase Auth
     await window.auth.signOut();
-    currentAuthUser = null;
-    currentWerkstatt = null;
-    currentMitarbeiter = null;
+
+    // Clear all session data (Tab-isolated)
+    clearSession();
 
     console.log('✅ Logout erfolgreich');
   } catch (error) {
@@ -348,12 +460,98 @@ async function logout() {
 }
 
 // ============================================
+// ACTIVE SESSIONS REGISTRY (Multi-Tab Monitoring)
+// ============================================
+
+/**
+ * Create active session entry in Firestore
+ * @param {Object} sessionData - { mitarbeiterId, mitarbeiterName, werkstattId }
+ * @returns {Promise<string>} Firestore document ID
+ */
+async function createActiveSession(sessionData) {
+  try {
+    const sessionDoc = await window.getCollection('activeSessions').add({
+      mitarbeiterId: sessionData.mitarbeiterId,
+      mitarbeiterName: sessionData.mitarbeiterName,
+      werkstattId: sessionData.werkstattId,
+      loginTime: firebase.firestore.FieldValue.serverTimestamp(),
+      lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
+      userAgent: navigator.userAgent.substring(0, 200),  // Browser/device info
+      status: 'active'
+    });
+
+    console.log('✅ Active session created:', sessionDoc.id);
+    return sessionDoc.id;
+  } catch (error) {
+    console.error('❌ Error creating active session:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete active session entry from Firestore
+ * @param {string} sessionId - Firestore document ID
+ */
+async function deleteActiveSession(sessionId) {
+  if (!sessionId) return;
+
+  try {
+    await window.getCollection('activeSessions').doc(sessionId).delete();
+    console.log('✅ Active session deleted:', sessionId);
+  } catch (error) {
+    console.error('❌ Error deleting active session:', error);
+    // Non-critical: Don't throw, allow logout to proceed
+  }
+}
+
+/**
+ * Update session activity timestamp (heartbeat)
+ */
+async function updateSessionActivity() {
+  const sessionId = getActiveSessionId();
+  if (!sessionId) return;
+
+  try {
+    await window.getCollection('activeSessions').doc(sessionId).update({
+      lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    console.log('🔄 Session activity updated');
+  } catch (error) {
+    console.error('❌ Error updating session activity:', error);
+    // Non-critical: Don't throw
+  }
+}
+
+/**
+ * Setup heartbeat interval for session tracking
+ * @param {number} intervalMs - Heartbeat interval in milliseconds (default: 60000 = 1 minute)
+ */
+function setupSessionHeartbeat(intervalMs = 60000) {
+  // Clear any existing heartbeat
+  if (window.sessionHeartbeatInterval) {
+    clearInterval(window.sessionHeartbeatInterval);
+  }
+
+  // Setup new heartbeat
+  window.sessionHeartbeatInterval = setInterval(async () => {
+    const mitarbeiter = getMitarbeiterSession();
+    if (mitarbeiter) {
+      await updateSessionActivity();
+    }
+  }, intervalMs);
+
+  console.log(`✅ Session heartbeat setup (every ${intervalMs / 1000}s)`);
+}
+
+// ============================================
 // STATE CHECKS
 // ============================================
 
 /**
  * Get currently logged in user (combined werkstatt + mitarbeiter)
  * @returns {Object|null} Combined user data or null
+ *
+ * Tab-isolated via SessionStorage - each tab has independent session
  *
  * Returns combined data structure:
  * {
@@ -367,35 +565,39 @@ async function logout() {
  * }
  */
 function getCurrentUser() {
+  // Read from SessionStorage (Tab-isolated)
+  const werkstatt = getWerkstattSession();
+  const mitarbeiter = getMitarbeiterSession();
+
   // No werkstatt logged in → no access
-  if (!currentWerkstatt) {
+  if (!werkstatt) {
     return null;
   }
 
   // Werkstatt logged in, but no mitarbeiter → return werkstatt data
-  if (!currentMitarbeiter) {
+  if (!mitarbeiter) {
     return {
-      werkstattId: currentWerkstatt.werkstattId,
-      name: currentWerkstatt.name,
+      werkstattId: werkstatt.werkstattId,
+      name: werkstatt.name,
       role: 'werkstatt',
       berechtigungen: {},
-      werkstattName: currentWerkstatt.name,
-      email: currentWerkstatt.email,
-      isOwner: currentWerkstatt.isOwner || false,  // Owner flag for access control
+      werkstattName: werkstatt.name,
+      email: werkstatt.email,
+      isOwner: werkstatt.isOwner || false,  // Owner flag for access control
       loginStage: 1  // Only Stage 1 completed
     };
   }
 
   // Both logged in → return combined data (mitarbeiter takes priority)
   return {
-    werkstattId: currentWerkstatt.werkstattId,
-    name: currentMitarbeiter.name,
+    werkstattId: werkstatt.werkstattId,
+    name: mitarbeiter.name,
     role: 'mitarbeiter',
-    berechtigungen: currentMitarbeiter.berechtigungen || {},
-    mitarbeiterId: currentMitarbeiter.id,
-    werkstattName: currentWerkstatt.name,
-    email: currentWerkstatt.email,
-    isOwner: currentWerkstatt.isOwner || false,  // Owner flag inherited from werkstatt
+    berechtigungen: mitarbeiter.berechtigungen || {},
+    mitarbeiterId: mitarbeiter.id,
+    werkstattName: werkstatt.name,
+    email: werkstatt.email,
+    isOwner: werkstatt.isOwner || false,  // Owner flag inherited from werkstatt
     loginStage: 2  // Both stages completed
   };
 }
@@ -492,8 +694,8 @@ window.addEventListener('firebaseReady', () => {
 
           // Check if this is a werkstatt user
           if (userData.role === 'werkstatt' && userData.werkstattId) {
-            // Set currentWerkstatt for Multi-Tenant
-            currentWerkstatt = {
+            // Restore Werkstatt session (SessionStorage for Tab-Isolation)
+            const werkstattData = {
               uid: firebaseUser.uid,
               email: userData.email,
               name: userData.name,
@@ -502,12 +704,12 @@ window.addEventListener('firebaseReady', () => {
               authType: 'firebase',
               isOwner: userData.isOwner || false  // Owner flag for access control
             };
-            currentAuthUser = currentWerkstatt;
+            setWerkstattSession(werkstattData);
 
             // 🆕 Set global werkstattId for all pages (multi-tenant data isolation)
-            window.werkstattId = currentWerkstatt.werkstattId;
-            console.log('✅ Current Auth User (Werkstatt):', currentAuthUser);
-            console.log('   WerkstattID:', currentWerkstatt.werkstattId);
+            window.werkstattId = werkstattData.werkstattId;
+            console.log('✅ Werkstatt Session Restored (Tab-Isolated):', werkstattData);
+            console.log('   WerkstattID:', werkstattData.werkstattId);
             console.log('   🔒 window.werkstattId restored to:', window.werkstattId);
           } else {
             // Other user types (admin, partner, kunde)
@@ -525,7 +727,7 @@ window.addEventListener('firebaseReady', () => {
 
           // Dispatch custom event for UI updates
           window.dispatchEvent(new CustomEvent('authStateChanged', {
-            detail: { user: currentAuthUser }
+            detail: { user: getCurrentUser() }
           }));
         }
       } catch (error) {
@@ -533,9 +735,9 @@ window.addEventListener('firebaseReady', () => {
       }
     } else {
       console.log('🔐 Firebase Auth: No user logged in');
-      currentAuthUser = null;
-      currentWerkstatt = null; // Also clear werkstatt state
-      currentMitarbeiter = null; // Also clear mitarbeiter state
+
+      // Clear all session data (Tab-isolated)
+      clearSession();
 
       // Dispatch custom event
       window.dispatchEvent(new CustomEvent('authStateChanged', {
@@ -570,6 +772,12 @@ window.authManager = {
   isLoggedIn,
   hasRole,
   hasPermission,
+
+  // Active Sessions (Multi-Tab Monitoring)
+  createActiveSession,         // Create session entry in Firestore
+  deleteActiveSession,         // Delete session entry
+  updateSessionActivity,       // Update heartbeat
+  setupSessionHeartbeat,       // Setup auto-heartbeat
 
   // Utilities
   hashPassword

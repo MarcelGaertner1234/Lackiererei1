@@ -88,6 +88,38 @@ service cloud.firestore {
     }
 
     // ============================================
+    // ACTIVE SESSIONS (Multi-Tab Monitoring)
+    // ============================================
+    // Multi-tenant pattern: activeSessions_mosbach, activeSessions_heidelberg, etc.
+    // Tracks active employee logins for real-time dashboard monitoring
+
+    match /{activeSessionsCollection}/{sessionId} {
+      // Pattern match for activeSessions_* collections
+      allow create: if activeSessionsCollection.matches('activeSessions_.*')
+                    && isAuthenticated()
+                    && request.resource.data.werkstattId == activeSessionsCollection.split('_')[1]
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.keys().hasAll([
+                        'mitarbeiterId', 'mitarbeiterName', 'werkstattId',
+                        'loginTime', 'lastActivity', 'status'
+                    ]);
+
+      // Mitarbeiter can update their own session (heartbeat)
+      allow update: if activeSessionsCollection.matches('activeSessions_.*')
+                    && isAuthenticated()
+                    && resource.data.mitarbeiterId == request.auth.uid;
+
+      // Mitarbeiter can delete their own session (logout)
+      allow delete: if activeSessionsCollection.matches('activeSessions_.*')
+                    && isAuthenticated()
+                    && resource.data.mitarbeiterId == request.auth.uid;
+
+      // Werkstatt & Admin can read all sessions (for monitoring dashboard)
+      allow read: if activeSessionsCollection.matches('activeSessions_.*')
+                  && (isAdmin() || isMitarbeiter());
+    }
+
+    // ============================================
     // USERS COLLECTION
     // ============================================
 
