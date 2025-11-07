@@ -826,6 +826,50 @@
                         </select>
                     </div>
 
+                    <!-- Spezialfolientyp (nur wenn Material = 'spezial') -->
+                    <div class="form-group" id="folierungSpezialTypGroup" style="display: none;">
+                        <label for="folierungSpezialTyp" class="form-label">Spezialfolientyp <span class="required">*</span></label>
+                        <select id="folierungSpezialTyp" class="form-select">
+                            <option value="">-- Bitte wählen --</option>
+                            <option value="chrome">✨ Chrome</option>
+                            <option value="matt">🎭 Matt</option>
+                            <option value="hochglanz">💎 Hochglanz</option>
+                            <option value="carbon">🏁 Carbon</option>
+                            <option value="brushed-metal">🔧 Brushed Metal</option>
+                        </select>
+                    </div>
+
+                    <!-- Bereiche (nur wenn Art != 'vollfolierung') -->
+                    <div class="form-group" id="folierungBereicheGroup" style="display: none;">
+                        <label class="form-label">Zu folierende Bereiche <span class="required">*</span></label>
+                        <div class="checkbox-group" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="motorhaube"> Motorhaube
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="dach"> Dach
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="seitenspiegel"> Seitenspiegel
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="heckklappe"> Heckklappe
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="kotfluegel"> Kotflügel
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="spoiler"> Spoiler
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="tueren"> Türen
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" name="folierungBereiche" value="seitenwand"> Seitenwand
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label for="folierungFarbe" class="form-label">Farbauswahl <span class="required">*</span></label>
                         <input type="text" id="folierungFarbe" class="form-input" placeholder="z.B. Schwarz Matt, Blau Metallic, Rot Hochglanz">
@@ -1487,6 +1531,48 @@
                 window.listenerRegistry.registerDOM(lackschadenSelect, 'change', toggleDellenLackierung, 'Lackschaden Select Change');
                 console.log('✅ lackschaden Event Listener registered');
             }
+
+            // NEU: Event Listener für Folierung Material (Spezialtyp conditional)
+            const folierungMaterialSelect = document.getElementById('folierungMaterial');
+            if (folierungMaterialSelect) {
+                window.listenerRegistry.registerDOM(folierungMaterialSelect, 'change', function() {
+                    const spezialTypGroup = document.getElementById('folierungSpezialTypGroup');
+                    if (spezialTypGroup) {
+                        if (folierungMaterialSelect.value === 'spezial') {
+                            spezialTypGroup.style.display = 'block';
+                            document.getElementById('folierungSpezialTyp').setAttribute('required', 'required');
+                        } else {
+                            spezialTypGroup.style.display = 'none';
+                            document.getElementById('folierungSpezialTyp').removeAttribute('required');
+                            document.getElementById('folierungSpezialTyp').value = '';
+                        }
+                    }
+                }, 'Folierung Material Select Change');
+                console.log('✅ folierungMaterial Event Listener registered');
+            }
+
+            // NEU: Event Listener für Folierung Art (Bereiche conditional)
+            const folierungArtSelect = document.getElementById('folierungArt');
+            if (folierungArtSelect) {
+                window.listenerRegistry.registerDOM(folierungArtSelect, 'change', function() {
+                    const bereicheGroup = document.getElementById('folierungBereicheGroup');
+                    if (bereicheGroup) {
+                        if (folierungArtSelect.value === 'teilfolierung' || folierungArtSelect.value === 'akzente') {
+                            bereicheGroup.style.display = 'block';
+                            // Set required for at least one checkbox
+                            document.querySelectorAll('input[name="folierungBereiche"]').forEach(cb => cb.setAttribute('required', 'required'));
+                        } else {
+                            bereicheGroup.style.display = 'none';
+                            // Remove required and uncheck all
+                            document.querySelectorAll('input[name="folierungBereiche"]').forEach(cb => {
+                                cb.removeAttribute('required');
+                                cb.checked = false;
+                            });
+                        }
+                    }
+                }, 'Folierung Art Select Change');
+                console.log('✅ folierungArt Event Listener registered');
+            }
         });
 
         // Firebase initialisieren und Kunden laden
@@ -1554,10 +1640,28 @@
 
                         switch (nachannahmeData.serviceTyp) {
                             case 'folierung':
-                                if (sd.folierungArt) document.getElementById('folierungArt').value = sd.folierungArt;
-                                if (sd.folierungMaterial) document.getElementById('folierungMaterial').value = sd.folierungMaterial;
+                                if (sd.folierungArt) {
+                                    document.getElementById('folierungArt').value = sd.folierungArt;
+                                    // Trigger bereiche visibility
+                                    if (sd.folierungArt === 'teilfolierung' || sd.folierungArt === 'akzente') {
+                                        document.getElementById('folierungBereicheGroup').style.display = 'block';
+                                    }
+                                }
+                                if (sd.folierungMaterial) {
+                                    document.getElementById('folierungMaterial').value = sd.folierungMaterial;
+                                    // Trigger spezialTyp visibility
+                                    if (sd.folierungMaterial === 'spezial') {
+                                        document.getElementById('folierungSpezialTypGroup').style.display = 'block';
+                                    }
+                                }
                                 if (sd.folierungSpezialTyp) document.getElementById('folierungSpezialTyp').value = sd.folierungSpezialTyp;
                                 if (sd.folierungFarbe) document.getElementById('folierungFarbe').value = sd.folierungFarbe;
+                                if (sd.folierungBereiche && Array.isArray(sd.folierungBereiche)) {
+                                    sd.folierungBereiche.forEach(bereich => {
+                                        const checkbox = document.querySelector(`input[name="folierungBereiche"][value="${bereich}"]`);
+                                        if (checkbox) checkbox.checked = true;
+                                    });
+                                }
                                 if (sd.folierungDesign) document.getElementById('folierungDesign').value = sd.folierungDesign;
                                 if (sd.folierungInfo) document.getElementById('folierungInfo').value = sd.folierungInfo;
                                 console.log('✅ Folierung-Felder gefüllt');
@@ -2650,13 +2754,17 @@
                 case 'folierung':
                     const folierungArt = document.getElementById('folierungArt')?.value;
                     const folierungMaterial = document.getElementById('folierungMaterial')?.value;
+                    const folierungSpezialTyp = document.getElementById('folierungSpezialTyp')?.value;
                     const folierungFarbe = document.getElementById('folierungFarbe')?.value;
+                    const folierungBereiche = Array.from(document.querySelectorAll('input[name="folierungBereiche"]:checked')).map(cb => cb.value);
                     const folierungDesign = document.getElementById('folierungDesign')?.value;
                     const folierungInfo = document.getElementById('folierungInfo')?.value;
                     if (folierungArt || folierungMaterial || folierungFarbe || folierungDesign || folierungInfo) {
                         details.folierungArt = folierungArt;
                         details.folierungMaterial = folierungMaterial;
+                        if (folierungSpezialTyp) details.folierungSpezialTyp = folierungSpezialTyp;
                         details.folierungFarbe = folierungFarbe;
+                        if (folierungBereiche.length > 0) details.folierungBereiche = folierungBereiche;
                         details.folierungDesign = folierungDesign;
                         details.folierungInfo = folierungInfo;
                     }
