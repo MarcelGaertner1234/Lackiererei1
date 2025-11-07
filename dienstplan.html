@@ -2080,6 +2080,18 @@
                     werkstattId: window.werkstattId
                 });
 
+                // Update gesamtstunden for regular work shifts (not special shifts like Urlaub/Krank)
+                if (!schichtTyp.isSpecial) {
+                    const hours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                    if (hours > 0) {
+                        const currentGesamtstunden = mitarbeiter.gesamtstunden || 0;
+                        await window.getCollection('mitarbeiter').doc(mitarbeiterId).update({
+                            gesamtstunden: Math.round((currentGesamtstunden + hours) * 100) / 100
+                        });
+                        console.log(`✅ Gesamtstunden aktualisiert: +${hours}h = ${(currentGesamtstunden + hours).toFixed(2)}h`);
+                    }
+                }
+
                 showToast(`✅ Schicht "${schichtTyp.name}" für ${mitarbeiter.name || 'Mitarbeiter'} erstellt`, 'success');
                 await loadSchichten();
                 renderCalendar();
@@ -2275,6 +2287,17 @@
                             krankheitstage: newKrank
                         });
                         console.log(`✅ Krankheitstage zurückgebucht: ${newKrank}`);
+                    }
+                } else if (schichtTyp && !schichtTyp.isSpecial && mitarbeiter) {
+                    // Handle regular shifts - revert gesamtstunden
+                    const hours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                    if (hours > 0) {
+                        const currentGesamtstunden = mitarbeiter.gesamtstunden || 0;
+                        const newGesamtstunden = Math.max(0, Math.round((currentGesamtstunden - hours) * 100) / 100);
+                        await window.getCollection('mitarbeiter').doc(schicht.mitarbeiterId).update({
+                            gesamtstunden: newGesamtstunden
+                        });
+                        console.log(`✅ Gesamtstunden zurückgebucht: -${hours}h = ${newGesamtstunden.toFixed(2)}h`);
                     }
                 }
 
@@ -2894,6 +2917,34 @@
         function getInitials(name) {
             if (!name) return '??';  // Fallback for undefined/null names
             return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+        }
+
+        // Calculate shift hours with legal break deductions
+        function calculateShiftHours(startzeit, endzeit) {
+            if (!startzeit || !endzeit) return 0;
+
+            // Parse "08:00" format
+            const [startHour, startMin] = startzeit.split(':').map(Number);
+            const [endHour, endMin] = endzeit.split(':').map(Number);
+
+            // Calculate total minutes worked
+            let totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+
+            // Handle overnight shifts (e.g., 22:00 to 06:00)
+            if (totalMinutes < 0) {
+                totalMinutes += 24 * 60;
+            }
+
+            let totalHours = totalMinutes / 60;
+
+            // Subtract legal break time according to German labor law (Arbeitszeitgesetz)
+            if (totalHours >= 9) {
+                totalHours -= 0.75;  // 45 min break for 9+ hours
+            } else if (totalHours >= 6) {
+                totalHours -= 0.5;   // 30 min break for 6-9 hours
+            }
+
+            return Math.round(totalHours * 100) / 100;  // Round to 2 decimals
         }
 
         // Toast notification
