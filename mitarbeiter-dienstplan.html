@@ -1,0 +1,1789 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>Mein Dienstplan | Auto-Lackierzentrum</title>
+
+    <!-- Firebase SDKs (Compat Mode) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <!-- Firebase Config -->
+    <script src="firebase-config.js"></script>
+
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="css/app.css">
+    <style>
+        /* Dark Theme Base */
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+            color: #f5f5f7;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .header-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 5px;
+        }
+
+        .header-info .name {
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .header-info .role {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: #f5f5f7;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-x: auto;
+        }
+
+        .tab-button {
+            padding: 15px 25px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .tab-button:hover {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .tab-button.active {
+            color: #0a84ff;
+            border-bottom-color: #0a84ff;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Cards */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h3 {
+            margin: 0 0 20px 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-card .icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: 700;
+            margin: 10px 0;
+        }
+
+        .stat-card .label {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+
+        .stat-card.success .value {
+            color: #34c759;
+        }
+
+        .stat-card.warning .value {
+            color: #ff9f0a;
+        }
+
+        .stat-card.danger .value {
+            color: #ff3b30;
+        }
+
+        .stat-card.info .value {
+            color: #0a84ff;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #0a84ff 0%, #0051d5 100%);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(10, 132, 255, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.1) 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #f5f5f7;
+            font-size: 16px;
+            font-family: inherit;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #0a84ff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Calendar (simplified) */
+        .calendar {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .calendar-header h3 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .calendar-nav {
+            display: flex;
+            gap: 10px;
+        }
+
+        .calendar-nav button {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 6px;
+            color: #f5f5f7;
+            cursor: pointer;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 14px;
+            cursor: default;
+        }
+
+        .calendar-day.shift {
+            background: linear-gradient(135deg, #0a84ff 0%, #0051d5 100%);
+            cursor: pointer;
+        }
+
+        .calendar-day.vacation {
+            background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
+        }
+
+        .calendar-day.sick {
+            background: linear-gradient(135deg, #ff3b30 0%, #d70015 100%);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: #2d2d2d;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #f5f5f7;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge.success {
+            background: rgba(52, 199, 89, 0.2);
+            color: #34c759;
+        }
+
+        .badge.warning {
+            background: rgba(255, 159, 10, 0.2);
+            color: #ff9f0a;
+        }
+
+        .badge.danger {
+            background: rgba(255, 59, 48, 0.2);
+            color: #ff3b30;
+        }
+
+        .badge.info {
+            background: rgba(10, 132, 255, 0.2);
+            color: #0a84ff;
+        }
+
+        /* Signature Canvas */
+        #signatureCanvas {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            opacity: 0.6;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            opacity: 0.5;
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .header-info {
+                align-items: center;
+            }
+
+            .tabs {
+                font-size: 14px;
+            }
+
+            .tab-button {
+                padding: 12px 16px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <a href="index.html" class="btn-back">
+                    <i data-feather="arrow-left"></i>
+                    Zurück
+                </a>
+            </div>
+            <div class="header-info">
+                <div class="name" id="mitarbeiterName">Lädt...</div>
+                <div class="role">Mitarbeiter</div>
+            </div>
+        </div>
+
+        <h1 style="margin: 0 0 30px 0; font-size: 32px; font-weight: 700;">
+            <i data-feather="clock" style="vertical-align: middle;"></i>
+            Mein Dienstplan
+        </h1>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab('dienstplan')">
+                📅 Mein Dienstplan
+            </button>
+            <button class="tab-button" onclick="switchTab('stunden')">
+                ⏰ Meine Stunden
+            </button>
+            <button class="tab-button" onclick="switchTab('urlaub')">
+                🏖️ Urlaub & Konto
+            </button>
+        </div>
+
+        <!-- Tab 1: Mein Dienstplan -->
+        <div id="tab-dienstplan" class="tab-content active">
+            <div class="card">
+                <h3>📅 Meine Schichten</h3>
+                <div class="calendar">
+                    <div class="calendar-header">
+                        <h3 id="currentMonth">November 2025</h3>
+                        <div class="calendar-nav">
+                            <button onclick="previousMonth()">
+                                <i data-feather="chevron-left"></i>
+                            </button>
+                            <button onclick="nextMonth()">
+                                <i data-feather="chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="calendar-grid" id="calendarGrid">
+                        <!-- Calendar will be rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🕐 Legende</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #0a84ff 0%, #0051d5 100%); border-radius: 6px;"></div>
+                        <span>Arbeitsschicht</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #34c759 0%, #30d158 100%); border-radius: 6px;"></div>
+                        <span>Urlaub</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #ff3b30 0%, #d70015 100%); border-radius: 6px;"></div>
+                        <span>Krankheit</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Meine Stunden -->
+        <div id="tab-stunden" class="tab-content">
+            <div class="card">
+                <h3>⏰ Stundenabrechnung erstellen</h3>
+                <div class="form-group">
+                    <label>Zeitraum auswählen</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label style="font-size: 12px; opacity: 0.7;">Von</label>
+                            <input type="date" id="pdfStartDatum">
+                        </div>
+                        <div>
+                            <label style="font-size: 12px; opacity: 0.7;">Bis</label>
+                            <input type="date" id="pdfEndDatum">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <button class="btn btn-secondary" onclick="generatePreviewPDF()">
+                        <i data-feather="file-text"></i>
+                        📄 Vorschau (ohne Unterschrift)
+                    </button>
+                    <button class="btn" onclick="openAnnotationsModal()">
+                        <i data-feather="message-circle"></i>
+                        💬 Anmerkungen (Fehler melden)
+                    </button>
+                    <button class="btn btn-success" onclick="openSignatureModal()">
+                        <i data-feather="edit"></i>
+                        ✍️ Signieren (mit Unterschrift)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Urlaub & Konto -->
+        <div id="tab-urlaub" class="tab-content">
+            <!-- Statistics -->
+            <div class="stats-grid">
+                <div class="stat-card success">
+                    <div class="icon">🏖️</div>
+                    <div class="value" id="statResturlaub">0</div>
+                    <div class="label">Resturlaub (Tage)</div>
+                </div>
+                <div class="stat-card info">
+                    <div class="icon">⏰</div>
+                    <div class="value" id="statMonatStunden">0h</div>
+                    <div class="label">Diesen Monat</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="icon">📈</div>
+                    <div class="value" id="statGesamtStunden">0h</div>
+                    <div class="label">Gesamt (Lifetime)</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="icon">🤒</div>
+                    <div class="value" id="statKrankheitstage">0</div>
+                    <div class="label">Krankheitstage</div>
+                </div>
+            </div>
+
+            <!-- Urlaubsantrag stellen -->
+            <div class="card">
+                <h3>🏖️ Neuen Urlaubsantrag stellen</h3>
+                <form id="urlaubsanfragForm">
+                    <div class="form-group">
+                        <label>Von (Start-Datum)</label>
+                        <input type="date" id="urlaubStart" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Bis (End-Datum)</label>
+                        <input type="date" id="urlaubEnd" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Anzahl Werktage (automatisch berechnet)</label>
+                        <input type="number" id="urlaubTage" readonly style="background: rgba(255, 255, 255, 0.02);">
+                    </div>
+                    <div class="form-group">
+                        <label>Grund (optional)</label>
+                        <textarea id="urlaubGrund" placeholder="z.B. Familienurlaub, Erholung, ..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i data-feather="send"></i>
+                        Urlaubsantrag einreichen
+                    </button>
+                </form>
+            </div>
+
+            <!-- Meine Urlaubsanträge -->
+            <div class="card">
+                <h3>📋 Meine Urlaubsanträge</h3>
+                <div id="urlaubsantraegeList">
+                    <div class="loading">
+                        <i data-feather="loader"></i>
+                        <p>Lädt Urlaubsanträge...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Signature -->
+    <div id="signatureModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✍️ Unterschrift</h2>
+                <button class="modal-close" onclick="closeSignatureModal()">×</button>
+            </div>
+            <p style="opacity: 0.7; margin-bottom: 20px;">
+                Bitte unterschreiben Sie hier, um die Stundenabrechnung zu bestätigen.
+            </p>
+            <canvas id="signatureCanvas" width="540" height="200"></canvas>
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="clearSignature()" style="flex: 1;">
+                    <i data-feather="trash-2"></i>
+                    Löschen
+                </button>
+                <button class="btn btn-success" onclick="saveSignature()" style="flex: 2;">
+                    <i data-feather="check"></i>
+                    Speichern & PDF erstellen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Annotations -->
+    <div id="annotationsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💬 Anmerkungen zu Stunden</h2>
+                <button class="modal-close" onclick="closeAnnotationsModal()">×</button>
+            </div>
+            <p style="opacity: 0.7; margin-bottom: 20px;">
+                Melden Sie Fehler in Ihrer Stundenabrechnung. Diese erscheinen im PDF.
+            </p>
+
+            <div class="form-group">
+                <label>Betroffenes Datum</label>
+                <input type="date" id="annotationDate">
+            </div>
+            <div class="form-group">
+                <label>Fehlertyp</label>
+                <select id="annotationErrorType">
+                    <option value="">-- Bitte wählen --</option>
+                    <option value="Zu wenig Stunden">Zu wenig Stunden notiert</option>
+                    <option value="Zu viel Stunden">Zu viel Stunden notiert</option>
+                    <option value="Falsche Schicht">Falsche Schicht eingetragen</option>
+                    <option value="Fehlende Pause">Pause nicht berücksichtigt</option>
+                    <option value="Falsches Datum">Falsches Datum</option>
+                    <option value="Sonstiges">Sonstiges</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Beschreibung</label>
+                <textarea id="annotationDescription" placeholder="Bitte beschreiben Sie den Fehler..."></textarea>
+            </div>
+            <button class="btn" onclick="addAnnotation()">
+                <i data-feather="plus"></i>
+                Anmerkung hinzufügen
+            </button>
+
+            <div id="annotationsList" style="margin-top: 30px;">
+                <!-- Annotations will be listed here -->
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 30px;">
+                <button class="btn btn-secondary" onclick="cancelAnnotations()" style="flex: 1;">
+                    Abbrechen
+                </button>
+                <button class="btn btn-success" onclick="saveAnnotations()" style="flex: 2;">
+                    <i data-feather="check"></i>
+                    Speichern & Zurück
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // Global Variables
+        let currentUser = null;
+        let currentMitarbeiter = null;
+        let currentMonth = new Date().getMonth();
+        let currentYear = new Date().getFullYear();
+        let allSchichten = [];
+        let allSchichtTypen = [];
+        let allUrlaubsantraege = [];
+        let currentAnnotations = [];
+        let signatureCanvas = null;
+        let signatureCtx = null;
+        let isDrawing = false;
+        let signatureData = null;
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        async function initApp() {
+            console.log('🚀 Initialisiere Mitarbeiter-Dienstplan...');
+
+            // Wait for Firebase initialization
+            let attempts = 0;
+            const maxAttempts = 20;
+
+            while (!window.firebaseInitialized && attempts < maxAttempts) {
+                console.log(`⏳ Warte auf Firebase (Versuch ${attempts + 1}/20)...`);
+                await new Promise(resolve => setTimeout(resolve, 250));
+                attempts++;
+            }
+
+            if (!window.firebaseInitialized) {
+                console.error('❌ Firebase initialization timeout');
+                alert('Fehler: Firebase konnte nicht geladen werden. Bitte Seite neu laden.');
+                return;
+            }
+
+            console.log('✅ Firebase initialisiert');
+
+            // Get current user with polling
+            attempts = 0;
+            while (!currentUser && attempts < maxAttempts) {
+                currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
+                if (!currentUser) {
+                    console.log(`⏳ Warte auf Auth (Versuch ${attempts + 1}/20)...`);
+                    await new Promise(resolve => setTimeout(resolve, 250));
+                    attempts++;
+                }
+            }
+
+            if (!currentUser) {
+                console.error('❌ Kein User eingeloggt');
+                alert('⚠️ Bitte zuerst als Mitarbeiter einloggen!');
+                setTimeout(() => window.location.href = 'index.html', 1500);
+                return;
+            }
+
+            console.log('✅ User geladen:', currentUser.name);
+            console.log('   Rolle:', currentUser.role);
+
+            // SECURITY CHECK: Nur Mitarbeiter erlaubt
+            if (currentUser.role !== 'mitarbeiter') {
+                console.error('❌ Zugriff verweigert! Rolle:', currentUser.role);
+                alert('⛔ Diese Seite ist nur für Mitarbeiter zugänglich!');
+                setTimeout(() => window.location.href = 'index.html', 1500);
+                return;
+            }
+
+            // Load Mitarbeiter Data from Firestore
+            await loadMitarbeiterData();
+
+            // Initialize Features
+            initSignatureCanvas();
+            renderCalendar();
+            setDefaultPDFDates();
+            loadUrlaubsantraege();
+            initUrlaubsanfragForm();
+
+            // Initialize Feather Icons
+            feather.replace();
+
+            console.log('✅ App initialisiert');
+        }
+
+        // ============================================
+        // LOAD MITARBEITER DATA
+        // ============================================
+        async function loadMitarbeiterData() {
+            try {
+                const doc = await window.getCollection('mitarbeiter').doc(currentUser.uid).get();
+
+                if (!doc.exists) {
+                    console.error('❌ Mitarbeiter-Dokument nicht gefunden!');
+                    alert('Fehler: Mitarbeiter-Daten nicht gefunden.');
+                    return;
+                }
+
+                currentMitarbeiter = { id: doc.id, ...doc.data() };
+                console.log('✅ Mitarbeiter-Daten geladen:', currentMitarbeiter);
+
+                // Update UI
+                document.getElementById('mitarbeiterName').textContent = currentMitarbeiter.name || 'Unbekannt';
+
+                // Update Statistics
+                updateStatistics();
+
+                // Load Schichten
+                await loadSchichten();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Mitarbeiter-Daten:', error);
+                alert('Fehler beim Laden der Daten. Bitte Seite neu laden.');
+            }
+        }
+
+        // ============================================
+        // UPDATE STATISTICS
+        // ============================================
+        function updateStatistics() {
+            const urlaubstageJahr = currentMitarbeiter.urlaubstageJahr || 30;
+            const urlaubstageVerbraucht = currentMitarbeiter.urlaubstageVerbraucht || 0;
+            const urlaubstageVerfuegbar = urlaubstageJahr - urlaubstageVerbraucht;
+
+            const monatlicheStunden = currentMitarbeiter.monatlicheStunden || 0;
+            const gesamtstunden = currentMitarbeiter.gesamtstunden || 0;
+            const krankheitstage = currentMitarbeiter.krankheitstage || 0;
+
+            document.getElementById('statResturlaub').textContent = `${urlaubstageVerfuegbar}/${urlaubstageJahr}`;
+            document.getElementById('statMonatStunden').textContent = `${monatlicheStunden.toFixed(1)}h`;
+            document.getElementById('statGesamtStunden').textContent = `${gesamtstunden.toFixed(1)}h`;
+            document.getElementById('statKrankheitstage').textContent = krankheitstage;
+
+            // Color coding
+            const monthCard = document.querySelector('.stat-card.info');
+            if (monatlicheStunden >= 180) {
+                monthCard.className = 'stat-card danger';
+            } else if (monatlicheStunden >= 160) {
+                monthCard.className = 'stat-card warning';
+            } else if (monatlicheStunden >= 120) {
+                monthCard.className = 'stat-card success';
+            } else {
+                monthCard.className = 'stat-card info';
+            }
+        }
+
+        // ============================================
+        // LOAD SCHICHTEN
+        // ============================================
+        async function loadSchichten() {
+            try {
+                // Load Schichten for current user
+                const schichtenSnapshot = await window.getCollection('schichten')
+                    .where('mitarbeiterId', '==', currentUser.uid)
+                    .get();
+
+                allSchichten = schichtenSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                // Load SchichtTypen
+                const schichtTypenSnapshot = await window.getCollection('schichtTypen').get();
+                allSchichtTypen = schichtTypenSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log('✅ Schichten geladen:', allSchichten.length);
+                console.log('✅ SchichtTypen geladen:', allSchichtTypen.length);
+
+                // Re-render calendar
+                renderCalendar();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Schichten:', error);
+            }
+        }
+
+        // ============================================
+        // TAB SWITCHING
+        // ============================================
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Deactivate all buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            // Activate selected button
+            event.target.classList.add('active');
+
+            // Refresh Feather Icons
+            feather.replace();
+        }
+
+        // ============================================
+        // CALENDAR RENDERING
+        // ============================================
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+
+            // Update header
+            const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+            document.getElementById('currentMonth').textContent = `${monthNames[currentMonth]} ${currentYear}`;
+
+            // Get all days in month
+            const firstDay = new Date(currentYear, currentMonth, 1);
+            const lastDay = new Date(currentYear, currentMonth + 1, 0);
+            const daysInMonth = lastDay.getDate();
+
+            // Add weekday headers
+            const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            weekdays.forEach(day => {
+                const header = document.createElement('div');
+                header.textContent = day;
+                header.style.textAlign = 'center';
+                header.style.fontWeight = '600';
+                header.style.opacity = '0.6';
+                header.style.padding = '10px';
+                grid.appendChild(header);
+            });
+
+            // Add empty cells for offset (Monday = 0)
+            const offset = (firstDay.getDay() + 6) % 7;
+            for (let i = 0; i < offset; i++) {
+                const empty = document.createElement('div');
+                grid.appendChild(empty);
+            }
+
+            // Add days
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const schicht = allSchichten.find(s => s.datum === dateStr);
+
+                const dayEl = document.createElement('div');
+                dayEl.className = 'calendar-day';
+                dayEl.innerHTML = `<div style="font-weight: 600;">${day}</div>`;
+
+                if (schicht) {
+                    const schichtTyp = allSchichtTypen.find(st => st.id === schicht.schichtTypId);
+
+                    if (schichtTyp) {
+                        if (schichtTyp.type === 'urlaub') {
+                            dayEl.classList.add('vacation');
+                            dayEl.innerHTML += `<div style="font-size: 10px; margin-top: 4px;">Urlaub</div>`;
+                        } else if (schichtTyp.type === 'krank') {
+                            dayEl.classList.add('sick');
+                            dayEl.innerHTML += `<div style="font-size: 10px; margin-top: 4px;">Krank</div>`;
+                        } else {
+                            dayEl.classList.add('shift');
+                            dayEl.innerHTML += `<div style="font-size: 10px; margin-top: 4px;">${schichtTyp.startzeit || ''}</div>`;
+                        }
+
+                        dayEl.onclick = () => showSchichtDetails(schicht, schichtTyp, dateStr);
+                    }
+                }
+
+                grid.appendChild(dayEl);
+            }
+        }
+
+        function showSchichtDetails(schicht, schichtTyp, dateStr) {
+            const date = new Date(dateStr);
+            const dateFormatted = date.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            let details = `📅 ${dateFormatted}\n\n`;
+
+            if (schichtTyp.type === 'urlaub') {
+                details += `Typ: Urlaub 🏖️`;
+            } else if (schichtTyp.type === 'krank') {
+                details += `Typ: Krankheit 🤒`;
+            } else {
+                details += `Schicht: ${schichtTyp.name}\n`;
+                details += `Uhrzeit: ${schichtTyp.startzeit} - ${schichtTyp.endzeit}\n`;
+                const hours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                details += `Stunden: ${hours.toFixed(2)}h`;
+            }
+
+            alert(details);
+        }
+
+        function previousMonth() {
+            currentMonth--;
+            if (currentMonth < 0) {
+                currentMonth = 11;
+                currentYear--;
+            }
+            renderCalendar();
+        }
+
+        function nextMonth() {
+            currentMonth++;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
+            renderCalendar();
+        }
+
+        function calculateShiftHours(startzeit, endzeit) {
+            const [startHour, startMin] = startzeit.split(':').map(Number);
+            const [endHour, endMin] = endzeit.split(':').map(Number);
+
+            let totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+
+            if (totalMinutes < 0) {
+                totalMinutes += 24 * 60;
+            }
+
+            let totalHours = totalMinutes / 60;
+
+            if (totalHours >= 9) {
+                totalHours -= 0.75;
+            } else if (totalHours >= 6) {
+                totalHours -= 0.5;
+            }
+
+            return Math.round(totalHours * 100) / 100;
+        }
+
+        // ============================================
+        // PDF GENERATION (Full Implementation)
+        // ============================================
+        function setDefaultPDFDates() {
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+            document.getElementById('pdfStartDatum').value = formatDateInput(startOfMonth);
+            document.getElementById('pdfEndDatum').value = formatDateInput(endOfMonth);
+        }
+
+        function formatDateInput(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function generatePreviewPDF() {
+            signatureData = null;
+            actuallyGeneratePDFNew(false); // Don't close modals
+        }
+
+        function openSignatureModal() {
+            // Validate dates first
+            const startDatum = document.getElementById('pdfStartDatum').value;
+            const endDatum = document.getElementById('pdfEndDatum').value;
+
+            if (!startDatum || !endDatum) {
+                alert('⚠️ Bitte Zeitraum auswählen!');
+                return;
+            }
+
+            document.getElementById('signatureModal').classList.add('active');
+            feather.replace();
+        }
+
+        function closeSignatureModal() {
+            document.getElementById('signatureModal').classList.remove('active');
+        }
+
+        // Main PDF Generation Function
+        async function actuallyGeneratePDFNew(closeModal = true) {
+            const startDatum = document.getElementById('pdfStartDatum').value;
+            const endDatum = document.getElementById('pdfEndDatum').value;
+
+            if (!startDatum || !endDatum) {
+                alert('⚠️ Bitte Zeitraum auswählen!');
+                return;
+            }
+
+            console.log('📄 Generiere Stundenabrechnung-PDF für:', currentUser.uid, startDatum, 'bis', endDatum);
+
+            try {
+                // Parse dates
+                const startDate = new Date(startDatum);
+                const endDate = new Date(endDatum);
+                const year = startDate.getFullYear();
+                const month = startDate.getMonth() + 1; // 1-12
+
+                // Load all data in parallel
+                const [schichtenSnapshot, schichtTypenSnapshot] = await Promise.all([
+                    window.getCollection('schichten')
+                        .where('mitarbeiterId', '==', currentUser.uid)
+                        .where('datum', '>=', startDatum)
+                        .where('datum', '<=', endDatum)
+                        .get(),
+                    window.getCollection('schichtTypen').get()
+                ]);
+
+                const schichten = schichtenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const schichtTypen = schichtTypenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                // Create schicht lookup map for fast access
+                const schichtenByDate = {};
+                schichten.forEach(schicht => {
+                    schichtenByDate[schicht.datum] = schicht;
+                });
+
+                // Get all days in month
+                const allDays = getAllDaysInMonth(year, month);
+
+                // Build table data
+                const tableData = allDays.map(date => {
+                    const dateStr = formatDate(date, 'YYYY-MM-DD');
+                    const weekday = formatDate(date, 'dddd');
+                    const schicht = schichtenByDate[dateStr];
+
+                    if (!schicht) {
+                        // Empty row for days without shifts
+                        return [formatDate(date, 'DD.MM.YYYY'), weekday, '', '', '', ''];
+                    }
+
+                    const schichtTyp = schichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                    if (!schichtTyp) {
+                        return [formatDate(date, 'DD.MM.YYYY'), weekday, '', '', '', ''];
+                    }
+
+                    // For special shifts (Urlaub/Krank/Frei)
+                    if (schichtTyp.isSpecial) {
+                        return [
+                            formatDate(date, 'DD.MM.YYYY'),
+                            weekday,
+                            schichtTyp.name,  // Show "Urlaub", "Krank", "Frei" in Start column
+                            '',
+                            '',
+                            ''
+                        ];
+                    }
+
+                    // For regular work shifts
+                    const start = schichtTyp.startzeit || '';
+                    const stop = schichtTyp.endzeit || '';
+                    const totalHours = calculateShiftHours(start, stop);
+                    const breakTime = getBreakTime(totalHours + getBreakTime(totalHours)); // Reverse calculation
+                    const workTime = totalHours;
+
+                    return [
+                        formatDate(date, 'DD.MM.YYYY'),
+                        weekday,
+                        start,
+                        stop,
+                        breakTime > 0 ? `${(breakTime * 60).toFixed(0)} min` : '',
+                        workTime > 0 ? `${workTime.toFixed(2)}h` : ''
+                    ];
+                });
+
+                // Calculate totals
+                const totalHours = schichten
+                    .map(s => {
+                        const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
+                        return st && !st.isSpecial ? calculateShiftHours(st.startzeit, st.endzeit) : 0;
+                    })
+                    .reduce((sum, h) => sum + h, 0);
+
+                const urlaubDays = schichten.filter(s => {
+                    const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
+                    return st && st.type === 'urlaub';
+                }).length;
+
+                const krankDays = schichten.filter(s => {
+                    const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
+                    return st && st.type === 'krank';
+                }).length;
+
+                // Create PDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                // Header
+                doc.setFontSize(20);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Arbeitszeiterfassung', 105, 20, { align: 'center' });
+
+                // Employee info
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'normal');
+                const infoY = 35;
+                doc.text(`Name: ${currentMitarbeiter.name || 'Unbekannt'}`, 20, infoY);
+                doc.text(`Pers-Nr: ${currentUser.uid}`, 20, infoY + 6);
+                doc.text(`Abteilung: ${currentMitarbeiter.rolle || 'N/A'}`, 20, infoY + 12);
+                doc.text(`Vorgesetzte/r: Christopher Gärtner`, 20, infoY + 18);
+                doc.text(`Monat: ${formatDate(startDate, 'MMMM')}`, 20, infoY + 24);
+                doc.text(`Jahr: ${year}`, 20, infoY + 30);
+
+                // Summary box
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.text(`Stunden Total: ${totalHours.toFixed(2)}h`, 20, infoY + 40);
+
+                // Table with autoTable
+                doc.autoTable({
+                    startY: infoY + 48,
+                    head: [['Datum', 'Wochentag', 'Start', 'Stop', 'Pause', 'Arbeitszeit']],
+                    body: tableData,
+                    theme: 'grid',
+                    styles: {
+                        fontSize: 9,
+                        cellPadding: 3,
+                        lineColor: [200, 200, 200],
+                        lineWidth: 0.1
+                    },
+                    headStyles: {
+                        fillColor: [50, 50, 50],
+                        textColor: 255,
+                        fontStyle: 'bold',
+                        halign: 'center'
+                    },
+                    columnStyles: {
+                        0: { halign: 'center', cellWidth: 28 },  // Datum
+                        1: { halign: 'left', cellWidth: 30 },    // Wochentag
+                        2: { halign: 'center', cellWidth: 22 },  // Start
+                        3: { halign: 'center', cellWidth: 22 },  // Stop
+                        4: { halign: 'center', cellWidth: 22 },  // Pause
+                        5: { halign: 'center', cellWidth: 26 }   // Arbeitszeit
+                    },
+                    didDrawCell: (data) => {
+                        // Highlight weekends
+                        if (data.section === 'body' && data.column.index === 1) {
+                            const weekday = data.cell.text[0];
+                            if (weekday === 'Samstag' || weekday === 'Sonntag') {
+                                doc.setFillColor(240, 240, 240);
+                                doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+                                doc.setTextColor(100, 100, 100);
+                                doc.text(weekday, data.cell.x + 2, data.cell.y + data.cell.height / 2 + 2);
+                                doc.setTextColor(0, 0, 0);
+                            }
+                        }
+                    }
+                });
+
+                // Signature section
+                const finalY = doc.lastAutoTable.finalY + 15;
+
+                // Add signature image if available
+                if (signatureData) {
+                    doc.setFontSize(10);
+                    doc.text('Unterschrift Mitarbeiter:', 20, finalY);
+                    doc.addImage(signatureData, 'PNG', 20, finalY + 2, 50, 15);
+                    doc.text(`Datum: ______________`, 120, finalY + 10);
+                } else {
+                    doc.setFontSize(10);
+                    doc.text('Unterschrift Mitarbeiter: __________________________', 20, finalY);
+                    doc.text(`Datum: ______________`, 120, finalY);
+                }
+
+                doc.text('Unterschrift Vorgesetzte/r: __________________________', 20, finalY + 25);
+                doc.text(`Datum: ______________`, 120, finalY + 25);
+
+                // Annotations section (if any)
+                if (currentAnnotations && currentAnnotations.length > 0) {
+                    let annotationsY = finalY + 45;
+
+                    // Check if we need a new page
+                    if (annotationsY > 250) {
+                        doc.addPage();
+                        annotationsY = 20;
+                    }
+
+                    doc.setFontSize(12);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(200, 50, 50);
+                    doc.text('📋 Anmerkungen und Korrekturen', 20, annotationsY);
+
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'normal');
+                    doc.setTextColor(100, 100, 100);
+                    doc.text('Der Mitarbeiter hat folgende Fehler in der Stundenerfassung gemeldet:', 20, annotationsY + 6);
+
+                    annotationsY += 14;
+
+                    // Sort annotations by date
+                    const sortedAnnotations = [...currentAnnotations].sort((a, b) => a.date.localeCompare(b.date));
+
+                    sortedAnnotations.forEach((ann, index) => {
+                        // Check if we need a new page
+                        if (annotationsY > 270) {
+                            doc.addPage();
+                            annotationsY = 20;
+                        }
+
+                        const dateObj = new Date(ann.date + 'T00:00:00');
+                        const dateStr = dateObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                        // Light gray background box
+                        doc.setFillColor(245, 245, 245);
+                        doc.rect(18, annotationsY - 4, 174, 18, 'F');
+
+                        // Date and error type
+                        doc.setFontSize(10);
+                        doc.setFont(undefined, 'bold');
+                        doc.setTextColor(50, 50, 50);
+                        doc.text(`${index + 1}. ${dateStr} - ${ann.errorType}`, 20, annotationsY);
+
+                        // Description
+                        doc.setFontSize(9);
+                        doc.setFont(undefined, 'normal');
+                        doc.setTextColor(80, 80, 80);
+                        const wrappedDescription = doc.splitTextToSize(ann.description, 170);
+                        doc.text(wrappedDescription, 20, annotationsY + 5);
+
+                        annotationsY += 18 + (wrappedDescription.length > 1 ? (wrappedDescription.length - 1) * 4 : 0) + 3;
+                    });
+
+                    console.log(`📋 ${currentAnnotations.length} Anmerkungen ins PDF eingefügt`);
+                }
+
+                // Footer
+                doc.setFontSize(8);
+                doc.setTextColor(128, 128, 128);
+                doc.text(`Erstellt am: ${formatDate(new Date(), 'DD.MM.YYYY HH:mm')} Uhr`, 20, 285);
+                doc.text('Seite 1 von 1', 170, 285);
+
+                // Save
+                const filename = `Arbeitszeiterfassung_${currentMitarbeiter.name.replace(/\s+/g, '_')}_${year}_${String(month).padStart(2, '0')}.pdf`;
+                doc.save(filename);
+
+                alert('✅ Professionelle Stundenabrechnung erfolgreich erstellt!');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der PDF:', error);
+                alert('❌ Fehler beim Erstellen der PDF: ' + error.message);
+            }
+        }
+
+        // Helper: Get all days in a month
+        function getAllDaysInMonth(year, month) {
+            const days = [];
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                days.push(new Date(year, month - 1, day));
+            }
+
+            return days;
+        }
+
+        // Helper: Get break time from total hours
+        function getBreakTime(totalHours) {
+            if (totalHours >= 9) return 0.75; // 45 min
+            if (totalHours >= 6) return 0.5;  // 30 min
+            return 0;
+        }
+
+        // Helper: Format date
+        function formatDate(date, format) {
+            const d = new Date(date);
+            const months = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+            const weekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+            const replacements = {
+                'YYYY': d.getFullYear(),
+                'MM': String(d.getMonth() + 1).padStart(2, '0'),
+                'DD': String(d.getDate()).padStart(2, '0'),
+                'HH': String(d.getHours()).padStart(2, '0'),
+                'mm': String(d.getMinutes()).padStart(2, '0'),
+                'MMMM': months[d.getMonth()],
+                'dddd': weekdays[d.getDay()]
+            };
+
+            let result = format;
+            for (const [key, value] of Object.entries(replacements)) {
+                result = result.replace(key, value);
+            }
+
+            return result;
+        }
+
+        // ============================================
+        // SIGNATURE CANVAS
+        // ============================================
+        function initSignatureCanvas() {
+            signatureCanvas = document.getElementById('signatureCanvas');
+            signatureCtx = signatureCanvas.getContext('2d');
+
+            signatureCtx.strokeStyle = '#000';
+            signatureCtx.lineWidth = 2;
+            signatureCtx.lineCap = 'round';
+            signatureCtx.lineJoin = 'round';
+
+            // Mouse events
+            signatureCanvas.addEventListener('mousedown', startDrawing);
+            signatureCanvas.addEventListener('mousemove', draw);
+            signatureCanvas.addEventListener('mouseup', stopDrawing);
+            signatureCanvas.addEventListener('mouseleave', stopDrawing);
+
+            // Touch events
+            signatureCanvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = signatureCanvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                signatureCtx.beginPath();
+                signatureCtx.moveTo(x, y);
+                isDrawing = true;
+            });
+
+            signatureCanvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (!isDrawing) return;
+                const touch = e.touches[0];
+                const rect = signatureCanvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                signatureCtx.lineTo(x, y);
+                signatureCtx.stroke();
+            });
+
+            signatureCanvas.addEventListener('touchend', () => {
+                isDrawing = false;
+            });
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const rect = signatureCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            signatureCtx.beginPath();
+            signatureCtx.moveTo(x, y);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const rect = signatureCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            signatureCtx.lineTo(x, y);
+            signatureCtx.stroke();
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function clearSignature() {
+            signatureCtx.clearRect(0, 0, signatureCanvas.width, signatureCanvas.height);
+        }
+
+        function saveSignature() {
+            // Check if canvas is empty
+            const imageData = signatureCtx.getImageData(0, 0, signatureCanvas.width, signatureCanvas.height);
+            const pixels = imageData.data;
+            let isEmpty = true;
+
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (pixels[i + 3] !== 0) {
+                    isEmpty = false;
+                    break;
+                }
+            }
+
+            if (isEmpty) {
+                alert('⚠️ Bitte unterschreiben Sie zuerst!');
+                return;
+            }
+
+            signatureData = signatureCanvas.toDataURL('image/png');
+            closeSignatureModal();
+            alert('✅ Unterschrift gespeichert! PDF wird jetzt erstellt... (Feature wird in nächstem Schritt implementiert)');
+        }
+
+        // ============================================
+        // ANNOTATIONS
+        // ============================================
+        function openAnnotationsModal() {
+            document.getElementById('annotationsModal').classList.add('active');
+
+            // Set date limits
+            const startDate = document.getElementById('pdfStartDatum').value;
+            const endDate = document.getElementById('pdfEndDatum').value;
+
+            const dateInput = document.getElementById('annotationDate');
+            dateInput.min = startDate;
+            dateInput.max = endDate;
+
+            renderAnnotationsList();
+            feather.replace();
+        }
+
+        function closeAnnotationsModal() {
+            document.getElementById('annotationsModal').classList.remove('active');
+        }
+
+        function addAnnotation() {
+            const date = document.getElementById('annotationDate').value;
+            const errorType = document.getElementById('annotationErrorType').value;
+            const description = document.getElementById('annotationDescription').value.trim();
+
+            if (!date || !errorType || !description) {
+                alert('⚠️ Bitte alle Felder ausfüllen!');
+                return;
+            }
+
+            currentAnnotations.push({
+                date,
+                errorType,
+                description,
+                addedAt: Date.now()
+            });
+
+            document.getElementById('annotationErrorType').value = '';
+            document.getElementById('annotationDescription').value = '';
+
+            renderAnnotationsList();
+        }
+
+        function removeAnnotation(index) {
+            if (confirm('Anmerkung wirklich löschen?')) {
+                currentAnnotations.splice(index, 1);
+                renderAnnotationsList();
+            }
+        }
+
+        function renderAnnotationsList() {
+            const list = document.getElementById('annotationsList');
+
+            if (currentAnnotations.length === 0) {
+                list.innerHTML = '<div style="opacity: 0.5; text-align: center; padding: 20px;">Noch keine Anmerkungen hinzugefügt</div>';
+                return;
+            }
+
+            const sorted = [...currentAnnotations].sort((a, b) => a.date.localeCompare(b.date));
+
+            list.innerHTML = sorted.map((ann, index) => {
+                const dateFormatted = new Date(ann.date).toLocaleDateString('de-DE');
+                return `
+                    <div style="background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                            <div>
+                                <strong>${dateFormatted}</strong> - ${ann.errorType}
+                            </div>
+                            <button onclick="removeAnnotation(${index})" style="background: rgba(255, 59, 48, 0.2); border: none; border-radius: 6px; color: #ff3b30; padding: 6px 12px; cursor: pointer;">
+                                <i data-feather="trash-2" style="width: 14px; height: 14px;"></i>
+                            </button>
+                        </div>
+                        <div style="opacity: 0.8; font-size: 14px;">${ann.description}</div>
+                    </div>
+                `;
+            }).join('');
+
+            feather.replace();
+        }
+
+        function saveAnnotations() {
+            closeAnnotationsModal();
+            alert(`✅ ${currentAnnotations.length} Anmerkung(en) gespeichert! Diese erscheinen im PDF.`);
+        }
+
+        function cancelAnnotations() {
+            if (currentAnnotations.length > 0) {
+                if (!confirm('Alle Anmerkungen verwerfen?')) {
+                    return;
+                }
+            }
+            currentAnnotations = [];
+            closeAnnotationsModal();
+        }
+
+        // ============================================
+        // URLAUBSANTRÄGE
+        // ============================================
+        async function loadUrlaubsantraege() {
+            try {
+                const snapshot = await window.getCollection('urlaubsAnfragen')
+                    .where('mitarbeiterId', '==', currentUser.uid)
+                    .orderBy('createdAt', 'desc')
+                    .get();
+
+                allUrlaubsantraege = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log('✅ Urlaubsanträge geladen:', allUrlaubsantraege.length);
+                renderUrlaubsantraege();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Urlaubsanträge:', error);
+                document.getElementById('urlaubsantraegeList').innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="alert-circle"></i>
+                        <p>Fehler beim Laden der Urlaubsanträge</p>
+                    </div>
+                `;
+                feather.replace();
+            }
+        }
+
+        function renderUrlaubsantraege() {
+            const list = document.getElementById('urlaubsantraegeList');
+
+            if (allUrlaubsantraege.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="inbox"></i>
+                        <p>Noch keine Urlaubsanträge gestellt</p>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+
+            list.innerHTML = allUrlaubsantraege.map(antrag => {
+                const startFormatted = new Date(antrag.startDatum).toLocaleDateString('de-DE');
+                const endFormatted = new Date(antrag.endDatum).toLocaleDateString('de-DE');
+
+                const statusBadge = {
+                    'pending': '<span class="badge warning">⏳ Ausstehend</span>',
+                    'approved': '<span class="badge success">✅ Genehmigt</span>',
+                    'rejected': '<span class="badge danger">❌ Abgelehnt</span>'
+                }[antrag.status] || '<span class="badge info">❓ Unbekannt</span>';
+
+                const ablehnungsgrund = antrag.status === 'rejected' && antrag.ablehnungsgrund ? `
+                    <div style="background: rgba(255, 59, 48, 0.1); border-left: 3px solid #ff3b30; padding: 12px; margin-top: 10px; border-radius: 6px;">
+                        <strong>Ablehnungsgrund:</strong>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9;">${antrag.ablehnungsgrund}</p>
+                    </div>
+                ` : '';
+
+                return `
+                    <div style="background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <strong style="font-size: 16px;">${antrag.anzahlTage} Werktage</strong>
+                            ${statusBadge}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; opacity: 0.8;">
+                            <div>Von: <strong>${startFormatted}</strong></div>
+                            <div>Bis: <strong>${endFormatted}</strong></div>
+                        </div>
+                        ${antrag.grund ? `<div style="margin-top: 10px; font-size: 14px; opacity: 0.7;">Grund: ${antrag.grund}</div>` : ''}
+                        ${ablehnungsgrund}
+                        <div style="margin-top: 10px; font-size: 12px; opacity: 0.5;">
+                            Eingereicht: ${new Date(antrag.createdAt).toLocaleDateString('de-DE')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            feather.replace();
+        }
+
+        function initUrlaubsanfragForm() {
+            const form = document.getElementById('urlaubsanfragForm');
+            const startInput = document.getElementById('urlaubStart');
+            const endInput = document.getElementById('urlaubEnd');
+            const tageInput = document.getElementById('urlaubTage');
+
+            // Auto-calculate days
+            function updateTage() {
+                const start = new Date(startInput.value);
+                const end = new Date(endInput.value);
+
+                if (startInput.value && endInput.value && start <= end) {
+                    const tage = calculateWorkdays(start, end);
+                    tageInput.value = tage;
+                } else {
+                    tageInput.value = '';
+                }
+            }
+
+            startInput.addEventListener('change', updateTage);
+            endInput.addEventListener('change', updateTage);
+
+            // Form submit
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await submitUrlaubsantrag();
+            });
+        }
+
+        function calculateWorkdays(startDate, endDate) {
+            let count = 0;
+            const current = new Date(startDate);
+
+            while (current <= endDate) {
+                const day = current.getDay();
+                if (day !== 0 && day !== 6) { // Not Sunday or Saturday
+                    count++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+
+            return count;
+        }
+
+        async function submitUrlaubsantrag() {
+            const startDatum = document.getElementById('urlaubStart').value;
+            const endDatum = document.getElementById('urlaubEnd').value;
+            const anzahlTage = parseInt(document.getElementById('urlaubTage').value);
+            const grund = document.getElementById('urlaubGrund').value.trim();
+
+            if (!startDatum || !endDatum || !anzahlTage) {
+                alert('⚠️ Bitte alle Pflichtfelder ausfüllen!');
+                return;
+            }
+
+            // Check if enough vacation days available
+            const urlaubstageJahr = currentMitarbeiter.urlaubstageJahr || 30;
+            const urlaubstageVerbraucht = currentMitarbeiter.urlaubstageVerbraucht || 0;
+            const urlaubstageVerfuegbar = urlaubstageJahr - urlaubstageVerbraucht;
+
+            if (anzahlTage > urlaubstageVerfuegbar) {
+                if (!confirm(`⚠️ Sie haben nur noch ${urlaubstageVerfuegbar} Urlaubstage verfügbar, möchten aber ${anzahlTage} Tage beantragen. Trotzdem fortfahren?`)) {
+                    return;
+                }
+            }
+
+            try {
+                const anfrageData = {
+                    mitarbeiterId: currentUser.uid,
+                    mitarbeiterName: currentMitarbeiter.name,
+                    mitarbeiterRolle: currentMitarbeiter.rolle || 'Mitarbeiter',
+                    startDatum,
+                    endDatum,
+                    anzahlTage,
+                    grund: grund || '',
+                    status: 'pending',
+                    createdAt: new Date().toISOString()
+                };
+
+                await window.getCollection('urlaubsAnfragen').add(anfrageData);
+
+                alert('✅ Urlaubsantrag erfolgreich eingereicht! Ihr Vorgesetzter wird benachrichtigt.');
+
+                // Reset form
+                document.getElementById('urlaubsanfragForm').reset();
+
+                // Reload list
+                await loadUrlaubsantraege();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Einreichen des Urlaubsantrags:', error);
+                alert('❌ Fehler beim Einreichen. Bitte versuchen Sie es erneut.');
+            }
+        }
+
+        // ============================================
+        // START APP
+        // ============================================
+        window.addEventListener('load', initApp);
+    </script>
+</body>
+</html>
