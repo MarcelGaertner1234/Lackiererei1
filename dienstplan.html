@@ -1565,12 +1565,24 @@
 
             return `
                 <div class="schicht-badge"
-                     style="background: ${schichtTyp.farbe}; color: white; cursor: pointer;"
+                     style="background: ${schichtTyp.farbe}; color: white; cursor: pointer; position: relative;"
                      draggable="true"
-                     ondragstart="handleSchichtDragStart(event, '${schicht.id}')"
-                     onclick="event.stopPropagation(); openBereichZuweisenModal('${schicht.id}');">
-                    ${schichtTyp.name}${bereichInfo}
-                    <span class="schicht-badge-time">${schichtTyp.startzeit}-${schichtTyp.endzeit}</span>
+                     ondragstart="handleSchichtDragStart(event, '${schicht.id}')">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                        <span onclick="event.stopPropagation(); openBereichZuweisenModal('${schicht.id}');"
+                              style="flex: 1; cursor: pointer;">
+                            ${schichtTyp.name}${bereichInfo}
+                            <span class="schicht-badge-time">${schichtTyp.startzeit}-${schichtTyp.endzeit}</span>
+                        </span>
+                        <button class="schicht-delete-btn"
+                                onclick="deleteSchicht('${schicht.id}'); event.stopPropagation();"
+                                title="Löschen"
+                                style="background: rgba(255, 255, 255, 0.2); border: none; color: white; cursor: pointer; padding: 4px 8px; border-radius: 4px; font-size: 14px; transition: background 0.2s; opacity: 0.7;"
+                                onmouseover="this.style.opacity='1'; this.style.background='rgba(255, 255, 255, 0.3)';"
+                                onmouseout="this.style.opacity='0.7'; this.style.background='rgba(255, 255, 255, 0.2)';">
+                            🗑️
+                        </button>
+                    </div>
                     <div class="auto-fill-handle"
                          draggable="true"
                          ondragstart="handleAutoFillDragStart(event, '${schicht.id}'); event.stopPropagation();"
@@ -2107,6 +2119,69 @@
             }
         }
 
+        // === 🆕 SCHICHT LÖSCHEN ===
+
+        async function deleteSchicht(schichtId) {
+            const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
+            if (!schicht) {
+                showToast('❌ Schicht nicht gefunden', 'error');
+                return;
+            }
+
+            const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+            const mitarbeiter = allMitarbeiter.find(m => String(m.id) === String(schicht.mitarbeiterId));
+            const schichtName = schichtTyp ? schichtTyp.name : 'Schicht';
+            const mitarbeiterName = mitarbeiter ? mitarbeiter.name : 'Unbekannt';
+            const datumFormatted = formatDate(new Date(schicht.datum), 'DD.MM.YYYY');
+
+            if (!confirm(`Möchtest du die Schicht wirklich löschen?\n\n${mitarbeiterName} · ${schichtName}\n${datumFormatted}`)) {
+                return;
+            }
+
+            try {
+                // Delete from Firestore
+                await window.getCollection('schichten').doc(schichtId).delete();
+
+                // Handle special schicht types - revert counters
+                if (schichtTyp && schichtTyp.isSpecial && mitarbeiter) {
+                    if (schichtTyp.type === 'urlaub') {
+                        // Decrement urlaubstageVerbraucht
+                        const newVerbraucht = Math.max(0, (mitarbeiter.urlaubstageVerbraucht || 0) - 1);
+                        await window.getCollection('mitarbeiter').doc(schicht.mitarbeiterId).update({
+                            urlaubstageVerbraucht: newVerbraucht
+                        });
+                        console.log(`✅ Urlaubstage zurückgebucht: ${newVerbraucht}`);
+                    } else if (schichtTyp.type === 'krank') {
+                        // Decrement krankheitstage
+                        const newKrank = Math.max(0, (mitarbeiter.krankheitstage || 0) - 1);
+                        await window.getCollection('mitarbeiter').doc(schicht.mitarbeiterId).update({
+                            krankheitstage: newKrank
+                        });
+                        console.log(`✅ Krankheitstage zurückgebucht: ${newKrank}`);
+                    }
+                }
+
+                showToast(`✅ Schicht "${schichtName}" gelöscht`, 'success');
+
+                // Reload data and update UI
+                await loadSchichten();
+                await loadMitarbeiter(); // Reload to get updated counters
+                updateCalendarView();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen der Schicht:', error);
+
+                // Diagnose specific errors
+                if (error.code === 'permission-denied') {
+                    showToast('❌ Keine Berechtigung zum Löschen von Schichten', 'error');
+                } else if (error.code === 'not-found') {
+                    showToast('❌ Schicht nicht gefunden', 'error');
+                } else {
+                    showToast('❌ Fehler beim Löschen', 'error');
+                }
+            }
+        }
+
         // === 🆕 BEREICH MODAL ===
 
         function openBereichModal() {
@@ -2439,6 +2514,20 @@
             }
             if (krankTyp) {
                 html += `<div onclick="createSpecialSchicht('krank')" style="padding: 10px; cursor: pointer; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">🤒 Als Krank markieren</div>`;
+            }
+
+            // 🆕 Delete option if schicht exists
+            const existingSchicht = allSchichten.find(s =>
+                String(s.mitarbeiterId) === String(mitarbeiterId) &&
+                s.datum === datum
+            );
+
+            if (existingSchicht) {
+                // Add separator if there are other options
+                if (html.length > 0) {
+                    html += `<div style="height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;"></div>`;
+                }
+                html += `<div onclick="deleteSchicht('${existingSchicht.id}')" style="padding: 10px; cursor: pointer; border-radius: 6px; transition: background 0.2s; color: #ff4444;" onmouseover="this.style.background='rgba(255,68,68,0.2)'" onmouseout="this.style.background='transparent'">🗑️ Schicht löschen</div>`;
             }
 
             optionsContainer.innerHTML = html;
