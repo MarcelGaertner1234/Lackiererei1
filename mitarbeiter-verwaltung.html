@@ -1137,10 +1137,13 @@
             </div>
 
             <div style="display: flex; gap: 10px;">
-                <button onclick="generateStundenabrechnungPDF()" class="btn btn-success" style="flex: 1; padding: 12px; font-size: 15px;">
-                    📥 PDF Erstellen
+                <button onclick="generatePreviewPDF()" class="btn btn-primary" style="flex: 1; padding: 12px; font-size: 14px;">
+                    📄 Vorschau<br><small style="opacity: 0.8; font-size: 11px;">(ohne Unterschrift)</small>
                 </button>
-                <button onclick="closeStundenabrechnungModal()" class="btn" style="flex: 1; padding: 12px; font-size: 15px; background: rgba(255,255,255,0.2); color: white; border: none;">
+                <button onclick="generateStundenabrechnungPDF()" class="btn btn-success" style="flex: 1; padding: 12px; font-size: 14px;">
+                    ✍️ Signieren & Download<br><small style="opacity: 0.8; font-size: 11px;">(mit Unterschrift)</small>
+                </button>
+                <button onclick="closeStundenabrechnungModal()" class="btn" style="flex: 1; padding: 12px; font-size: 14px; background: rgba(255,255,255,0.2); color: white; border: none;">
                     ❌ Abbrechen
                 </button>
             </div>
@@ -1922,6 +1925,34 @@
             document.getElementById('signatureModal').style.display = 'block';
         }
 
+        // Preview PDF without signature (modal stays open)
+        async function generatePreviewPDF() {
+            const mitarbeiterId = document.getElementById('pdfMitarbeiterId').value;
+            const startDatum = document.getElementById('pdfStartDatum').value;
+            const endDatum = document.getElementById('pdfEndDatum').value;
+
+            if (!startDatum || !endDatum) {
+                showToast('⚠️ Bitte Datumbereich auswählen', 'error', 3000);
+                return;
+            }
+
+            if (new Date(startDatum) > new Date(endDatum)) {
+                showToast('⚠️ Startdatum muss vor Enddatum liegen', 'error', 3000);
+                return;
+            }
+
+            console.log('📄 Generiere Vorschau-PDF (ohne Unterschrift)...');
+
+            // Set signatureData to null for preview
+            signatureData = null;
+
+            // Generate PDF without signature, keep modal open
+            await actuallyGeneratePDFNew(false); // closeModal = false
+
+            // Inform user they can now sign if they want
+            showToast('📄 Vorschau heruntergeladen. Prüfen Sie die Stunden und klicken Sie "Signieren" wenn korrekt.', 'info', 6000);
+        }
+
         // Step 1: Validate and open signature modal
         async function generateStundenabrechnungPDF() {
             const mitarbeiterId = document.getElementById('pdfMitarbeiterId').value;
@@ -2103,7 +2134,7 @@
         // NEW PROFESSIONAL PDF GENERATION WITH AUTOTABLE
         // ============================================
 
-        async function actuallyGeneratePDFNew() {
+        async function actuallyGeneratePDFNew(closeModal = true) {
             const mitarbeiterId = document.getElementById('pdfMitarbeiterId').value;
             const startDatum = document.getElementById('pdfStartDatum').value;
             const endDatum = document.getElementById('pdfEndDatum').value;
@@ -2300,7 +2331,11 @@
                 doc.save(filename);
 
                 showToast('✅ Professionelle Stundenabrechnung erfolgreich erstellt!', 'success', 5000);
-                closeStundenabrechnungModal();
+
+                // Close modal only if requested (for signature workflow)
+                if (closeModal) {
+                    closeStundenabrechnungModal();
+                }
 
             } catch (error) {
                 console.error('❌ Fehler beim Erstellen der PDF:', error);
