@@ -2559,11 +2559,49 @@
                 }
             }
 
+            // 🆕 Phase 1.3: Bearbeitungs-History Badge
+            // Zeigt letzten Mitarbeiter der den Status geändert hat
+            let bearbeitungsBadge = '';
+            if (fahrzeug.bearbeitungsHistory && fahrzeug.bearbeitungsHistory.length > 0) {
+                // Letzter Eintrag
+                const letzteBearbeitung = fahrzeug.bearbeitungsHistory[fahrzeug.bearbeitungsHistory.length - 1];
+                const mitarbeiterName = letzteBearbeitung.mitarbeiterName || 'Unbekannt';
+
+                // Service-Emojis für Services
+                const serviceEmojis = {
+                    'lackierung': '🎨',
+                    'mechanik': '🔧',
+                    'reifen': '🛞',
+                    'pflege': '✨',
+                    'tuev': '📋',
+                    'versicherung': '📄',
+                    'glas': '🔍',
+                    'klima': '❄️',
+                    'dellen': '🔨',
+                    'folierung': '🎬',
+                    'steinschutz': '🛡️',
+                    'werbebeklebung': '📢'
+                };
+
+                // Services als Emojis
+                const services = letzteBearbeitung.services || [];
+                const serviceIcons = services.length > 0
+                    ? ' ' + services.map(s => serviceEmojis[s] || '').join(' ')
+                    : '';
+
+                bearbeitungsBadge = `
+                    <div class="dringlichkeit-badge" style="background: rgba(76, 175, 80, 0.7); backdrop-filter: blur(8px); margin-bottom: 8px; font-size: 10px; padding: 4px 8px;">
+                        👤 ${mitarbeiterName}${serviceIcons}
+                    </div>
+                `;
+            }
+
             card.innerHTML = `
                 ${serviceTypBadge}
                 ${bereitBadge}
                 ${dringlichkeitBadge}
                 ${abholungBadge}
+                ${bearbeitungsBadge}
                 <div class="card-kennzeichen">${fahrzeug.kennzeichen}</div>
                 <div class="card-info">👤 <span class="card-kunde">${fahrzeug.kundenname}</span></div>
                 <div class="card-info">🚗 ${fahrzeug.marke} ${fahrzeug.modell}</div>
@@ -3048,6 +3086,41 @@
                     notiz: null
                 });
 
+                // 🆕 Phase 1.3: Bearbeitungs-History (Audit-Trail)
+                // Trackt welcher Mitarbeiter den Status geändert hat
+                if (!fahrzeug.bearbeitungsHistory) {
+                    fahrzeug.bearbeitungsHistory = [];
+                }
+
+                // Hole Mitarbeiter aus sessionStorage
+                const mitarbeiterStr = sessionStorage.getItem('mitarbeiter');
+                if (mitarbeiterStr) {
+                    try {
+                        const mitarbeiter = JSON.parse(mitarbeiterStr);
+                        const currentServices = JSON.parse(sessionStorage.getItem('currentServices') || '[]');
+
+                        fahrzeug.bearbeitungsHistory.push({
+                            mitarbeiterId: mitarbeiter.id,
+                            mitarbeiterName: mitarbeiter.name,
+                            rolle: mitarbeiter.rolle || 'Sonstige',
+                            services: currentServices,  // Die Services, für die der Mitarbeiter eingeloggt ist
+                            aktion: 'Status geändert',
+                            alterStatus: fahrzeug.prozessStatus || 'neu',
+                            neuerStatus: newStatus,
+                            timestamp: timestamp,
+                            userAgent: navigator.userAgent.substring(0, 200)
+                        });
+
+                        console.log('✅ Bearbeitungs-History erweitert:', {
+                            mitarbeiter: mitarbeiter.name,
+                            status: `${fahrzeug.prozessStatus} → ${newStatus}`,
+                            services: currentServices
+                        });
+                    } catch (e) {
+                        console.error('❌ Fehler beim Parsen von Mitarbeiter-Daten:', e);
+                    }
+                }
+
                 // Last Modified aktualisieren
                 fahrzeug.lastModified = timestamp;
 
@@ -3061,6 +3134,7 @@
                     status: mappedStatus,  // ✅ CRITICAL FIX: Auch status aktualisieren!
                     prozessTimestamps: fahrzeug.prozessTimestamps,
                     statusHistory: fahrzeug.statusHistory,
+                    bearbeitungsHistory: fahrzeug.bearbeitungsHistory,  // 🆕 Phase 1.3: Audit-Trail
                     lastModified: timestamp
                 };
 
@@ -3305,6 +3379,43 @@
                     notiz: notiz || null
                 });
 
+                // 🆕 Phase 1.3: Bearbeitungs-History (Audit-Trail) - MIT Foto
+                // Trackt welcher Mitarbeiter den Status geändert hat
+                if (!fahrzeug.bearbeitungsHistory) {
+                    fahrzeug.bearbeitungsHistory = [];
+                }
+
+                // Hole Mitarbeiter aus sessionStorage
+                const mitarbeiterStr = sessionStorage.getItem('mitarbeiter');
+                if (mitarbeiterStr) {
+                    try {
+                        const mitarbeiter = JSON.parse(mitarbeiterStr);
+                        const currentServices = JSON.parse(sessionStorage.getItem('currentServices') || '[]');
+
+                        fahrzeug.bearbeitungsHistory.push({
+                            mitarbeiterId: mitarbeiter.id,
+                            mitarbeiterName: mitarbeiter.name,
+                            rolle: mitarbeiter.rolle || 'Sonstige',
+                            services: currentServices,
+                            aktion: 'Status geändert (mit Foto)',
+                            alterStatus: fahrzeug.prozessStatus || 'neu',
+                            neuerStatus: newStatus,
+                            timestamp: timestamp,
+                            hatFoto: true,  // Flag: Dieses Update hatte ein Foto
+                            userAgent: navigator.userAgent.substring(0, 200)
+                        });
+
+                        console.log('✅ Bearbeitungs-History erweitert (mit Foto):', {
+                            mitarbeiter: mitarbeiter.name,
+                            status: `${fahrzeug.prozessStatus} → ${newStatus}`,
+                            services: currentServices,
+                            foto: true
+                        });
+                    } catch (e) {
+                        console.error('❌ Fehler beim Parsen von Mitarbeiter-Daten:', e);
+                    }
+                }
+
                 // Last Modified
                 fahrzeug.lastModified = timestamp;
 
@@ -3317,6 +3428,7 @@
                     status: mappedStatus,  // ✅ CRITICAL FIX: Auch status aktualisieren!
                     prozessTimestamps: fahrzeug.prozessTimestamps,
                     statusHistory: fahrzeug.statusHistory,
+                    bearbeitungsHistory: fahrzeug.bearbeitungsHistory,  // 🆕 Phase 1.3: Audit-Trail
                     lastModified: timestamp
                 };
 
