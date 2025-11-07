@@ -859,6 +859,46 @@
             updateNextButtonState();
         }
 
+        // ✅ FIX: Upload photos to Firebase Storage (instead of Base64 in Firestore)
+        async function uploadPhotosToStorage(photoBase64Array, anfrageId) {
+            if (!firebase.storage) {
+                console.warn('⚠️ Firebase Storage not available - falling back to Base64');
+                return photoBase64Array;
+            }
+
+            const storage = firebase.storage();
+            const uploadedURLs = [];
+            const btnNext = document.getElementById('btnNext');
+
+            for (let i = 0; i < photoBase64Array.length; i++) {
+                const base64 = photoBase64Array[i];
+
+                // Update button text with progress
+                btnNext.textContent = `📤 Uploading photo ${i + 1}/${photoBase64Array.length}...`;
+
+                // Convert Base64 to Blob
+                const response = await fetch(base64);
+                const blob = await response.blob();
+
+                // Generate unique filename
+                const timestamp = Date.now();
+                const filename = `photo_${i}_${timestamp}.jpg`;
+                const storagePath = `partner-anfragen/${partner.werkstattId}/${anfrageId}/${filename}`;
+
+                // Upload to Storage
+                const storageRef = storage.ref(storagePath);
+                await storageRef.put(blob);
+
+                // Get download URL
+                const downloadURL = await storageRef.getDownloadURL();
+                uploadedURLs.push(downloadURL);
+
+                console.log(`✅ Photo ${i + 1} uploaded: ${storagePath}`);
+            }
+
+            return uploadedURLs;
+        }
+
         function updateNextButtonState() {
             const btnNext = document.getElementById('btnNext');
             if (currentStep === 1) {
@@ -1272,9 +1312,19 @@
             try {
                 if (!db) throw new Error('Firebase nicht verfügbar');
 
+                // ✅ FIX: Generate anfrage ID FIRST (needed for Storage path)
+                const anfrageId = 'req_' + Date.now();
+                const timestamp = new Date().toISOString();
+
                 // Fotos komprimieren
                 console.log('📸 Komprimiere ' + photos.length + ' Fotos...');
+                btnNext.textContent = 'Fotos komprimieren...';
                 const compressedPhotos = await Promise.all(photos.map(p => compressImage(p)));
+
+                // ✅ FIX: Upload photos to Firebase Storage
+                console.log('📤 Uploading ' + compressedPhotos.length + ' photos to Storage...');
+                btnNext.textContent = 'Fotos hochladen...';
+                const photoURLs = await uploadPhotosToStorage(compressedPhotos, anfrageId);
 
                 // Fahrzeugschein-Fotos komprimieren (falls vorhanden)
                 let compressedFahrzeugschein = [];
@@ -1288,9 +1338,6 @@
                 const termin = document.querySelector('input[name="anliefertermin"]:checked');
                 const lieferoption = document.querySelector('input[name="lieferoption"]:checked').value;
                 const ersatzfahrzeug = document.querySelector('input[name="ersatzfahrzeug"]:checked').value;
-
-                const anfrageId = 'req_' + Date.now();
-                const timestamp = new Date().toISOString();
 
                 const anfrageData = {
                     id: anfrageId,
@@ -1342,7 +1389,9 @@
                     abholadresse: lieferoption === 'abholung' ? (document.getElementById('abholadresse')?.value || partner.adresse || null) : null,
                     ersatzfahrzeugGewuenscht: ersatzfahrzeug === 'ja',
 
-                    fotos: compressedPhotos, // Komprimierte Fotos!
+                    // ✅ FIX: Store Storage URLs instead of Base64
+                    fotos: photoURLs,
+                    fotoCount: photoURLs.length,
 
                     // Status
                     status: 'neu',
