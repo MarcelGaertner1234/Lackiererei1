@@ -2241,6 +2241,55 @@
             console.log('📦 Fahrzeug-Daten vorbereitet:', fahrzeugData);
 
             // ========================================
+            // SCHRITT 4.5: DUPLICATE CHECK (CRITICAL!)
+            // ========================================
+
+            console.log('🔍 DUPLICATE CHECK: Prüfe ob Fahrzeug bereits existiert...');
+
+            // Check 1: Anfrage flag
+            if (anfrage.fahrzeugAngelegt === true) {
+                console.error('❌ DUPLIKAT VERHINDERT! anfrage.fahrzeugAngelegt ist bereits TRUE');
+                alert('⚠️ Fahrzeug wurde bereits angelegt!\n\nDiese Anfrage hat bereits ein verknüpftes Fahrzeug.\n\nBitte prüfen Sie die Fahrzeugliste.');
+                btn.disabled = false;
+                btn.textContent = originalBtnText;
+                return;
+            }
+
+            // Check 2: Query Firestore by partnerAnfrageId
+            const existingByAnfrageId = await window.getCollection('fahrzeuge')
+                .where('partnerAnfrageId', '==', anfrageId)
+                .limit(1)
+                .get();
+
+            if (!existingByAnfrageId.empty) {
+                const existing = existingByAnfrageId.docs[0];
+                console.error('❌ DUPLIKAT VERHINDERT! Fahrzeug mit partnerAnfrageId existiert bereits');
+                alert(`⚠️ Fahrzeug wurde bereits angelegt!\n\nFahrzeug-ID: ${existing.id}\nKennzeichen: ${existing.data().kennzeichen || 'Nicht gesetzt'}`);
+                btn.disabled = false;
+                btn.textContent = originalBtnText;
+                return;
+            }
+
+            // Check 3: Query Firestore by kennzeichen (if exists)
+            if (fahrzeugData.kennzeichen) {
+                const existingByKennzeichen = await window.getCollection('fahrzeuge')
+                    .where('kennzeichen', '==', fahrzeugData.kennzeichen.toUpperCase())
+                    .limit(1)
+                    .get();
+
+                if (!existingByKennzeichen.empty) {
+                    const existing = existingByKennzeichen.docs[0];
+                    console.error('❌ DUPLIKAT VERHINDERT! Fahrzeug mit Kennzeichen existiert bereits');
+                    alert(`⚠️ Fahrzeug mit Kennzeichen "${fahrzeugData.kennzeichen}" existiert bereits!\n\nFahrzeug-ID: ${existing.id}\n\nMöglicherweise wurde dieses Fahrzeug bereits vom Partner oder Admin erstellt.`);
+                    btn.disabled = false;
+                    btn.textContent = originalBtnText;
+                    return;
+                }
+            }
+
+            console.log('✅ Kein Duplikat gefunden - Fahrzeug kann angelegt werden');
+
+            // ========================================
             // SCHRITT 5: FAHRZEUG ERSTELLEN
             // ========================================
 

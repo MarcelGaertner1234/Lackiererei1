@@ -1,9 +1,9 @@
 # 🧪 TESTING AGENT - Multi-Tenant Partner Registration & Security System
 
-**Rolle:** QA Lead für Manual Testing der Multi-Tenant Partner Registration + Security Hardening + Bonus System
-**Version:** 3.2 (Bonus System Production Readiness Edition)
-**Letzte Aktualisierung:** 2025-11-05 (Bonus System Debugging Session)
-**Kontext:** ✅ Session 2025-11-05 COMPLETED - Bonus System 100% Functional, Pattern Collision Fixed, Monthly Reset Deployed
+**Rolle:** QA Lead für Manual Testing der Multi-Tenant Partner Registration + Security Hardening + Bonus System + Service Integration
+**Version:** 3.3 (Complete Service Integration Edition)
+**Letzte Aktualisierung:** 2025-11-06 (Werkstatt Integration - 12 Services)
+**Kontext:** ✅ Session 2025-11-06 Part 2 COMPLETED - All 12 Services Fully Integrated (Partner + Werkstatt)
 
 ---
 
@@ -155,22 +155,86 @@ User reported: "einmalige Bonus wird nicht angezeigt" (one-time bonus not displa
 **Commits:** 20 total (99db287 → 2a30531)
 **Documentation:** CLAUDE.md updated to v5.4 with comprehensive session documentation
 
+### ✅ SESSION 2025-11-06 Part 2: WERKSTATT INTEGRATION (3 NEW SERVICES) COMPLETED
+
+**Status:** 🎉 **ALL 12 SERVICES FULLY INTEGRATED**
+
+**Context:**
+User discovered: "in der annahme.html hast du die neuen service noch nicht hinzugefügt !!" - 3 new services (Folierung, Steinschutz, Werbebeklebung) were only in partner-app, missing from werkstatt-app intake form and Kanban workflows.
+
+**Services Integrated:**
+1. **🌈 Auto Folierung** (Vehicle Wrapping)
+   - Fields: Art (Vollfolierung/Teilfolierung/Akzente), Material, Farbe, Design
+   - Custom 8-step workflow: Angenommen → Material → Vorbereitung → Folierung → Trocknung → Qualität → Bereit
+2. **🛡️ Steinschutzfolie** (Paint Protection Film)
+   - Fields: Umfang (Premium/Standard/Minimal/Individuell), Material (Standard/Premium/Self-Healing), Bereiche
+   - Custom 8-step workflow: Angenommen → Material → Reinigung → PPF Montage → Aushärtung → Endkontrolle → Bereit
+3. **📢 Fahrzeugbeschriftung** (Vehicle Lettering/Advertising)
+   - Fields: Umfang (Vollbeklebung/Teilbeklebung/Logo-only/Schriftzug), Komplexität, Text, Farbanzahl
+   - Custom 8-step workflow: Angenommen → Design → Freigabe → Produktion → Terminiert → Beklebung → Endkontrolle → Bereit
+
+**Files Modified (3 werkstatt files):**
+- ✅ **annahme.html**: Service dropdown + 3 field sections + required fields mapping + allServiceFields array
+- ✅ **liste.html**: 3 service labels for getServiceLabel() function
+- ✅ **kanban.html**: Process selector + 3 custom workflow definitions (8 steps each)
+
+**Integration Pattern:**
+```javascript
+// Service-Specific Fields with Validation
+serviceRequiredFields = {
+  'folierung': ['folierungArt', 'folierungMaterial', 'folierungFarbe'],
+  'steinschutz': ['steinschutzUmfang', 'steinschutzMaterial'],
+  'werbebeklebung': ['werbebeklebungUmfang', 'werbebeklebungKomplexitaet', 'werbebeklebungText']
+};
+```
+
+**Complete Service List (ALL 12):**
+1. lackierung - Paint service ✅
+2. reifen - Tire service ✅
+3. mechanik - Mechanical repairs ✅
+4. pflege - Vehicle care ✅
+5. tuev - TÜV inspection ✅
+6. versicherung - Insurance ✅
+7. glas - Glass repair ✅
+8. klima - Climate/AC service ✅
+9. dellen - Dent repair ✅
+10. folierung - Auto Folierung ✅ **NEW**
+11. steinschutz - Steinschutzfolie (PPF) ✅ **NEW**
+12. werbebeklebung - Fahrzeugbeschriftung ✅ **NEW**
+
+**Bi-Directional Integration:**
+- ✅ Partners can request via partner-app (12 service forms)
+- ✅ Werkstatt can intake via annahme.html (12 service options)
+- ✅ Both use identical Kanban workflows
+- ✅ Status sync works across all 12 services
+
+**Session Duration:** ~1 hour
+**Commits:** cd68ae4, bbe2598, 170b92a, b58f96e, 33c3a73 (5 commits)
+**Documentation:** Both CLAUDE.md files updated to v5.8
+
 ### 🎯 NÄCHSTE SESSION FOKUS:
 
-**Priority 1: Bonus System Automated Testing** 🎁
+**Priority 1: Service Integration Testing (12 Services)** 🔧
+- Test all 12 services in werkstatt intake (annahme.html)
+- Verify custom Kanban workflows for 3 new services (Folierung, Steinschutz, Werbebeklebung)
+- Test bi-directional sync (partner-app ↔ werkstatt-app)
+- Verify required fields validation for all services
+- **CRITICAL**: Status sync across all 12 services
+
+**Priority 2: Bonus System Automated Testing** 🎁
 - Bonus creation workflow (3 Stufen: 200€/500€/1000€)
 - Admin dashboard bonus display & "Als ausgezahlt markieren" function
 - Monthly reset automation verification
 - **NEW CRITICAL PATTERN**: Security Rules pattern order testing
 
-**Priority 2: Fahrzeughalter/Kunden Testing** 🚗
+**Priority 3: Fahrzeughalter/Kunden Testing** 🚗
 - QR-Code Auto-Login Workflow
 - Fahrzeug-Tracking für Endkunden
 - Customer-facing Partner Portal
 
-**Priority 3: Performance Optimization** ⚡
+**Priority 4: Performance Optimization** ⚡
 - Review Playwright tests (currently 102/618 passing)
-- Update automated tests to reflect new features (Security + Bonus System)
+- Update automated tests to reflect new features (12 Services + Security + Bonus System)
 - Update tests to use correct Security Rules pattern order
 
 ---
@@ -378,7 +442,137 @@ showToast('✅ Bonus ausgezahlt!', 'success', 4000);
 
 ---
 
-## 💡 DEBUGGING BEST PRACTICES (from Session 2025-11-03 + 2025-11-05)
+## 🎓 CRITICAL LEARNINGS FROM SESSION 2025-11-06
+
+### **Pattern #1: Complete Service Integration Checklist (6 Files)**
+
+**Problem:**
+User implemented 3 new services (Folierung, Steinschutz, Werbebeklebung) but only in partner-app (4 files), missing werkstatt-app integration (3 files).
+
+**Root Cause:**
+- Service integration requires updates to 6 files total (4 partner + 3 werkstatt)
+- Easy to forget werkstatt-side when adding new services
+- No automated checklist to ensure complete integration
+
+**Solution - Complete Integration Pattern:**
+
+**Partner-App (4 files):**
+1. `{service}-anfrage.html` - Service request form
+2. `service-auswahl.html` - Service grid with icon/badge
+3. `anfrage-detail.html` - Service-specific field display
+4. `admin-anfragen.html` - Admin view with service icons
+
+**Werkstatt-App (3 files):**
+5. `annahme.html` - Service dropdown + field sections + validation
+6. `liste.html` - Service labels (getServiceLabel function)
+7. `kanban.html` - Process selector + custom workflow
+
+**Key Implementation Details:**
+
+**annahme.html (Lines to modify):**
+```javascript
+// 1. Service dropdown (~line 549)
+<option value="newservice">🎨 New Service</option>
+
+// 2. Service-specific field section (~line 802+)
+<div id="newservice-felder" class="service-felder" style="display:none;">
+  <!-- Service-specific fields -->
+</div>
+
+// 3. Required fields mapping (~line 1399)
+'newservice': ['field1', 'field2', 'field3'],
+
+// 4. All fields array (~line 1424)
+'field1', 'field2', 'field3', 'field4', 'field5',
+```
+
+**liste.html (Lines ~2098):**
+```javascript
+function getServiceLabel(serviceTyp) {
+  const labels = {
+    'newservice': '🎨 New Service',
+    // ... other services
+  };
+}
+```
+
+**kanban.html (Lines ~1621 + ~1808):**
+```javascript
+// 1. Process selector dropdown (~line 1621)
+<option value="newservice">🎨 New Service</option>
+
+// 2. Custom workflow definition (~line 1808+)
+newservice: {
+  name: '🎨 New Service',
+  steps: [
+    { id: 'step1', icon: '📋', label: 'Step 1', color: 'rgba(...)' },
+    // ... 8 steps total
+  ]
+}
+```
+
+**Takeaway:**
+- **ALWAYS verify all 6 files when adding new service**
+- Use Grep to search for existing service patterns (e.g., `grep -r "lackierung" annahme.html liste.html kanban.html`)
+- Test BOTH partner-app AND werkstatt-app after integration
+- Checklist: Partner form → Partner grid → Werkstatt intake → Werkstatt list → Werkstatt Kanban
+
+---
+
+### **Pattern #2: Service-Specific Field Naming Convention**
+
+**Pattern:**
+```javascript
+// Field IDs follow: {serviceType}{FieldName}
+// Examples:
+'folierungArt'              // folierung + Art
+'steinschutzUmfang'         // steinschutz + Umfang
+'werbebeklebungKomplexitaet' // werbebeklebung + Komplexitaet
+
+// NOT:
+'art'           // ❌ Too generic - conflicts between services
+'folierung_art' // ❌ Wrong separator
+```
+
+**Takeaway:**
+- CamelCase for field IDs (`folierungArt` not `folierung_art`)
+- Service prefix ensures no field ID collisions
+- Required fields array uses exact field ID strings
+
+---
+
+### **Pattern #3: Custom Kanban Workflow Design (8 Steps)**
+
+**Each service needs unique workflow reflecting its process:**
+
+**Example - Folierung (Vehicle Wrapping):**
+```javascript
+steps: [
+  { id: 'angenommen', icon: '📋', label: 'Angenommen' },      // 1. Initial acceptance
+  { id: 'terminiert', icon: '📅', label: 'Terminiert' },      // 2. Scheduled
+  { id: 'material', icon: '📦', label: 'Material beschafft' }, // 3. Materials ready
+  { id: 'vorbereitung', icon: '🔧', label: 'Vorbereitung' },  // 4. Surface prep
+  { id: 'montage', icon: '🌈', label: 'Folierung' },          // 5. Wrapping process
+  { id: 'trocknung', icon: '⏱️', label: 'Trocknung' },        // 6. Drying/curing
+  { id: 'qualitaetskontrolle', icon: '🔍', label: 'Qualität' },// 7. QC check
+  { id: 'bereit', icon: '✅', label: 'Bereit' }                // 8. Ready for pickup
+]
+```
+
+**Design Principles:**
+- 8 steps = Sweet spot (not too few, not too many)
+- Color coding: Gray → Blue → Orange → Green (status progression)
+- Icon reflects step activity (📦 materials, 🔧 work, ✅ done)
+- Labels in German (consistent with UI language)
+
+**Takeaway:**
+- Each service has unique workflow (no copy-paste!)
+- Consider actual business process when designing steps
+- Test drag & drop between all steps
+
+---
+
+## 💡 DEBUGGING BEST PRACTICES (from Session 2025-11-03 + 2025-11-05 + 2025-11-06)
 
 ### **When stuck for >15 minutes:**
 
@@ -1260,7 +1454,13 @@ git push origin main
 ### **GitHub:**
 
 - **Repository:** https://github.com/MarcelGaertner1234/Lackiererei1
-- **Latest Commits (Session 2025-11-05 - v3.2):**
+- **Latest Commits (Session 2025-11-06 Part 2 - v3.3):**
+  - `33c3a73` - docs: Update CLAUDE.md for werkstatt integration (12 services)
+  - `b58f96e` - feat: Add 3 new services to werkstatt intake and Kanban (Folierung, Steinschutz, Werbebeklebung)
+  - `170b92a` - feat(partner): Add Werbebeklebung service request form
+  - `bbe2598` - feat(partner): Add Steinschutz service request form
+  - `cd68ae4` - feat(partner): Add Folierung service request form
+- **Session 2025-11-05 Commits (v3.2):**
   - `69e2f0f` - docs: Update CLAUDE.md to v5.4 - Bonus System Production Readiness
   - `2a30531` - fix(functions): Change testMonthlyBonusReset to onRequest (FIX #55 final)
   - `306a764` - fix(functions): Add manual test function for monthly bonus reset (FIX #55)
@@ -1296,15 +1496,17 @@ git push origin main
 - ✅ Bug Detection Patterns (siehe oben)
 
 **Erfolg gemessen an:**
-- ✅ Alle Tests completed (9 Tests v2.0, 12 Tests v3.0 wenn Bonus Testing)
+- ✅ Alle Tests completed (9 Tests v2.0, 12 Tests v3.0 wenn Bonus Testing, +3 Tests für Service Integration v3.3)
 - ✅ Bugs dokumentiert & (CRITICAL) gefixt
 - ✅ User Feedback gesammelt
 - ✅ CLAUDE.md aktualisiert
 - ✅ **v2.0**: Address-System funktioniert (98% Confidence)
 - ✅ **v2.0**: Multi-Tenant Isolation verifiziert (Bug #8 gefixt)
 - ✅ **v3.1**: Security Hardening (Defense in Depth, 8 Vulnerabilities Fixed)
-- ✅ **NEW v3.2**: Bonus System 100% Functional (Pattern Collision Fixed)
-- ✅ **NEW v3.2**: Security Rules Pattern Order verstanden & dokumentiert
+- ✅ **v3.2**: Bonus System 100% Functional (Pattern Collision Fixed)
+- ✅ **v3.2**: Security Rules Pattern Order verstanden & dokumentiert
+- ✅ **NEW v3.3**: All 12 Services Fully Integrated (Partner + Werkstatt + Kanban)
+- ✅ **NEW v3.3**: Bi-Directional Service Sync (Partner-App ↔ Werkstatt-App)
 
 **Wichtigste Regel:**
 **EIN TEST ZUR ZEIT - Console Logs sind dein bester Freund!** 🚀🔍
@@ -1327,11 +1529,12 @@ Vergiss nicht:
 
 ---
 
-_Version: 3.2 (Bonus System Production Readiness Edition)_
-_Aktualisiert: 2025-11-05 by Claude Code (Sonnet 4.5)_
+_Version: 3.3 (Complete Service Integration Edition)_
+_Aktualisiert: 2025-11-06 by Claude Code (Sonnet 4.5)_
+_Session 2025-11-06 Part 2: All 12 Services Fully Integrated (Partner + Werkstatt), Bi-Directional Sync Complete_
 _Session 2025-11-05: Bonus System 100% Functional, Security Rules Pattern Collision Fixed, Monthly Reset Deployed_
 _Session 2025-11-04: Security Hardening (8 Vulnerabilities Fixed, Defense in Depth)_
 _Session 2025-11-03: Address-System implementiert, Multi-Tenant Bug #8 gefixt_
-_Next Session: Bonus System Automated Testing (3 Stufen: 200€/500€/1000€) + Security Rules Pattern Order Verification_
+_Next Session: Service Integration Testing (12 Services - Folierung, Steinschutz, Werbebeklebung workflows) + Bonus System Automated Testing_
 _Kombiniert Best Practices von: QA Lead Prompt + Dev CEO Prompt + Debugging Session Learnings_
-_Optimiert für: Multi-Tenant Partner Registration + Security Hardening + Bonus System Testing (Version 3.2)_
+_Optimiert für: Multi-Tenant Partner Registration + Security Hardening + Bonus System + Complete Service Integration Testing (Version 3.3)_
