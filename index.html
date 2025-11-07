@@ -2631,6 +2631,9 @@
                 // Success message
                 showToast(`Willkommen, ${currentUser.name}! Sie sind jetzt als Mitarbeiter angemeldet.`, 'success', 4000);
 
+                // 🆕 Phase 1.2: Show Service Selection Modal
+                showServiceSelectionModal();
+
             } catch (error) {
                 console.error('❌ Mitarbeiter-Login fehlgeschlagen:', error);
 
@@ -4003,6 +4006,103 @@
                 await setupActiveSessionsListener();
             }
         })();
+
+        // ============================================
+        // SERVICE-AUSWAHL MODAL (Phase 1.2)
+        // ============================================
+
+        /**
+         * Show service selection modal after mitarbeiter login
+         */
+        function showServiceSelectionModal() {
+            console.log('🎨 Zeige Service-Auswahl Modal');
+            document.getElementById('serviceAuswahlModal').style.display = 'block';
+        }
+
+        /**
+         * Skip service selection and continue to dashboard
+         */
+        function skipServiceSelection() {
+            console.log('⏩ Service-Auswahl übersprungen');
+            document.getElementById('serviceAuswahlModal').style.display = 'none';
+            sessionStorage.setItem('currentServices', JSON.stringify([]));
+        }
+
+        /**
+         * Confirm service selection and create firestore sessions
+         */
+        async function confirmServiceSelection() {
+            console.log('✅ Service-Auswahl bestätigen...');
+
+            // Hole ausgewählte Services
+            const checkboxes = document.querySelectorAll('input[name="service"]:checked');
+            const selectedServices = Array.from(checkboxes).map(cb => cb.value);
+
+            if (selectedServices.length === 0) {
+                showToast('⚠️ Bitte mindestens einen Service auswählen!', 'warning', 3000);
+                return;
+            }
+
+            // Hole Mitarbeiter-Daten aus sessionStorage
+            const mitarbeiterStr = sessionStorage.getItem('mitarbeiter');
+            if (!mitarbeiterStr) {
+                console.error('❌ Kein Mitarbeiter in sessionStorage!');
+                showToast('❌ Fehler: Kein Mitarbeiter eingeloggt', 'error', 3000);
+                return;
+            }
+
+            const mitarbeiter = JSON.parse(mitarbeiterStr);
+
+            // Speichere Services in sessionStorage
+            sessionStorage.setItem('currentServices', JSON.stringify(selectedServices));
+
+            // Erstelle serviceSessions in Firestore
+            try {
+                const sessionPromises = selectedServices.map(async (service) => {
+                    const sessionData = {
+                        mitarbeiterId: mitarbeiter.id,
+                        mitarbeiterName: mitarbeiter.name,
+                        service: service,
+                        werkstattId: window.werkstattId,
+                        loginTime: firebase.firestore.FieldValue.serverTimestamp(),
+                        logoutTime: null,
+                        status: 'active',
+                        userAgent: navigator.userAgent.substring(0, 200)
+                    };
+
+                    return window.getCollection('serviceSessions').add(sessionData);
+                });
+
+                await Promise.all(sessionPromises);
+                console.log(`✅ ${selectedServices.length} Service-Session(s) erstellt:`, selectedServices);
+
+                // Modal schließen
+                document.getElementById('serviceAuswahlModal').style.display = 'none';
+
+                // Service-Namen für Toast (mit Emojis)
+                const serviceEmojis = {
+                    'lackierung': '🎨',
+                    'mechanik': '🔧',
+                    'reifen': '🛞',
+                    'pflege': '✨',
+                    'tuev': '📋',
+                    'versicherung': '📄',
+                    'glas': '🔍',
+                    'klima': '❄️',
+                    'dellen': '🔨',
+                    'folierung': '🎬',
+                    'steinschutz': '🛡️',
+                    'werbebeklebung': '📢'
+                };
+
+                const serviceNames = selectedServices.map(s => serviceEmojis[s] || '').join(' ');
+                showToast(`✅ Angemeldet für: ${serviceNames}`, 'success', 4000);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen der Service-Sessions:', error);
+                showToast('❌ Fehler beim Speichern der Services. Siehe Console.', 'error', 4000);
+            }
+        }
     </script>
 </body>
 </html>

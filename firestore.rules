@@ -129,6 +129,48 @@ service cloud.firestore {
     }
 
     // ============================================
+    // SERVICE-SESSIONS COLLECTION (Multi-Tenant)
+    // Phase 1.2 - Dienstplan Feature
+    // Tracks which services (Lackierung, Mechanik, etc.) each employee is working on
+    // ============================================
+
+    match /{serviceSessionsCollection}/{sessionId} {
+      // Mitarbeiter can create their own service sessions
+      // VALIDATION: Ensures werkstattId matches, mitarbeiterId is current user, status is 'active'
+      allow create: if serviceSessionsCollection.matches('serviceSessions_.*')
+                    && isAuthenticated()
+                    && request.resource.data.werkstattId == serviceSessionsCollection.split('_')[1]
+                    && request.resource.data.mitarbeiterId == request.auth.uid
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.keys().hasAll([
+                        'mitarbeiterId', 'mitarbeiterName', 'service',
+                        'werkstattId', 'loginTime', 'status'
+                    ]);
+
+      // Mitarbeiter can read/update their own sessions
+      allow read, update: if serviceSessionsCollection.matches('serviceSessions_.*')
+                          && isAuthenticated()
+                          && resource.data.mitarbeiterId == request.auth.uid;
+
+      // Mitarbeiter can delete their own sessions (logout)
+      allow delete: if serviceSessionsCollection.matches('serviceSessions_.*')
+                    && isAuthenticated()
+                    && resource.data.mitarbeiterId == request.auth.uid;
+
+      // 🆕 Use Custom Claims for query-compatible access check
+      // Werkstatt & Admin can read all sessions (for monitoring dashboard)
+      // CRITICAL: Uses request.auth.token (Custom Claims) instead of get()
+      allow read: if serviceSessionsCollection.matches('serviceSessions_.*')
+                  && isAuthenticated()
+                  && (
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'admin'
+                    || request.auth.token.role == 'superadmin'
+                    || request.auth.token.role == 'mitarbeiter'
+                  );
+    }
+
+    // ============================================
     // USERS COLLECTION
     // ============================================
 
