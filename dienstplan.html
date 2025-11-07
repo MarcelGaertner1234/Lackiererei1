@@ -1174,6 +1174,15 @@
                 // 🆕 Feature 2: Ensure special schicht-typen exist
                 await ensureSpecialSchichtTypen();
 
+                // 🔄 ONE-TIME MIGRATION: Recalculate monatlicheStunden from existing shifts
+                const migrationKey = 'monatlicheStunden_migration_2025_11';
+                if (!localStorage.getItem(migrationKey)) {
+                    console.log('🔄 Running one-time migration: monatlicheStunden recalculation');
+                    await recalculateMonatlicheStunden();
+                    localStorage.setItem(migrationKey, 'completed');
+                    console.log('✅ Migration completed and marked as done');
+                }
+
                 // Render initial view
                 renderCalendar();
                 renderMitarbeiterSidebar();
@@ -3072,6 +3081,85 @@
 
             return Math.round(totalHours * 100) / 100;  // Round to 2 decimals
         }
+
+        // 🔄 ONE-TIME MIGRATION: Recalculate monatlicheStunden from existing shifts
+        async function recalculateMonatlicheStunden() {
+            try {
+                console.log('🔄 Starting monatlicheStunden recalculation...');
+
+                // Get current month
+                const now = new Date();
+                const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+                // Load all data
+                const [schichtenSnapshot, schichtTypenSnapshot, mitarbeiterSnapshot] = await Promise.all([
+                    window.getCollection('schichten').get(),
+                    window.getCollection('schichtTypen').get(),
+                    window.getCollection('mitarbeiter').get()
+                ]);
+
+                const allSchichtenData = schichtenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const allSchichtTypenData = schichtTypenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const allMitarbeiterData = mitarbeiterSnapshot.docs.filter(doc => doc.id !== '_init').map(doc => ({ id: doc.id, ...doc.data() }));
+
+                console.log(`📊 Loaded: ${allSchichtenData.length} shifts, ${allSchichtTypenData.length} shift types, ${allMitarbeiterData.length} employees`);
+
+                // Filter shifts from current month (only regular shifts)
+                const currentMonthShifts = allSchichtenData.filter(s => s.datum >= currentMonthStart);
+                console.log(`📅 Found ${currentMonthShifts.length} shifts in current month (${currentMonth})`);
+
+                // Group by mitarbeiterId and calculate hours
+                const mitarbeiterHours = {};
+
+                for (const schicht of currentMonthShifts) {
+                    const schichtTyp = allSchichtTypenData.find(st => String(st.id) === String(schicht.schichtTypId));
+
+                    // Only count regular shifts (not Urlaub/Krank/Frei)
+                    if (schichtTyp && !schichtTyp.isSpecial) {
+                        const hours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                        if (hours > 0) {
+                            if (!mitarbeiterHours[schicht.mitarbeiterId]) {
+                                mitarbeiterHours[schicht.mitarbeiterId] = 0;
+                            }
+                            mitarbeiterHours[schicht.mitarbeiterId] += hours;
+                        }
+                    }
+                }
+
+                console.log('📊 Calculated hours per employee:', mitarbeiterHours);
+
+                // Update all mitarbeiter documents
+                let updateCount = 0;
+                for (const mitarbeiter of allMitarbeiterData) {
+                    const monatlicheStunden = mitarbeiterHours[mitarbeiter.id] || 0;
+
+                    await window.getCollection('mitarbeiter').doc(mitarbeiter.id).update({
+                        monatlicheStunden: Math.round(monatlicheStunden * 100) / 100,
+                        letzterResetMonat: currentMonth
+                    });
+
+                    if (monatlicheStunden > 0) {
+                        console.log(`✅ ${mitarbeiter.name}: ${monatlicheStunden.toFixed(2)}h/Monat`);
+                        updateCount++;
+                    }
+                }
+
+                console.log(`✅ Recalculation complete! Updated ${updateCount} employees.`);
+                showToast(`✅ ${updateCount} Mitarbeiter aktualisiert (${currentMonth})`, 'success', 5000);
+
+                // Reload data to show updates
+                await loadMitarbeiter();
+                renderCalendar();
+
+            } catch (error) {
+                console.error('❌ Error during recalculation:', error);
+                showToast('❌ Fehler bei der Neuberechnung', 'error');
+            }
+        }
+
+        // Expose function to window for manual trigger
+        window.recalculateMonatlicheStunden = recalculateMonatlicheStunden;
 
         // Toast notification
         function showToast(message, type = 'success', duration = 3000) {
