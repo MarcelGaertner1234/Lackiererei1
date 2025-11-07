@@ -171,6 +171,74 @@ service cloud.firestore {
     }
 
     // ============================================
+    // URLAUBS-ANFRAGEN COLLECTION (Multi-Tenant)
+    // Phase 2.1 - Dienstplan Feature (Vacation Requests)
+    // Mitarbeiter können Urlaub anfragen, Admin kann genehmigen/ablehnen
+    // ============================================
+
+    match /{urlaubsAnfragenCollection}/{anfrageId} {
+      // Mitarbeiter can create their own vacation requests
+      // VALIDATION: Ensures werkstattId matches, mitarbeiterId is current user, status is 'pending'
+      allow create: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+                    && isAuthenticated()
+                    && request.resource.data.werkstattId == urlaubsAnfragenCollection.split('_')[1]
+                    && request.resource.data.mitarbeiterId == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasAll([
+                        'mitarbeiterId', 'mitarbeiterName', 'startDatum', 'endDatum',
+                        'anzahlTage', 'grund', 'status', 'werkstattId', 'createdAt'
+                    ]);
+
+      // Mitarbeiter can read their own requests
+      allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+                  && isAuthenticated()
+                  && resource.data.mitarbeiterId == request.auth.uid;
+
+      // 🆕 Use Custom Claims for query-compatible access check
+      // Werkstatt & Admin can read all requests (for admin panel)
+      // CRITICAL: Uses request.auth.token (Custom Claims) instead of get()
+      allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+                  && isAuthenticated()
+                  && (
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'admin'
+                    || request.auth.token.role == 'superadmin'
+                  );
+
+      // Admin can update requests (approve/reject)
+      // VALIDATION: Only status, bearbeitetVon, bearbeitetAm, ablehnungsgrund can be changed
+      allow update: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    )
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                        'status', 'bearbeitetVon', 'bearbeitetAm', 'ablehnungsgrund'
+                    ])
+                    && (
+                      request.resource.data.status == 'approved'
+                      || request.resource.data.status == 'rejected'
+                    );
+
+      // Mitarbeiter can delete their own pending requests
+      allow delete: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+                    && isAuthenticated()
+                    && resource.data.mitarbeiterId == request.auth.uid
+                    && resource.data.status == 'pending';
+
+      // Admin can delete any request
+      allow delete: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    );
+    }
+
+    // ============================================
     // USERS COLLECTION
     // ============================================
 
