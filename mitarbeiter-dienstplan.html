@@ -1557,79 +1557,102 @@
                 const month = startDate.getMonth() + 1; // 1-12
 
                 // Load all data in parallel
-                const [schichtenSnapshot, schichtTypenSnapshot] = await Promise.all([
+                const [schichtenSnapshot, schichtTypenSnapshot, zeiterfassungSnapshot] = await Promise.all([
                     window.getCollection('schichten')
                         .where('mitarbeiterId', '==', currentUser.mitarbeiterId)
                         .where('datum', '>=', startDatum)
                         .where('datum', '<=', endDatum)
                         .get(),
-                    window.getCollection('schichtTypen').get()
+                    window.getCollection('schichtTypen').get(),
+                    window.getCollection('zeiterfassung')
+                        .where('mitarbeiterId', '==', currentUser.mitarbeiterId)
+                        .where('datum', '>=', startDatum)
+                        .where('datum', '<=', endDatum)
+                        .where('status', '==', 'completed')
+                        .get()
                 ]);
 
                 const schichten = schichtenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 const schichtTypen = schichtTypenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const zeiterfassungen = zeiterfassungSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                // Create schicht lookup map for fast access
+                // Create schicht and zeiterfassung lookup maps for fast access
                 const schichtenByDate = {};
                 schichten.forEach(schicht => {
                     schichtenByDate[schicht.datum] = schicht;
                 });
 
+                const zeiterfassungByDate = {};
+                zeiterfassungen.forEach(zeit => {
+                    zeiterfassungByDate[zeit.datum] = zeit;
+                });
+
                 // Get all days in month
                 const allDays = getAllDaysInMonth(year, month);
 
-                // Build table data
+                // Build table data with SOLL/IST/Differenz columns
                 const tableData = allDays.map(date => {
                     const dateStr = formatDate(date, 'YYYY-MM-DD');
                     const weekday = formatDate(date, 'dddd');
                     const schicht = schichtenByDate[dateStr];
+                    const zeiterfassung = zeiterfassungByDate[dateStr];
 
-                    if (!schicht) {
-                        // Empty row for days without shifts
-                        return [formatDate(date, 'DD.MM.YYYY'), weekday, '', '', '', ''];
+                    // Calculate SOLL hours
+                    let sollHours = 0;
+                    let schichtName = '';
+
+                    if (schicht) {
+                        const schichtTyp = schichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                        if (schichtTyp) {
+                            schichtName = schichtTyp.name;
+                            if (!schichtTyp.isSpecial) {
+                                sollHours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                            }
+                        }
                     }
 
-                    const schichtTyp = schichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
-                    if (!schichtTyp) {
-                        return [formatDate(date, 'DD.MM.YYYY'), weekday, '', '', '', ''];
+                    // Calculate IST hours
+                    let istHours = 0;
+                    let istMarker = '';
+                    if (zeiterfassung) {
+                        istHours = zeiterfassung.calculatedHours || 0;
+                        // Add * marker if manually edited
+                        if (zeiterfassung.manuallyEdited) {
+                            istMarker = '*';
+                        }
                     }
 
-                    // For special shifts (Urlaub/Krank/Frei)
-                    if (schichtTyp.isSpecial) {
-                        return [
-                            formatDate(date, 'DD.MM.YYYY'),
-                            weekday,
-                            schichtTyp.name,  // Show "Urlaub", "Krank", "Frei" in Start column
-                            '',
-                            '',
-                            ''
-                        ];
-                    }
+                    // Calculate Differenz
+                    const differenz = istHours - sollHours;
 
-                    // For regular work shifts
-                    const start = schichtTyp.startzeit || '';
-                    const stop = schichtTyp.endzeit || '';
-                    const totalHours = calculateShiftHours(start, stop);
-                    const breakTime = getBreakTime(totalHours + getBreakTime(totalHours)); // Reverse calculation
-                    const workTime = totalHours;
+                    // Format columns
+                    const sollStr = sollHours > 0 ? `${sollHours.toFixed(2)}h` : '-';
+                    const istStr = istHours > 0 ? `${istHours.toFixed(2)}h${istMarker}` : '-';
+                    const differenzStr = (sollHours > 0 || istHours > 0) ? `${differenz >= 0 ? '+' : ''}${differenz.toFixed(2)}h` : '-';
 
                     return [
                         formatDate(date, 'DD.MM.YYYY'),
                         weekday,
-                        start,
-                        stop,
-                        breakTime > 0 ? `${(breakTime * 60).toFixed(0)} min` : '',
-                        workTime > 0 ? `${workTime.toFixed(2)}h` : ''
+                        schichtName || '-',
+                        sollStr,
+                        istStr,
+                        differenzStr
                     ];
                 });
 
                 // Calculate totals
-                const totalHours = schichten
+                const totalSollHours = schichten
                     .map(s => {
                         const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
                         return st && !st.isSpecial ? calculateShiftHours(st.startzeit, st.endzeit) : 0;
                     })
                     .reduce((sum, h) => sum + h, 0);
+
+                const totalIstHours = zeiterfassungen
+                    .map(z => z.calculatedHours || 0)
+                    .reduce((sum, h) => sum + h, 0);
+
+                const totalDifferenz = totalIstHours - totalSollHours;
 
                 const urlaubDays = schichten.filter(s => {
                     const st = schichtTypen.find(t => String(t.id) === String(s.schichtTypId));
@@ -1661,15 +1684,26 @@
                 doc.text(`Monat: ${formatDate(startDate, 'MMMM')}`, 20, infoY + 24);
                 doc.text(`Jahr: ${year}`, 20, infoY + 30);
 
-                // Summary box
-                doc.setFontSize(12);
+                // Summary box with SOLL/IST/Differenz
+                doc.setFontSize(11);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`Stunden Total: ${totalHours.toFixed(2)}h`, 20, infoY + 40);
+                doc.text(`SOLL-Stunden: ${totalSollHours.toFixed(2)}h`, 20, infoY + 40);
+                doc.text(`IST-Stunden: ${totalIstHours.toFixed(2)}h`, 80, infoY + 40);
+
+                // Differenz with color coding
+                const differenzText = `Differenz: ${totalDifferenz >= 0 ? '+' : ''}${totalDifferenz.toFixed(2)}h`;
+                if (totalDifferenz > 0) {
+                    doc.setTextColor(0, 128, 0); // Green for positive (Überstunden)
+                } else if (totalDifferenz < 0) {
+                    doc.setTextColor(200, 0, 0); // Red for negative (Minusstunden)
+                }
+                doc.text(differenzText, 140, infoY + 40);
+                doc.setTextColor(0, 0, 0); // Reset to black
 
                 // Table with autoTable
                 doc.autoTable({
                     startY: infoY + 48,
-                    head: [['Datum', 'Wochentag', 'Start', 'Stop', 'Pause', 'Arbeitszeit']],
+                    head: [['Datum', 'Wochentag', 'Schicht', 'SOLL-Std', 'IST-Std', 'Differenz']],
                     body: tableData,
                     theme: 'grid',
                     styles: {
@@ -1685,12 +1719,12 @@
                         halign: 'center'
                     },
                     columnStyles: {
-                        0: { halign: 'center', cellWidth: 28 },  // Datum
-                        1: { halign: 'left', cellWidth: 30 },    // Wochentag
-                        2: { halign: 'center', cellWidth: 22 },  // Start
-                        3: { halign: 'center', cellWidth: 22 },  // Stop
-                        4: { halign: 'center', cellWidth: 22 },  // Pause
-                        5: { halign: 'center', cellWidth: 26 }   // Arbeitszeit
+                        0: { halign: 'center', cellWidth: 25 },  // Datum
+                        1: { halign: 'left', cellWidth: 28 },    // Wochentag
+                        2: { halign: 'center', cellWidth: 30 },  // Schicht
+                        3: { halign: 'center', cellWidth: 23 },  // SOLL-Std
+                        4: { halign: 'center', cellWidth: 23 },  // IST-Std
+                        5: { halign: 'center', cellWidth: 23 }   // Differenz
                     },
                     didDrawCell: (data) => {
                         // Highlight weekends
@@ -1702,6 +1736,20 @@
                                 doc.setTextColor(100, 100, 100);
                                 doc.text(weekday, data.cell.x + 2, data.cell.y + data.cell.height / 2 + 2);
                                 doc.setTextColor(0, 0, 0);
+                            }
+                        }
+
+                        // Color code Differenz column
+                        if (data.section === 'body' && data.column.index === 5) {
+                            const text = data.cell.text[0];
+                            if (text && text !== '-') {
+                                if (text.startsWith('+')) {
+                                    doc.setTextColor(0, 128, 0); // Green for positive
+                                } else if (text.startsWith('-')) {
+                                    doc.setTextColor(200, 0, 0); // Red for negative
+                                }
+                                doc.text(text, data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 2, { align: 'center' });
+                                doc.setTextColor(0, 0, 0); // Reset
                             }
                         }
                     }
@@ -1781,6 +1829,16 @@
                     });
 
                     console.log(`📋 ${currentAnnotations.length} Anmerkungen ins PDF eingefügt`);
+                }
+
+                // Legend for manually edited entries
+                const hasManuallyEdited = zeiterfassungen.some(z => z.manuallyEdited);
+                if (hasManuallyEdited) {
+                    doc.setFontSize(8);
+                    doc.setTextColor(100, 100, 100);
+                    doc.setFont(undefined, 'italic');
+                    doc.text('* = Vom Administrator manuell korrigierte Zeiterfassung', 20, 280);
+                    doc.setFont(undefined, 'normal');
                 }
 
                 // Footer
