@@ -1,3 +1,30 @@
+> **⚠️ DEPRECATION NOTICE - OUTDATED DOCUMENTATION**
+>
+> This README.md describes the **outdated v1.0/2.0 localStorage version**.
+>
+> **For current technical documentation**, see:
+> - **[CLAUDE.md](./CLAUDE.md)** - Comprehensive development guide (800+ lines, up-to-date)
+> - **Current Version:** v3.2.0 (Firebase, Multi-Tenant, 12 Services, Partner Portal, Zeiterfassung)
+>
+> **Major differences between versions:**
+> - **v1.0/2.0** (this doc): LocalStorage, single-tenant, basic vehicle intake/completion
+> - **v3.2.0** (current): Firebase Firestore, multi-tenant (Mosbach/Heidelberg), Partner Portal (12 services), Employee time tracking (Zeiterfassung), Cloud Functions, Bonus System, Status Synchronization, Playwright E2E tests
+>
+> **Missing from this README:**
+> - Multi-tenant architecture (`window.getCollection()` helper)
+> - Partner Portal (12 service request forms: lackier, reifen, mechanik, pflege, tuev, versicherung, glas, klima, dellen, folierung, steinschutz, werbebeklebung)
+> - Zeiterfassungs-System (SOLL vs IST hours, employee time clock)
+> - Firebase Cloud Functions (OpenAI GPT-4, email notifications, auto-login tokens)
+> - Kanban board with 10 custom workflows
+> - Security Rules (role-based access control)
+> - GitHub Pages deployment (auto-deploy on push)
+> - Bonus System for partners
+> - Status Synchronization across 12 services
+>
+> **Last Updated:** 2025-11-08
+>
+> ---
+
 # 🚗 Fahrzeugannahme-App Version 2.0
 
 **Digitale Fahrzeug-Annahme und -Abnahme für Auto-Lackierzentrum Mosbach**

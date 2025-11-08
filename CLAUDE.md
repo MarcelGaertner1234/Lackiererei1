@@ -17,6 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [Known Limitations](#-known-limitations) - Test status, Browser support
 - [Session History](#-session-history) - Latest sessions (Nov 6-7) | [Full Archive](./CLAUDE_SESSIONS_ARCHIVE.md)
 - [External Resources](#-external-resources) - GitHub, Firebase Console, Live App
+- [Quick Reference](#-quick-reference) - Test accounts, Collections, Indexes, Emulator URLs
+- [Recent Documentation Analysis](#-recent-documentation-analysis) - Analysis docs (Nov 8, 2025)
 
 ---
 
@@ -25,6 +27,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### First Time Setup
 ```bash
 cd "Marketing/06_Digitale_Tools/Fahrzeugannahme_App"
+
+# Verify Node.js version (required: Node 18+, npm 9+)
+node -v  # Should be v18.0.0 or higher
+npm -v   # Should be 9.0.0 or higher
+
 npm install
 
 # CRITICAL: Verify Java 21+ for Firebase Emulators
@@ -82,6 +89,27 @@ git add . && git commit -m "feat: description" && git push
 # Verify deployment
 curl -I https://marcelgaertner1234.github.io/Lackiererei1/
 ```
+
+**Deployment Methods:**
+1. **GitHub Pages** (Primary) - Auto-deploys on push to `main` (HTML/CSS/JS only)
+2. **Firebase Functions** - Auto-deploys when `functions/**` changed (see `.github/workflows/deploy-functions.yml`)
+3. **Firebase Hosting** - Manual: `firebase deploy --only hosting` (alternative to GitHub Pages)
+4. **Security Rules** - Manual: `firebase deploy --only firestore:rules` (not auto-deployed for safety)
+
+### CI/CD Workflows
+
+**GitHub Actions:**
+- `.github/workflows/deploy-functions.yml` - Auto-deploys Cloud Functions when `functions/**` changes
+- `.github/workflows/critical-tests.yml` - Runs Playwright tests on push (currently disabled)
+
+**Workflow Triggers:**
+- `push to main` → Triggers GitHub Pages deployment (built-in)
+- `push to main` + `functions/**` changed → Triggers Firebase Functions deployment
+- Manual: `firebase deploy` commands (see Firebase Deployment section above)
+
+**Environment Variables Required (GitHub Secrets):**
+- `FIREBASE_TOKEN` - Firebase CLI token for deployment
+- `GCP_SA_KEY` - Google Cloud Platform service account key
 
 ---
 
@@ -685,6 +713,8 @@ await window.getCollection('fahrzeuge').add(fahrzeugData);
 | Status sync not working | Field name inconsistency | Verify `partnerAnfrageId` used in all creation paths |
 | Duplicate Kanban entries | Missing duplicate prevention | Add 3-layer check (flag, partnerAnfrageId, kennzeichen) |
 | Random status display | Query without ordering | Add `.orderBy('timestamp', 'desc')` to query |
+| Service Worker Response errors | External tracking pixels (Google cleardot.gif) | Skip external resources from caching, return 408 Response (see `sw.js:197-202, 307-314`) |
+| Firestore Composite Index missing | PDF generation query on `zeiterfassung` | Click error message link → Index auto-created in ~2 min (one-time setup) |
 
 ---
 
@@ -703,6 +733,17 @@ await window.getCollection('fahrzeuge').add(fahrzeugData);
 ### Offline Mode
 - ❌ No offline data persistence (intentional - real-time data priority)
 - ❌ No service worker caching for HTML (Firebase Auth requires online)
+
+### Firestore Composite Indexes
+
+**Zeiterfassung PDF Generation:**
+- ⚠️ Requires composite index on first use (one-time setup)
+- Collection: `zeiterfassung_{werkstattId}`
+- Fields: `mitarbeiterId` (ascending) + `status` (ascending) + `datum` (ascending)
+- **Setup:** Click the link in the Firestore error message → Index auto-created in ~2 minutes
+- **Symptoms if missing:** PDF generation fails with "The query requires an index" error
+
+**Note:** This is a one-time setup per werkstatt. After creating the index, PDF generation works permanently.
 
 ---
 
@@ -734,7 +775,95 @@ await window.getCollection('fahrzeuge').add(fahrzeugData);
 
 ---
 
-_Last Updated: 2025-11-08 (Zeiterfassungs-System + CLAUDE.md Optimization) by Claude Code (Sonnet 4.5)_
-_Version: v2025.11.08.1 | File Size: ~678 lines (optimized & comprehensive)_
+## 🔍 Quick Reference
+
+### Test Accounts
+- **Werkstatt Mosbach:** See Firebase Console → Authentication
+- **Partner Test:** `werkstatt-polen@...` (created in TEST 6 - Multi-Tenant Partner Registration)
+- **Login Flow:** Werkstatt login (Stage 1) → Employee selection (Stage 2, no Firebase Auth)
+
+### Firestore Collections Pattern
+
+**Global Collections (no suffix):**
+- `users` - Pending werkstatt assignment
+- `partners` - Pending werkstatt assignment
+
+**Multi-Tenant Collections (with `_{werkstattId}` suffix):**
+```
+fahrzeuge_mosbach, fahrzeuge_heidelberg          # Vehicles
+kunden_mosbach, kunden_heidelberg                # Customers
+partnerAnfragen_mosbach, partnerAnfragen_heidelberg  # Partner service requests
+bonusAuszahlungen_mosbach, bonusAuszahlungen_heidelberg  # Partner bonuses
+zeiterfassung_mosbach, zeiterfassung_heidelberg  # Employee time tracking (SOLL/IST)
+mitarbeiter_mosbach, mitarbeiter_heidelberg      # Employees
+schichten_mosbach, schichten_heidelberg          # Employee schedules
+urlaub_mosbach, urlaub_heidelberg                # Vacation requests
+```
+
+**Critical Helper Function:**
+```javascript
+// ✅ ALWAYS use this helper (auto-appends werkstattId)
+const collection = window.getCollection('fahrzeuge');  // → 'fahrzeuge_mosbach'
+
+// ❌ NEVER hardcode collection names
+const collection = db.collection('fahrzeuge_mosbach');
+```
+
+### Composite Indexes Required
+
+**Zeiterfassung PDF Generation:**
+- Collection: `zeiterfassung_{werkstattId}`
+- Fields: `mitarbeiterId` (ascending) + `status` (ascending) + `datum` (ascending)
+- Setup: One-time in Firebase Console (error message provides creation link)
+- Symptoms if missing: PDF generation fails with "Missing index" error
+
+### Emulator URLs
+
+**Local Development:**
+```
+Firestore:    http://localhost:8080
+Storage:      http://localhost:9199
+Auth:         http://localhost:9099
+Hosting:      http://localhost:5000
+Emulator UI:  http://localhost:4000
+```
+
+**Start Command:**
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+firebase emulators:start --only firestore,storage --project demo-test
+```
+
+---
+
+## 📊 Recent Documentation Analysis
+
+**Analysis Date:** 2025-11-08
+**Status:** Identified gaps in `NEXT_AGENT_MANUAL_TESTING_PROMPT.md` (6 days outdated, 50+ commits behind)
+
+**Analysis Documents Created:**
+1. `START_HERE_ANALYSIS_DOCUMENTS.txt` - Quick navigation guide for analysis docs
+2. `README_ANALYSIS_DOCUMENTS.md` - Comprehensive overview of analysis findings
+3. `QUICK_FACTS_TESTING_PROMPT_UPDATE.md` - 5-minute executive summary
+4. `TESTING_PROMPT_EXECUTIVE_SUMMARY.md` - Business case for updating testing docs
+5. `IMPROVEMENT_GUIDE_TESTING_PROMPT.md` - Step-by-step implementation guide
+6. `ANALYSIS_NEXT_AGENT_TESTING_PROMPT_OUTDATED.md` - Detailed technical analysis (28KB)
+
+**Key Findings:**
+- **8 major features** not documented in testing prompt (Zeiterfassung, Status Sync, PDF Anmerkungen, Bonus System, etc.)
+- **5 new error patterns** not documented (Service Worker errors, Composite Index errors, Field name bugs, etc.)
+- **5 critical lessons learned** not documented (Pattern order, Duplicate prevention, etc.)
+- **Impact:** 25-45 min time savings per bug if testing prompt is updated
+
+**Recommended Action:**
+Follow `IMPROVEMENT_GUIDE_TESTING_PROMPT.md` to update `NEXT_AGENT_MANUAL_TESTING_PROMPT.md`
+- **Time Required:** 2-3 hours (mostly copy-paste from Recent Updates section)
+- **ROI:** 100+ minutes saved per week in debugging time
+- **Priority:** HIGH (but can be separate session)
+
+---
+
+_Last Updated: 2025-11-08 (Added Quick Reference, Analysis Docs, Composite Indexes + CI/CD Workflows) by Claude Code (Sonnet 4.5)_
+_Version: v2025.11.08.3 | File Size: ~870 lines (optimized & comprehensive)_
 _Recent Sessions: Nov 6-8 (Zeiterfassungs-System, Status Sync, PDF Annotations, Service Worker Fix) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
-_Note: README.md is outdated (v1.0/2.0) - Always use CLAUDE.md for development guidance_
+_Note: README.md is outdated (v1.0/2.0) and has deprecation notice - Always use CLAUDE.md for development guidance_
