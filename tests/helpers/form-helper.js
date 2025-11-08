@@ -38,14 +38,18 @@ async function fillVehicleIntakeForm(page, data = {}) {
   // Service-Typ
   await page.selectOption('#serviceTyp', formData.serviceTyp);
 
+  // CRITICAL: Wait for service-specific fields to become visible after serviceTyp selection
+  // The JavaScript in annahme.html shows/hides fields based on selected service type
+  await page.waitForTimeout(500);
+
   // Fahrzeugabholung
   await page.click(`input[name="fahrzeugAbholung"][value="${formData.fahrzeugAbholung}"]`);
 
   // Fahrzeugdaten
-  await page.fill('#marke', formData.marke);
+  await page.selectOption('#marke', formData.marke); // FIX: #marke is a <select> element
   await page.fill('#modell', formData.modell);
-  await page.fill('#baujahrVon', formData.baujahrVon);
-  await page.fill('#baujahrBis', formData.baujahrBis);
+  await page.selectOption('#baujahrVon', formData.baujahrVon); // FIX: #baujahrVon is a <select> element
+  await page.selectOption('#baujahrBis', formData.baujahrBis); // FIX: #baujahrBis is a <select> element
   await page.fill('#kmstand', formData.kmstand);
 
   // Lackierdaten

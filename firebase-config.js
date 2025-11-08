@@ -79,7 +79,8 @@ if (isNodeEnvironment) {
   // NEW LOGIC: Only use emulator if:
   // 1. Playwright test (automated testing)
   // 2. Explicitly requested via ?useEmulator=true URL parameter
-  useEmulator = isPlaywrightTest || forceEmulator;
+  // 3. Running on port 8000 (Playwright test server)
+  useEmulator = isPlaywrightTest || forceEmulator || isEmulatorPort;
 
   console.log('🔥 Firebase Config Loading (Browser)...');
   console.log('  Environment Detection:');
