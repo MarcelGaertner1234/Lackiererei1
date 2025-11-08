@@ -279,11 +279,15 @@ service cloud.firestore {
                                             || request.auth.token.role == 'superadmin'
                                           );
 
-      // Mitarbeiter: Read own schichten
+      // RELAXED: Allow werkstatt OR mitarbeiter role to read all schichten
+      // This allows SessionStorage-based mitarbeiter sessions (without Custom Claims)
+      // to still access schichten via werkstatt role
       allow read: if schichtenCollection.matches('schichten_.*')
-                  && isMitarbeiter()
-                  && isActive()
-                  && resource.data.mitarbeiterId == request.auth.uid;
+                  && isAuthenticated()
+                  && (
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'mitarbeiter'
+                  );
     }
 
     // ============================================
@@ -313,14 +317,15 @@ service cloud.firestore {
                   && isActive()
                   && resource.data.mitarbeiterId == request.auth.uid;
 
-      // Admin/Werkstatt: Read all wünsche
+      // Admin/Werkstatt: Read all wünsche from their werkstatt
       allow read: if schichtWuenscheCollection.matches('schichtWuensche_.*')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
                     || request.auth.token.role == 'admin'
                     || request.auth.token.role == 'superadmin'
-                  );
+                  )
+                  && resource.data.werkstattId == schichtWuenscheCollection.split('_')[1];
 
       // Admin/Werkstatt: Update wünsche (accept/reject)
       // VALIDATION: Only status, bearbeitetAm can be changed
@@ -867,7 +872,17 @@ service cloud.firestore {
     // Mitarbeiter Collections: mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.
     match /{mitarbeiterCollection}/{mitarbeiterId} {
       allow read, write: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
-      allow read: if mitarbeiterCollection.matches('mitarbeiter_.*') && isMitarbeiter() && isActive();
+
+      // RELAXED: Allow werkstatt OR mitarbeiter role to read all mitarbeiter
+      // This allows SessionStorage-based mitarbeiter sessions (without Custom Claims)
+      // to still load team data via werkstatt role
+      allow read: if mitarbeiterCollection.matches('mitarbeiter_.*')
+                  && isAuthenticated()
+                  && (
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'mitarbeiter'
+                  );
+
       allow create, delete: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
 
       // 🆕 Allow werkstatt accounts to create _init placeholder during setup
