@@ -612,6 +612,9 @@
             <button id="tabStunden" class="tab-button" onclick="switchTab('stunden')" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
                 📄 Stundennachweise <span id="stundenCount" class="badge" style="display: inline-block; padding: 2px 8px; background: rgba(10, 132, 255, 0.8); border-radius: 12px; font-size: 12px; margin-left: 6px;">0</span>
             </button>
+            <button id="tabZeiterfassung" class="tab-button" onclick="switchTab('zeiterfassung')" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+                ⏱️ Zeiterfassung <span id="zeiterfassungCount" class="badge" style="display: inline-block; padding: 2px 8px; background: rgba(52, 199, 89, 0.8); border-radius: 12px; font-size: 12px; margin-left: 6px;">0</span>
+            </button>
         </div>
 
         <!-- Tab Content: Mitarbeiter -->
@@ -706,6 +709,58 @@
                     <tr>
                         <td colspan="7" style="text-align: center; padding: 40px; color: var(--color-text-secondary);">
                             Lädt Stundennachweise...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Tab Content: Zeiterfassung -->
+        <div id="contentZeiterfassung" class="tab-content" style="display: none;">
+            <div style="margin-bottom: 20px;">
+                <h2 style="color: var(--color-text-primary); margin: 0 0 10px 0;">⏱️ Zeiterfassung bearbeiten</h2>
+                <p style="color: var(--color-text-secondary); font-size: 14px; margin: 0;">
+                    Hier kannst du die Zeiterfassungs-Einträge deiner Mitarbeiter manuell korrigieren, falls ein Mitarbeiter falsch gestempelt hat.
+                    <strong>Achtung:</strong> Manuell bearbeitete Einträge werden im PDF mit einem * markiert.
+                </p>
+            </div>
+
+            <!-- Filter Section -->
+            <div style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end;">
+                <div style="flex: 1;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 5px; color: var(--color-text-primary);">👤 Mitarbeiter filtern</label>
+                    <select id="filterZeitMitarbeiter" onchange="filterZeiterfassung()" style="width: 100%; padding: 10px; border: 2px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: var(--color-text-primary); font-size: 14px;">
+                        <option value="">Alle Mitarbeiter</option>
+                        <!-- Dynamically filled -->
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 5px; color: var(--color-text-primary);">📅 Zeitraum</label>
+                    <select id="filterZeitRange" onchange="filterZeiterfassung()" style="width: 100%; padding: 10px; border: 2px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: var(--color-text-primary); font-size: 14px;">
+                        <option value="current">Aktueller Monat</option>
+                        <option value="last">Letzter Monat</option>
+                        <option value="all">Alle Einträge</option>
+                    </select>
+                </div>
+            </div>
+
+            <table class="mitarbeiter-table">
+                <thead>
+                    <tr>
+                        <th>👤 Mitarbeiter</th>
+                        <th>📅 Datum</th>
+                        <th>⏱️ Arbeitsbeginn</th>
+                        <th>⏸️ Pausen</th>
+                        <th>⏹️ Feierabend</th>
+                        <th>⏰ Stunden</th>
+                        <th>✏️ Status</th>
+                        <th>⚙️ Aktionen</th>
+                    </tr>
+                </thead>
+                <tbody id="zeiterfassungTableBody">
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 40px; color: var(--color-text-secondary);">
+                            Lädt Zeiterfassungen...
                         </td>
                     </tr>
                 </tbody>
@@ -2961,6 +3016,7 @@
 
         let allUrlaubsAnfragen = [];
         let allStundennachweise = [];
+        let allZeiterfassungen = [];
         let currentRejectAnfrageId = null;
 
         /**
@@ -2971,17 +3027,21 @@
             document.getElementById('tabMitarbeiter').classList.toggle('active', tabName === 'mitarbeiter');
             document.getElementById('tabUrlaub').classList.toggle('active', tabName === 'urlaub');
             document.getElementById('tabStunden').classList.toggle('active', tabName === 'stunden');
+            document.getElementById('tabZeiterfassung').classList.toggle('active', tabName === 'zeiterfassung');
 
             // Update tab content
             document.getElementById('contentMitarbeiter').style.display = tabName === 'mitarbeiter' ? 'block' : 'none';
             document.getElementById('contentUrlaub').style.display = tabName === 'urlaub' ? 'block' : 'none';
             document.getElementById('contentStunden').style.display = tabName === 'stunden' ? 'block' : 'none';
+            document.getElementById('contentZeiterfassung').style.display = tabName === 'zeiterfassung' ? 'block' : 'none';
 
             // Load data when switching tabs
             if (tabName === 'urlaub') {
                 loadUrlaubsAnfragen();
             } else if (tabName === 'stunden') {
                 loadStundennachweise();
+            } else if (tabName === 'zeiterfassung') {
+                loadZeiterfassungen();
             }
 
             console.log(`📑 Tab gewechselt: ${tabName}`);
@@ -3395,6 +3455,185 @@
                     </tr>
                 `;
             }).join('');
+        }
+
+        // ============================================
+        // ZEITERFASSUNG VERWALTUNG
+        // ============================================
+
+        /**
+         * Load all zeiterfassung records
+         */
+        async function loadZeiterfassungen() {
+            try {
+                console.log('⏱️ Lade Zeiterfassungen...');
+
+                // Query all zeiterfassung for current werkstatt
+                const snapshot = await window.getCollection('zeiterfassung')
+                    .orderBy('datum', 'desc')
+                    .get();
+
+                allZeiterfassungen = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log(`✅ ${allZeiterfassungen.length} Zeiterfassungen geladen`);
+
+                // Update badge counter
+                document.getElementById('zeiterfassungCount').textContent = allZeiterfassungen.length;
+
+                // Populate mitarbeiter filter dropdown
+                populateZeitMitarbeiterFilter();
+
+                // Render table
+                filterZeiterfassung();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Zeiterfassungen:', error);
+                showToast('❌ Fehler beim Laden der Zeiterfassungen', 'error', 3000);
+            }
+        }
+
+        /**
+         * Populate mitarbeiter filter dropdown
+         */
+        function populateZeitMitarbeiterFilter() {
+            const filter = document.getElementById('filterZeitMitarbeiter');
+
+            // Get unique mitarbeiter from zeiterfassung records
+            const uniqueMitarbeiter = {};
+            allZeiterfassungen.forEach(zeit => {
+                if (zeit.mitarbeiterId && zeit.mitarbeiterName) {
+                    uniqueMitarbeiter[zeit.mitarbeiterId] = zeit.mitarbeiterName;
+                }
+            });
+
+            // Build options
+            let options = '<option value="">Alle Mitarbeiter</option>';
+            Object.entries(uniqueMitarbeiter).forEach(([id, name]) => {
+                options += `<option value="${id}">${name}</option>`;
+            });
+
+            filter.innerHTML = options;
+        }
+
+        /**
+         * Filter and render zeiterfassung table
+         */
+        function filterZeiterfassung() {
+            const selectedMitarbeiterId = document.getElementById('filterZeitMitarbeiter').value;
+            const selectedRange = document.getElementById('filterZeitRange').value;
+
+            // Get current month boundaries
+            const now = new Date();
+            const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+            const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+            const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+
+            // Filter records
+            let filtered = allZeiterfassungen.filter(zeit => {
+                // Filter by mitarbeiter
+                if (selectedMitarbeiterId && String(zeit.mitarbeiterId) !== String(selectedMitarbeiterId)) {
+                    return false;
+                }
+
+                // Filter by date range
+                if (selectedRange === 'current' && zeit.datum < currentMonthStart) {
+                    return false;
+                } else if (selectedRange === 'last' && (zeit.datum < lastMonthStart || zeit.datum > lastMonthEnd)) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            renderZeiterfassung(filtered);
+        }
+
+        /**
+         * Render zeiterfassung table
+         */
+        function renderZeiterfassung(zeiterfassungen) {
+            const tbody = document.getElementById('zeiterfassungTableBody');
+
+            if (zeiterfassungen.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 40px; color: var(--color-text-secondary);">
+                            Keine Zeiterfassungen gefunden
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = zeiterfassungen.map(zeit => {
+                const events = zeit.events || [];
+
+                // Extract event times
+                const startEvent = events.find(e => e.type === 'start');
+                const pauseEvents = events.filter(e => e.type === 'pause_start' || e.type === 'pause_end');
+                const endEvent = events.find(e => e.type === 'end');
+
+                const startTime = startEvent ? new Date(startEvent.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '-';
+                const endTime = endEvent ? new Date(endEvent.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '-';
+
+                // Format pause times
+                let pauseText = '-';
+                if (pauseEvents.length > 0) {
+                    const pausePairs = [];
+                    for (let i = 0; i < pauseEvents.length; i += 2) {
+                        if (pauseEvents[i] && pauseEvents[i + 1]) {
+                            const pStart = new Date(pauseEvents[i].timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                            const pEnd = new Date(pauseEvents[i + 1].timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                            pausePairs.push(`${pStart}-${pEnd}`);
+                        }
+                    }
+                    if (pausePairs.length > 0) {
+                        pauseText = pausePairs.join(', ');
+                    }
+                }
+
+                // Status badge
+                const status = zeit.status || 'unknown';
+                const statusBadge = status === 'completed'
+                    ? '<span class="badge badge-success">Abgeschlossen</span>'
+                    : '<span class="badge badge-warning">In Arbeit</span>';
+
+                // Manually edited marker
+                const manuallyEdited = zeit.manuallyEdited || false;
+                const editMarker = manuallyEdited ? ' <span style="color: #FF9800;">*</span>' : '';
+
+                // Hours
+                const hours = zeit.calculatedHours || 0;
+
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <td>${zeit.mitarbeiterName}${editMarker}</td>
+                        <td>${zeit.datum}</td>
+                        <td>${startTime}</td>
+                        <td style="font-size: 12px;">${pauseText}</td>
+                        <td>${endTime}</td>
+                        <td><span class="badge badge-info">${hours.toFixed(2)}h</span></td>
+                        <td>${statusBadge}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" style="padding: 6px 12px; font-size: 12px;" onclick="openEditZeitModal('${zeit.id}')">
+                                ✏️ Bearbeiten
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Open edit modal for zeiterfassung (placeholder - to be implemented)
+         */
+        function openEditZeitModal(zeitId) {
+            showToast('⚠️ Zeiterfassung-Bearbeitung wird noch implementiert', 'warning', 3000);
+            console.log('Edit zeiterfassung:', zeitId);
+            // TODO: Implement edit modal in next step
         }
 
         // Auto-load vacation requests on page load (if werkstattId available)
