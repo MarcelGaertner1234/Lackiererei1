@@ -3067,11 +3067,24 @@
                     console.log(`✅ Batch-Tausch abgeschlossen: ${schichten1.length + schichten2.length} Schichten getauscht`);
 
                     // 🆕 FIX: Recalculate hours for BOTH employees after swap
-                    const mitarbeiter1 = allMitarbeiter.find(m => String(m.id) === String(tausch.mitarbeiter1Id));
-                    const mitarbeiter2 = allMitarbeiter.find(m => String(m.id) === String(tausch.mitarbeiter2Id));
+                    // CRITICAL: Load FRESH data from Firestore (not from in-memory allMitarbeiter array)
+                    // The allMitarbeiter array might be stale due to race conditions with the realtime listener
+                    try {
+                        const mitarbeiter1Doc = await window.getCollection('mitarbeiter')
+                            .doc(String(tausch.mitarbeiter1Id)).get();
+                        const mitarbeiter2Doc = await window.getCollection('mitarbeiter')
+                            .doc(String(tausch.mitarbeiter2Id)).get();
 
-                    if (mitarbeiter1 && mitarbeiter2) {
-                        try {
+                        if (!mitarbeiter1Doc.exists || !mitarbeiter2Doc.exists) {
+                            console.error('❌ Mitarbeiter Dokument(e) nicht gefunden!');
+                            console.error('   M1 exists:', mitarbeiter1Doc.exists, 'ID:', tausch.mitarbeiter1Id);
+                            console.error('   M2 exists:', mitarbeiter2Doc.exists, 'ID:', tausch.mitarbeiter2Id);
+                            showToast('❌ Fehler: Mitarbeiter nicht gefunden', 'error', 5000);
+                            return;
+                        }
+
+                        const mitarbeiter1 = { id: mitarbeiter1Doc.id, ...mitarbeiter1Doc.data() };
+                        const mitarbeiter2 = { id: mitarbeiter2Doc.id, ...mitarbeiter2Doc.data() };
                             // Calculate hours LOST by M1 (schichten1) and GAINED by M1 (schichten2)
                             let hoursLostM1 = 0;
                             let hoursGainedM1 = 0;
@@ -3104,7 +3117,10 @@
                                 monatlicheStunden: newMonatlicheStundenM1
                             });
 
-                            console.log(`✅ Mitarbeiter1 Stunden aktualisiert: ${newGesamtstundenM1}h`);
+                            console.log(`✅ Mitarbeiter1 Stunden aktualisiert:`);
+                            console.log(`   ALT: ${(mitarbeiter1.gesamtstunden || 0).toFixed(1)}h gesamt, ${(mitarbeiter1.monatlicheStunden || 0).toFixed(1)}h/Monat`);
+                            console.log(`   NEU: ${newGesamtstundenM1.toFixed(1)}h gesamt, ${newMonatlicheStundenM1.toFixed(1)}h/Monat`);
+                            console.log(`   ÄNDERUNG: -${hoursLostM1.toFixed(1)}h +${hoursGainedM1.toFixed(1)}h`);
 
                             // Update Mitarbeiter2 hours (opposite direction)
                             const newGesamtstundenM2 = Math.max(0, Math.round((
@@ -3120,18 +3136,25 @@
                                 monatlicheStunden: newMonatlicheStundenM2
                             });
 
-                            console.log(`✅ Mitarbeiter2 Stunden aktualisiert: ${newGesamtstundenM2}h`);
+                            console.log(`✅ Mitarbeiter2 Stunden aktualisiert:`);
+                            console.log(`   ALT: ${(mitarbeiter2.gesamtstunden || 0).toFixed(1)}h gesamt, ${(mitarbeiter2.monatlicheStunden || 0).toFixed(1)}h/Monat`);
+                            console.log(`   NEU: ${newGesamtstundenM2.toFixed(1)}h gesamt, ${newMonatlicheStundenM2.toFixed(1)}h/Monat`);
+                            console.log(`   ÄNDERUNG: +${hoursLostM1.toFixed(1)}h -${hoursGainedM1.toFixed(1)}h`);
 
                             console.log(`✅ Stunden aktualisiert:`);
                             console.log(`   ${tausch.mitarbeiter1Name}: -${hoursLostM1}h +${hoursGainedM1}h = ${newGesamtstundenM1}h gesamt`);
                             console.log(`   ${tausch.mitarbeiter2Name}: +${hoursLostM1}h -${hoursGainedM1}h = ${newGesamtstundenM2}h gesamt`);
 
-                        } catch (error) {
-                            console.error('❌ FEHLER beim Aktualisieren der Stunden:', error);
-                            console.error('   mitarbeiter1Id:', tausch.mitarbeiter1Id, 'Type:', typeof tausch.mitarbeiter1Id);
-                            console.error('   mitarbeiter2Id:', tausch.mitarbeiter2Id, 'Type:', typeof tausch.mitarbeiter2Id);
-                            // Don't throw - allow the swap to complete even if hours update fails
-                        }
+                    } catch (error) {
+                        console.error('❌ FEHLER beim Aktualisieren der Stunden:', error);
+                        console.error('   mitarbeiter1Id:', tausch.mitarbeiter1Id, 'Type:', typeof tausch.mitarbeiter1Id);
+                        console.error('   mitarbeiter2Id:', tausch.mitarbeiter2Id, 'Type:', typeof tausch.mitarbeiter2Id);
+                        console.error('   Error Message:', error.message);
+                        console.error('   Error Code:', error.code);
+
+                        // Show error to user
+                        showToast(`❌ Fehler beim Stunden-Update: ${error.message}`, 'error', 5000);
+                        // Don't throw - allow the swap to complete even if hours update fails
                     }
                 }
 
