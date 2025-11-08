@@ -2615,12 +2615,13 @@ exports.setMitarbeiterClaims = functions
         }
 
         // Set custom claims for the WERKSTATT user (not mitarbeiter)
-        // The werkstatt Firebase Auth user gets mitarbeiter info in claims
+        // IMPORTANT: Keep role="werkstatt" so admin permissions stay intact
+        // Add selectedMitarbeiterId to indicate which employee is selected
         const claims = {
-          role: "mitarbeiter",
-          mitarbeiterId: mitarbeiterId,
+          role: "werkstatt",
           werkstattId: werkstattId,
-          mitarbeiterName: mitarbeiterData.name || "Unbekannt"
+          selectedMitarbeiterId: mitarbeiterId,
+          selectedMitarbeiterName: mitarbeiterData.name || "Unbekannt"
         };
 
         await admin.auth().setCustomUserClaims(context.auth.uid, claims);
