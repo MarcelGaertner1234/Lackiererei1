@@ -1216,6 +1216,80 @@ service cloud.firestore {
     }
 
     // ============================================
+    // ZEITERFASSUNG COLLECTION (Time Tracking)
+    // ============================================
+    // Multi-tenant pattern: zeiterfassung_mosbach, zeiterfassung_heidelberg, etc.
+    //
+    // Stores daily time tracking records for employees:
+    // - Clock in/out timestamps
+    // - Break start/end timestamps
+    // - Calculated actual working hours (IST-Zeit)
+    //
+    // Document ID format: {datum}_{mitarbeiterId} (e.g., "2025-11-08_user_1762559835944")
+    //
+    // Security:
+    // - Employees can create/read/update ONLY their own records
+    // - Admins can read ALL records
+    // - Records locked after status = "completed" (no more edits)
+
+    match /{zeiterfassungCollection}/{zeitId} {
+      // ============================================
+      // READ Rules
+      // ============================================
+
+      // Admins can read all time tracking records
+      allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                  && isAdmin();
+
+      // Employees can read ONLY their own records
+      allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                  && isAuthenticated()
+                  && request.auth.token.selectedMitarbeiterId != null
+                  && resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
+                  && resource.data.werkstattId == zeiterfassungCollection.split('_')[1];
+
+      // ============================================
+      // CREATE Rules
+      // ============================================
+
+      // Employees can create ONLY their own time tracking record
+      allow create: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                    && isAuthenticated()
+                    && request.auth.token.selectedMitarbeiterId != null
+                    && request.resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
+                    && request.resource.data.werkstattId == zeiterfassungCollection.split('_')[1]
+                    && request.resource.data.datum is string
+                    && request.resource.data.events is list
+                    && request.resource.data.status in ['in_progress', 'completed'];
+
+      // ============================================
+      // UPDATE Rules
+      // ============================================
+
+      // Employees can update ONLY their own records AND only if status != "completed"
+      allow update: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                    && isAuthenticated()
+                    && request.auth.token.selectedMitarbeiterId != null
+                    && resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
+                    && resource.data.werkstattId == zeiterfassungCollection.split('_')[1]
+                    && resource.data.status != 'completed'  // Can't edit completed records
+                    && request.resource.data.mitarbeiterId == resource.data.mitarbeiterId  // Can't change owner
+                    && request.resource.data.datum == resource.data.datum;  // Can't change date
+
+      // Admins can always update (e.g., to fix mistakes)
+      allow update: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                    && isAdmin();
+
+      // ============================================
+      // DELETE Rules
+      // ============================================
+
+      // Only admins can delete time tracking records
+      allow delete: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                    && isAdmin();
+    }
+
+    // ============================================
     // DEFAULT DENY - REMOVED (FIX #52)
     // ============================================
 
