@@ -1219,42 +1219,65 @@
         // 🚀 INITIALIZATION
         // ========================================
 
-        // 🔐 AUTHENTICATION GUARD: Use auth-manager.js (sessionStorage)
-        const user = window.authManager?.getCurrentUser();
+        // 🔐 AUTHENTICATION GUARD: Polling loop (wait for auth-manager.js)
+        let authCheckAttempts = 0;
+        const authCheckInterval = setInterval(() => {
+            authCheckAttempts++;
 
-        if (!user) {
-            console.warn('⚠️ Wissensdatenbank requires authentication - redirecting to login');
-            alert('Sie müssen sich anmelden, um auf die Wissensdatenbank zuzugreifen.');
-            window.location.href = 'index.html';
-        }
+            // Try to get current user from sessionStorage
+            const user = window.authManager?.getCurrentUser();
 
-        // Set global variables
-        window.werkstattId = user.werkstattId || 'mosbach';
-        currentUser = user;
-        isAdmin = (user.role === 'admin' || user.role === 'werkstatt' || user.role === 'superadmin');
+            if (user) {
+                // ✅ User authenticated - stop polling
+                clearInterval(authCheckInterval);
 
-        // Wait for Firebase initialization
-        let initAttempts = 0;
-        const initInterval = setInterval(async () => {
-            initAttempts++;
+                console.log('✅ Authentication successful. Role:', user.role, 'werkstattId:', user.werkstattId);
 
-            if (window.firebaseInitialized && window.werkstattId) {
-                clearInterval(initInterval);
-                console.log('✅ Firebase initialized, werkstattId:', window.werkstattId);
+                // Set global variables
+                window.werkstattId = user.werkstattId || 'mosbach';
+                currentUser = user;
 
-                // Initialize the page
-                await initializePage();
+                // Check permission: werkstatt, admin, or superadmin
+                isAdmin = (user.role === 'admin' || user.role === 'werkstatt' || user.role === 'superadmin');
 
-                // Initialize Feather Icons
-                feather.replace();
+                if (!isAdmin) {
+                    console.warn('⚠️ User lacks wissensdatenbank permission. Role:', user.role);
+                    alert('Sie haben keine Berechtigung für die Wissensdatenbank.');
+                    window.location.href = 'index.html';
+                    return;
+                }
+
+                // 🚀 Start Firebase initialization (AFTER successful auth)
+                let initAttempts = 0;
+                const initInterval = setInterval(async () => {
+                    initAttempts++;
+
+                    if (window.firebaseInitialized && window.werkstattId) {
+                        clearInterval(initInterval);
+                        console.log('✅ Firebase initialized, werkstattId:', window.werkstattId);
+
+                        // Initialize the page
+                        await initializePage();
+
+                        // Initialize Feather Icons
+                        feather.replace();
+                    }
+
+                    if (initAttempts >= 20) {
+                        clearInterval(initInterval);
+                        console.error('❌ Firebase initialization timeout');
+                        alert('Fehler beim Laden der Datenbank. Bitte Seite neu laden.');
+                    }
+                }, 250);
+
+            } else if (authCheckAttempts >= 20) {
+                // ❌ Timeout after 5 seconds - user not authenticated
+                clearInterval(authCheckInterval);
+                console.warn('⚠️ Wissensdatenbank requires authentication - redirecting to login');
+                alert('Sie müssen sich anmelden, um auf die Wissensdatenbank zuzugreifen.');
+                window.location.href = 'index.html';
             }
-
-            if (initAttempts >= 20) {
-                clearInterval(initInterval);
-                console.error('❌ Firebase initialization timeout');
-                alert('Fehler beim Laden der Datenbank. Bitte Seite neu laden.');
-            }
-        }, 250);
+        }, 250); // Check every 250ms (max 20 attempts = 5 seconds)
 
         async function initializePage() {
             try {
