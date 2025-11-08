@@ -609,6 +609,9 @@
             <button id="tabUrlaub" class="tab-button" onclick="switchTab('urlaub')" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
                 🏖️ Urlaubs-Anfragen <span id="pendingCount" class="badge" style="display: inline-block; padding: 2px 8px; background: rgba(255, 59, 48, 0.8); border-radius: 12px; font-size: 12px; margin-left: 6px;">0</span>
             </button>
+            <button id="tabStunden" class="tab-button" onclick="switchTab('stunden')" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: var(--color-text-secondary); font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+                📄 Stundennachweise <span id="stundenCount" class="badge" style="display: inline-block; padding: 2px 8px; background: rgba(10, 132, 255, 0.8); border-radius: 12px; font-size: 12px; margin-left: 6px;">0</span>
+            </button>
         </div>
 
         <!-- Tab Content: Mitarbeiter -->
@@ -674,6 +677,37 @@
                     <!-- Dynamically filled -->
                 </div>
             </div>
+        </div>
+
+        <!-- Tab Content: Stundennachweise -->
+        <div id="contentStunden" class="tab-content" style="display: none;">
+            <div style="margin-bottom: 20px;">
+                <h2 style="color: var(--color-text-primary); margin: 0 0 10px 0;">📄 Stundennachweise</h2>
+                <p style="color: var(--color-text-secondary); font-size: 14px; margin: 0;">
+                    Hier siehst du alle signierten Stundennachweise deiner Mitarbeiter.
+                </p>
+            </div>
+
+            <table class="mitarbeiter-table">
+                <thead>
+                    <tr>
+                        <th>👤 Mitarbeiter</th>
+                        <th>📅 Monat/Jahr</th>
+                        <th>📅 Zeitraum</th>
+                        <th>⏰ Stunden</th>
+                        <th>✍️ Signiert</th>
+                        <th>📋 Anmerkungen</th>
+                        <th>🕐 Erstellt</th>
+                    </tr>
+                </thead>
+                <tbody id="stundenTableBody">
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px; color: var(--color-text-secondary);">
+                            Lädt Stundennachweise...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
 
         <!-- EDIT MODAL -->
@@ -2887,6 +2921,7 @@
         // ============================================
 
         let allUrlaubsAnfragen = [];
+        let allStundennachweise = [];
         let currentRejectAnfrageId = null;
 
         /**
@@ -2896,14 +2931,18 @@
             // Update tab buttons
             document.getElementById('tabMitarbeiter').classList.toggle('active', tabName === 'mitarbeiter');
             document.getElementById('tabUrlaub').classList.toggle('active', tabName === 'urlaub');
+            document.getElementById('tabStunden').classList.toggle('active', tabName === 'stunden');
 
             // Update tab content
             document.getElementById('contentMitarbeiter').style.display = tabName === 'mitarbeiter' ? 'block' : 'none';
             document.getElementById('contentUrlaub').style.display = tabName === 'urlaub' ? 'block' : 'none';
+            document.getElementById('contentStunden').style.display = tabName === 'stunden' ? 'block' : 'none';
 
-            // Load vacation requests if switching to urlaub tab
+            // Load data when switching tabs
             if (tabName === 'urlaub') {
                 loadUrlaubsAnfragen();
+            } else if (tabName === 'stunden') {
+                loadStundennachweise();
             }
 
             console.log(`📑 Tab gewechselt: ${tabName}`);
@@ -3171,6 +3210,91 @@
                 console.error('❌ Fehler beim Ablehnen:', error);
                 showToast('❌ Fehler beim Ablehnen der Anfrage', 'error', 3000);
             }
+        }
+
+        // ============================================
+        // PHASE 2: STUNDENNACHWEISE VERWALTUNG
+        // ============================================
+
+        /**
+         * Load all stundennachweise
+         */
+        async function loadStundennachweise() {
+            try {
+                console.log('📄 Lade Stundennachweise...');
+
+                // Query all stundennachweise for current werkstatt
+                const snapshot = await window.getCollection('stundennachweise')
+                    .orderBy('createdAt', 'desc')
+                    .get();
+
+                allStundennachweise = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log(`✅ ${allStundennachweise.length} Stundennachweise geladen`);
+
+                // Update badge counter
+                document.getElementById('stundenCount').textContent = allStundennachweise.length;
+
+                // Render table
+                renderStundennachweise();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Stundennachweise:', error);
+                showToast('❌ Fehler beim Laden der Stundennachweise', 'error', 3000);
+            }
+        }
+
+        /**
+         * Render stundennachweise table
+         */
+        function renderStundennachweise() {
+            const tbody = document.getElementById('stundenTableBody');
+
+            if (allStundennachweise.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px; color: var(--color-text-secondary);">
+                            Keine Stundennachweise vorhanden
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = allStundennachweise.map(nachweis => {
+                const datum = new Date(nachweis.createdAt);
+                const datumStr = datum.toLocaleDateString('de-DE', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                const signaturBadge = nachweis.signiert
+                    ? '<span style="color: #4CAF50; font-weight: 600;">✅ Ja</span>'
+                    : '<span style="color: #999; font-weight: 600;">❌ Nein</span>';
+
+                const anmerkungenCount = (nachweis.anmerkungen || []).length;
+                const anmerkungenBadge = anmerkungenCount > 0
+                    ? `<span style="background: rgba(255,152,0,0.2); color: #FF9800; padding: 4px 8px; border-radius: 4px; font-weight: 600;">${anmerkungenCount}</span>`
+                    : '<span style="color: #999;">-</span>';
+
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <td>${nachweis.mitarbeiterName}</td>
+                        <td>${nachweis.monat}/${nachweis.jahr}</td>
+                        <td>${nachweis.zeitraum}</td>
+                        <td>${nachweis.stundenGesamt.toFixed(1)}h</td>
+                        <td>${signaturBadge}</td>
+                        <td>${anmerkungenBadge}</td>
+                        <td style="color: var(--color-text-secondary); font-size: 13px;">${datumStr}</td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         // Auto-load vacation requests on page load (if werkstattId available)
