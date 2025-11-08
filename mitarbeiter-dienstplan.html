@@ -10,6 +10,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
 
     <!-- Firebase Config -->
     <script src="firebase-config.js"></script>
@@ -2288,14 +2289,15 @@
                         if (schichtTyp) {
                             // Check if this is another employee's schicht (allow tausch request)
                             const clickable = schicht.mitarbeiterId !== currentUser.mitarbeiterId;
-                            const clickHandler = clickable ? `onclick="openTauschModal(${JSON.stringify(schicht)}, ${JSON.stringify(mitarbeiter)}, ${JSON.stringify(schichtTyp)})"` : '';
                             const cursorStyle = clickable ? 'cursor: pointer;' : 'cursor: default; opacity: 0.7;';
+                            const dataAttrs = clickable ? `data-schicht-id="${schicht.id}" data-mitarbeiter-id="${mitarbeiter.id}" data-schicht-typ-id="${schichtTyp.id}"` : '';
+                            const clickClass = clickable ? 'team-schicht-clickable' : '';
 
                             html += `
-                                <div class="schicht-badge"
+                                <div class="schicht-badge ${clickClass}"
+                                     ${dataAttrs}
                                      style="background: ${schichtTyp.farbe || '#0a84ff'}; ${cursorStyle}"
-                                     title="${mitarbeiter.name} - ${schichtTyp.startzeit} bis ${schichtTyp.endzeit}"
-                                     ${clickHandler}>
+                                     title="${mitarbeiter.name} - ${schichtTyp.startzeit} bis ${schichtTyp.endzeit}">
                                     ${schichtTyp.name}
                                 </div>
                             `;
@@ -2307,6 +2309,28 @@
             }
 
             container.innerHTML = html;
+
+            // Event delegation for clickable schicht badges
+            container.addEventListener('click', function(e) {
+                const badge = e.target.closest('.team-schicht-clickable');
+                if (!badge) return;
+
+                const schichtId = badge.dataset.schichtId;
+                const mitarbeiterId = badge.dataset.mitarbeiterId;
+                const schichtTypId = badge.dataset.schichtTypId;
+
+                // Reconstruct full objects from IDs
+                const schicht = allTeamSchichten.find(s => s.id === schichtId);
+                const mitarbeiter = allMitarbeiter.find(m => m.id === mitarbeiterId);
+                const schichtTyp = allSchichtTypen.find(st => st.id === schichtTypId);
+
+                if (schicht && mitarbeiter && schichtTyp) {
+                    openTauschModal(schicht, mitarbeiter, schichtTyp);
+                } else {
+                    console.error('❌ Tausch-Modal: Konnte Daten nicht rekonstruieren', {schichtId, mitarbeiterId, schichtTypId});
+                }
+            });
+
             feather.replace();
         }
 
