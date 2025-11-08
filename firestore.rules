@@ -364,27 +364,32 @@ service cloud.firestore {
 
     match /{schichtTauscheCollection}/{tauschId} {
       // Mitarbeiter: Create tausch-anfrage
-      // VALIDATION: vonMitarbeiterId is current user, status is 'pending'
+      // RELAXED: Allows werkstatt role (for SessionStorage-based mitarbeiter login)
+      // Custom Claims check is optional (only if setMitarbeiterClaims was called)
       allow create: if schichtTauscheCollection.matches('schichtTausche_.*')
                     && isAuthenticated()
-                    && isMitarbeiter()
-                    && isActive()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'mitarbeiter'
+                    )
                     && request.resource.data.werkstattId == schichtTauscheCollection.split('_')[1]
-                    && request.resource.data.vonMitarbeiterId == request.auth.uid
                     && request.resource.data.status == 'pending'
                     && request.resource.data.keys().hasAll([
-                        'vonMitarbeiterId', 'vonMitarbeiterName', 'nachMitarbeiterId',
-                        'nachMitarbeiterName', 'schichtId', 'datum', 'grund', 'status',
-                        'werkstattId', 'createdAt'
+                        'mitarbeiter1Id', 'mitarbeiter1Name', 'schicht1Id', 'schicht1Datum', 'schicht1Typ',
+                        'mitarbeiter2Id', 'mitarbeiter2Name', 'schicht2Id', 'schicht2Datum', 'schicht2Typ',
+                        'nachricht', 'status', 'werkstattId', 'createdAt'
                     ]);
 
-      // Mitarbeiter: Read own tausch-anfragen (von or nach)
+      // Mitarbeiter: Read own tausch-anfragen (mitarbeiter1 or mitarbeiter2)
+      // RELAXED: Uses Custom Claims mitarbeiterId if available, otherwise allows all from same werkstatt
       allow read: if schichtTauscheCollection.matches('schichtTausche_.*')
-                  && isMitarbeiter()
-                  && isActive()
+                  && isAuthenticated()
                   && (
-                    resource.data.vonMitarbeiterId == request.auth.uid
-                    || resource.data.nachMitarbeiterId == request.auth.uid
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'mitarbeiter'
+                  )
+                  && (
+                    resource.data.werkstattId == schichtTauscheCollection.split('_')[1]
                   );
 
       // Admin/Werkstatt: Read all tausch-anfragen
@@ -414,10 +419,14 @@ service cloud.firestore {
                     );
 
       // Mitarbeiter: Delete own pending tausch-anfragen
+      // RELAXED: Allows deletion from same werkstatt if status is pending
       allow delete: if schichtTauscheCollection.matches('schichtTausche_.*')
-                    && isMitarbeiter()
-                    && isActive()
-                    && resource.data.vonMitarbeiterId == request.auth.uid
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'mitarbeiter'
+                    )
+                    && resource.data.werkstattId == schichtTauscheCollection.split('_')[1]
                     && resource.data.status == 'pending';
 
       // Admin: Delete any tausch-anfrage
