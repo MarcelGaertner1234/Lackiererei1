@@ -728,7 +728,7 @@
                 <!-- Action Buttons -->
                 <div id="zeiterfassungButtons" style="display: flex; gap: 12px; flex-wrap: wrap;">
                     <!-- Button: Arbeit Starten (initial visible) -->
-                    <button id="btnStartWork" class="btn btn-success" style="flex: 1; min-width: 200px;" disabled>
+                    <button id="btnStartWork" class="btn btn-success" style="flex: 1; min-width: 200px;" onclick="startWork()" disabled>
                         <i data-feather="play-circle"></i>
                         ▶️ Arbeit Starten
                     </button>
@@ -1125,6 +1125,9 @@
 
                 // Load Schichten
                 await loadSchichten();
+
+                // Load Zeiterfassung (Time Tracking for today)
+                await loadZeiterfassung();
 
             } catch (error) {
                 console.error('❌ Fehler beim Laden der Mitarbeiter-Daten:', error);
@@ -2545,6 +2548,161 @@
                 alert('❌ Fehler beim Senden der Anfrage: ' + error.message);
             }
         }
+
+        // ============================================
+        // ZEITERFASSUNG (Time Tracking)
+        // ============================================
+
+        let currentZeiterfassung = null;  // Current time tracking record for today
+
+        /**
+         * Load today's time tracking record
+         * Called on app init and after any time tracking action
+         */
+        async function loadZeiterfassung() {
+            if (!currentUser || !currentUser.mitarbeiterId) {
+                console.log('⏱️ Zeiterfassung: User not logged in');
+                return;
+            }
+
+            try {
+                const today = new Date().toISOString().split('T')[0];  // "2025-11-08"
+                const zeitId = `${today}_${currentUser.mitarbeiterId}`;
+
+                const zeitDoc = await window.getCollection('zeiterfassung').doc(zeitId).get();
+
+                if (zeitDoc.exists) {
+                    currentZeiterfassung = { id: zeitDoc.id, ...zeitDoc.data() };
+                    console.log('✅ Zeiterfassung geladen:', currentZeiterfassung);
+                } else {
+                    currentZeiterfassung = null;
+                    console.log('📋 Keine Zeiterfassung für heute gefunden');
+                }
+
+                updateZeiterfassungUI();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Zeiterfassung:', error);
+            }
+        }
+
+        /**
+         * Update the Zeit
+
+erfassung UI based on current status
+         * Shows/hides buttons, updates status text, etc.
+         */
+        function updateZeiterfassungUI() {
+            const btnStartWork = document.getElementById('btnStartWork');
+            const btnStartBreak = document.getElementById('btnStartBreak');
+            const btnEndBreak = document.getElementById('btnEndBreak');
+            const btnEndWork = document.getElementById('btnEndWork');
+            const zeitStatusText = document.getElementById('zeitStatusText');
+            const zeitInfoBox = document.getElementById('zeitInfoBox');
+
+            if (!currentZeiterfassung) {
+                // No record yet → Show "Start Work" button
+                btnStartWork.disabled = false;
+                btnStartWork.style.display = 'block';
+                btnStartBreak.style.display = 'none';
+                btnEndBreak.style.display = 'none';
+                btnEndWork.style.display = 'none';
+                zeitStatusText.innerHTML = '🟢 Bereit zum Starten';
+                zeitInfoBox.style.display = 'none';
+                return;
+            }
+
+            const status = currentZeiterfassung.status;
+            const events = currentZeiterfassung.events || [];
+            const lastEvent = events[events.length - 1];
+
+            if (status === 'completed') {
+                // Work finished → Show completion message
+                btnStartWork.style.display = 'none';
+                btnStartBreak.style.display = 'none';
+                btnEndBreak.style.display = 'none';
+                btnEndWork.style.display = 'none';
+
+                const endEvent = events.find(e => e.type === 'end');
+                const endTime = endEvent ? new Date(endEvent.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+                zeitStatusText.innerHTML = `✅ Feierabend gemacht um ${endTime} Uhr`;
+                zeitInfoBox.style.display = 'grid';  // Show final stats
+
+            } else if (lastEvent && lastEvent.type === 'pause_start') {
+                // Currently on break → Show "End Break" button
+                btnStartWork.style.display = 'none';
+                btnStartBreak.style.display = 'none';
+                btnEndBreak.disabled = false;
+                btnEndBreak.style.display = 'block';
+                btnEndWork.style.display = 'none';
+                zeitStatusText.innerHTML = '⏸️ In Pause';
+                zeitInfoBox.style.display = 'grid';
+
+            } else {
+                // Currently working → Show "Pause" and "End Work" buttons
+                btnStartWork.style.display = 'none';
+                btnStartBreak.disabled = false;
+                btnStartBreak.style.display = 'block';
+                btnEndBreak.style.display = 'none';
+                btnEndWork.disabled = false;
+                btnEndWork.style.display = 'block';
+
+                const startEvent = events.find(e => e.type === 'start');
+                const startTime = startEvent ? new Date(startEvent.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+                zeitStatusText.innerHTML = `🟢 Arbeitet (seit ${startTime} Uhr)`;
+                zeitInfoBox.style.display = 'grid';
+            }
+        }
+
+        /**
+         * BUTTON ACTION: Start Work
+         * Creates a new time tracking record with initial "start" event
+         */
+        async function startWork() {
+            if (!currentUser || !currentUser.mitarbeiterId) {
+                alert('❌ Fehler: Kein Mitarbeiter eingeloggt!');
+                return;
+            }
+
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const zeitId = `${today}_${currentUser.mitarbeiterId}`;
+                const now = new Date().toISOString();
+
+                const zeitData = {
+                    mitarbeiterId: currentUser.mitarbeiterId,
+                    mitarbeiterName: currentMitarbeiter.name,
+                    datum: today,
+                    events: [
+                        {
+                            type: 'start',
+                            timestamp: now
+                        }
+                    ],
+                    status: 'in_progress',
+                    werkstattId: window.werkstattId,
+                    createdAt: now
+                };
+
+                await window.getCollection('zeiterfassung').doc(zeitId).set(zeitData);
+
+                console.log('✅ Arbeit gestartet um:', new Date(now).toLocaleTimeString('de-DE'));
+
+                // Reload to update UI
+                await loadZeiterfassung();
+
+                alert('✅ Arbeit gestartet!');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Starten der Arbeit:', error);
+                alert('❌ Fehler: ' + error.message);
+            }
+        }
+
+        // Make functions globally accessible for onclick handlers
+        window.startWork = startWork;
 
         // ============================================
         // START APP
