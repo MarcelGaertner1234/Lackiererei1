@@ -342,6 +342,30 @@ async function loginMitarbeiter(mitarbeiterId, password) {
       lastLogin: new Date().toISOString()
     });
 
+    // Set Custom Claims via Cloud Function (for Firestore Rules)
+    try {
+      console.log('🔐 Setting Custom Claims for Mitarbeiter...');
+      const setMitarbeiterClaims = window.functions.httpsCallable('setMitarbeiterClaims');
+      const claimsResult = await setMitarbeiterClaims({
+        mitarbeiterId: mitarbeiterId,
+        werkstattId: werkstattId
+      });
+
+      console.log('✅ Custom Claims gesetzt:', claimsResult.data);
+
+      // Refresh ID token to get new claims immediately
+      const currentUser = window.auth.currentUser;
+      if (currentUser) {
+        await currentUser.getIdToken(true);
+        console.log('✅ ID Token refreshed - Custom Claims now active');
+      }
+    } catch (claimsError) {
+      console.error('❌ Fehler beim Setzen der Custom Claims:', claimsError);
+      console.warn('⚠️ Continuing with SessionStorage-based auth (claims will be missing)');
+      // Non-critical: Continue with login even if claims fail
+      // SessionStorage will still work for client-side logic
+    }
+
     // Set current employee (SessionStorage for Tab-Isolation)
     const mitarbeiter = {
       id: mitarbeiterId,

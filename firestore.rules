@@ -179,10 +179,11 @@ service cloud.firestore {
     match /{urlaubsAnfragenCollection}/{anfrageId} {
       // Mitarbeiter can create their own vacation requests
       // VALIDATION: Ensures werkstattId matches, mitarbeiterId is current user, status is 'pending'
+      // USES CUSTOM CLAIMS: request.auth.token.mitarbeiterId (set by setMitarbeiterClaims Cloud Function)
       allow create: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
                     && isAuthenticated()
                     && request.resource.data.werkstattId == urlaubsAnfragenCollection.split('_')[1]
-                    && request.resource.data.mitarbeiterId == request.auth.uid
+                    && request.resource.data.mitarbeiterId == request.auth.token.mitarbeiterId
                     && request.resource.data.status == 'pending'
                     && request.resource.data.keys().hasAll([
                         'mitarbeiterId', 'mitarbeiterName', 'startDatum', 'endDatum',
@@ -190,9 +191,10 @@ service cloud.firestore {
                     ]);
 
       // Mitarbeiter can read their own requests
+      // USES CUSTOM CLAIMS: request.auth.token.mitarbeiterId
       allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
                   && isAuthenticated()
-                  && resource.data.mitarbeiterId == request.auth.uid;
+                  && resource.data.mitarbeiterId == request.auth.token.mitarbeiterId;
 
       // 🆕 Use Custom Claims for query-compatible access check
       // Werkstatt & Admin can read all requests (for admin panel)
@@ -223,9 +225,10 @@ service cloud.firestore {
                     );
 
       // Mitarbeiter can delete their own pending requests
+      // USES CUSTOM CLAIMS: request.auth.token.mitarbeiterId
       allow delete: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
                     && isAuthenticated()
-                    && resource.data.mitarbeiterId == request.auth.uid
+                    && resource.data.mitarbeiterId == request.auth.token.mitarbeiterId
                     && resource.data.status == 'pending';
 
       // Admin can delete any request
@@ -447,6 +450,94 @@ service cloud.firestore {
       allow read: if bereicheCollection.matches('bereiche_.*')
                   && isMitarbeiter()
                   && isActive();
+    }
+
+    // ============================================
+    // STUNDENNACHWEISE COLLECTION (Multi-Tenant)
+    // Phase 3.4 - Mitarbeiter-Dienstplan (Hour Records/Timesheets)
+    // Mitarbeiter erstellen Stundennachweise, Admin genehmigt sie
+    // ============================================
+
+    match /{stundennachweiselCollection}/{nachweisId} {
+      // Mitarbeiter can create their own hour records (status='draft')
+      // USES CUSTOM CLAIMS: request.auth.token.mitarbeiterId
+      allow create: if stundennachweiselCollection.matches('stundennachweise_.*')
+                    && isAuthenticated()
+                    && request.auth.token.role == 'mitarbeiter'
+                    && request.resource.data.werkstattId == stundennachweiselCollection.split('_')[1]
+                    && request.resource.data.mitarbeiterId == request.auth.token.mitarbeiterId
+                    && request.resource.data.keys().hasAll([
+                        'mitarbeiterId', 'mitarbeiterName', 'monat', 'jahr',
+                        'zeitraum', 'signiert', 'stundenGesamt', 'werkstattId', 'createdAt'
+                    ]);
+
+      // Mitarbeiter can read their own records
+      // USES CUSTOM CLAIMS: request.auth.token.mitarbeiterId
+      allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+                  && isAuthenticated()
+                  && request.auth.token.role == 'mitarbeiter'
+                  && resource.data.mitarbeiterId == request.auth.token.mitarbeiterId;
+
+      // Admin/Werkstatt can read all records (for admin panel)
+      allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+                  && isAuthenticated()
+                  && (
+                    request.auth.token.role == 'werkstatt'
+                    || request.auth.token.role == 'admin'
+                    || request.auth.token.role == 'superadmin'
+                  );
+
+      // Admin/Werkstatt can delete records
+      allow delete: if stundennachweiselCollection.matches('stundennachweise_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    );
+
+      // Anmerkungen Subcollection (Nested within stundennachweise)
+      match /anmerkungen/{anmerkungId} {
+        // Mitarbeiter can create anmerkungen for their own records
+        // Parent document check: Ensure the stundennachweis belongs to the mitarbeiter
+        allow create: if stundennachweiselCollection.matches('stundennachweise_.*')
+                      && isAuthenticated()
+                      && request.auth.token.role == 'mitarbeiter'
+                      && get(/databases/$(database)/documents/$(stundennachweiselCollection)/$(nachweisId)).data.mitarbeiterId == request.auth.token.mitarbeiterId
+                      && request.resource.data.keys().hasAll([
+                          'datum', 'fehlertyp', 'beschreibung', 'createdAt'
+                      ]);
+
+        // Mitarbeiter can read anmerkungen for their own records
+        allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+                    && isAuthenticated()
+                    && request.auth.token.role == 'mitarbeiter'
+                    && get(/databases/$(database)/documents/$(stundennachweiselCollection)/$(nachweisId)).data.mitarbeiterId == request.auth.token.mitarbeiterId;
+
+        // Admin/Werkstatt can read all anmerkungen
+        allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+                    && isAuthenticated()
+                    && (
+                      request.auth.token.role == 'werkstatt'
+                      || request.auth.token.role == 'admin'
+                      || request.auth.token.role == 'superadmin'
+                    );
+
+        // Mitarbeiter can delete their own anmerkungen
+        allow delete: if stundennachweiselCollection.matches('stundennachweise_.*')
+                      && isAuthenticated()
+                      && request.auth.token.role == 'mitarbeiter'
+                      && get(/databases/$(database)/documents/$(stundennachweiselCollection)/$(nachweisId)).data.mitarbeiterId == request.auth.token.mitarbeiterId;
+
+        // Admin/Werkstatt can delete any anmerkungen
+        allow delete: if stundennachweiselCollection.matches('stundennachweise_.*')
+                      && isAuthenticated()
+                      && (
+                        request.auth.token.role == 'werkstatt'
+                        || request.auth.token.role == 'admin'
+                        || request.auth.token.role == 'superadmin'
+                      );
+      }
     }
 
     // ============================================

@@ -2531,6 +2531,123 @@ exports.setWerkstattClaims = functions
       }
     });
 
+/**
+ * FUNCTION: setMitarbeiterClaims
+ *
+ * Sets custom claims for a Mitarbeiter (employee) after Stage 2 login
+ * Must be called by a logged-in Werkstatt user after Mitarbeiter validates password
+ *
+ * @param {string} mitarbeiterId - Employee ID from Firestore
+ * @param {string} werkstattId - Workshop ID (e.g. "mosbach")
+ * @returns {object} { success, claims, message }
+ */
+exports.setMitarbeiterClaims = functions
+    .region("europe-west3")
+    .https
+    .onCall(async (data, context) => {
+      try {
+        // Require authentication (Werkstatt must be logged in)
+        if (!context.auth) {
+          throw new functions.https.HttpsError(
+              "unauthenticated",
+              "Werkstatt muss eingeloggt sein"
+          );
+        }
+
+        const { mitarbeiterId, werkstattId } = data;
+
+        // Validation
+        if (!mitarbeiterId) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              "mitarbeiterId ist erforderlich"
+          );
+        }
+
+        if (!werkstattId) {
+          throw new functions.https.HttpsError(
+              "invalid-argument",
+              "werkstattId ist erforderlich"
+          );
+        }
+
+        // Security: Only werkstatt role can set mitarbeiter claims
+        if (!context.auth.token || context.auth.token.role !== "werkstatt") {
+          throw new functions.https.HttpsError(
+              "permission-denied",
+              "Nur Werkstatt kann Mitarbeiter-Claims setzen"
+          );
+        }
+
+        // Security: werkstattId in claims must match requested werkstattId
+        if (context.auth.token.werkstattId !== werkstattId) {
+          throw new functions.https.HttpsError(
+              "permission-denied",
+              "Werkstatt kann nur Claims für eigene Mitarbeiter setzen"
+          );
+        }
+
+        console.log(`🔐 Setting mitarbeiter claims for user ${context.auth.uid}`);
+        console.log(`   MitarbeiterId: ${mitarbeiterId}, WerkstattId: ${werkstattId}`);
+
+        // Verify mitarbeiter exists in Firestore
+        const mitarbeiterRef = admin.firestore()
+            .collection(`mitarbeiter_${werkstattId}`)
+            .doc(mitarbeiterId);
+
+        const mitarbeiterDoc = await mitarbeiterRef.get();
+
+        if (!mitarbeiterDoc.exists) {
+          throw new functions.https.HttpsError(
+              "not-found",
+              `Mitarbeiter ${mitarbeiterId} nicht gefunden in Werkstatt ${werkstattId}`
+          );
+        }
+
+        const mitarbeiterData = mitarbeiterDoc.data();
+
+        // Security: Check if mitarbeiter is active
+        if (mitarbeiterData.status !== "active") {
+          throw new functions.https.HttpsError(
+              "permission-denied",
+              "Mitarbeiter ist nicht aktiv"
+          );
+        }
+
+        // Set custom claims for the WERKSTATT user (not mitarbeiter)
+        // The werkstatt Firebase Auth user gets mitarbeiter info in claims
+        const claims = {
+          role: "mitarbeiter",
+          mitarbeiterId: mitarbeiterId,
+          werkstattId: werkstattId,
+          mitarbeiterName: mitarbeiterData.name || "Unbekannt"
+        };
+
+        await admin.auth().setCustomUserClaims(context.auth.uid, claims);
+
+        console.log(`✅ Custom claims set for ${context.auth.uid}:`, claims);
+
+        return {
+          success: true,
+          claims: claims,
+          message: "Mitarbeiter-Claims erfolgreich gesetzt"
+        };
+
+      } catch (error) {
+        console.error("❌ setMitarbeiterClaims error:", error);
+
+        // Return user-friendly error
+        if (error instanceof functions.https.HttpsError) {
+          throw error; // Re-throw HttpsError as-is
+        }
+
+        throw new functions.https.HttpsError(
+            "internal",
+            `Fehler beim Setzen der Mitarbeiter-Claims: ${error.message}`
+        );
+      }
+    });
+
 // ============================================
 // PARTNER AUTO-LOGIN FUNCTIONS (QR-Code Feature)
 // ============================================

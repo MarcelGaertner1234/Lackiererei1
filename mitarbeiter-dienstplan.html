@@ -371,6 +371,86 @@
             background: linear-gradient(135deg, #ff3b30 0%, #d70015 100%);
         }
 
+        /* Week View (for Team-Dienstplan) */
+        .week-view {
+            display: grid;
+            grid-template-columns: 150px repeat(7, 1fr);
+            gap: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .week-header {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .week-header.corner {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .week-header.today {
+            background: rgba(10, 132, 255, 0.2);
+        }
+
+        .week-row-header {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .week-cell {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px;
+            min-height: 80px;
+            position: relative;
+        }
+
+        .week-cell.today {
+            background: rgba(10, 132, 255, 0.1);
+        }
+
+        /* Mitarbeiter Avatar */
+        .mitarbeiter-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0a84ff 0%, #0051d5 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        /* Schicht Badge (for week view) */
+        .schicht-badge {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .schicht-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+        }
+
         /* Modal */
         .modal {
             display: none;
@@ -712,18 +792,18 @@
 
             <div class="calendar">
                 <div class="calendar-header">
-                    <h3 id="teamMonth">November 2025</h3>
+                    <h3 id="teamWeekTitle">KW 45 · 04.11 - 10.11.2025</h3>
                     <div class="calendar-nav">
-                        <button onclick="navigateTeamCalendar('prev')">
+                        <button onclick="navigateTeamWeek('prev')">
                             <i data-feather="chevron-left"></i>
                         </button>
-                        <button onclick="navigateTeamCalendar('next')">
+                        <button onclick="navigateTeamWeek('next')">
                             <i data-feather="chevron-right"></i>
                         </button>
                     </div>
                 </div>
-                <div class="calendar-grid" id="teamCalendarGrid">
-                    <!-- Team calendar will be rendered here -->
+                <div class="week-view" id="teamWeekView">
+                    <!-- Team week view will be rendered here -->
                 </div>
             </div>
         </div>
@@ -864,8 +944,7 @@
         let allUrlaubsantraege = [];
         let allMitarbeiter = [];
         let allTeamSchichten = [];
-        let teamMonth = new Date().getMonth();
-        let teamYear = new Date().getFullYear();
+        let teamCurrentDate = new Date(); // For team week view
         let selectedTauschSchicht = null;
         let currentAnnotations = [];
         let signatureCanvas = null;
@@ -1615,13 +1694,32 @@
                         jahr: year,
                         zeitraum: `${startDatum} bis ${endDatum}`,
                         signiert: signatureData !== null,
-                        anmerkungen: currentAnnotations || [],
                         stundenGesamt: totalHours,
+                        werkstattId: window.werkstattId,
                         createdAt: new Date().toISOString()
                     };
 
-                    await window.getCollection('stundennachweise').add(nachweisData);
+                    const nachweisRef = await window.getCollection('stundennachweise').add(nachweisData);
                     console.log('✅ Stundennachweis-Metadaten gespeichert:', nachweisData);
+
+                    // ✅ PHASE 2.1: Anmerkungen in Subcollection speichern
+                    if (currentAnnotations && currentAnnotations.length > 0) {
+                        console.log(`💬 Speichere ${currentAnnotations.length} Anmerkungen in Subcollection...`);
+                        const batch = window.db.batch();
+
+                        currentAnnotations.forEach(anmerkung => {
+                            const anmerkungRef = nachweisRef.collection('anmerkungen').doc();
+                            batch.set(anmerkungRef, {
+                                datum: anmerkung.date,
+                                fehlertyp: anmerkung.errorType,
+                                beschreibung: anmerkung.description,
+                                createdAt: new Date().toISOString()
+                            });
+                        });
+
+                        await batch.commit();
+                        console.log('✅ Anmerkungen in Subcollection gespeichert');
+                    }
                 } catch (metaError) {
                     console.error('❌ Fehler beim Speichern der Metadaten:', metaError);
                     // Non-critical: PDF wurde bereits erstellt, Metadaten sind optional
@@ -2088,8 +2186,8 @@
                 // Populate filter dropdown
                 populateMitarbeiterFilter();
 
-                // Render calendar
-                renderTeamCalendar();
+                // Render week view
+                renderTeamWeekView();
 
             } catch (error) {
                 console.error('❌ Fehler beim Laden der Team-Daten:', error);
@@ -2112,114 +2210,142 @@
         }
 
         /**
-         * Navigate team calendar (month)
+         * Navigate team week view
          */
-        function navigateTeamCalendar(direction) {
+        function navigateTeamWeek(direction) {
             if (direction === 'prev') {
-                teamMonth--;
-                if (teamMonth < 0) {
-                    teamMonth = 11;
-                    teamYear--;
-                }
+                teamCurrentDate.setDate(teamCurrentDate.getDate() - 7);
             } else {
-                teamMonth++;
-                if (teamMonth > 11) {
-                    teamMonth = 0;
-                    teamYear++;
-                }
+                teamCurrentDate.setDate(teamCurrentDate.getDate() + 7);
             }
-            renderTeamCalendar();
+            renderTeamWeekView();
         }
 
         /**
-         * Render team calendar
+         * Render team week view (read-only, for viewing colleagues' schedules)
          */
-        function renderTeamCalendar() {
-            const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-                               'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-            const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-
-            // Update header
-            document.getElementById('teamMonth').textContent = `${monthNames[teamMonth]} ${teamYear}`;
-
-            const grid = document.getElementById('teamCalendarGrid');
-            grid.innerHTML = '';
-
-            // Get filter
+        function renderTeamWeekView() {
+            const container = document.getElementById('teamWeekView');
             const filterMitarbeiterId = document.getElementById('teamMitarbeiterFilter').value;
 
-            // Day headers
-            dayNames.forEach(day => {
-                const header = document.createElement('div');
-                header.className = 'calendar-day-header';
-                header.textContent = day;
-                grid.appendChild(header);
-            });
+            // Get Monday of current week
+            const monday = getMonday(teamCurrentDate);
+            const endDate = new Date(monday);
+            endDate.setDate(endDate.getDate() + 6);
 
-            // Calculate month days
-            const firstDay = new Date(teamYear, teamMonth, 1);
-            const lastDay = new Date(teamYear, teamMonth + 1, 0);
-            const startDayOfWeek = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; // Monday = 0
+            // Update title
+            const weekNumber = getWeekNumber(monday);
+            const titleText = `KW ${weekNumber} · ${formatDate(monday, 'DD.MM')} - ${formatDate(endDate, 'DD.MM.YYYY')}`;
+            document.getElementById('teamWeekTitle').textContent = titleText;
 
-            // Empty cells before month start
-            for (let i = 0; i < startDayOfWeek; i++) {
-                const emptyCell = document.createElement('div');
-                emptyCell.className = 'calendar-day empty';
-                grid.appendChild(emptyCell);
+            // Build week grid HTML
+            let html = '';
+
+            // Header row
+            html += '<div class="week-header corner">Mitarbeiter</div>';
+            const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            for (let i = 0; i < 7; i++) {
+                const day = new Date(monday);
+                day.setDate(day.getDate() + i);
+                const isToday = isSameDay(day, new Date());
+                html += `<div class="week-header ${isToday ? 'today' : ''}">${weekdays[i]}<br><small>${formatDate(day, 'DD.MM')}</small></div>`;
             }
 
-            // Render days
-            for (let day = 1; day <= lastDay.getDate(); day++) {
-                const dateStr = `${teamYear}-${String(teamMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const dayCell = document.createElement('div');
-                dayCell.className = 'calendar-day';
+            // Filter mitarbeiter if needed
+            let displayMitarbeiter = allMitarbeiter;
+            if (filterMitarbeiterId !== 'all') {
+                displayMitarbeiter = allMitarbeiter.filter(m => m.id === filterMitarbeiterId);
+            }
 
-                // Check if today
-                const today = new Date();
-                if (teamYear === today.getFullYear() && teamMonth === today.getMonth() && day === today.getDate()) {
-                    dayCell.classList.add('today');
-                }
+            // Mitarbeiter rows
+            for (const mitarbeiter of displayMitarbeiter) {
+                // Row header with avatar
+                html += `
+                    <div class="week-row-header">
+                        <div class="mitarbeiter-avatar">${getInitials(mitarbeiter.name)}</div>
+                        ${mitarbeiter.name}
+                    </div>
+                `;
 
-                // Day number
-                const dayNumber = document.createElement('div');
-                dayNumber.className = 'day-number';
-                dayNumber.textContent = day;
-                dayCell.appendChild(dayNumber);
+                // Day cells
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(monday);
+                    day.setDate(day.getDate() + i);
+                    const dateStr = formatDate(day, 'YYYY-MM-DD');
+                    const isToday = isSameDay(day, new Date());
 
-                // Find schichten for this day
-                let daySchichten = allTeamSchichten.filter(s => s.datum === dateStr);
+                    // Find schichten for this mitarbeiter + date
+                    const schichten = allTeamSchichten.filter(s =>
+                        String(s.mitarbeiterId) === String(mitarbeiter.id) &&
+                        s.datum === dateStr
+                    );
 
-                // Apply filter
-                if (filterMitarbeiterId !== 'all') {
-                    daySchichten = daySchichten.filter(s => s.mitarbeiterId === filterMitarbeiterId);
-                }
+                    html += `<div class="week-cell ${isToday ? 'today' : ''}">`;
 
-                // Render schichten
-                daySchichten.forEach(schicht => {
-                    const schichtTyp = allSchichtTypen.find(st => st.id === schicht.schichtTypId);
-                    const mitarbeiter = allMitarbeiter.find(m => m.id === schicht.mitarbeiterId);
+                    // Render schicht badges
+                    for (const schicht of schichten) {
+                        const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                        if (schichtTyp) {
+                            // Check if this is another employee's schicht (allow tausch request)
+                            const clickable = schicht.mitarbeiterId !== currentUser.mitarbeiterId;
+                            const clickHandler = clickable ? `onclick="openTauschModal(${JSON.stringify(schicht)}, ${JSON.stringify(mitarbeiter)}, ${JSON.stringify(schichtTyp)})"` : '';
+                            const cursorStyle = clickable ? 'cursor: pointer;' : 'cursor: default; opacity: 0.7;';
 
-                    if (schichtTyp && mitarbeiter) {
-                        const schichtDiv = document.createElement('div');
-                        schichtDiv.className = 'schicht';
-                        schichtDiv.style.backgroundColor = schichtTyp.farbe || '#0a84ff';
-                        schichtDiv.style.cursor = 'pointer';
-                        schichtDiv.textContent = `${mitarbeiter.name}: ${schichtTyp.name}`;
-                        schichtDiv.title = `${mitarbeiter.name} - ${schichtTyp.startzeit} bis ${schichtTyp.endzeit}`;
-
-                        // Only allow tausch for OTHER mitarbeiter's schichten
-                        if (schicht.mitarbeiterId !== currentUser.mitarbeiterId) {
-                            schichtDiv.onclick = () => openTauschModal(schicht, mitarbeiter, schichtTyp);
+                            html += `
+                                <div class="schicht-badge"
+                                     style="background: ${schichtTyp.farbe || '#0a84ff'}; ${cursorStyle}"
+                                     title="${mitarbeiter.name} - ${schichtTyp.startzeit} bis ${schichtTyp.endzeit}"
+                                     ${clickHandler}>
+                                    ${schichtTyp.name}
+                                </div>
+                            `;
                         }
-
-                        dayCell.appendChild(schichtDiv);
                     }
-                });
 
-                grid.appendChild(dayCell);
+                    html += '</div>';
+                }
             }
 
+            container.innerHTML = html;
             feather.replace();
+        }
+
+        // Helper functions for date formatting
+        function getMonday(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+            return new Date(d.setDate(diff));
+        }
+
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        }
+
+        function formatDate(date, format) {
+            const d = new Date(date);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+
+            if (format === 'DD.MM') return `${day}.${month}`;
+            if (format === 'DD.MM.YYYY') return `${day}.${month}.${year}`;
+            if (format === 'YYYY-MM-DD') return `${year}-${month}-${day}`;
+            return `${day}.${month}.${year}`;
+        }
+
+        function isSameDay(date1, date2) {
+            return date1.getDate() === date2.getDate() &&
+                   date1.getMonth() === date2.getMonth() &&
+                   date1.getFullYear() === date2.getFullYear();
+        }
+
+        function getInitials(name) {
+            return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
         }
 
         // ============================================
