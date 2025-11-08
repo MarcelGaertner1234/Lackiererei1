@@ -3071,55 +3071,67 @@
                     const mitarbeiter2 = allMitarbeiter.find(m => String(m.id) === String(tausch.mitarbeiter2Id));
 
                     if (mitarbeiter1 && mitarbeiter2) {
-                        // Calculate hours LOST by M1 (schichten1) and GAINED by M1 (schichten2)
-                        let hoursLostM1 = 0;
-                        let hoursGainedM1 = 0;
+                        try {
+                            // Calculate hours LOST by M1 (schichten1) and GAINED by M1 (schichten2)
+                            let hoursLostM1 = 0;
+                            let hoursGainedM1 = 0;
 
-                        for (const schicht of schichten1) {
-                            const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
-                            if (schichtTyp && !schichtTyp.isSpecial) {
-                                hoursLostM1 += calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                            for (const schicht of schichten1) {
+                                const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                                if (schichtTyp && !schichtTyp.isSpecial) {
+                                    hoursLostM1 += calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                                }
                             }
-                        }
 
-                        for (const schicht of schichten2) {
-                            const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
-                            if (schichtTyp && !schichtTyp.isSpecial) {
-                                hoursGainedM1 += calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                            for (const schicht of schichten2) {
+                                const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+                                if (schichtTyp && !schichtTyp.isSpecial) {
+                                    hoursGainedM1 += calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                                }
                             }
+
+                            // Update Mitarbeiter1 hours
+                            const newGesamtstundenM1 = Math.max(0, Math.round((
+                                (mitarbeiter1.gesamtstunden || 0) - hoursLostM1 + hoursGainedM1
+                            ) * 100) / 100);
+
+                            const newMonatlicheStundenM1 = Math.max(0, Math.round((
+                                (mitarbeiter1.monatlicheStunden || 0) - hoursLostM1 + hoursGainedM1
+                            ) * 100) / 100);
+
+                            await window.getCollection('mitarbeiter').doc(String(tausch.mitarbeiter1Id)).update({
+                                gesamtstunden: newGesamtstundenM1,
+                                monatlicheStunden: newMonatlicheStundenM1
+                            });
+
+                            console.log(`✅ Mitarbeiter1 Stunden aktualisiert: ${newGesamtstundenM1}h`);
+
+                            // Update Mitarbeiter2 hours (opposite direction)
+                            const newGesamtstundenM2 = Math.max(0, Math.round((
+                                (mitarbeiter2.gesamtstunden || 0) + hoursLostM1 - hoursGainedM1
+                            ) * 100) / 100);
+
+                            const newMonatlicheStundenM2 = Math.max(0, Math.round((
+                                (mitarbeiter2.monatlicheStunden || 0) + hoursLostM1 - hoursGainedM1
+                            ) * 100) / 100);
+
+                            await window.getCollection('mitarbeiter').doc(String(tausch.mitarbeiter2Id)).update({
+                                gesamtstunden: newGesamtstundenM2,
+                                monatlicheStunden: newMonatlicheStundenM2
+                            });
+
+                            console.log(`✅ Mitarbeiter2 Stunden aktualisiert: ${newGesamtstundenM2}h`);
+
+                            console.log(`✅ Stunden aktualisiert:`);
+                            console.log(`   ${tausch.mitarbeiter1Name}: -${hoursLostM1}h +${hoursGainedM1}h = ${newGesamtstundenM1}h gesamt`);
+                            console.log(`   ${tausch.mitarbeiter2Name}: +${hoursLostM1}h -${hoursGainedM1}h = ${newGesamtstundenM2}h gesamt`);
+
+                        } catch (error) {
+                            console.error('❌ FEHLER beim Aktualisieren der Stunden:', error);
+                            console.error('   mitarbeiter1Id:', tausch.mitarbeiter1Id, 'Type:', typeof tausch.mitarbeiter1Id);
+                            console.error('   mitarbeiter2Id:', tausch.mitarbeiter2Id, 'Type:', typeof tausch.mitarbeiter2Id);
+                            // Don't throw - allow the swap to complete even if hours update fails
                         }
-
-                        // Update Mitarbeiter1 hours
-                        const newGesamtstundenM1 = Math.max(0, Math.round((
-                            (mitarbeiter1.gesamtstunden || 0) - hoursLostM1 + hoursGainedM1
-                        ) * 100) / 100);
-
-                        const newMonatlicheStundenM1 = Math.max(0, Math.round((
-                            (mitarbeiter1.monatlicheStunden || 0) - hoursLostM1 + hoursGainedM1
-                        ) * 100) / 100);
-
-                        await window.getCollection('mitarbeiter').doc(tausch.mitarbeiter1Id).update({
-                            gesamtstunden: newGesamtstundenM1,
-                            monatlicheStunden: newMonatlicheStundenM1
-                        });
-
-                        // Update Mitarbeiter2 hours (opposite direction)
-                        const newGesamtstundenM2 = Math.max(0, Math.round((
-                            (mitarbeiter2.gesamtstunden || 0) + hoursLostM1 - hoursGainedM1
-                        ) * 100) / 100);
-
-                        const newMonatlicheStundenM2 = Math.max(0, Math.round((
-                            (mitarbeiter2.monatlicheStunden || 0) + hoursLostM1 - hoursGainedM1
-                        ) * 100) / 100);
-
-                        await window.getCollection('mitarbeiter').doc(tausch.mitarbeiter2Id).update({
-                            gesamtstunden: newGesamtstundenM2,
-                            monatlicheStunden: newMonatlicheStundenM2
-                        });
-
-                        console.log(`✅ Stunden aktualisiert:`);
-                        console.log(`   ${tausch.mitarbeiter1Name}: -${hoursLostM1}h +${hoursGainedM1}h = ${newGesamtstundenM1}h gesamt`);
-                        console.log(`   ${tausch.mitarbeiter2Name}: +${hoursLostM1}h -${hoursGainedM1}h = ${newGesamtstundenM2}h gesamt`);
                     }
                 }
 
