@@ -544,6 +544,9 @@
             <button class="tab-button" onclick="switchTab('urlaub')">
                 🏖️ Urlaub & Konto
             </button>
+            <button class="tab-button" onclick="switchTab('team')">
+                👥 Team-Dienstplan
+            </button>
         </div>
 
         <!-- Tab 1: Mein Dienstplan -->
@@ -693,6 +696,46 @@
         </div>
     </div>
 
+    <!-- Tab 4: Team-Dienstplan -->
+    <div id="tab-team" class="tab-content">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>👥 Team-Dienstplan</h3>
+                <div>
+                    <label for="teamMitarbeiterFilter" style="margin-right: 10px; color: rgba(255,255,255,0.7);">Filter:</label>
+                    <select id="teamMitarbeiterFilter" onchange="renderTeamCalendar()" style="padding: 8px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #f5f5f7; font-size: 14px;">
+                        <option value="all">Alle Mitarbeiter</option>
+                        <!-- Dynamically filled -->
+                    </select>
+                </div>
+            </div>
+
+            <div class="calendar">
+                <div class="calendar-header">
+                    <h3 id="teamMonth">November 2025</h3>
+                    <div class="calendar-nav">
+                        <button onclick="navigateTeamCalendar('prev')">
+                            <i data-feather="chevron-left"></i>
+                        </button>
+                        <button onclick="navigateTeamCalendar('next')">
+                            <i data-feather="chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="calendar-grid" id="teamCalendarGrid">
+                    <!-- Team calendar will be rendered here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>📋 Hinweis</h3>
+            <p style="color: rgba(255,255,255,0.7); margin: 0; line-height: 1.6;">
+                Hier siehst du die Dienstpläne aller Kollegen. Klicke auf eine Schicht um eine Tausch-Anfrage zu stellen.
+            </p>
+        </div>
+    </div>
+
     <!-- Modal: Signature -->
     <div id="signatureModal" class="modal">
         <div class="modal-content">
@@ -769,6 +812,44 @@
         </div>
     </div>
 
+    <!-- Modal: Tausch-Anfrage -->
+    <div id="tauschModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔄 Schicht tauschen</h2>
+                <button class="modal-close" onclick="closeTauschModal()">×</button>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="margin: 0 0 10px 0; font-size: 16px;">Gewählte Schicht:</h3>
+                <p id="tauschZielSchicht" style="margin: 0; opacity: 0.8;"></p>
+            </div>
+
+            <div class="form-group">
+                <label>Deine Schicht zum Tauschen</label>
+                <select id="tauschEigeneSchicht" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #f5f5f7;">
+                    <option value="">-- Bitte wählen --</option>
+                    <!-- Dynamically filled -->
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Nachricht (optional)</label>
+                <textarea id="tauschNachricht" placeholder="Grund für den Tausch..."></textarea>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 30px;">
+                <button class="btn btn-secondary" onclick="closeTauschModal()" style="flex: 1;">
+                    Abbrechen
+                </button>
+                <button class="btn" onclick="submitTauschAnfrage()" style="flex: 2;">
+                    <i data-feather="send"></i>
+                    Anfrage senden
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript -->
     <script>
         // Global Variables
@@ -781,6 +862,11 @@
         let allSchichten = [];
         let allSchichtTypen = [];
         let allUrlaubsantraege = [];
+        let allMitarbeiter = [];
+        let allTeamSchichten = [];
+        let teamMonth = new Date().getMonth();
+        let teamYear = new Date().getFullYear();
+        let selectedTauschSchicht = null;
         let currentAnnotations = [];
         let signatureCanvas = null;
         let signatureCtx = null;
@@ -958,6 +1044,11 @@
 
             // Activate selected button
             event.target.classList.add('active');
+
+            // Load team data when switching to team tab
+            if (tabName === 'team') {
+                loadTeamData();
+            }
 
             // Refresh Feather Icons
             feather.replace();
@@ -1955,6 +2046,271 @@
             } catch (error) {
                 console.error('❌ Fehler beim Einreichen des Urlaubsantrags:', error);
                 alert('❌ Fehler beim Einreichen. Bitte versuchen Sie es erneut.');
+            }
+        }
+
+        // ============================================
+        // PHASE 3: TEAM-DIENSTPLAN
+        // ============================================
+
+        /**
+         * Load team data (all mitarbeiter + all schichten)
+         */
+        async function loadTeamData() {
+            try {
+                console.log('👥 Lade Team-Daten...');
+
+                // Load all mitarbeiter + all schichten in parallel
+                const [mitarbeiterSnapshot, schichtenSnapshot, schichtTypenSnapshot] = await Promise.all([
+                    window.getCollection('mitarbeiter').get(),
+                    window.getCollection('schichten').get(),
+                    window.getCollection('schichtTypen').get()
+                ]);
+
+                allMitarbeiter = mitarbeiterSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })).filter(m => m.status === 'active'); // Only active mitarbeiter
+
+                allTeamSchichten = schichtenSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                allSchichtTypen = schichtTypenSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log(`✅ ${allMitarbeiter.length} Mitarbeiter geladen`);
+                console.log(`✅ ${allTeamSchichten.length} Schichten geladen`);
+
+                // Populate filter dropdown
+                populateMitarbeiterFilter();
+
+                // Render calendar
+                renderTeamCalendar();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Team-Daten:', error);
+            }
+        }
+
+        /**
+         * Populate mitarbeiter filter dropdown
+         */
+        function populateMitarbeiterFilter() {
+            const select = document.getElementById('teamMitarbeiterFilter');
+            select.innerHTML = '<option value="all">Alle Mitarbeiter</option>';
+
+            allMitarbeiter.forEach(ma => {
+                const option = document.createElement('option');
+                option.value = ma.id;
+                option.textContent = ma.name;
+                select.appendChild(option);
+            });
+        }
+
+        /**
+         * Navigate team calendar (month)
+         */
+        function navigateTeamCalendar(direction) {
+            if (direction === 'prev') {
+                teamMonth--;
+                if (teamMonth < 0) {
+                    teamMonth = 11;
+                    teamYear--;
+                }
+            } else {
+                teamMonth++;
+                if (teamMonth > 11) {
+                    teamMonth = 0;
+                    teamYear++;
+                }
+            }
+            renderTeamCalendar();
+        }
+
+        /**
+         * Render team calendar
+         */
+        function renderTeamCalendar() {
+            const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+                               'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+            const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+            // Update header
+            document.getElementById('teamMonth').textContent = `${monthNames[teamMonth]} ${teamYear}`;
+
+            const grid = document.getElementById('teamCalendarGrid');
+            grid.innerHTML = '';
+
+            // Get filter
+            const filterMitarbeiterId = document.getElementById('teamMitarbeiterFilter').value;
+
+            // Day headers
+            dayNames.forEach(day => {
+                const header = document.createElement('div');
+                header.className = 'calendar-day-header';
+                header.textContent = day;
+                grid.appendChild(header);
+            });
+
+            // Calculate month days
+            const firstDay = new Date(teamYear, teamMonth, 1);
+            const lastDay = new Date(teamYear, teamMonth + 1, 0);
+            const startDayOfWeek = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; // Monday = 0
+
+            // Empty cells before month start
+            for (let i = 0; i < startDayOfWeek; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = 'calendar-day empty';
+                grid.appendChild(emptyCell);
+            }
+
+            // Render days
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                const dateStr = `${teamYear}-${String(teamMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayCell = document.createElement('div');
+                dayCell.className = 'calendar-day';
+
+                // Check if today
+                const today = new Date();
+                if (teamYear === today.getFullYear() && teamMonth === today.getMonth() && day === today.getDate()) {
+                    dayCell.classList.add('today');
+                }
+
+                // Day number
+                const dayNumber = document.createElement('div');
+                dayNumber.className = 'day-number';
+                dayNumber.textContent = day;
+                dayCell.appendChild(dayNumber);
+
+                // Find schichten for this day
+                let daySchichten = allTeamSchichten.filter(s => s.datum === dateStr);
+
+                // Apply filter
+                if (filterMitarbeiterId !== 'all') {
+                    daySchichten = daySchichten.filter(s => s.mitarbeiterId === filterMitarbeiterId);
+                }
+
+                // Render schichten
+                daySchichten.forEach(schicht => {
+                    const schichtTyp = allSchichtTypen.find(st => st.id === schicht.schichtTypId);
+                    const mitarbeiter = allMitarbeiter.find(m => m.id === schicht.mitarbeiterId);
+
+                    if (schichtTyp && mitarbeiter) {
+                        const schichtDiv = document.createElement('div');
+                        schichtDiv.className = 'schicht';
+                        schichtDiv.style.backgroundColor = schichtTyp.farbe || '#0a84ff';
+                        schichtDiv.style.cursor = 'pointer';
+                        schichtDiv.textContent = `${mitarbeiter.name}: ${schichtTyp.name}`;
+                        schichtDiv.title = `${mitarbeiter.name} - ${schichtTyp.startzeit} bis ${schichtTyp.endzeit}`;
+
+                        // Only allow tausch for OTHER mitarbeiter's schichten
+                        if (schicht.mitarbeiterId !== currentUser.mitarbeiterId) {
+                            schichtDiv.onclick = () => openTauschModal(schicht, mitarbeiter, schichtTyp);
+                        }
+
+                        dayCell.appendChild(schichtDiv);
+                    }
+                });
+
+                grid.appendChild(dayCell);
+            }
+
+            feather.replace();
+        }
+
+        // ============================================
+        // PHASE 4: TAUSCH-ANFRAGEN
+        // ============================================
+
+        /**
+         * Open tausch modal for a selected schicht
+         */
+        function openTauschModal(schicht, mitarbeiter, schichtTyp) {
+            selectedTauschSchicht = { schicht, mitarbeiter, schichtTyp };
+
+            // Display selected schicht info
+            const zielText = `${mitarbeiter.name} - ${schichtTyp.name} am ${schicht.datum} (${schichtTyp.startzeit} - ${schichtTyp.endzeit})`;
+            document.getElementById('tauschZielSchicht').textContent = zielText;
+
+            // Populate own schichten dropdown
+            const select = document.getElementById('tauschEigeneSchicht');
+            select.innerHTML = '<option value="">-- Bitte wählen --</option>';
+
+            allSchichten.forEach(ownSchicht => {
+                const ownTyp = allSchichtTypen.find(st => st.id === ownSchicht.schichtTypId);
+                if (ownTyp && !ownTyp.isSpecial) { // Only regular work shifts, not Urlaub/Krank/Frei
+                    const option = document.createElement('option');
+                    option.value = ownSchicht.id;
+                    option.textContent = `${ownTyp.name} am ${ownSchicht.datum} (${ownTyp.startzeit} - ${ownTyp.endzeit})`;
+                    select.appendChild(option);
+                }
+            });
+
+            // Show modal
+            document.getElementById('tauschModal').classList.add('active');
+        }
+
+        /**
+         * Close tausch modal
+         */
+        function closeTauschModal() {
+            document.getElementById('tauschModal').classList.remove('active');
+            selectedTauschSchicht = null;
+            document.getElementById('tauschEigeneSchicht').value = '';
+            document.getElementById('tauschNachricht').value = '';
+        }
+
+        /**
+         * Submit tausch anfrage
+         */
+        async function submitTauschAnfrage() {
+            const eigeneSchichtId = document.getElementById('tauschEigeneSchicht').value;
+            const nachricht = document.getElementById('tauschNachricht').value.trim();
+
+            if (!eigeneSchichtId) {
+                alert('⚠️ Bitte wähle eine deiner Schichten zum Tauschen!');
+                return;
+            }
+
+            if (!selectedTauschSchicht) {
+                alert('⚠️ Fehler: Keine Ziel-Schicht ausgewählt!');
+                return;
+            }
+
+            try {
+                const eigeneSchicht = allSchichten.find(s => s.id === eigeneSchichtId);
+                const eigenerTyp = allSchichtTypen.find(st => st.id === eigeneSchicht.schichtTypId);
+
+                const tauschData = {
+                    mitarbeiter1Id: currentUser.mitarbeiterId,
+                    mitarbeiter1Name: currentMitarbeiter.name,
+                    schicht1Id: eigeneSchichtId,
+                    schicht1Datum: eigeneSchicht.datum,
+                    schicht1Typ: eigenerTyp.name,
+
+                    mitarbeiter2Id: selectedTauschSchicht.mitarbeiter.id,
+                    mitarbeiter2Name: selectedTauschSchicht.mitarbeiter.name,
+                    schicht2Id: selectedTauschSchicht.schicht.id,
+                    schicht2Datum: selectedTauschSchicht.schicht.datum,
+                    schicht2Typ: selectedTauschSchicht.schichtTyp.name,
+
+                    nachricht: nachricht || '',
+                    status: 'pending',
+                    createdAt: new Date().toISOString()
+                };
+
+                await window.getCollection('schichtTausche').add(tauschData);
+
+                alert('✅ Tausch-Anfrage erfolgreich gesendet!');
+                closeTauschModal();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Senden der Tausch-Anfrage:', error);
+                alert('❌ Fehler beim Senden der Anfrage: ' + error.message);
             }
         }
 
