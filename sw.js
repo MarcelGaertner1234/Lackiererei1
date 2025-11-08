@@ -194,18 +194,25 @@ async function handleRequest(request) {
     const url = new URL(request.url);
 
     try {
-        // 1. FIREBASE SDKs - Cache First (selten aktualisiert)
+        // 1. SKIP EXTERNAL GOOGLE RESOURCES (tracking pixels, analytics, extensions)
+        // Exclude from caching to prevent CORS/fetch errors with cleardot.gif etc.
+        if ((url.hostname.includes('google') || url.hostname.includes('gstatic')) &&
+            !url.pathname.includes('firebase')) {
+            return fetch(request); // Network-only, no caching
+        }
+
+        // 2. FIREBASE SDKs - Cache First (selten aktualisiert)
         if (url.hostname === 'www.gstatic.com' && url.pathname.includes('firebase')) {
             return await cacheFirst(request, FIREBASE_CACHE);
         }
 
-        // 2. BILDER - Stale-While-Revalidate (schnell + Background Update)
+        // 3. BILDER - Stale-While-Revalidate (schnell + Background Update)
         if (request.destination === 'image' ||
             url.pathname.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
             return await staleWhileRevalidate(request, IMAGE_CACHE);
         }
 
-        // 3. HTML/CSS/JS - Network First + Cache Fallback
+        // 4. HTML/CSS/JS - Network First + Cache Fallback
         if (request.destination === 'document' ||
             request.destination === 'style' ||
             request.destination === 'script' ||
@@ -213,7 +220,7 @@ async function handleRequest(request) {
             return await networkFirst(request, CACHE_NAME);
         }
 
-        // 4. ALLE ANDEREN - Network First
+        // 5. ALLE ANDEREN - Network First
         return await networkFirst(request, CACHE_NAME);
 
     } catch (error) {
@@ -306,6 +313,12 @@ async function staleWhileRevalidate(request, cacheName) {
         return response;
     }).catch(error => {
         console.warn(`[SW] Background update failed: ${request.url}`, error);
+        // Return valid Response instead of undefined to prevent "Failed to convert value to 'Response'" errors
+        return new Response('Network error', {
+            status: 408,
+            statusText: 'Request Timeout',
+            headers: { 'Content-Type': 'text/plain' }
+        });
     });
 
     // Wenn Cache vorhanden, sofort zurückgeben
