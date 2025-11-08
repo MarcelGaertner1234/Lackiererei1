@@ -30,16 +30,56 @@ Du bist der **QA Lead** für die nächste Testing Session. Deine Mission: **Fort
 - ✅ **User-Bestätigung:** "es funktioniert !!"
 - ✅ **Deployed & getestet** - Production ready!
 
+**Session 2025-11-03 (Multi-Tenant Partner Registration):**
+- ✅ **9 Test Cases durchgeführt** - All PASSED
+- ✅ **PLZ-Region Matching** validated
+- ✅ **Partner Approval Workflow** tested end-to-end
+- ✅ **Multi-Tenant Isolation** verified
+
+**Session 2025-11-04 (Security Hardening):**
+- ✅ **8 Security Vulnerabilities gefunden & gefixt**
+- ✅ **Defense in Depth:** 2-Layer Access Control
+- ✅ **Partner Isolation:** 100% Complete
+- ✅ **Query-Rule Compliance:** All queries validated
+
+**Session 2025-11-05 (Bonus System Production Ready):**
+- ✅ **CRITICAL BUG:** Firestore Security Rules Pattern Collision
+- ✅ **12 Fix-Attempts** (FIX #44-55) → Breakthrough FIX #53
+- ✅ **Lesson Learned:** Pattern order is CRITICAL (4h debugging!)
+- ✅ **Monthly Reset Automation** deployed
+
+**Session 2025-11-06 (Partner Services Integration):**
+- ✅ **3 NEW Services:** Folierung, Steinschutz, Werbebeklebung
+- ✅ **12 Services Total** - All integrated with Kanban
+- ✅ **Bi-Directional Status Sync** working 100%
+
+**Session 2025-11-07 (Status Sync & Duplicate Prevention):**
+- ✅ **3 CRITICAL BUGS gefixt:**
+  - Field Name Inconsistency (partnerAnfrageId)
+  - Missing Duplicate Prevention (3-layer check)
+  - Random Query Results (orderBy missing)
+- ✅ **Migration Script:** migrate-partneranfrageid.html
+- ✅ **PDF Anmerkungen-Feature** implementiert
+
+**Session 2025-11-07/08 (Zeiterfassungs-System):**
+- ✅ **MAJOR FEATURE:** Employee Time Tracking System
+- ✅ **11 Commits** (d4fb0b2 → 0e6bdcb)
+- ✅ **SOLL vs IST Hours** comparison
+- ✅ **Admin Corrections Panel**
+- ✅ **Service Worker Robustness Fix** (271feb6)
+- ✅ **Firestore Composite Index** requirement documented
+
 ### 📊 Testing Status
 
-**Fortschritt:** 6/53 Schritte abgeschlossen (11.3%)
-**Verbleibend:** 47 Steps (SCHRITT 1.7 - 4.3)
+**Fortschritt:** 6/58 Schritte abgeschlossen (10.3%)
+**Verbleibend:** 52 Steps (SCHRITT 1.7 - 5.5)
 
 **Test-Plan Struktur:**
 - **TEIL 1:** Haupt-Workflow (SCHRITT 1.1-1.12) → 6/12 done, **6 remaining**
 - **TEIL 2:** Service-spezifische Felder (2.1-2.8) → 0/8 done, **8 remaining**
 - **TEIL 3:** Partner-App Workflow (3.1-3.7) → 0/7 done, **7 remaining**
 - **TEIL 4:** Realtime Updates (4.1-4.3) → 0/3 done, **3 remaining**
+- **TEIL 5:** Zeiterfassungs-System (5.1-5.5) → 0/5 done, **5 remaining** ⭐ NEW!
 
 **Wichtige Dokumente:**
 - `TEST_SESSION_LOG_20251031.md` - Live Session Log (aktueller Status)
@@ -242,6 +282,69 @@ Du bist der **QA Lead** für die nächste Testing Session. Deine Mission: **Fort
 **Status:** 0/3 completed
 **Zweck:** Multi-Tab Realtime Synchronisation
 
+---
+
+### TEIL 5: Zeiterfassungs-System (5 Steps) 🔴 CRITICAL - NEW!
+
+**Status:** 0/5 completed
+**Zweck:** Employee Time Tracking mit SOLL/IST Vergleich
+**Added:** 2025-11-08 (Session 2025-11-07/08)
+
+**SCHRITT 5.1: Employee Time Clock (mitarbeiter-dienstplan.html Tab 2)**
+- Login als Mitarbeiter
+- Tab 2 "Meine Stunden" öffnen
+- "▶️ Arbeit Starten" klicken
+- **Erwartetes Verhalten:**
+  - ✅ Zeiterfassung-Record erstellt in `zeiterfassung_mosbach`
+  - ✅ Document ID: `{datum}_{mitarbeiterId}` (z.B., `2025-11-08_M123`)
+  - ✅ Live-Timer startet (updates every 60s)
+  - ✅ Button wechselt zu "⏸️ Pause"
+
+**SCHRITT 5.2: Pause & Return from Break**
+- "⏸️ Pause" klicken
+- Warten 2 Minuten
+- "▶️ Zurück von Pause" klicken
+- **Erwartetes Verhalten:**
+  - ✅ Pause event in `events[]` Array gespeichert
+  - ✅ Timer pausiert während Break
+  - ✅ Resume-Event gespeichert
+  - ✅ Button wechselt zu "⏹️ Feierabend"
+
+**SCHRITT 5.3: Finish Work & SOLL/IST Calculation**
+- "⏹️ Feierabend" klicken
+- Tab 3 "Urlaub & Konto" öffnen
+- Kachel "📊 Stundenkonto" prüfen
+- **Erwartetes Verhalten:**
+  - ✅ `calculatedHours` berechnet (Ende - Start - Pausen)
+  - ✅ `status: 'completed'` gesetzt
+  - ✅ SOLL-Stunden aus `schichten` berechnet
+  - ✅ IST-Stunden aus `zeiterfassung` summiert
+  - ✅ Differenz = IST - SOLL (grün/rot color-coded)
+
+**SCHRITT 5.4: Admin Corrections Panel (mitarbeiter-verwaltung.html)**
+- Login als Admin
+- mitarbeiter-verwaltung.html öffnen
+- Tab "⏱️ Zeiterfassung" öffnen
+- Mitarbeiter + Zeitraum filtern
+- Zeit-Record bearbeiten
+- **Erwartetes Verhalten:**
+  - ✅ Multi-Tenant: `zeiterfassung_mosbach` query
+  - ✅ Table shows: Datum, SOLL-Std, IST-Std, Differenz
+  - ✅ Edit-Modal öffnet mit Start/Pause/End Times
+  - ✅ `manuallyEdited: true` flag gesetzt
+  - ✅ Self-healing: Alle Stunden neu berechnet
+
+**SCHRITT 5.5: PDF Export with Hours (mitarbeiter-verwaltung.html)**
+- Tab 2 "📄 PDF Generieren" klicken
+- Zeitraum wählen (aktueller Monat)
+- PDF herunterladen
+- **Erwartetes Verhalten:**
+  - ✅ **CRITICAL:** Firestore Composite Index required!
+  - ✅ Error message mit Firebase Console Link (falls Index fehlt)
+  - ✅ PDF enthält 3 neue Spalten: SOLL-Std, IST-Std, Differenz
+  - ✅ `*` Marker bei manuell editierten Einträgen
+  - ✅ Summary-Box mit Totals (color-coded)
+
 **SCHRITT 4.1: Multi-Tab Fahrzeug-Updates**
 - Tab 1: liste.html
 - Tab 2: kanban.html
@@ -367,13 +470,116 @@ Was passiert ist:
 // Fix: Earlier checks at y > 230, y > 220, y > 200 (FIXED!)
 ```
 
+**Pattern 6: Firestore Security Rules Pattern Collision (CRITICAL!)**
+```javascript
+// Console Output:
+"❌ Permission denied: Missing or insufficient permissions"
+
+// Root Cause: Wildcard patterns match before specific patterns
+// Bug Example (4h debugging!):
+match /{chatCollection}/{id} { ... }         // Line 295 - matches FIRST
+match /bonusAuszahlungen_mosbach/{id} { ... } // Line 547 - NEVER REACHED!
+
+// Fix: Order patterns TOP-TO-BOTTOM (specific → general)
+// Solution:
+match /bonusAuszahlungen_mosbach/{id} { ... } // Line 63 - FIRST
+match /{bonusCollection}/{id} { ... }         // Line 72 - SECOND
+match /{chatCollection}/{id} { ... }          // Line 295 - LAST
+
+// Lesson Learned: Pattern order is CRITICAL in Firestore Rules!
+```
+
+**Pattern 7: Field Name Inconsistency (Status Sync Bug)**
+```javascript
+// Console Output:
+"✅ Fahrzeug created successfully"
+// BUT: Status updates don't sync to Partner Portal!
+
+// Root Cause: Different field names in creation paths
+// Partner path: anfrageId
+// Admin path: partnerAnfrageId
+// Result: Status sync broken!
+
+// Fix: Standardize field names across ALL creation paths
+// Solution:
+const fahrzeugData = {
+    partnerAnfrageId: anfrageId,  // ✅ Standardized everywhere
+    // ...
+};
+
+// Lesson Learned: Field name consistency is CRITICAL for multi-path flows!
+```
+
+**Pattern 8: Duplicate Vehicle Creation (Race Condition)**
+```javascript
+// Console Output:
+"✅ Fahrzeug created" (x2 in different tabs)
+// Result: Double Kanban entries!
+
+// Root Cause: No duplicate prevention in Admin creation path
+// Fix: 3-Layer Duplicate Check
+// Layer 1: Check anfrage.fahrzeugAngelegt flag
+// Layer 2: Query by partnerAnfrageId
+// Layer 3: Query by kennzeichen
+
+// Lesson Learned: ALWAYS implement duplicate prevention at ALL entry points!
+```
+
+**Pattern 9: Service Worker Response Errors**
+```javascript
+// Console Output:
+"❌ Failed to convert value to 'Response'"
+"❌ Background update failed: https://www.google.com/images/cleardot.gif"
+
+// Root Cause: staleWhileRevalidate catch block returned undefined
+// Fix 1: Return valid Response object in catch
+return new Response('Network error', {
+    status: 408,
+    statusText: 'Request Timeout',
+    headers: { 'Content-Type': 'text/plain' }
+});
+
+// Fix 2: Filter external Google resources from caching
+if ((url.hostname.includes('google') || url.hostname.includes('gstatic')) &&
+    !url.pathname.includes('firebase')) {
+    return fetch(request); // Network-only, no caching
+}
+
+// Lesson Learned: Service Worker error handling MUST return valid Response!
+```
+
+**Pattern 10: Firestore Composite Index Missing**
+```javascript
+// Console Output:
+"❌ Fehler beim Erstellen der PDF: The query requires an index.
+You can create it here: [Firebase Console link]"
+
+// Root Cause: Multiple where clauses on different fields require Index
+// Example: zeiterfassung PDF export
+.where('mitarbeiterId', '==', X)
+.where('datum', '>=', Y)
+.where('datum', '<=', Z)
+.where('status', '==', 'completed')
+
+// Fix: Create Composite Index in Firebase Console
+// Fields: mitarbeiterId (ASC), status (ASC), datum (ASC)
+
+// Lesson Learned: Document Index requirements UPFRONT in feature spec!
+```
+
 ---
 
 ## 🛠️ Setup für Testing
 
 ### Schritt 1: Deployment Status prüfen
 
-**WICHTIG:** Letzte Änderung war 2025-11-02 (PDF Pagination Fix)
+**WICHTIG:** Letzte Änderung war 2025-11-08 (Zeiterfassungs-System + Service Worker Fix)
+**Latest Commits:**
+- `2e4b622` (2025-11-08) - CLAUDE.md Optimization & Zeiterfassungs-System Dokumentation
+- `271feb6` (2025-11-08) - Service Worker Error Handling
+- `0e6bdcb` (2025-11-08) - PDF-Export erweitert (SOLL/IST/Differenz)
+- `1bdb335` (2025-11-07) - Status Sync & Duplicate Prevention Fixes
+- `706df2c` (2025-11-07) - PDF Anmerkungen-Feature
 
 ```bash
 # Deployment Status prüfen
@@ -381,6 +587,10 @@ https://github.com/MarcelGaertner1234/Lackiererei1/actions
 
 # Hard Refresh IMMER vor Tests
 # Cmd+Shift+R (Mac) / Ctrl+Shift+F5 (Windows)
+
+# Verify Latest Commit deployed
+curl -I https://marcelgaertner1234.github.io/Lackiererei1/
+# Check: Last-Modified header
 ```
 
 ### Schritt 2: Browser vorbereiten
@@ -460,12 +670,14 @@ https://github.com/MarcelGaertner1234/Lackiererei1/actions
 - [ ] TEIL 2 abgeschlossen (SCHRITT 2.1-2.8) = 8 Steps
 - [ ] TEIL 3 abgeschlossen (SCHRITT 3.1-3.7) = 7 Steps
 - [ ] TEIL 4 abgeschlossen (SCHRITT 4.1-4.3) = 3 Steps
+- [ ] TEIL 5 abgeschlossen (SCHRITT 5.1-5.5) = 5 Steps ⭐ NEW!
 
-**Total:** 24 Steps (von 47 verbleibenden)
+**Total:** 29 Steps (von 52 verbleibenden)
+**Priorität:** TEIL 5 (Zeiterfassungs-System) sollte ZUERST getestet werden (CRITICAL Feature!)
 
 **Deliverables:**
 1. **Updated TEST_SESSION_LOG_20251031.md**
-   - Progress tracking (X/53 steps)
+   - Progress tracking (X/58 steps)
    - Console Logs für jeden Test
    - Bugs dokumentiert mit Screenshots
 
@@ -486,6 +698,42 @@ https://github.com/MarcelGaertner1234/Lackiererei1/actions
 
 ## 💡 Best Practices
 
+### Lessons Learned (2025-11-02 bis 2025-11-08)
+
+**🔴 CRITICAL Learnings:**
+
+1. **Firestore Security Rules Pattern Order is CRITICAL** (4h debugging!)
+   - Order patterns from specific → general (hardcoded → pattern → wildcard)
+   - Wildcard patterns at TOP will block everything else
+   - Test pattern order: Add `allow read, write: if true` to top-level temporarily
+   - Use Firebase Rules Playground to verify which rule matches
+
+2. **Field Name Standardization is CRITICAL** (2-3h debugging per bug!)
+   - Use SAME field names across ALL creation paths (Partner + Admin + Werkstatt)
+   - Example: `partnerAnfrageId` everywhere (NOT `anfrageId` in one path!)
+   - Migration scripts required for existing data
+   - Status sync breaks without field consistency
+
+3. **Duplicate Prevention Required at ALL Entry Points**
+   - Implement 3-Layer Check:
+     - Layer 1: Check flag in source document
+     - Layer 2: Query by unique reference ID
+     - Layer 3: Query by natural key (e.g., kennzeichen)
+   - Race conditions WILL happen in production
+   - Don't assume "user won't do that"
+
+4. **Firestore Composite Indexes MUST be Documented UPFRONT**
+   - Document index requirements in feature spec
+   - Provide Firebase Console link in error message
+   - Test queries in Emulator (indexes not required there!)
+   - Production will fail without indexes
+
+5. **Service Worker Error Handling MUST Return Valid Response**
+   - NEVER return `undefined` in catch blocks
+   - Return `new Response('error', {status: 408})` for errors
+   - Filter external resources (Google analytics, tracking pixels)
+   - Test Service Worker errors in production (not visible in Emulator)
+
 ### Kommunikation mit User
 
 **DO:**
@@ -494,12 +742,15 @@ https://github.com/MarcelGaertner1234/Lackiererei1/actions
 - ✅ Erwartetes Verhalten klar beschreiben (Checkboxes!)
 - ✅ Bug-Symptome auflisten → User erkennt sie dann
 - ✅ TEST_SESSION_LOG nach jedem Schritt aktualisieren
+- ✅ **Hard Refresh ALWAYS vor Tests** (Cmd+Shift+R / Ctrl+Shift+F5)
+- ✅ **Preserve Log aktivieren** in Console (sonst Logs verloren!)
 
 **DON'T:**
 - ❌ Vermutungen ohne Logs
 - ❌ Mehrere Tests parallel (User wird verwirrt)
 - ❌ Ohne Hard Refresh testen (Browser-Cache!)
 - ❌ Screenshots ignorieren (visuelles Feedback wichtig!)
+- ❌ **Firebase Emulator für Production-Tests** (Indexes nicht required!)
 
 ### Incremental Testing (Bewährt!)
 
@@ -529,19 +780,31 @@ Hi! Wir setzen die Manual Testing Session fort.
 **Was bisher geschah:**
 - Session #1 (2025-11-01): 6 Tests completed + 2 Bugs fixed
 - Session #2 (2025-11-02): PDF Pagination Fix deployed & getestet ✅
+- Sessions #3-7 (2025-11-03 bis 11-08): 8 Major Features deployed!
+  - Multi-Tenant Partner Registration ✅
+  - Security Hardening (8 vulnerabilities) ✅
+  - Bonus System Production Ready ✅
+  - 12 Partner Services Integration ✅
+  - Status Sync & Duplicate Prevention ✅
+  - PDF Anmerkungen-Feature ✅
+  - **Zeiterfassungs-System (11 commits)** ✅ NEW!
 
 **Aktueller Status:**
 - ✅ TEIL 1: 6/12 Steps done (50%)
 - ⏳ TEIL 2: 0/8 Steps (Service-spezifische Felder)
 - ⏳ TEIL 3: 0/7 Steps (Partner-App Workflow)
 - ⏳ TEIL 4: 0/3 Steps (Realtime Updates)
+- ⏳ **TEIL 5: 0/5 Steps (Zeiterfassungs-System)** ⭐ NEW & PRIORITY!
 
 **Heute's Plan:**
-- Fortsetzung TEIL 1 (SCHRITT 1.7: Fahrzeug-Abschluss)
-- Test: Abnahme PDF mit Unterschrift + QR-Code
-- Verify: PDF Pagination Fix funktioniert!
+- **PRIORITÄT:** TEIL 5 (SCHRITT 5.1-5.5: Zeiterfassungs-System)
+- Test: Employee Time Clock (Start/Pause/Finish)
+- Test: SOLL/IST Hours comparison
+- Test: Admin Corrections Panel
+- Test: PDF Export with Hours
+- **CRITICAL:** Firestore Composite Index test (production-only bug!)
 
-Bist du bereit? Dann Hard Refresh (Cmd+Shift+R) und wir starten!
+Bist du bereit? Dann Hard Refresh (Cmd+Shift+R) und wir starten mit TEIL 5!
 ```
 
 **Schritt 2: Erste Test-Anweisung geben**
@@ -648,7 +911,8 @@ const fahrzeuge = db.collection('fahrzeuge');  // → Global collection (LEAK!)
 
 ---
 
-_Last Updated: 2025-11-02 by Claude Code (Sonnet 4.5)_
-_Session: Manual Testing #2 (v4.1)_
-_Previous Session: PDF Pagination Fix (2025-11-02, Commit e3af216)_
+_Last Updated: 2025-11-08 by Claude Code (Sonnet 4.5)_
+_Version: v5.0 (Zeiterfassungs-System + 5 Lessons Learned + 6 Error-Patterns)_
+_Latest Session: Zeiterfassungs-System (2025-11-07/08, Commit 0e6bdcb + 271feb6)_
 _Testing Method: Console-Log basiertes Incremental Testing (validated effective!)_
+_New Features: TEIL 5 Tests (5 Steps), 5 Critical Learnings, 10 Error-Patterns total_
