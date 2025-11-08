@@ -3066,91 +3066,76 @@
 
                     console.log(`✅ Batch-Tausch abgeschlossen: ${schichten1.length + schichten2.length} Schichten getauscht`);
 
-                    // 🆕 FIX: Recalculate hours for BOTH employees after swap
-                    // CRITICAL: Load FRESH data from Firestore (not from in-memory allMitarbeiter array)
-                    // The allMitarbeiter array might be stale due to race conditions with the realtime listener
+                    // 🆕 SELF-HEALING SYSTEM: Recalculate hours from scratch for BOTH employees
+                    // This approach is superior to delta calculations because:
+                    // 1. It's self-healing (corrects any previous errors)
+                    // 2. It's based on actual shifts in DB (not cumulative calculations)
+                    // 3. It prevents error accumulation over time
                     try {
-                        const mitarbeiter1Doc = await window.getCollection('mitarbeiter')
+                        console.log('\n🔄 ========================================');
+                        console.log('🔄 SELF-HEALING: Recalculating hours from scratch...');
+                        console.log('🔄 ========================================\n');
+
+                        // Load old values (only for logging/comparison)
+                        const mitarbeiter1DocBefore = await window.getCollection('mitarbeiter')
                             .doc(String(tausch.mitarbeiter1Id)).get();
-                        const mitarbeiter2Doc = await window.getCollection('mitarbeiter')
+                        const mitarbeiter2DocBefore = await window.getCollection('mitarbeiter')
                             .doc(String(tausch.mitarbeiter2Id)).get();
 
-                        if (!mitarbeiter1Doc.exists || !mitarbeiter2Doc.exists) {
+                        if (!mitarbeiter1DocBefore.exists || !mitarbeiter2DocBefore.exists) {
                             console.error('❌ Mitarbeiter Dokument(e) nicht gefunden!');
-                            console.error('   M1 exists:', mitarbeiter1Doc.exists, 'ID:', tausch.mitarbeiter1Id);
-                            console.error('   M2 exists:', mitarbeiter2Doc.exists, 'ID:', tausch.mitarbeiter2Id);
+                            console.error('   M1 exists:', mitarbeiter1DocBefore.exists, 'ID:', tausch.mitarbeiter1Id);
+                            console.error('   M2 exists:', mitarbeiter2DocBefore.exists, 'ID:', tausch.mitarbeiter2Id);
                             showToast('❌ Fehler: Mitarbeiter nicht gefunden', 'error', 5000);
                             return;
                         }
 
-                        const mitarbeiter1 = { id: mitarbeiter1Doc.id, ...mitarbeiter1Doc.data() };
-                        const mitarbeiter2 = { id: mitarbeiter2Doc.id, ...mitarbeiter2Doc.data() };
-                            // Calculate hours LOST by M1 (schichten1) and GAINED by M1 (schichten2)
-                            let hoursLostM1 = 0;
-                            let hoursGainedM1 = 0;
+                        const mitarbeiter1Before = { id: mitarbeiter1DocBefore.id, ...mitarbeiter1DocBefore.data() };
+                        const mitarbeiter2Before = { id: mitarbeiter2DocBefore.id, ...mitarbeiter2DocBefore.data() };
 
-                            for (const schicht of schichten1) {
-                                const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
-                                if (schichtTyp && !schichtTyp.isSpecial) {
-                                    hoursLostM1 += calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
-                                }
-                            }
+                        // 🔄 PHASE 1: Recalculate Mitarbeiter 1 hours from ALL their shifts
+                        console.log(`🔄 Phase 1: Recalculating ${tausch.mitarbeiter1Name}...`);
+                        const newHoursM1 = await recalculateHoursForMitarbeiter(tausch.mitarbeiter1Id);
 
-                            for (const schicht of schichten2) {
-                                const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
-                                if (schichtTyp && !schichtTyp.isSpecial) {
-                                    hoursGainedM1 += calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
-                                }
-                            }
+                        await window.getCollection('mitarbeiter').doc(String(tausch.mitarbeiter1Id)).update({
+                            gesamtstunden: newHoursM1.gesamtstunden,
+                            monatlicheStunden: newHoursM1.monatlicheStunden
+                        });
 
-                            // Update Mitarbeiter1 hours
-                            const newGesamtstundenM1 = Math.max(0, Math.round((
-                                (mitarbeiter1.gesamtstunden || 0) - hoursLostM1 + hoursGainedM1
-                            ) * 100) / 100);
+                        console.log(`✅ ${tausch.mitarbeiter1Name} Stunden aktualisiert:`);
+                        console.log(`   VORHER: ${(mitarbeiter1Before.gesamtstunden || 0).toFixed(2)}h gesamt, ${(mitarbeiter1Before.monatlicheStunden || 0).toFixed(2)}h/Monat`);
+                        console.log(`   NACHHER: ${newHoursM1.gesamtstunden.toFixed(2)}h gesamt, ${newHoursM1.monatlicheStunden.toFixed(2)}h/Monat`);
+                        const diffM1Gesamt = newHoursM1.gesamtstunden - (mitarbeiter1Before.gesamtstunden || 0);
+                        const diffM1Monatlich = newHoursM1.monatlicheStunden - (mitarbeiter1Before.monatlicheStunden || 0);
+                        console.log(`   DIFFERENZ: ${diffM1Gesamt >= 0 ? '+' : ''}${diffM1Gesamt.toFixed(2)}h gesamt, ${diffM1Monatlich >= 0 ? '+' : ''}${diffM1Monatlich.toFixed(2)}h/Monat`);
 
-                            const newMonatlicheStundenM1 = Math.max(0, Math.round((
-                                (mitarbeiter1.monatlicheStunden || 0) - hoursLostM1 + hoursGainedM1
-                            ) * 100) / 100);
+                        // 🔄 PHASE 2: Recalculate Mitarbeiter 2 hours from ALL their shifts
+                        console.log(`\n🔄 Phase 2: Recalculating ${tausch.mitarbeiter2Name}...`);
+                        const newHoursM2 = await recalculateHoursForMitarbeiter(tausch.mitarbeiter2Id);
 
-                            await window.getCollection('mitarbeiter').doc(String(tausch.mitarbeiter1Id)).update({
-                                gesamtstunden: newGesamtstundenM1,
-                                monatlicheStunden: newMonatlicheStundenM1
-                            });
+                        await window.getCollection('mitarbeiter').doc(String(tausch.mitarbeiter2Id)).update({
+                            gesamtstunden: newHoursM2.gesamtstunden,
+                            monatlicheStunden: newHoursM2.monatlicheStunden
+                        });
 
-                            console.log(`✅ Mitarbeiter1 Stunden aktualisiert:`);
-                            console.log(`   ALT: ${(mitarbeiter1.gesamtstunden || 0).toFixed(1)}h gesamt, ${(mitarbeiter1.monatlicheStunden || 0).toFixed(1)}h/Monat`);
-                            console.log(`   NEU: ${newGesamtstundenM1.toFixed(1)}h gesamt, ${newMonatlicheStundenM1.toFixed(1)}h/Monat`);
-                            console.log(`   ÄNDERUNG: -${hoursLostM1.toFixed(1)}h +${hoursGainedM1.toFixed(1)}h`);
+                        console.log(`✅ ${tausch.mitarbeiter2Name} Stunden aktualisiert:`);
+                        console.log(`   VORHER: ${(mitarbeiter2Before.gesamtstunden || 0).toFixed(2)}h gesamt, ${(mitarbeiter2Before.monatlicheStunden || 0).toFixed(2)}h/Monat`);
+                        console.log(`   NACHHER: ${newHoursM2.gesamtstunden.toFixed(2)}h gesamt, ${newHoursM2.monatlicheStunden.toFixed(2)}h/Monat`);
+                        const diffM2Gesamt = newHoursM2.gesamtstunden - (mitarbeiter2Before.gesamtstunden || 0);
+                        const diffM2Monatlich = newHoursM2.monatlicheStunden - (mitarbeiter2Before.monatlicheStunden || 0);
+                        console.log(`   DIFFERENZ: ${diffM2Gesamt >= 0 ? '+' : ''}${diffM2Gesamt.toFixed(2)}h gesamt, ${diffM2Monatlich >= 0 ? '+' : ''}${diffM2Monatlich.toFixed(2)}h/Monat`);
 
-                            // Update Mitarbeiter2 hours (opposite direction)
-                            const newGesamtstundenM2 = Math.max(0, Math.round((
-                                (mitarbeiter2.gesamtstunden || 0) + hoursLostM1 - hoursGainedM1
-                            ) * 100) / 100);
-
-                            const newMonatlicheStundenM2 = Math.max(0, Math.round((
-                                (mitarbeiter2.monatlicheStunden || 0) + hoursLostM1 - hoursGainedM1
-                            ) * 100) / 100);
-
-                            await window.getCollection('mitarbeiter').doc(String(tausch.mitarbeiter2Id)).update({
-                                gesamtstunden: newGesamtstundenM2,
-                                monatlicheStunden: newMonatlicheStundenM2
-                            });
-
-                            console.log(`✅ Mitarbeiter2 Stunden aktualisiert:`);
-                            console.log(`   ALT: ${(mitarbeiter2.gesamtstunden || 0).toFixed(1)}h gesamt, ${(mitarbeiter2.monatlicheStunden || 0).toFixed(1)}h/Monat`);
-                            console.log(`   NEU: ${newGesamtstundenM2.toFixed(1)}h gesamt, ${newMonatlicheStundenM2.toFixed(1)}h/Monat`);
-                            console.log(`   ÄNDERUNG: +${hoursLostM1.toFixed(1)}h -${hoursGainedM1.toFixed(1)}h`);
-
-                            console.log(`✅ Stunden aktualisiert:`);
-                            console.log(`   ${tausch.mitarbeiter1Name}: -${hoursLostM1}h +${hoursGainedM1}h = ${newGesamtstundenM1}h gesamt`);
-                            console.log(`   ${tausch.mitarbeiter2Name}: +${hoursLostM1}h -${hoursGainedM1}h = ${newGesamtstundenM2}h gesamt`);
+                        console.log('\n✅ ========================================');
+                        console.log('✅ SELF-HEALING COMPLETE: Stunden neu berechnet!');
+                        console.log('✅ ========================================\n');
 
                     } catch (error) {
-                        console.error('❌ FEHLER beim Aktualisieren der Stunden:', error);
+                        console.error('❌ FEHLER beim Recalculate Hours:', error);
                         console.error('   mitarbeiter1Id:', tausch.mitarbeiter1Id, 'Type:', typeof tausch.mitarbeiter1Id);
                         console.error('   mitarbeiter2Id:', tausch.mitarbeiter2Id, 'Type:', typeof tausch.mitarbeiter2Id);
                         console.error('   Error Message:', error.message);
                         console.error('   Error Code:', error.code);
+                        console.error('   Stack:', error.stack);
 
                         // Show error to user
                         showToast(`❌ Fehler beim Stunden-Update: ${error.message}`, 'error', 5000);
@@ -3250,6 +3235,71 @@
             }
 
             return Math.round(totalHours * 100) / 100;  // Round to 2 decimals
+        }
+
+        /**
+         * 🆕 SELF-HEALING SYSTEM: Recalculate hours for a single employee from scratch
+         *
+         * This function loads ALL shifts for the given employee and calculates the total hours
+         * from scratch (not using delta calculations). This makes the system self-healing:
+         * any previous errors are automatically corrected.
+         *
+         * @param {string} mitarbeiterId - The employee ID
+         * @returns {Promise<{gesamtstunden: number, monatlicheStunden: number}>}
+         */
+        async function recalculateHoursForMitarbeiter(mitarbeiterId) {
+            console.log(`🔄 Recalculating hours for mitarbeiter ${mitarbeiterId}...`);
+
+            // Get current month for monthly hours calculation
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+
+            // Load ALL shifts for this employee
+            const schichtenSnapshot = await window.getCollection('schichten')
+                .where('mitarbeiterId', '==', String(mitarbeiterId))
+                .get();
+
+            const schichten = schichtenSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            console.log(`   📊 Found ${schichten.length} total shifts for this employee`);
+
+            // Calculate hours from scratch
+            let gesamtstunden = 0;
+            let monatlicheStunden = 0;
+
+            for (const schicht of schichten) {
+                // Find the shift type
+                const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schicht.schichtTypId));
+
+                if (!schichtTyp) {
+                    console.warn(`   ⚠️  Schicht ${schicht.datum}: SchichtTyp nicht gefunden (ID: ${schicht.schichtTypId})`);
+                    continue;
+                }
+
+                // Only count non-special shifts (isSpecial = false)
+                // Special shifts like Urlaub, Krank, Frei don't count towards working hours
+                if (schichtTyp.isSpecial) {
+                    continue;
+                }
+
+                // Calculate hours for this shift
+                const hours = calculateShiftHours(schichtTyp.startzeit, schichtTyp.endzeit);
+                gesamtstunden += hours;
+
+                // Check if this shift is in current month
+                const schichtDate = new Date(schicht.datum);
+                if (schichtDate.getMonth() === currentMonth && schichtDate.getFullYear() === currentYear) {
+                    monatlicheStunden += hours;
+                }
+            }
+
+            // Round to 2 decimals
+            gesamtstunden = Math.round(gesamtstunden * 100) / 100;
+            monatlicheStunden = Math.round(monatlicheStunden * 100) / 100;
+
+            console.log(`   ✅ Calculated: ${gesamtstunden}h gesamt, ${monatlicheStunden}h/Monat`);
+
+            return { gesamtstunden, monatlicheStunden };
         }
 
         // 🔄 ONE-TIME MIGRATION: Recalculate monatlicheStunden from existing shifts
