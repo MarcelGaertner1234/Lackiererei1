@@ -2862,6 +2862,7 @@
         /**
          * BUTTON ACTION: End Work (Feierabend)
          * Adds "end" event, calculates total hours, sets status to "completed"
+         * UPDATES mitarbeiter document with IST hours
          */
         async function endWork() {
             if (!currentZeiterfassung) {
@@ -2876,6 +2877,7 @@
                 // Calculate total worked hours from events
                 const calculatedHours = calculateHoursFromEvents(updatedEvents);
 
+                // PHASE 1: Update Zeiterfassung document
                 await window.getCollection('zeiterfassung').doc(currentZeiterfassung.id).update({
                     events: updatedEvents,
                     calculatedHours: calculatedHours,
@@ -2886,6 +2888,9 @@
                 console.log('✅ Feierabend gemacht um:', new Date(now).toLocaleTimeString('de-DE'));
                 console.log('   Gearbeitete Stunden:', calculatedHours.toFixed(2), 'h');
 
+                // PHASE 2: Update mitarbeiter document with IST hours
+                await updateMitarbeiterIstStunden(currentUser.mitarbeiterId);
+
                 // Reload to update UI
                 await loadZeiterfassung();
 
@@ -2894,6 +2899,87 @@
             } catch (error) {
                 console.error('❌ Fehler beim Beenden der Arbeit:', error);
                 alert('❌ Fehler: ' + error.message);
+            }
+        }
+
+        /**
+         * Update mitarbeiter document with IST hours (actual worked hours)
+         * Calculates from all completed zeiterfassung records
+         */
+        async function updateMitarbeiterIstStunden(mitarbeiterId) {
+            try {
+                console.log('🔄 Updating IST-Stunden for mitarbeiter:', mitarbeiterId);
+
+                // Get current month
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const currentYear = now.getFullYear();
+                const currentMonthStart = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+
+                // Load ALL completed zeiterfassung records for this employee
+                const allZeitSnapshot = await window.getCollection('zeiterfassung')
+                    .where('mitarbeiterId', '==', String(mitarbeiterId))
+                    .where('status', '==', 'completed')
+                    .get();
+
+                let istStundenGesamt = 0;
+                let istStundenMonatlich = 0;
+
+                allZeitSnapshot.docs.forEach(doc => {
+                    const zeit = doc.data();
+                    const hours = zeit.calculatedHours || 0;
+
+                    // Add to total
+                    istStundenGesamt += hours;
+
+                    // Add to monthly if in current month
+                    if (zeit.datum >= currentMonthStart) {
+                        istStundenMonatlich += hours;
+                    }
+                });
+
+                // Round to 2 decimals
+                istStundenGesamt = Math.round(istStundenGesamt * 100) / 100;
+                istStundenMonatlich = Math.round(istStundenMonatlich * 100) / 100;
+
+                console.log('   📊 IST-Stunden berechnet:');
+                console.log('      Monatlich:', istStundenMonatlich, 'h');
+                console.log('      Gesamt:', istStundenGesamt, 'h');
+
+                // Load mitarbeiter document to get SOLL hours
+                const mitarbeiterDoc = await window.getCollection('mitarbeiter').doc(String(mitarbeiterId)).get();
+
+                if (!mitarbeiterDoc.exists) {
+                    console.error('❌ Mitarbeiter Dokument nicht gefunden!');
+                    return;
+                }
+
+                const mitarbeiter = mitarbeiterDoc.data();
+                const sollStundenGesamt = mitarbeiter.gesamtstunden || 0;
+                const sollStundenMonatlich = mitarbeiter.monatlicheStunden || 0;
+
+                // Calculate difference (IST - SOLL)
+                const differenzGesamt = istStundenGesamt - sollStundenGesamt;
+                const differenzMonatlich = istStundenMonatlich - sollStundenMonatlich;
+
+                console.log('   📈 Differenz (IST - SOLL):');
+                console.log('      Monatlich:', differenzMonatlich.toFixed(2), 'h');
+                console.log('      Gesamt:', differenzGesamt.toFixed(2), 'h');
+
+                // Update mitarbeiter document
+                await window.getCollection('mitarbeiter').doc(String(mitarbeiterId)).update({
+                    istStundenGesamt: istStundenGesamt,
+                    istStundenMonatlich: istStundenMonatlich,
+                    differenzStunden: differenzGesamt,
+                    differenzStundenMonatlich: differenzMonatlich,
+                    lastIstUpdate: new Date().toISOString()
+                });
+
+                console.log('✅ Mitarbeiter IST-Stunden aktualisiert!');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Aktualisieren der IST-Stunden:', error);
+                // Don't throw - allow endWork to complete even if this fails
             }
         }
 
