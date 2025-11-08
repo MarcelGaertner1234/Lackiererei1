@@ -734,19 +734,19 @@
                     </button>
 
                     <!-- Button: Pause (hidden by default) -->
-                    <button id="btnStartBreak" class="btn btn-warning" style="flex: 1; min-width: 150px; display: none;" disabled>
+                    <button id="btnStartBreak" class="btn btn-warning" style="flex: 1; min-width: 150px; display: none;" onclick="startBreak()" disabled>
                         <i data-feather="pause-circle"></i>
                         ⏸️ Pause
                     </button>
 
                     <!-- Button: Zurück aus Pause (hidden by default) -->
-                    <button id="btnEndBreak" class="btn btn-success" style="flex: 1; min-width: 150px; display: none;" disabled>
+                    <button id="btnEndBreak" class="btn btn-success" style="flex: 1; min-width: 150px; display: none;" onclick="endBreak()" disabled>
                         <i data-feather="play-circle"></i>
                         ▶️ Zurück aus Pause
                     </button>
 
                     <!-- Button: Feierabend (hidden by default) -->
-                    <button id="btnEndWork" class="btn btn-danger" style="flex: 1; min-width: 150px; display: none;" disabled>
+                    <button id="btnEndWork" class="btn btn-danger" style="flex: 1; min-width: 150px; display: none;" onclick="endWork()" disabled>
                         <i data-feather="stop-circle"></i>
                         ⏹️ Feierabend
                     </button>
@@ -2801,8 +2801,158 @@
             }
         }
 
+        /**
+         * BUTTON ACTION: Start Break
+         * Adds a "pause_start" event to the time tracking record
+         */
+        async function startBreak() {
+            if (!currentZeiterfassung) {
+                alert('❌ Fehler: Keine aktive Zeiterfassung!');
+                return;
+            }
+
+            try {
+                const now = new Date().toISOString();
+                const updatedEvents = [...currentZeiterfassung.events, { type: 'pause_start', timestamp: now }];
+
+                await window.getCollection('zeiterfassung').doc(currentZeiterfassung.id).update({
+                    events: updatedEvents
+                });
+
+                console.log('✅ Pause gestartet um:', new Date(now).toLocaleTimeString('de-DE'));
+
+                // Reload to update UI
+                await loadZeiterfassung();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Starten der Pause:', error);
+                alert('❌ Fehler: ' + error.message);
+            }
+        }
+
+        /**
+         * BUTTON ACTION: End Break
+         * Adds a "pause_end" event to the time tracking record
+         */
+        async function endBreak() {
+            if (!currentZeiterfassung) {
+                alert('❌ Fehler: Keine aktive Zeiterfassung!');
+                return;
+            }
+
+            try {
+                const now = new Date().toISOString();
+                const updatedEvents = [...currentZeiterfassung.events, { type: 'pause_end', timestamp: now }];
+
+                await window.getCollection('zeiterfassung').doc(currentZeiterfassung.id).update({
+                    events: updatedEvents
+                });
+
+                console.log('✅ Pause beendet um:', new Date(now).toLocaleTimeString('de-DE'));
+
+                // Reload to update UI
+                await loadZeiterfassung();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Beenden der Pause:', error);
+                alert('❌ Fehler: ' + error.message);
+            }
+        }
+
+        /**
+         * BUTTON ACTION: End Work (Feierabend)
+         * Adds "end" event, calculates total hours, sets status to "completed"
+         */
+        async function endWork() {
+            if (!currentZeiterfassung) {
+                alert('❌ Fehler: Keine aktive Zeiterfassung!');
+                return;
+            }
+
+            try {
+                const now = new Date().toISOString();
+                const updatedEvents = [...currentZeiterfassung.events, { type: 'end', timestamp: now }];
+
+                // Calculate total worked hours from events
+                const calculatedHours = calculateHoursFromEvents(updatedEvents);
+
+                await window.getCollection('zeiterfassung').doc(currentZeiterfassung.id).update({
+                    events: updatedEvents,
+                    calculatedHours: calculatedHours,
+                    status: 'completed',
+                    completedAt: now
+                });
+
+                console.log('✅ Feierabend gemacht um:', new Date(now).toLocaleTimeString('de-DE'));
+                console.log('   Gearbeitete Stunden:', calculatedHours.toFixed(2), 'h');
+
+                // Reload to update UI
+                await loadZeiterfassung();
+
+                alert(`✅ Feierabend! Du hast heute ${calculatedHours.toFixed(2)}h gearbeitet.`);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Beenden der Arbeit:', error);
+                alert('❌ Fehler: ' + error.message);
+            }
+        }
+
+        /**
+         * Calculate total worked hours from events array
+         * Subtracts break times from total time
+         */
+        function calculateHoursFromEvents(events) {
+            if (!events || events.length === 0) return 0;
+
+            let totalWorkedMs = 0;
+            let totalBreakMs = 0;
+            let lastEventType = null;
+            let lastEventTime = null;
+
+            for (let i = 0; i < events.length; i++) {
+                const event = events[i];
+                const eventTime = new Date(event.timestamp);
+
+                if (event.type === 'start') {
+                    lastEventType = 'working';
+                    lastEventTime = eventTime;
+
+                } else if (event.type === 'pause_start') {
+                    // Add worked time until pause
+                    if (lastEventType === 'working' && lastEventTime) {
+                        totalWorkedMs += eventTime - lastEventTime;
+                    }
+                    lastEventType = 'break';
+                    lastEventTime = eventTime;
+
+                } else if (event.type === 'pause_end') {
+                    // Add break time
+                    if (lastEventType === 'break' && lastEventTime) {
+                        totalBreakMs += eventTime - lastEventTime;
+                    }
+                    lastEventType = 'working';
+                    lastEventTime = eventTime;
+
+                } else if (event.type === 'end') {
+                    // Add final worked time
+                    if (lastEventType === 'working' && lastEventTime) {
+                        totalWorkedMs += eventTime - lastEventTime;
+                    } else if (lastEventType === 'break' && lastEventTime) {
+                        totalBreakMs += eventTime - lastEventTime;
+                    }
+                }
+            }
+
+            // Convert to hours (round to 2 decimals)
+            const totalHours = totalWorkedMs / (1000 * 60 * 60);
+            return Math.round(totalHours * 100) / 100;
+        }
+
         // Make functions globally accessible for onclick handlers
         window.startWork = startWork;
+        window.startBreak = startBreak;
+        window.endBreak = endBreak;
+        window.endWork = endWork;
 
         // ============================================
         // START APP
