@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wissensdatenbank Seeding | Auto-Lackierzentrum Mosbach</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #856404;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .log {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 0;
+        }
+
+        .log-success {
+            color: #28a745;
+        }
+
+        .log-error {
+            color: #dc3545;
+        }
+
+        .log-info {
+            color: #17a2b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 Wissensdatenbank Seeding</h1>
+        <p>Dieses Tool erstellt automatisch Sample-Daten für die Wissensdatenbank.</p>
+
+        <div class="warning">
+            <strong>⚠️ Achtung:</strong> Dieses Tool erstellt 10 Richtlinien, 5 Mitteilungen und 3 Schichtübergaben in der Firestore-Datenbank.
+            Führen Sie dies nur einmal aus!
+        </div>
+
+        <div>
+            <button class="btn" onclick="seedData()">🚀 Daten erstellen</button>
+            <button class="btn btn-secondary" onclick="window.location.href='wissensdatenbank.html'">Zur Wissensdatenbank</button>
+        </div>
+
+        <div id="log" class="log" style="display: none;">
+            <!-- Log entries will be added here -->
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+    <!-- Firebase Config -->
+    <script src="firebase-config.js"></script>
+
+    <script>
+        // Pre-initialize werkstattId
+        const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
+        window.werkstattId = (storedUser && storedUser.werkstattId) || 'mosbach';
+
+        const logDiv = document.getElementById('log');
+
+        function log(message, type = 'info') {
+            logDiv.style.display = 'block';
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function seedData() {
+            log('🚀 Starte Seeding-Prozess...', 'info');
+
+            // Wait for Firebase
+            let attempts = 0;
+            while (!window.firebaseInitialized && attempts < 20) {
+                await new Promise(resolve => setTimeout(resolve, 250));
+                attempts++;
+            }
+
+            if (!window.firebaseInitialized) {
+                log('❌ Firebase initialization timeout!', 'error');
+                return;
+            }
+
+            log('✅ Firebase initialisiert', 'success');
+            log(`📍 Werkstatt-ID: ${window.werkstattId}`, 'info');
+
+            try {
+                // Create Guidelines
+                await seedGuidelines();
+
+                // Create Announcements
+                await seedAnnouncements();
+
+                // Create Shift Handovers
+                await seedHandovers();
+
+                log('', 'info');
+                log('🎉 SEEDING ABGESCHLOSSEN!', 'success');
+                log('✅ 10 Richtlinien erstellt', 'success');
+                log('✅ 5 Mitteilungen erstellt', 'success');
+                log('✅ 3 Schichtübergaben erstellt', 'success');
+                log('', 'info');
+                log('👉 Klicken Sie auf "Zur Wissensdatenbank" um die Daten anzuzeigen.', 'info');
+
+            } catch (error) {
+                log(`❌ Fehler: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        async function seedGuidelines() {
+            log('📖 Erstelle Richtlinien...', 'info');
+
+            const guidelines = [
+                {
+                    title: 'Lackierkabine Sicherheitsprotokoll',
+                    category: 'sicherheit',
+                    content: `WICHTIG: Vor Betreten der Lackierkabine
+
+1. Schutzausrüstung anlegen:
+   - Atemschutzmaske FFP2 oder besser
+   - Schutzbrille
+   - Schutzhandschuhe (Nitril)
+   - Lackieroverall
+
+2. Belüftungssystem prüfen:
+   - Absauganlage aktivieren (mindestens 2 Minuten Vorlauf)
+   - Luftstrom kontrollieren
+   - Filter-Status überprüfen (max. 6 Monate alt)
+
+3. Notfallausrüstung:
+   - Feuerlöscher griffbereit (neben Kabinentür)
+   - Augendusche funktionsfähig
+   - Notausschalter bekannt
+
+GEFAHR: Explosionsgefahr bei Lackdämpfen!
+Niemals rauchen oder offenes Feuer in der Nähe!`,
+                    tags: ['lackierung', 'sicherheit', 'kabine'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Fahrzeugannahme Checkliste',
+                    category: 'prozesse',
+                    content: `Standard-Ablauf bei Fahrzeugannahme:
+
+SCHRITT 1: Kundengespräch
+- Schaden/Wunsch genau dokumentieren
+- Erwartungen klären
+- Liefertermin abstimmen
+- Kontaktdaten prüfen
+
+SCHRITT 2: Fahrzeuginspektion
+- Rundgang mit Fotos (mindestens 8 Ansichten)
+- Vorschäden fotografieren und dokumentieren
+- Kilometerstand notieren
+- Tankfüllung festhalten
+
+SCHRITT 3: Kostenvoranschlag
+- Material kalkulieren
+- Arbeitszeit schätzen
+- Ggf. Gutachter informieren
+- KVA erstellen und vom Kunden unterschreiben lassen
+
+SCHRITT 4: Digitale Erfassung
+- Alle Daten in System eingeben
+- Fotos hochladen
+- Status auf "In Bearbeitung" setzen
+
+WICHTIG: Kunde erhält automatisch E-Mail mit Annahmebestätigung!`,
+                    tags: ['prozess', 'annahme', 'kundenservice'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Qualitätskontrolle vor Auslieferung',
+                    category: 'qualitaet',
+                    content: `Checkliste für finale Qualitätsprüfung:
+
+LACKIERUNG:
+□ Farbton stimmt überein (bei Tageslicht prüfen)
+□ Keine Läufer oder Orangenhaut
+□ Keine Staubeinschlüsse
+□ Übergang zu Originallack nicht sichtbar
+□ Hochglanz bei allen Lackarten
+
+KAROSSERIE:
+□ Spaltmaße gleichmäßig
+□ Keine Dellen oder Beulen
+□ Türen schließen einwandfrei
+□ Gummidichtungen korrekt montiert
+
+REINIGUNG:
+□ Fahrzeug komplett gewaschen (innen & außen)
+□ Keine Schleifstaubreste
+□ Scheiben streifenfrei
+□ Fußmatten gereinigt oder ausgetauscht
+
+DOKUMENTATION:
+□ Vorher-/Nachher-Fotos gemacht
+□ Rechnung vorbereitet
+□ Garantieschein ausgefüllt
+
+Erst nach vollständiger Prüfung Status auf "Fertig" setzen!`,
+                    tags: ['qualität', 'auslieferung', 'kontrolle'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Kommunikation mit Kunden',
+                    category: 'kommunikation',
+                    content: `Grundregeln für professionelle Kundenkommunikation:
+
+E-MAIL:
+- Innerhalb von 4 Stunden antworten (während Geschäftszeiten)
+- Höflich und professionell formulieren
+- Rechtschreibung prüfen
+- Immer Betreff angeben
+
+TELEFON:
+- Freundlich melden: "Auto-Lackierzentrum Mosbach, [Name], guten Tag!"
+- Aktiv zuhören, nicht unterbrechen
+- Notizen machen
+- Bei technischen Fragen: Rückruf ankündigen statt raten
+
+PERSÖNLICH:
+- Blickkontakt halten
+- Kunde ausreden lassen
+- Fachbegriffe erklären
+- Lösungen anbieten, nicht Probleme betonen
+
+BESCHWERDEN:
+- Ruhig bleiben, nicht rechtfertigen
+- Entschuldigung aussprechen
+- Lösung finden
+- Vorgesetzten informieren bei größeren Problemen
+
+TIPP: Zufriedene Kunden sind die beste Werbung!`,
+                    tags: ['kommunikation', 'kundenservice', 'telefon'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Spritzpistole Wartung & Reinigung',
+                    category: 'prozesse',
+                    content: `Tägliche Reinigung nach Gebrauch:
+
+SOFORT NACH LACKIERUNG:
+1. Restlack in Behälter zurückgießen
+2. Becher mit Verdünnung ausspülen (3x)
+3. Kurz durchspritzen (Testkarton)
+4. Düse mit Pinsel reinigen
+5. Luftkappe abschrauben und einweichen
+
+WÖCHENTLICHE TIEFENREINIGUNG:
+1. Pistole komplett zerlegen
+2. Alle Teile in Reinigungsbad (2 Stunden)
+3. Mit Bürste nacharbeiten
+4. Mit Druckluft trocknen
+5. Düse und Nadel auf Verschleiß prüfen
+6. Schmieren (nur spezielle Pistolenfette!)
+7. Wieder zusammenbauen
+
+HÄUFIGE FEHLER:
+❌ Keine Verdünnung durch Düse spritzen
+❌ Pistole über Nacht dreckig lassen
+❌ Falsche Reinigungsmittel (greift Dichtungen an)
+❌ Zu hoher Druck beim Durchblasen
+
+Bei Verstopfung NIEMALS mit Metallgegenständen stechen!
+→ Düse ausbauen und in Reinigungsbad einlegen`,
+                    tags: ['wartung', 'werkzeug', 'lackierung'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Arbeitszeiten & Pausenregelung',
+                    category: 'kommunikation',
+                    content: `Offizielle Arbeitszeiten:
+
+FRÜHSCHICHT: 06:00 - 14:00 Uhr
+- Pause: 09:00 - 09:15 Uhr (15 Min.)
+- Mittagspause: 11:30 - 12:00 Uhr (30 Min.)
+
+SPÄTSCHICHT: 14:00 - 22:00 Uhr
+- Pause: 16:30 - 16:45 Uhr (15 Min.)
+- Abendbrot: 19:00 - 19:30 Uhr (30 Min.)
+
+WICHTIGE REGELN:
+✓ Zeiterfassung: Start/Pause/Ende immer eintragen
+✓ Bei Verspätung: Sofort anrufen (nicht WhatsApp!)
+✓ Pausenraum aufräumen
+✓ Keine privaten Tätigkeiten während Arbeitszeit
+
+ÜBERSTUNDEN:
+- Nur nach Absprache mit Vorgesetztem
+- Werden automatisch erfasst
+- Ausgleich: Freizeitausgleich oder Auszahlung
+
+KRANKMELDUNG:
+- Bis spätestens 06:00 Uhr telefonisch
+- Ab 3. Tag: Krankschreibung erforderlich
+- Bei Rückkehr: Gelben Schein abgeben`,
+                    tags: ['arbeitszeit', 'pause', 'zeiterfassung'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Notfall & Erste Hilfe',
+                    category: 'sicherheit',
+                    content: `NOTFALLNUMMERN:
+
+🚨 Notruf: 112 (Feuerwehr & Rettungsdienst)
+🚑 Giftnotruf: 0761 19240
+👨‍⚕️ Betriebsarzt: 06261 123456
+🔥 Feuerlöscher-Standorte: Werkstatt-Eingang, Kabinentür, Büro
+
+ERSTE-HILFE-KOFFER:
+- Standort: Pausenraum (an der Wand)
+- Ersthelfer: Max Müller, Anna Schmidt
+- Nächstes Krankenhaus: 5 Min. Fahrt
+
+BEI UNFÄLLEN:
+1. Ruhe bewahren
+2. Unfallstelle sichern
+3. Erste Hilfe leisten
+4. Notruf absetzen (112)
+5. Vorgesetzten informieren
+6. Unfallbericht ausfüllen (Formular im Büro)
+
+HÄUFIGE NOTFÄLLE:
+- Lackspritzer im Auge → Augendusche (15 Min!)
+- Schnitt/Verbrennung → Wundversorgung
+- Ohnmacht → Stabile Seitenlage, Notruf
+- Feuer → Feuerlöscher, evtl. evakuieren
+
+WICHTIG: Jeder Unfall muss gemeldet werden, auch Bagatellen!`,
+                    tags: ['sicherheit', 'notfall', 'erste-hilfe'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Materialbestellung & Lagerung',
+                    category: 'prozesse',
+                    content: `Prozess für Material-Nachbestellung:
+
+BESTELLUNG:
+1. Materialbestand prüfen (mind. 1x pro Woche)
+2. Bei Unterschreitung Mindestbestand: Bestellliste erstellen
+3. Über System bestellen oder Büro informieren
+4. Liefertermin notieren
+
+WARENANNAHME:
+1. Lieferung auf Vollständigkeit prüfen
+2. Bei Beschädigung: Sofort Foto + Vermerk auf Lieferschein
+3. Artikel im System einbuchen
+4. Ordnungsgemäß einlagern
+
+LAGERUNG LACKIERMATERIALIEN:
+- Kühl und trocken (10-25°C)
+- Vor Sonnenlicht schützen
+- Beschriftung leserlich
+- Angebrochene Dosen verschließen
+- MHD beachten!
+
+SONDERABFÄLLE:
+⚠️ Leere Lackdosen → Sondermüll-Container (hinterm Gebäude)
+⚠️ Lösungsmittel → In gekennzeichnete Kanister
+⚠️ Ölverschmutzte Lappen → Feuerfester Behälter
+
+Niemals Chemikalien in normalen Müll!`,
+                    tags: ['material', 'bestellung', 'lagerung'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Smart Repair Techniken',
+                    category: 'qualitaet',
+                    content: `Spot Repair / Smart Repair Anwendung:
+
+WANN ANWENDBAR:
+✓ Kleine Kratzer (max. 5cm)
+✓ Steinschläge
+✓ Parkrempler ohne Delle
+✓ Einzelne Lackfehler
+
+NICHT ANWENDBAR:
+❌ Durchrostung
+❌ Größere Schäden (> 10cm)
+❌ Strukturierte Kunststoffteile
+❌ Kanten/Rundungen
+
+VORGEHENSWEISE:
+1. Schaden abschleifen (P600 → P1000 → P1500)
+2. Entfetten
+3. Grundierung (falls bis Metall)
+4. Farbton anmischen
+5. Spot-Lackierung (3-5 Schichten)
+6. Klarlack auftragen
+7. Finish: Polieren mit P2000 + P3000
+
+VORTEILE:
++ Schneller (1-2 Stunden statt 1 Tag)
++ Günstiger für Kunden
++ Erhält Originalsubstanz
++ Kein Zusammenbau nötig
+
+QUALITÄTSKRITERIUM:
+Übergang darf bei Armlänge Abstand nicht sichtbar sein!`,
+                    tags: ['smart-repair', 'technik', 'lackierung'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                },
+                {
+                    title: 'Digitale Tools & Software',
+                    category: 'kommunikation',
+                    content: `Übersicht der verwendeten Software:
+
+FAHRZEUGANNAHME-APP:
+- Fahrzeuge erfassen mit Fotos
+- Status-Tracking (Kanban-Board)
+- Kundenkommunikation
+- Zeiterfassung
+
+WISSENSDATENBANK (NEU):
+- Richtlinien & SOPs
+- Team-Mitteilungen
+- Schichtübergaben
+
+ZEITERFASSUNG:
+- Start/Pause/Ende Button in Dienstplan-App
+- Automatische SOLL/IST-Vergleich
+- Stundennachweise mit Unterschrift
+
+WICHTIGE FUNKTIONEN:
+📸 Fotos direkt hochladen
+📊 Echzeit-Statistiken
+📱 Funktioniert auf Smartphone & Tablet
+☁️ Alle Daten in Cloud gesichert
+
+SUPPORT:
+- Bei Problemen: Admin-Dashboard → Support-Button
+- Oder: info@auto-lackierzentrum.de
+- Telefon: 06261 123456
+
+TIPP: App auf Homescreen speichern für schnellen Zugriff!`,
+                    tags: ['software', 'tools', 'app'],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    readBy: [],
+                    viewCount: 0
+                }
+            ];
+
+            for (const guideline of guidelines) {
+                await window.getCollection('guidelines').add(guideline);
+                log(`✅ Richtlinie erstellt: ${guideline.title}`, 'success');
+            }
+        }
+
+        async function seedAnnouncements() {
+            log('📢 Erstelle Mitteilungen...', 'info');
+
+            const announcements = [
+                {
+                    title: 'Neue Lackierkabine ab nächster Woche',
+                    category: 'wichtig',
+                    content: `Ab Montag, 13.11.2025 ist die neue Lackierkabine einsatzbereit!
+
+Wichtige Änderungen:
+- Modernere Absauganlage (50% leiser)
+- Bessere Ausleuchtung (LED statt Halogen)
+- Touchscreen-Steuerung
+- Automatische Temperaturregelung
+
+Einweisung: Freitag 14:00 Uhr für alle Mitarbeiter
+
+Alte Kabine bleibt als Backup bestehen.`,
+                    pinned: true,
+                    author: { uid: 'admin', name: 'Admin' },
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    comments: [],
+                    reactions: { thumbsUp: 5, heart: 2 }
+                },
+                {
+                    title: 'Betriebsausflug 2026',
+                    category: 'info',
+                    content: `Planung für Betriebsausflug läuft!
+
+Termin: Samstag, 15. März 2026
+Ziel: Noch offen - Eure Vorschläge sind gefragt!
+
+Bitte bis Ende November Ideen einreichen:
+- Bowling + BBQ
+- Wanderung + Hütteneinkehr
+- Paintball
+- Escape Room
+- ???
+
+Abstimmung im Dezember!`,
+                    pinned: false,
+                    author: { uid: 'admin', name: 'Admin' },
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    comments: [],
+                    reactions: { thumbsUp: 8, heart: 3 }
+                },
+                {
+                    title: 'Parksituation vor der Werkstatt',
+                    category: 'wichtig',
+                    content: `Bitte beachten:
+
+Die Parkplätze direkt vor der Werkstatt sind NUR für Kundenfahrzeuge!
+
+Mitarbeiter bitte auf den Parkplätzen hinterm Gebäude parken.
+
+Danke für's Verständnis!`,
+                    pinned: false,
+                    author: { uid: 'admin', name: 'Admin' },
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    comments: [],
+                    reactions: { thumbsUp: 4, heart: 0 }
+                },
+                {
+                    title: 'Mitarbeiter des Monats: Max Müller',
+                    category: 'info',
+                    content: `Herzlichen Glückwunsch an Max Müller!
+
+Ausgezeichnet für:
+✓ Besonders sorgfältige Arbeit
+✓ Hilfsbereitschaft gegenüber Kollegen
+✓ Perfekte Kundenrückmeldungen
+
+Belohnung: 100€ Bonus + Urkunde
+
+Weiter so, Max! 👏`,
+                    pinned: false,
+                    author: { uid: 'admin', name: 'Admin' },
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    comments: [
+                        {
+                            author: { uid: 'user1', name: 'Anna Schmidt' },
+                            text: 'Verdient! Glückwunsch Max! 🎉',
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        }
+                    ],
+                    reactions: { thumbsUp: 12, heart: 8 }
+                },
+                {
+                    title: 'Winterreifen-Saison startet',
+                    category: 'schichtwechsel',
+                    content: `Ab sofort Winterreifen-Wechsel aktiv bewerben!
+
+Kunden beim Abholen ansprechen:
+"Haben Sie schon an den Winterreifen-Wechsel gedacht?"
+
+Sonderaktion: Wechsel + Einlagerung für 49€ (statt 69€)
+
+Gültig bis Ende November.`,
+                    pinned: false,
+                    author: { uid: 'admin', name: 'Admin' },
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    comments: [],
+                    reactions: { thumbsUp: 3, heart: 0 }
+                }
+            ];
+
+            for (const announcement of announcements) {
+                await window.getCollection('announcements').add(announcement);
+                log(`✅ Mitteilung erstellt: ${announcement.title}`, 'success');
+            }
+        }
+
+        async function seedHandovers() {
+            log('🔄 Erstelle Schichtübergaben...', 'info');
+
+            const handovers = [
+                {
+                    datum: '08.11.2025',
+                    schicht: 'Frühschicht (06:00-14:00)',
+                    mitarbeiterId: 'M001',
+                    mitarbeiterName: 'Max Müller',
+                    notes: {
+                        offeneAufgaben: `BMW 320d (Kennzeichen: HD-MM 123):
+- Lackierung Kotflügel läuft noch bis ca. 16:00 Uhr
+- Kunde will morgen abholen, bitte Qualitätskontrolle nicht vergessen!
+
+Mercedes E-Klasse (Kennzeichen: MA-AB 456):
+- Wartet auf Ersatzteil (Stoßstange), Lieferung heute Nachmittag erwartet`,
+                        probleme: `Spritzpistole Nr. 2 verstopft, braucht Tiefenreinigung.
+Habe sie in Reinigungsbad eingelegt, bitte heute Abend fertigstellen.
+
+Kompressor macht komische Geräusche, eventuell Filter prüfen?`,
+                        wichtigeInfo: `VIP-Kunde Herr Schmidt kommt morgen 09:00 Uhr zur Abholung (Porsche 911).
+Fahrzeug steht bereit, aber bitte nochmal finale Politur machen!`
+                    },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    readBy: []
+                },
+                {
+                    datum: '07.11.2025',
+                    schicht: 'Spätschicht (14:00-22:00)',
+                    mitarbeiterId: 'M002',
+                    mitarbeiterName: 'Anna Schmidt',
+                    notes: {
+                        offeneAufgaben: `Audi A4 Smart Repair fertiggestellt, kann morgen abgeholt werden.
+
+VW Golf Hagelschaden-Reparatur: 3 von 8 Dellen entfernt, Rest morgen.`,
+                        probleme: `Kundentermin für Frau Meier wurde verschoben von Freitag auf Montag.
+Bitte in System aktualisieren!`,
+                        wichtigeInfo: `Neue Lieferung Lackmaterial ist angekommen, steht noch unausgepackt im Lager.`
+                    },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    readBy: ['M001']
+                },
+                {
+                    datum: '06.11.2025',
+                    schicht: 'Frühschicht (06:00-14:00)',
+                    mitarbeiterId: 'M003',
+                    mitarbeiterName: 'Thomas Weber',
+                    notes: {
+                        offeneAufgaben: `Keine dringenden offenen Aufgaben.
+Regulärer Workflow, alle Fahrzeuge im Plan.`,
+                        probleme: `Keine besonderen Probleme.`,
+                        wichtigeInfo: `Heizung in Kabine 1 war defekt, Techniker war da, funktioniert jetzt wieder.
+
+Reminder: Morgen kommt Sicherheitsbeauftragter zur Inspektion.`
+                    },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    readBy: ['M001', 'M002']
+                }
+            ];
+
+            for (const handover of handovers) {
+                await window.getCollection('shift_handovers').add(handover);
+                log(`✅ Schichtübergabe erstellt: ${handover.datum} - ${handover.mitarbeiterName}`, 'success');
+            }
+        }
+    </script>
+</body>
+</html>
