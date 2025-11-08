@@ -3027,23 +3027,44 @@
                 if (status === 'approved') {
                     const tausch = allTausche.find(t => String(t.id) === String(tauschId));
 
-                    // ✅ FIXED: Swap BOTH shifts (not just reassign one)
-                    // Schicht 1: mitarbeiter1 → mitarbeiter2
-                    // Schicht 2: mitarbeiter2 → mitarbeiter1
+                    // 🆕 INTELLIGENT BATCH-TAUSCH: Alle Schichten vom jeweiligen Datum tauschen
+                    // Wenn Mitarbeiter mehrere Schichten am selben Tag haben, werden ALLE getauscht
 
-                    await window.getCollection('schichten').doc(tausch.schicht1Id).update({
-                        mitarbeiterId: tausch.mitarbeiter2Id,
-                        mitarbeiterName: tausch.mitarbeiter2Name,
-                        bearbeitetAm: new Date().toISOString()
-                    });
+                    // Finde ALLE Schichten von Mitarbeiter1 am schicht1Datum
+                    const schichten1 = allSchichten.filter(s =>
+                        String(s.mitarbeiterId) === String(tausch.mitarbeiter1Id)
+                        && s.datum === tausch.schicht1Datum
+                    );
 
-                    await window.getCollection('schichten').doc(tausch.schicht2Id).update({
-                        mitarbeiterId: tausch.mitarbeiter1Id,
-                        mitarbeiterName: tausch.mitarbeiter1Name,
-                        bearbeitetAm: new Date().toISOString()
-                    });
+                    // Finde ALLE Schichten von Mitarbeiter2 am schicht2Datum
+                    const schichten2 = allSchichten.filter(s =>
+                        String(s.mitarbeiterId) === String(tausch.mitarbeiter2Id)
+                        && s.datum === tausch.schicht2Datum
+                    );
 
-                    console.log(`✅ Schichten getauscht: ${tausch.mitarbeiter1Name} ↔ ${tausch.mitarbeiter2Name}`);
+                    console.log(`🔄 Batch-Tausch: ${schichten1.length} Schicht(en) (${tausch.mitarbeiter1Name} am ${tausch.schicht1Datum}) ↔ ${schichten2.length} Schicht(en) (${tausch.mitarbeiter2Name} am ${tausch.schicht2Datum})`);
+
+                    // Tausche ALLE Schichten von Mitarbeiter1 → Mitarbeiter2
+                    for (const schicht of schichten1) {
+                        await window.getCollection('schichten').doc(schicht.id).update({
+                            mitarbeiterId: tausch.mitarbeiter2Id,
+                            mitarbeiterName: tausch.mitarbeiter2Name,
+                            bearbeitetAm: new Date().toISOString()
+                        });
+                        console.log(`  ✓ ${schicht.id}: ${tausch.mitarbeiter1Name} → ${tausch.mitarbeiter2Name}`);
+                    }
+
+                    // Tausche ALLE Schichten von Mitarbeiter2 → Mitarbeiter1
+                    for (const schicht of schichten2) {
+                        await window.getCollection('schichten').doc(schicht.id).update({
+                            mitarbeiterId: tausch.mitarbeiter1Id,
+                            mitarbeiterName: tausch.mitarbeiter1Name,
+                            bearbeitetAm: new Date().toISOString()
+                        });
+                        console.log(`  ✓ ${schicht.id}: ${tausch.mitarbeiter2Name} → ${tausch.mitarbeiter1Name}`);
+                    }
+
+                    console.log(`✅ Batch-Tausch abgeschlossen: ${schichten1.length + schichten2.length} Schichten getauscht`);
                 }
 
                 await window.getCollection('schichtTausche').doc(tauschId).update({

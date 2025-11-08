@@ -179,9 +179,11 @@ service cloud.firestore {
     match /{urlaubsAnfragenCollection}/{anfrageId} {
       // Mitarbeiter can create their own vacation requests
       // VALIDATION: Ensures werkstattId matches, mitarbeiterId is current user, status is 'pending'
-      // USES CUSTOM CLAIMS: request.auth.token.mitarbeiterId (set by setMitarbeiterClaims Cloud Function)
+      // Uses Custom Claims mitarbeiterId (2-Stage Auth: Werkstatt Login → Mitarbeiter Selection)
       allow create: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
                     && isAuthenticated()
+                    && isMitarbeiter()
+                    && isActive()
                     && request.resource.data.werkstattId == urlaubsAnfragenCollection.split('_')[1]
                     && request.resource.data.mitarbeiterId == request.auth.token.mitarbeiterId
                     && request.resource.data.status == 'pending'
@@ -191,30 +193,37 @@ service cloud.firestore {
                     ]);
 
       // Mitarbeiter can read their own requests
-      // USES CUSTOM CLAIMS: request.auth.token.mitarbeiterId
+      // Uses Custom Claims mitarbeiterId (2-Stage Auth: Werkstatt Login → Mitarbeiter Selection)
       allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
                   && isAuthenticated()
+                  && isMitarbeiter()
                   && resource.data.mitarbeiterId == request.auth.token.mitarbeiterId;
 
-      // 🆕 Use Custom Claims for query-compatible access check
       // Werkstatt & Admin can read all requests (for admin panel)
-      // CRITICAL: Uses request.auth.token (Custom Claims) instead of get()
+      // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
       allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
                     || request.auth.token.role == 'admin'
                     || request.auth.token.role == 'superadmin'
+                    || getUserRole() == 'werkstatt'
+                    || getUserRole() == 'admin'
+                    || getUserRole() == 'superadmin'
                   );
 
       // Admin can update requests (approve/reject)
       // VALIDATION: Only status, bearbeitetVon, bearbeitetAm, ablehnungsgrund can be changed
+      // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
       allow update: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
                       || request.auth.token.role == 'admin'
                       || request.auth.token.role == 'superadmin'
+                      || getUserRole() == 'werkstatt'
+                      || getUserRole() == 'admin'
+                      || getUserRole() == 'superadmin'
                     )
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                         'status', 'bearbeitetVon', 'bearbeitetAm', 'ablehnungsgrund'
@@ -271,12 +280,16 @@ service cloud.firestore {
 
     match /{schichtenCollection}/{schichtId} {
       // Admin/Werkstatt: Full access (CRUD)
+      // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
       allow create, read, update, delete: if schichtenCollection.matches('schichten_.*')
                                           && isAuthenticated()
                                           && (
                                             request.auth.token.role == 'werkstatt'
                                             || request.auth.token.role == 'admin'
                                             || request.auth.token.role == 'superadmin'
+                                            || getUserRole() == 'werkstatt'
+                                            || getUserRole() == 'admin'
+                                            || getUserRole() == 'superadmin'
                                           );
 
       // RELAXED: Allow werkstatt OR mitarbeiter role to read all schichten
@@ -318,23 +331,31 @@ service cloud.firestore {
                   && resource.data.mitarbeiterId == request.auth.uid;
 
       // Admin/Werkstatt: Read all wünsche from their werkstatt
+      // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
       allow read: if schichtWuenscheCollection.matches('schichtWuensche_.*')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
                     || request.auth.token.role == 'admin'
                     || request.auth.token.role == 'superadmin'
+                    || getUserRole() == 'werkstatt'
+                    || getUserRole() == 'admin'
+                    || getUserRole() == 'superadmin'
                   )
                   && resource.data.werkstattId == schichtWuenscheCollection.split('_')[1];
 
       // Admin/Werkstatt: Update wünsche (accept/reject)
       // VALIDATION: Only status, bearbeitetAm can be changed
+      // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
       allow update: if schichtWuenscheCollection.matches('schichtWuensche_.*')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
                       || request.auth.token.role == 'admin'
                       || request.auth.token.role == 'superadmin'
+                      || getUserRole() == 'werkstatt'
+                      || getUserRole() == 'admin'
+                      || getUserRole() == 'superadmin'
                     )
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                         'status', 'bearbeitetAm'
@@ -408,12 +429,16 @@ service cloud.firestore {
 
       // Admin/Werkstatt: Update tausch-anfragen (approve/reject)
       // VALIDATION: Only status, bearbeitetAm can be changed
+      // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
       allow update: if schichtTauscheCollection.matches('schichtTausche_.*')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
                       || request.auth.token.role == 'admin'
                       || request.auth.token.role == 'superadmin'
+                      || getUserRole() == 'werkstatt'
+                      || getUserRole() == 'admin'
+                      || getUserRole() == 'superadmin'
                     )
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                         'status', 'bearbeitetAm'
@@ -886,9 +911,13 @@ service cloud.firestore {
       // 🆕 CRITICAL FIX: Allow werkstatt to update lastLogin field ONLY
       // Required for Mitarbeiter-Login flow (auth-manager.js:341)
       // Security: Only lastLogin field can be modified, nothing else
+      // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
       allow update: if mitarbeiterCollection.matches('mitarbeiter_.*')
                     && isAuthenticated()
-                    && request.auth.token.role == 'werkstatt'
+                    && (
+                      request.auth.token.role == 'werkstatt'  // Custom Claims (Priority 1)
+                      || getUserRole() == 'werkstatt'  // Firestore Fallback (Priority 2)
+                    )
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin']);
 
       allow create, delete: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
