@@ -2587,9 +2587,7 @@
         }
 
         /**
-         * Update the Zeit
-
-erfassung UI based on current status
+         * Update the Zeiterfassung UI based on current status
          * Shows/hides buttons, updates status text, etc.
          */
         function updateZeiterfassungUI() {
@@ -2609,6 +2607,7 @@ erfassung UI based on current status
                 btnEndWork.style.display = 'none';
                 zeitStatusText.innerHTML = '🟢 Bereit zum Starten';
                 zeitInfoBox.style.display = 'none';
+                stopLiveTimer();  // Stop timer if no active tracking
                 return;
             }
 
@@ -2629,6 +2628,10 @@ erfassung UI based on current status
                 zeitStatusText.innerHTML = `✅ Feierabend gemacht um ${endTime} Uhr`;
                 zeitInfoBox.style.display = 'grid';  // Show final stats
 
+                // Update timer one last time, then stop
+                updateLiveTimer();
+                stopLiveTimer();
+
             } else if (lastEvent && lastEvent.type === 'pause_start') {
                 // Currently on break → Show "End Break" button
                 btnStartWork.style.display = 'none';
@@ -2638,6 +2641,9 @@ erfassung UI based on current status
                 btnEndWork.style.display = 'none';
                 zeitStatusText.innerHTML = '⏸️ In Pause';
                 zeitInfoBox.style.display = 'grid';
+
+                // Start timer to show break time
+                startLiveTimer();
 
             } else {
                 // Currently working → Show "Pause" and "End Work" buttons
@@ -2653,6 +2659,9 @@ erfassung UI based on current status
 
                 zeitStatusText.innerHTML = `🟢 Arbeitet (seit ${startTime} Uhr)`;
                 zeitInfoBox.style.display = 'grid';
+
+                // Start live timer to show worked time
+                startLiveTimer();
             }
         }
 
@@ -2698,6 +2707,97 @@ erfassung UI based on current status
             } catch (error) {
                 console.error('❌ Fehler beim Starten der Arbeit:', error);
                 alert('❌ Fehler: ' + error.message);
+            }
+        }
+
+        /**
+         * Calculate and update the live timer display
+         * Shows: worked hours, break time, and "since" time
+         * Called every minute when working
+         */
+        function updateLiveTimer() {
+            if (!currentZeiterfassung || currentZeiterfassung.status === 'completed') {
+                return;  // No active time tracking
+            }
+
+            const events = currentZeiterfassung.events || [];
+            if (events.length === 0) return;
+
+            const now = new Date();
+            let totalWorkedMs = 0;
+            let totalBreakMs = 0;
+            let lastEventType = null;
+            let lastEventTime = null;
+
+            // Process all events to calculate worked time and break time
+            for (let i = 0; i < events.length; i++) {
+                const event = events[i];
+                const eventTime = new Date(event.timestamp);
+
+                if (event.type === 'start') {
+                    lastEventType = 'working';
+                    lastEventTime = eventTime;
+
+                } else if (event.type === 'pause_start') {
+                    // Add worked time until pause
+                    if (lastEventType === 'working' && lastEventTime) {
+                        totalWorkedMs += eventTime - lastEventTime;
+                    }
+                    lastEventType = 'break';
+                    lastEventTime = eventTime;
+
+                } else if (event.type === 'pause_end') {
+                    // Add break time
+                    if (lastEventType === 'break' && lastEventTime) {
+                        totalBreakMs += eventTime - lastEventTime;
+                    }
+                    lastEventType = 'working';
+                    lastEventTime = eventTime;
+                }
+            }
+
+            // Add time from last event until now
+            if (lastEventType === 'working' && lastEventTime) {
+                totalWorkedMs += now - lastEventTime;
+            } else if (lastEventType === 'break' && lastEventTime) {
+                totalBreakMs += now - lastEventTime;
+            }
+
+            // Convert to hours/minutes
+            const workedHours = Math.floor(totalWorkedMs / (1000 * 60 * 60));
+            const workedMinutes = Math.floor((totalWorkedMs % (1000 * 60 * 60)) / (1000 * 60));
+            const breakMinutes = Math.floor(totalBreakMs / (1000 * 60));
+
+            // Format "since" time
+            const startEvent = events.find(e => e.type === 'start');
+            const sinceTime = startEvent ? new Date(startEvent.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+            // Update UI
+            document.getElementById('zeitGearbeitet').textContent = `${workedHours}h ${workedMinutes}min`;
+            document.getElementById('zeitPause').textContent = `${breakMinutes}min`;
+            document.getElementById('zeitSeit').textContent = sinceTime;
+        }
+
+        // Start live timer update interval (every minute)
+        let timerInterval = null;
+
+        function startLiveTimer() {
+            // Clear existing interval if any
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+
+            // Update immediately
+            updateLiveTimer();
+
+            // Then update every 60 seconds
+            timerInterval = setInterval(updateLiveTimer, 60000);
+        }
+
+        function stopLiveTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
             }
         }
 
