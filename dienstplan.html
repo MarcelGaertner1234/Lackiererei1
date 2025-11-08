@@ -2939,17 +2939,24 @@
 
             let html = '';
             for (const tausch of allTausche) {
-                const vonMitarbeiter = allMitarbeiter.find(m => String(m.id) === String(tausch.vonMitarbeiterId));
-                const nachMitarbeiter = allMitarbeiter.find(m => String(m.id) === String(tausch.nachMitarbeiterId));
-                const schicht = allSchichten.find(s => String(s.id) === String(tausch.schichtId));
+                // ✅ FIXED: Use new field names (mitarbeiter1Id, mitarbeiter2Id)
+                const mitarbeiter1 = allMitarbeiter.find(m => String(m.id) === String(tausch.mitarbeiter1Id));
+                const mitarbeiter2 = allMitarbeiter.find(m => String(m.id) === String(tausch.mitarbeiter2Id));
 
                 html += `
                     <div style="background: var(--color-surface-light); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
                         <div style="margin-bottom: 16px;">
-                            <strong>${vonMitarbeiter ? vonMitarbeiter.name : 'Unbekannt'}</strong> möchte mit
-                            <strong>${nachMitarbeiter ? nachMitarbeiter.name : 'Unbekannt'}</strong> tauschen
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                                <strong>${tausch.mitarbeiter1Name || 'Unbekannt'}</strong>
+                                <span style="opacity: 0.7; font-size: 13px;">${tausch.schicht1Typ} am ${formatDate(tausch.schicht1Datum, 'DD.MM.YYYY')}</span>
+                            </div>
+                            <div style="text-align: center; opacity: 0.5; margin: 8px 0;">↕️ möchte tauschen mit</div>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <strong>${tausch.mitarbeiter2Name || 'Unbekannt'}</strong>
+                                <span style="opacity: 0.7; font-size: 13px;">${tausch.schicht2Typ} am ${formatDate(tausch.schicht2Datum, 'DD.MM.YYYY')}</span>
+                            </div>
                         </div>
-                        ${tausch.grund ? `<p style="opacity: 0.8; margin-bottom: 16px;">${tausch.grund}</p>` : ''}
+                        ${tausch.nachricht ? `<p style="opacity: 0.8; margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px;">"${tausch.nachricht}"</p>` : ''}
                         <div style="display: flex; gap: 10px;">
                             <button class="btn btn-small btn-success" onclick="bearbeiteTausch('${tausch.id}', 'approved')">
                                 ✅ Genehmigen
@@ -2986,8 +2993,24 @@
             try {
                 if (status === 'approved') {
                     const tausch = allTausche.find(t => String(t.id) === String(tauschId));
-                    // Execute tausch
-                    await tauschSchicht(tausch.schichtId, tausch.nachMitarbeiterId, tausch.datum);
+
+                    // ✅ FIXED: Swap BOTH shifts (not just reassign one)
+                    // Schicht 1: mitarbeiter1 → mitarbeiter2
+                    // Schicht 2: mitarbeiter2 → mitarbeiter1
+
+                    await window.getCollection('schichten').doc(tausch.schicht1Id).update({
+                        mitarbeiterId: tausch.mitarbeiter2Id,
+                        mitarbeiterName: tausch.mitarbeiter2Name,
+                        bearbeitetAm: new Date().toISOString()
+                    });
+
+                    await window.getCollection('schichten').doc(tausch.schicht2Id).update({
+                        mitarbeiterId: tausch.mitarbeiter1Id,
+                        mitarbeiterName: tausch.mitarbeiter1Name,
+                        bearbeitetAm: new Date().toISOString()
+                    });
+
+                    console.log(`✅ Schichten getauscht: ${tausch.mitarbeiter1Name} ↔ ${tausch.mitarbeiter2Name}`);
                 }
 
                 await window.getCollection('schichtTausche').doc(tauschId).update({
@@ -2997,7 +3020,9 @@
 
                 showToast(`✅ Tausch ${status === 'approved' ? 'genehmigt' : 'abgelehnt'}`, 'success');
                 await loadTausche();
+                await loadSchichten();  // ✅ Reload schichten to reflect the swap
                 renderTausche();
+                renderCalendar();  // ✅ Update calendar view
 
             } catch (error) {
                 console.error('❌ Fehler:', error);
