@@ -3129,6 +3129,67 @@
 
                 console.log(`✅ Urlaubstage aktualisiert: ${urlaubstageVerbraucht}`);
 
+                // 🆕 Phase 2.2: Create "Urlaub" shifts in Dienstplan for each vacation day
+                try {
+                    // Load all schichtTypen to find "Urlaub" type
+                    const schichtTypenSnapshot = await window.getCollection('schichtTypen').get();
+                    const allSchichtTypen = schichtTypenSnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+
+                    // Find "Urlaub" schichtTyp
+                    const urlaubTyp = allSchichtTypen.find(st => st.name === 'Urlaub');
+                    if (!urlaubTyp) {
+                        console.error('❌ Urlaub schicht type not found');
+                        showToast('⚠️ Warnung: Urlaub-Schicht-Typ nicht gefunden', 'warning', 3000);
+                    } else {
+                        // Loop through date range and create schichten
+                        const startDate = new Date(anfrage.startDatum);
+                        const endDate = new Date(anfrage.endDatum);
+                        const currentDate = new Date(startDate);
+
+                        let urlaubsSchichtenErstellt = 0;
+
+                        while (currentDate <= endDate) {
+                            // Skip Sundays (day 0) - bereits als "Frei" markiert
+                            if (currentDate.getDay() !== 0) {
+                                const dateStr = currentDate.toISOString().split('T')[0];  // YYYY-MM-DD
+
+                                // Check if schicht already exists for this day (duplicate prevention)
+                                const existingShift = await window.getCollection('schichten')
+                                    .where('mitarbeiterId', '==', anfrage.mitarbeiterId)
+                                    .where('datum', '==', dateStr)
+                                    .get();
+
+                                if (existingShift.empty) {
+                                    // Create "Urlaub" schicht for this day
+                                    await window.getCollection('schichten').add({
+                                        mitarbeiterId: anfrage.mitarbeiterId,
+                                        mitarbeiterName: anfrage.mitarbeiterName,
+                                        datum: dateStr,
+                                        schichtTypId: urlaubTyp.id,
+                                        schichtTypName: urlaubTyp.name,
+                                        status: 'active',
+                                        erstelltVon: 'system',
+                                        erstelltAm: new Date().toISOString(),
+                                        werkstattId: window.werkstattId
+                                    });
+                                    urlaubsSchichtenErstellt++;
+                                }
+                            }
+
+                            // Move to next day
+                            currentDate.setDate(currentDate.getDate() + 1);
+                        }
+
+                        console.log(`✅ ${urlaubsSchichtenErstellt} Urlaubs-Schichten im Dienstplan erstellt`);
+                    }
+                } catch (error) {
+                    console.error('❌ Fehler beim Erstellen der Urlaubs-Schichten:', error);
+                    // Continue anyway - approval already succeeded
+                }
+
                 showToast(`✅ Urlaub genehmigt! ${anfrage.anzahlTage} Tage von ${anfrage.mitarbeiterName}`, 'success', 4000);
 
                 // Reload anfragen
