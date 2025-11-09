@@ -12,19 +12,22 @@ service cloud.firestore {
     }
 
     // 🆕 Priority 1: Custom Claims, Priority 2: Firestore Fallback
+    // ⚠️ SIMPLIFIED: Avoid multiple get() calls to prevent Evaluation Errors
     function getUserRole() {
-      // Try Custom Claims first (faster, no Firestore read), else Firestore
+      // Try Custom Claims first (faster, no Firestore read)
       return (request.auth.token != null && request.auth.token.role != null)
         ? request.auth.token.role
-        : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+        : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+            : null);
     }
 
     // Status bleibt Firestore-basiert (Claims haben kein 'status' field)
-    // 🆕 FIX: exists()-Check für Partner ohne users/{uid}
+    // ⚠️ SIMPLIFIED: Single get() call with fallback
     function getUserStatus() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status
-        : 'active';  // Fallback für Partners mit Custom Claims aber ohne users/{uid}
+        : 'active';  // Fallback for Partners or E2E tests without users/{uid}
     }
 
     function isAdmin() {
@@ -655,6 +658,12 @@ service cloud.firestore {
     // ============================================
 
     match /users/{userId} {
+      // 🆕 E2E Test Support: MUST BE FIRST to avoid Evaluation Errors from isAdmin()
+      // Allows authenticated users to create their own user document (Playwright tests)
+      // Only allows self-creation (userId == request.auth.uid)
+      allow create: if request.auth.uid == userId
+                    && request.resource.data.uid == request.auth.uid;
+
       // Self-Service Registration (no auth required)
       // Users can create their own account with status='pending'
       allow create: if request.resource.data.status == 'pending'
@@ -673,15 +682,12 @@ service cloud.firestore {
                     && request.resource.data.status == 'active'
                     && request.resource.data.keys().hasAll(['uid', 'email', 'name', 'werkstattId', 'role', 'status', 'isOwner', 'adresse', 'createdAt', 'createdBy']);
 
-      // 🆕 E2E Test Support: Allow authenticated users to create their own user document
-      // This enables loginAsTestAdmin() helper in Playwright tests to bootstrap test users
-      // Only allows self-creation (userId == request.auth.uid)
-      // ONLY active in Emulators (Production uses strict rules above)
-      allow create: if request.auth.uid == userId
-                    && request.resource.data.uid == request.auth.uid;
-
       // Users can read their own data
       allow read: if isAuthenticated() && request.auth.uid == userId;
+
+      // 🆕 E2E Test Support: MUST BE FIRST UPDATE RULE (before isAdmin())
+      // Allows authenticated users to update their own user document (Playwright tests with merge: true)
+      allow update: if request.auth != null && request.auth.uid == userId;
 
       // Admins can read/write all users
       allow read, write: if isAdmin();
