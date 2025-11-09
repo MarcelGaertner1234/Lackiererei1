@@ -73,8 +73,10 @@ test.describe('FLOW 1: Manuelle Fahrzeug-Annahme', () => {
     // 4. Zeichne Unterschrift
     await drawTestSignature(page, '#signaturePad');
 
-    // 5. Speichern
-    await page.click('button:has-text("Speichern & PDF erstellen")');
+    // 5. Speichern - scroll to button first!
+    const submitButton = page.locator('button:has-text("Speichern & PDF erstellen")');
+    await submitButton.scrollIntoViewIfNeeded();
+    await submitButton.click();
 
     // 6. Warte auf Success-Message
     const success = await waitForSuccessMessage(page, 'erfolgreich');
