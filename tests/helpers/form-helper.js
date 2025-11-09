@@ -55,12 +55,18 @@ async function fillVehicleIntakeForm(page, data = {}) {
     // Wait for #lackierung-felder to become visible
     await page.waitForSelector('#lackierung-felder', { state: 'visible', timeout: 5000 });
     console.log('✅ Lackierung-Felder sind jetzt sichtbar');
+
+    // Scroll to lackierung-felder to ensure they are in viewport
+    await page.locator('#lackierung-felder').scrollIntoViewIfNeeded();
+    console.log('✅ Scrolled to Lackierung-Felder');
   }
 
   await page.waitForTimeout(300); // Additional short wait for DOM updates
 
-  // Fahrzeugabholung
-  await page.click(`input[name="fahrzeugAbholung"][value="${formData.fahrzeugAbholung}"]`);
+  // Fahrzeugabholung - scroll into view first
+  const fahrzeugAbholungRadio = page.locator(`input[name="fahrzeugAbholung"][value="${formData.fahrzeugAbholung}"]`);
+  await fahrzeugAbholungRadio.scrollIntoViewIfNeeded();
+  await fahrzeugAbholungRadio.click();
 
   // Fahrzeugdaten
   await page.selectOption('#marke', formData.marke); // FIX: #marke is a <select> element
@@ -69,7 +75,8 @@ async function fillVehicleIntakeForm(page, data = {}) {
   await page.selectOption('#baujahrBis', formData.baujahrBis); // FIX: #baujahrBis is a <select> element
   await page.fill('#kmstand', formData.kmstand);
 
-  // Lackierdaten
+  // Lackierdaten - ensure elements are in viewport
+  await page.locator('#farbname').scrollIntoViewIfNeeded();
   await page.fill('#farbname', formData.farbname);
   await page.fill('#farbnummer', formData.farbnummer);
   await page.click(`input[name="lackart"][value="${formData.lackart}"]`);
