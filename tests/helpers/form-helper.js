@@ -68,7 +68,9 @@ async function fillVehicleIntakeForm(page, data = {}) {
   await fahrzeugAbholungRadio.scrollIntoViewIfNeeded();
   await fahrzeugAbholungRadio.click();
 
-  // Fahrzeugdaten
+  // Fahrzeugdaten - wait for visibility and scroll
+  await page.waitForSelector('#marke', { state: 'visible', timeout: 5000 });
+  await page.locator('#marke').scrollIntoViewIfNeeded();
   await page.selectOption('#marke', formData.marke); // FIX: #marke is a <select> element
   await page.fill('#modell', formData.modell);
   await page.selectOption('#baujahrVon', formData.baujahrVon); // FIX: #baujahrVon is a <select> element
