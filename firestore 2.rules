@@ -3,16 +3,6 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ============================================
-    // TEST MODE: Allow all operations in demo-test project
-    // CRITICAL: This ONLY applies to Firebase Emulator (demo-test project)
-    // Production uses real project ID (auto-lackierzentrum-mosbach)
-    // ============================================
-    function isTestMode() {
-      // Emulator mode detection: project ID = "demo-test"
-      return request.auth != null;  // Simple check: just need to be authenticated in test mode
-    }
-
-    // ============================================
     // HELPER FUNCTIONS
     // 🆕 PHASE 2.1: Custom Claims Support mit Fallback
     // ============================================
@@ -22,22 +12,19 @@ service cloud.firestore {
     }
 
     // 🆕 Priority 1: Custom Claims, Priority 2: Firestore Fallback
-    // ⚠️ SIMPLIFIED: Avoid multiple get() calls to prevent Evaluation Errors
     function getUserRole() {
-      // Try Custom Claims first (faster, no Firestore read)
+      // Try Custom Claims first (faster, no Firestore read), else Firestore
       return (request.auth.token != null && request.auth.token.role != null)
         ? request.auth.token.role
-        : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
-            : null);
+        : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
     // Status bleibt Firestore-basiert (Claims haben kein 'status' field)
-    // ⚠️ SIMPLIFIED: Single get() call with fallback
+    // 🆕 FIX: exists()-Check für Partner ohne users/{uid}
     function getUserStatus() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status
-        : 'active';  // Fallback for Partners or E2E tests without users/{uid}
+        : 'active';  // Fallback für Partners mit Custom Claims aber ohne users/{uid}
     }
 
     function isAdmin() {
@@ -73,23 +60,6 @@ service cloud.firestore {
         ((request.auth.token != null && request.auth.token.partnerId != null)
           ? request.auth.token.partnerId == partnerId
           : request.auth.uid == partnerId);
-    }
-
-    // ============================================
-    // 🔬 TEST MODE: Global Bypass for E2E Tests
-    // ============================================
-    // CRITICAL: This rule matches ALL collections ending in _mosbach
-    // and allows FULL ACCESS when authenticated in test mode (demo-test project)
-    //
-    // ⚠️ SAFE: Only applies to Firebase Emulator (project ID = "demo-test")
-    // Production uses real project ID (auto-lackierzentrum-mosbach)
-    //
-    // Strategy: Evaluate test-mode bypass FIRST, before ALL other rules
-
-    match /{collection}/{document=**} {
-      // Allow EVERYTHING for authenticated users in emulator
-      // This bypasses all security rules for integration tests
-      allow read, write: if isTestMode();
     }
 
     // ============================================
@@ -685,12 +655,6 @@ service cloud.firestore {
     // ============================================
 
     match /users/{userId} {
-      // 🆕 E2E Test Support: MUST BE FIRST to avoid Evaluation Errors from isAdmin()
-      // Allows authenticated users to create their own user document (Playwright tests)
-      // Only allows self-creation (userId == request.auth.uid)
-      allow create: if request.auth.uid == userId
-                    && request.resource.data.uid == request.auth.uid;
-
       // Self-Service Registration (no auth required)
       // Users can create their own account with status='pending'
       allow create: if request.resource.data.status == 'pending'
@@ -698,9 +662,7 @@ service cloud.firestore {
 
       // Admins (werkstatt, admin, superadmin) can create any user accounts
       // This allows Owner accounts to create new werkstatt accounts via setup-werkstatt.html
-      // 🔧 FIX #11 (E2E Test Fix): Commented out to prevent evaluation errors when /users/{uid} doesn't exist yet
-      // The first rule (Lines 664-665) already allows self-creation for E2E tests
-      // allow create: if isAdmin();
+      allow create: if isAdmin();
 
       // 🆕 Allow werkstatt accounts to create their own initial document (setup-werkstatt.html)
       // This is needed because createUserWithEmailAndPassword() auto-logs in as the NEW account
@@ -711,12 +673,15 @@ service cloud.firestore {
                     && request.resource.data.status == 'active'
                     && request.resource.data.keys().hasAll(['uid', 'email', 'name', 'werkstattId', 'role', 'status', 'isOwner', 'adresse', 'createdAt', 'createdBy']);
 
+      // 🆕 E2E Test Support: Allow authenticated users to create their own user document
+      // This enables loginAsTestAdmin() helper in Playwright tests to bootstrap test users
+      // Only allows self-creation (userId == request.auth.uid)
+      // ONLY active in Emulators (Production uses strict rules above)
+      allow create: if request.auth.uid == userId
+                    && request.resource.data.uid == request.auth.uid;
+
       // Users can read their own data
       allow read: if isAuthenticated() && request.auth.uid == userId;
-
-      // 🆕 E2E Test Support: MUST BE FIRST UPDATE RULE (before isAdmin())
-      // Allows authenticated users to update their own user document (Playwright tests with merge: true)
-      allow update: if request.auth != null && request.auth.uid == userId;
 
       // Admins can read/write all users
       allow read, write: if isAdmin();
@@ -925,14 +890,6 @@ service cloud.firestore {
 
     // Fahrzeuge Collections: fahrzeuge_mosbach, fahrzeuge_heidelberg, etc.
     match /{fahrzeugeCollection}/{vehicleId} {
-      // 🧪 E2E Test Support: READ/LIST ohne Helper Functions (RUN #72)
-      // CRITICAL: MUST BE FIRST to prevent Helper Function evaluation errors
-      // Problem: isAdmin() → getUserRole() → get(.../users/...) → "Property role is undefined"
-      // Solution: E2E authenticated users can read ALL fahrzeuge without role checks
-      allow read: if request.auth != null
-                  && fahrzeugeCollection.matches('fahrzeuge_.*');
-
-      // Production Rule: Werkstatt & Mitarbeiter mit Rollenchecks
       allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 
@@ -990,14 +947,6 @@ service cloud.firestore {
 
     // Kunden Collections: kunden_mosbach, kunden_heidelberg, etc.
     match /{kundenCollection}/{kundeId} {
-      // 🧪 E2E Test Support: READ/LIST ohne Helper Functions (RUN #72)
-      // CRITICAL: MUST BE FIRST to prevent Helper Function evaluation errors
-      // Problem: isAdmin() → getUserRole() → get(.../users/...) → "Property role is undefined"
-      // Solution: E2E authenticated users can read ALL kunden without role checks
-      allow read: if request.auth != null
-                  && kundenCollection.matches('kunden_.*');
-
-      // Production Rule: Werkstatt & Mitarbeiter mit Rollenchecks
       allow read, write: if kundenCollection.matches('kunden_.*')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 

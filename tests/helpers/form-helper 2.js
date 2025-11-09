@@ -4,68 +4,6 @@
  * Hilfsfunktionen zum Ausfüllen von Formularen
  */
 
-// ============================================================
-// FIX #16: Helper Functions für menschliche Interaktionen
-// ============================================================
-
-/**
- * Tippt Text langsam ein (50ms pro Zeichen) - simuliert menschliches Tippen
- * @param {import('@playwright/test').Page} page
- * @param {string} selector
- * @param {string} text
- */
-async function slowType(page, selector, text) {
-  await page.click(selector); // Focus
-  await page.fill(selector, ''); // Clear first
-  for (const char of text) {
-    await page.type(selector, char, { delay: 50 });
-  }
-  await page.evaluate((sel) => {
-    document.querySelector(sel)?.blur(); // Trigger blur event
-  }, selector);
-}
-
-/**
- * Wählt Option mit expliziten Focus/Blur Events
- * @param {import('@playwright/test').Page} page
- * @param {string} selector
- * @param {string} value
- */
-async function selectWithFocus(page, selector, value) {
-  await page.evaluate((sel) => {
-    const elem = document.querySelector(sel);
-    if (elem) {
-      elem.focus();
-      elem.dispatchEvent(new Event('focus', { bubbles: true }));
-    }
-  }, selector);
-
-  await page.waitForTimeout(100); // Kurze Pause nach Focus
-
-  await page.selectOption(selector, value);
-
-  await page.waitForTimeout(100); // Kurze Pause nach Selection
-
-  await page.evaluate((sel) => {
-    const elem = document.querySelector(sel);
-    if (elem) {
-      elem.dispatchEvent(new Event('change', { bubbles: true }));
-      elem.blur();
-      elem.dispatchEvent(new Event('blur', { bubbles: true }));
-    }
-  }, selector);
-}
-
-/**
- * Zufällige Pause zwischen 100-300ms - simuliert menschliche Delays zwischen Feldern
- */
-async function humanDelay() {
-  const delay = Math.floor(Math.random() * 200) + 100; // 100-300ms
-  await new Promise(resolve => setTimeout(resolve, delay));
-}
-
-// ============================================================
-
 /**
  * Füllt das Fahrzeug-Annahme Formular aus
  * @param {import('@playwright/test').Page} page
@@ -94,29 +32,15 @@ async function fillVehicleIntakeForm(page, data = {}) {
 
   const formData = { ...defaults, ...data };
 
-  // FIX #16: Basis-Felder mit slowType() für menschliches Tempo
-  await slowType(page, '#kennzeichen', formData.kennzeichen);
-  await humanDelay();
+  // Basis-Felder
+  await page.fill('#kennzeichen', formData.kennzeichen);
+  await page.fill('#kundenname', formData.kundenname);
+  await page.fill('#kundenEmail', formData.kundenEmail);  // REQUIRED field
+  await page.fill('#telefonnummer', formData.telefonnummer);
+  await page.fill('#geplantesAbnahmeDatum', formData.geplantesAbnahmeDatum);
 
-  await slowType(page, '#kundenname', formData.kundenname);
-  await humanDelay();
-
-  // Optional: Only fill if explicitly provided (to avoid triggering customer autocomplete)
-  if (data.kundenEmail) {
-    await slowType(page, '#kundenEmail', formData.kundenEmail);
-    await humanDelay();
-  }
-  if (data.telefonnummer) {
-    await slowType(page, '#telefonnummer', formData.telefonnummer);
-    await humanDelay();
-  }
-
-  await slowType(page, '#geplantesAbnahmeDatum', formData.geplantesAbnahmeDatum);
-  await humanDelay();
-
-  // FIX #16: Service-Typ mit selectWithFocus() für explizite Events
-  await selectWithFocus(page, '#serviceTyp', formData.serviceTyp);
-  await humanDelay();
+  // Service-Typ
+  await page.selectOption('#serviceTyp', formData.serviceTyp);
 
   // CRITICAL: Wait for service-specific fields to become visible after serviceTyp selection
   // The JavaScript in annahme.html shows/hides fields based on selected service type
@@ -124,72 +48,26 @@ async function fillVehicleIntakeForm(page, data = {}) {
     // Wait for #lackierung-felder to become visible
     await page.waitForSelector('#lackierung-felder', { state: 'visible', timeout: 5000 });
     console.log('✅ Lackierung-Felder sind jetzt sichtbar');
-
-    // Scroll to lackierung-felder to ensure they are in viewport
-    await page.locator('#lackierung-felder').scrollIntoViewIfNeeded();
-    console.log('✅ Scrolled to Lackierung-Felder');
   }
 
   await page.waitForTimeout(300); // Additional short wait for DOM updates
 
-  // FIX #16: Fahrzeugabholung - mit humanDelay
-  const fahrzeugAbholungRadio = page.locator(`input[name="fahrzeugAbholung"][value="${formData.fahrzeugAbholung}"]`);
-  await fahrzeugAbholungRadio.scrollIntoViewIfNeeded();
-  await fahrzeugAbholungRadio.click();
-  await humanDelay();
+  // Fahrzeugabholung
+  await page.click(`input[name="fahrzeugAbholung"][value="${formData.fahrzeugAbholung}"]`);
 
-  // Fahrzeugdaten - wait for visibility and scroll
-  await page.waitForSelector('#marke', { state: 'visible', timeout: 5000 });
-  await page.locator('#marke').scrollIntoViewIfNeeded();
-  await page.waitForTimeout(500); // Extra wait for DOM stability after scroll
+  // Fahrzeugdaten
+  await page.selectOption('#marke', formData.marke); // FIX: #marke is a <select> element
+  await page.fill('#modell', formData.modell);
+  await page.selectOption('#baujahrVon', formData.baujahrVon); // FIX: #baujahrVon is a <select> element
+  await page.selectOption('#baujahrBis', formData.baujahrBis); // FIX: #baujahrBis is a <select> element
+  await page.fill('#kmstand', formData.kmstand);
 
-  // FIX #16: KRITISCH - #marke mit selectWithFocus() + extra 500ms Pause!
-  await selectWithFocus(page, '#marke', formData.marke);
-
-  // FIX #9: Wait until value is actually set in DOM (verify it's not reset by async code)
-  await page.waitForFunction(
-    (marke) => document.getElementById('marke').value === marke,
-    formData.marke,
-    { timeout: 5000 }
-  );
-  console.log('✅ #marke selected AND verified:', formData.marke);
-
-  // FIX #16: Extra 500ms Pause nach #marke für async Operations
-  await page.waitForTimeout(500);
-
-  // FIX #16: Weitere Fahrzeugdaten mit slowType() und humanDelay()
-  await slowType(page, '#modell', formData.modell);
-  await humanDelay();
-
-  await selectWithFocus(page, '#baujahrVon', formData.baujahrVon);
-  await humanDelay();
-
-  await selectWithFocus(page, '#baujahrBis', formData.baujahrBis);
-  await humanDelay();
-
-  await slowType(page, '#kmstand', formData.kmstand);
-  await humanDelay();
-
-  // FIX #16: Lackierdaten - FIX #13: Wait for visibility BEFORE scrolling/filling
-  await page.waitForSelector('#farbname', { state: 'visible', timeout: 10000 });
-  await page.locator('#farbname').scrollIntoViewIfNeeded();
-
-  await slowType(page, '#farbname', formData.farbname);
-  await humanDelay();
-
-  await slowType(page, '#farbnummer', formData.farbnummer);
-  await humanDelay();
-
+  // Lackierdaten
+  await page.fill('#farbname', formData.farbname);
+  await page.fill('#farbnummer', formData.farbnummer);
   await page.click(`input[name="lackart"][value="${formData.lackart}"]`);
-  await humanDelay();
-
-  await slowType(page, '#vereinbarterPreis', formData.vereinbarterPreis);
-  await humanDelay();
-
-  await slowType(page, '#notizen', formData.notizen);
-  await humanDelay();
-
-  console.log('✅ FIX #16: Formular komplett ausgefüllt mit menschlichem Tempo');
+  await page.fill('#vereinbarterPreis', formData.vereinbarterPreis);
+  await page.fill('#notizen', formData.notizen);
 }
 
 /**

@@ -1,0 +1,73 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - button "Toggle Light/Dark Mode" [ref=e2]:
+    - img [ref=e3]
+    - img [ref=e9]
+  - generic [ref=e12]:
+    - generic [ref=e13]: 🎯
+    - generic [ref=e14]:
+      - heading "Prozessüberwachung - Kanban Board" [level=1] [ref=e15]
+      - generic [ref=e16]: Auto-Lackierzentrum Mosbach
+  - generic [ref=e17]:
+    - generic [ref=e18]:
+      - heading "🎯 Produktionsübersicht" [level=2] [ref=e19]
+      - paragraph [ref=e20]: Ziehen Sie Fahrzeuge per Drag & Drop zwischen den Prozess-Schritten
+    - generic [ref=e21]:
+      - generic [ref=e22]: "📋 Prozess wählen:"
+      - combobox "📋 Prozess wählen:" [ref=e23] [cursor=pointer]:
+        - option "Alle Prozesse"
+        - option "🎨 Lackierung" [selected]
+        - option "🚗 Reifen-Service"
+        - option "🔧 Mechanik"
+        - option "✨ Fahrzeugpflege"
+        - option "✅ TÜV/AU"
+        - option "🛡️ Versicherung"
+        - option "🔍 Glas-Reparatur"
+        - option "❄️ Klima-Service"
+        - option "🔨 Dellen-Drückung"
+        - option "🌈 Auto Folierung"
+        - option "🛡️ Steinschutzfolie"
+        - option "📢 Fahrzeugbeschriftung"
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]: "0"
+          - generic [ref=e28]: 📋 Angenommen
+        - generic [ref=e30]: Keine Fahrzeuge
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - generic [ref=e33]: "0"
+          - generic [ref=e34]: 📅 Terminiert
+        - generic [ref=e36]: Keine Fahrzeuge
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39]: "0"
+          - generic [ref=e40]: 🔧 Vorbereitung
+        - generic [ref=e42]: Keine Fahrzeuge
+      - generic [ref=e43]:
+        - generic [ref=e44]:
+          - generic [ref=e45]: "0"
+          - generic [ref=e46]: 🎨 Lackierung
+        - generic [ref=e48]: Keine Fahrzeuge
+      - generic [ref=e49]:
+        - generic [ref=e50]:
+          - generic [ref=e51]: "0"
+          - generic [ref=e52]: ⏱️ Trocknung
+        - generic [ref=e54]: Keine Fahrzeuge
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - generic [ref=e57]: "0"
+          - generic [ref=e58]: 🔍 Qualität
+        - generic [ref=e60]: Keine Fahrzeuge
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - generic [ref=e63]: "0"
+          - generic [ref=e64]: ✅ Bereit
+        - generic [ref=e66]: Keine Fahrzeuge
+  - paragraph [ref=e67]: Running in emulator mode. Do not use with production credentials.
+  - generic [ref=e69] [cursor=pointer]: 🔔
+  - button "Toggle Dark Mode" [ref=e70] [cursor=pointer]:
+    - generic [ref=e71]: ☀️
+```

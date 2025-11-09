@@ -1,0 +1,217 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - button "Toggle Light/Dark Mode" [ref=e2] [cursor=pointer]:
+    - img
+    - img [ref=e3]
+  - img
+  - generic [ref=e5]:
+    - heading "Fahrzeugannahme-App" [level=1] [ref=e6]
+    - paragraph [ref=e7]: Fahrzeuge erfassen in unter 2 Minuten
+    - generic [ref=e8]: Version 2.0 - Premium Dark Glass Edition
+  - generic [ref=e9]:
+    - generic [ref=e10]:
+      - img [ref=e12]
+      - generic [ref=e14]:
+        - heading "Willkommen im Dashboard" [level=2] [ref=e15]
+        - paragraph [ref=e16]: Verwalten Sie Fahrzeuge, Kunden und Partner-Anfragen professionell und effizient
+    - heading "Hauptfunktionen" [level=2] [ref=e17]
+    - generic [ref=e18]:
+      - generic [ref=e19] [cursor=pointer]:
+        - generic [ref=e20]:
+          - img [ref=e21]
+          - heading "Fahrzeug-Management" [level=3] [ref=e26]
+          - generic [ref=e27]: 0 offen
+        - paragraph [ref=e28]: Erfassen, übergeben & verwalten
+        - generic [ref=e29]:
+          - link "Annahme" [ref=e30]:
+            - /url: annahme.html
+            - img [ref=e31]
+            - generic [ref=e34]: Annahme
+          - link "Abnahme" [ref=e35]:
+            - /url: abnahme.html
+            - img [ref=e36]
+            - generic [ref=e39]: Abnahme
+          - link "Übersicht" [ref=e40]:
+            - /url: liste.html
+            - img [ref=e41]
+            - generic [ref=e42]: Übersicht
+      - generic [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]:
+          - img [ref=e45]
+          - heading "Prozess-Überwachung" [level=3] [ref=e47]
+          - generic [ref=e48]: 0 in Arbeit
+        - paragraph [ref=e49]: Kanban Board & Kundenverwaltung
+        - generic [ref=e50]:
+          - link "Kanban" [ref=e51]:
+            - /url: kanban.html
+            - img [ref=e52]
+            - generic [ref=e56]: Kanban
+          - link "Kunden" [ref=e57]:
+            - /url: kunden.html
+            - img [ref=e58]
+            - generic [ref=e63]: Kunden
+      - generic [ref=e64] [cursor=pointer]:
+        - generic [ref=e65]:
+          - img [ref=e66]
+          - heading "Organisation & Partner" [level=3] [ref=e69]
+          - generic [ref=e70]: 0 Anfragen
+        - paragraph [ref=e71]: Termine, Material & Partner-Anfragen
+        - generic [ref=e72]:
+          - link "Kalender" [ref=e73]:
+            - /url: kalender.html
+            - img [ref=e74]
+            - generic [ref=e76]: Kalender
+          - link "Material" [ref=e77]:
+            - /url: material.html
+            - img [ref=e78]
+            - generic [ref=e82]: Material
+          - link "Dienstplan" [ref=e83]:
+            - /url: mitarbeiter-dienstplan.html
+            - img [ref=e84]
+            - generic [ref=e87]: Dienstplan
+          - link "Partner" [ref=e88]:
+            - /url: partner-app/admin-anfragen.html
+            - img [ref=e89]
+            - generic [ref=e92]: Partner
+          - link "Portal" [ref=e93]:
+            - /url: partner-landing.html
+            - img [ref=e94]
+            - generic [ref=e97]: Portal
+          - link "Wissen" [ref=e98]:
+            - /url: wissensdatenbank.html
+            - img [ref=e99]
+            - generic [ref=e102]: Wissen
+      - generic [ref=e103] [cursor=pointer]:
+        - generic [ref=e104]:
+          - img [ref=e105]
+          - heading "Admin-Funktionen" [level=3] [ref=e107]
+          - generic [ref=e108]: Berechtigungen
+        - paragraph [ref=e109]: Verwaltung & Berechtigungen
+        - generic [ref=e110]:
+          - link "Dashboard" [ref=e111]:
+            - /url: admin-dashboard.html
+            - img [ref=e112]
+            - generic [ref=e113]: Dashboard
+          - link "Mitarbeiter" [ref=e114]:
+            - /url: mitarbeiter-verwaltung.html
+            - img [ref=e115]
+            - generic [ref=e120]: Mitarbeiter
+          - link "Einstellungen" [ref=e121]:
+            - /url: admin-einstellungen.html
+            - img [ref=e122]
+            - generic [ref=e123]: Einstellungen
+          - link "User-Verwaltung" [ref=e124]:
+            - /url: nutzer-verwaltung.html
+            - img [ref=e125]
+            - generic [ref=e129]: User-Verwaltung
+          - link "Werkstatt-Setup" [ref=e130]:
+            - /url: setup-werkstatt.html
+            - img [ref=e131]
+            - generic [ref=e134]: Werkstatt-Setup
+      - generic [ref=e135] [cursor=pointer]:
+        - generic [ref=e136]:
+          - img [ref=e137]
+          - heading "Bonus-Verwaltung" [level=3] [ref=e139]
+          - generic [ref=e140]: Partner-Bonus
+        - paragraph [ref=e141]: Partner-Bonus-Auszahlungen verwalten
+        - link "Auszahlungen" [ref=e143]:
+          - /url: admin-bonus-auszahlungen.html
+          - img [ref=e144]
+          - generic [ref=e147]: Auszahlungen
+      - generic [ref=e148] [cursor=pointer]:
+        - generic [ref=e149]:
+          - img [ref=e150]
+          - heading "KI-Assistent" [level=3] [ref=e153]
+          - generic [ref=e154]: Beta
+        - paragraph [ref=e155]: Intelligente Unterstützung per Sprache
+        - generic [ref=e156]:
+          - link "Chat" [ref=e157]:
+            - /url: "#"
+            - img [ref=e158]
+            - generic [ref=e160]: Chat
+          - link "Sprache" [ref=e161]:
+            - /url: "#"
+            - img [ref=e162]
+            - generic [ref=e165]: Sprache
+    - link "🚗 Neues Fahrzeug anlegen" [ref=e167] [cursor=pointer]:
+      - /url: annahme.html
+      - img [ref=e168]
+      - generic [ref=e173]: 🚗 Neues Fahrzeug anlegen
+      - img [ref=e174]
+    - generic [ref=e176]:
+      - heading "Was kann diese App?" [level=3] [ref=e177]
+      - list [ref=e178]:
+        - listitem [ref=e179]:
+          - img [ref=e180]
+          - generic [ref=e183]: Fotos direkt mit Kamera aufnehmen
+        - listitem [ref=e184]:
+          - img [ref=e185]
+          - generic [ref=e187]: Digitale Unterschrift des Kunden
+        - listitem [ref=e188]:
+          - img [ref=e189]
+          - generic [ref=e192]: Automatische PDF-Erstellung
+        - listitem [ref=e193]:
+          - img [ref=e194]
+          - generic [ref=e198]: Vorher/Nachher-Vergleich bei Abnahme
+        - listitem [ref=e199]:
+          - img [ref=e200]
+          - generic [ref=e204]: Kanban Board für Produktionsübersicht
+        - listitem [ref=e205]:
+          - img [ref=e206]
+          - generic [ref=e211]: Kundenverwaltung mit Statistiken
+        - listitem [ref=e212]:
+          - img [ref=e213]
+          - generic [ref=e216]: Partner-Anfragen direkt bearbeiten
+        - listitem [ref=e217]:
+          - img [ref=e218]
+          - generic [ref=e225]: Funktioniert offline - kein Internet nötig
+        - listitem [ref=e226]:
+          - img [ref=e227]
+          - generic [ref=e230]: Keine Installation erforderlich
+        - listitem [ref=e231]:
+          - img [ref=e232]
+          - generic [ref=e234]: Mobile-optimiert für Tablet & Smartphone
+    - generic [ref=e235]:
+      - paragraph [ref=e236]:
+        - text: "Ausführliche Anleitung:"
+        - link "README öffnen" [ref=e237] [cursor=pointer]:
+          - /url: README.md
+      - paragraph [ref=e238]: Auto-Lackierzentrum Mosbach | info@auto-lackierzentrum.de
+  - link "Neues Fahrzeug anlegen" [ref=e239] [cursor=pointer]:
+    - /url: annahme.html
+    - img [ref=e240]
+  - navigation [ref=e241]:
+    - link "Home" [ref=e242] [cursor=pointer]:
+      - /url: index.html
+      - img [ref=e243]
+      - generic [ref=e246]: Home
+    - link "Annahme" [ref=e247] [cursor=pointer]:
+      - /url: annahme.html
+      - img [ref=e248]
+      - generic [ref=e251]: Annahme
+    - link "Übersicht" [ref=e252] [cursor=pointer]:
+      - /url: liste.html
+      - img [ref=e253]
+      - generic [ref=e254]: Übersicht
+    - link "Kanban" [ref=e255] [cursor=pointer]:
+      - /url: kanban.html
+      - img [ref=e256]
+      - generic [ref=e260]: Kanban
+  - paragraph [ref=e261]: Running in emulator mode. Do not use with production credentials.
+  - generic [ref=e263] [cursor=pointer]: 🔔
+  - generic:
+    - button "🤖" [ref=e264] [cursor=pointer]
+    - generic [ref=e265]:
+      - generic [ref=e266]:
+        - heading "🤖 KI-Assistent" [level=3] [ref=e267]
+        - button "×" [ref=e268] [cursor=pointer]
+      - generic [ref=e270]:
+        - generic [ref=e271]: 🤖
+        - generic [ref=e272]: Hallo! Ich bin dein KI-Assistent. Wie kann ich dir helfen?
+      - generic [ref=e274]:
+        - textbox "Schreibe eine Nachricht..." [ref=e275]
+        - button "🎤" [ref=e276] [cursor=pointer]
+        - button "➤" [ref=e277] [cursor=pointer]
+```

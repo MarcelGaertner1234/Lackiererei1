@@ -240,6 +240,136 @@ async function findPartnerAnfrageWithRetry(page, kennzeichen, options = {}) {
 }
 
 /**
+ * HYBRID TESTING: Direct Firestore Write Functions
+ *
+ * These functions bypass the UI and write directly to Firestore
+ * for integration testing. They test business logic without fragile UI interactions.
+ */
+
+/**
+ * Creates a vehicle directly in Firestore (bypasses UI form)
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {Object} vehicleData - Vehicle data object
+ * @param {string} vehicleData.kennzeichen - License plate (required)
+ * @param {string} vehicleData.kundenname - Customer name (required)
+ * @param {string} vehicleData.kundenEmail - Customer email (optional, default: test@example.com)
+ * @param {string} vehicleData.serviceTyp - Service type (optional, default: lackier)
+ * @param {string} vehicleData.vereinbarterPreis - Agreed price (optional, default: 1000.00)
+ * @param {string} vehicleData.marke - Car brand (optional, default: Volkswagen)
+ * @param {string} vehicleData.modell - Car model (optional, default: Golf)
+ * @returns {Promise<string>} Document ID of created vehicle
+ */
+async function createVehicleDirectly(page, vehicleData) {
+  console.log(`🔧 Creating vehicle directly in Firestore: ${vehicleData.kennzeichen}`);
+
+  return await page.evaluate(async (data) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('fahrzeuge');
+
+    // Build complete vehicle object with defaults
+    const vehicleDoc = {
+      kennzeichen: data.kennzeichen,
+      kundenname: data.kundenname,
+      kundenEmail: (data.kundenEmail || 'test@example.com').toLowerCase(),
+      serviceTyp: data.serviceTyp || 'lackier',
+      vereinbarterPreis: data.vereinbarterPreis || '1000.00',
+      marke: data.marke || 'Volkswagen',
+      modell: data.modell || 'Golf',
+
+      // Status fields
+      status: 'angenommen',
+      prozessStatus: 'angenommen',
+
+      // Timestamps
+      annahmeDatum: new Date().toISOString(),
+      erstelltAm: new Date().toISOString(),
+
+      // Required fields (placeholder values for integration tests)
+      farbnummer: data.farbnummer || 'LC9Z',
+      lackart: data.lackart || 'Metallic',
+      farbname: data.farbname || 'Silber Metallic',
+
+      // Multi-tenant
+      werkstattId: window.werkstattId || 'mosbach'
+    };
+
+    const docRef = await db.collection(collectionName).add(vehicleDoc);
+    console.log(`✅ Vehicle created: ${docRef.id}`);
+    return docRef.id;
+  }, vehicleData);
+}
+
+/**
+ * Creates a customer directly in Firestore (bypasses UI)
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {Object} customerData - Customer data object
+ * @param {string} customerData.name - Customer name (required)
+ * @param {string} customerData.email - Customer email (optional, default: test@example.com)
+ * @param {number} customerData.anzahlBesuche - Visit count (optional, default: 1)
+ * @returns {Promise<string>} Document ID of created customer
+ */
+async function createCustomerDirectly(page, customerData) {
+  console.log(`🔧 Creating customer directly in Firestore: ${customerData.name}`);
+
+  return await page.evaluate(async (data) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('kunden');
+
+    const customerDoc = {
+      name: data.name,
+      email: (data.email || 'test@example.com').toLowerCase(),
+      anzahlBesuche: data.anzahlBesuche || 1,
+      erstelltAm: new Date().toISOString(),
+      letzterBesuch: new Date().toISOString(),
+      werkstattId: window.werkstattId || 'mosbach'
+    };
+
+    const docRef = await db.collection(collectionName).add(customerDoc);
+    console.log(`✅ Customer created: ${docRef.id}`);
+    return docRef.id;
+  }, customerData);
+}
+
+/**
+ * Updates vehicle status directly in Firestore
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen - License plate
+ * @param {string} newStatus - New status (angenommen, in_arbeit, fertig, abgeholt)
+ * @returns {Promise<boolean>} Success
+ */
+async function updateVehicleStatus(page, kennzeichen, newStatus) {
+  console.log(`🔧 Updating vehicle ${kennzeichen} status to: ${newStatus}`);
+
+  return await page.evaluate(async ({ kz, status }) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('fahrzeuge');
+
+    const snapshot = await db.collection(collectionName)
+      .where('kennzeichen', '==', kz)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      console.error(`❌ Vehicle ${kz} not found`);
+      return false;
+    }
+
+    const docId = snapshot.docs[0].id;
+    await db.collection(collectionName).doc(docId).update({
+      status: status,
+      prozessStatus: status,
+      updatedAt: new Date().toISOString()
+    });
+
+    console.log(`✅ Vehicle ${kz} status updated to ${status}`);
+    return true;
+  }, { kz: kennzeichen, status: newStatus });
+}
+
+/**
  * CRITICAL FIX: Test Admin Authentication
  *
  * Problem: Tests run WITHOUT auth → Firestore Rules DENY list operations
@@ -401,5 +531,9 @@ module.exports = {
   waitForRealtimeUpdate,
   setupConsoleMonitoring,
   findPartnerAnfrageWithRetry,
-  loginAsTestAdmin  // NEW: Test authentication
+  loginAsTestAdmin,  // Test authentication
+  // HYBRID TESTING: Direct write functions
+  createVehicleDirectly,
+  createCustomerDirectly,
+  updateVehicleStatus
 };
