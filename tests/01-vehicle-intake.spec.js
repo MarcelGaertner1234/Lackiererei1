@@ -32,12 +32,13 @@ test.describe('FLOW 1: Manuelle Fahrzeug-Annahme', () => {
   const testKennzeichen = 'TEST-E2E-001';
   const testKundenname = 'E2E Test Kunde';
 
-  // RUN #70: Login as test admin BEFORE all tests (enables Firestore access)
-  test.beforeAll(async ({ page }) => {
+  // RUN #70: Login as test admin BEFORE each test (enables Firestore access)
+  test.beforeEach(async ({ page }) => {
+    // Each test gets a fresh page, so we need to login for each test
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
     await loginAsTestAdmin(page);
-    console.log('✅ RUN #70: Test suite authenticated as admin');
+    console.log('✅ RUN #70: Test authenticated as admin');
   });
 
   // Cleanup nach jedem Test
@@ -61,6 +62,7 @@ test.describe('FLOW 1: Manuelle Fahrzeug-Annahme', () => {
     await fillVehicleIntakeForm(page, {
       kennzeichen: testKennzeichen,
       kundenname: testKundenname,
+      kundenEmail: 'test@example.com',  // REQUIRED field
       serviceTyp: 'lackier',
       vereinbarterPreis: '1250.00'
     });

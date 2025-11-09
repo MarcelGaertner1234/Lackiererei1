@@ -13,6 +13,8 @@ async function fillVehicleIntakeForm(page, data = {}) {
   const defaults = {
     kennzeichen: 'TEST-123',
     kundenname: 'Test Kunde',
+    kundenEmail: 'test.kunde@example.com',  // REQUIRED field
+    telefonnummer: '+49 6261 123456',
     geplantesAbnahmeDatum: getFutureDate(7), // 7 Tage in Zukunft
     serviceTyp: 'lackier',
     fahrzeugAbholung: 'nein',
@@ -23,7 +25,7 @@ async function fillVehicleIntakeForm(page, data = {}) {
     kmstand: '45000',
     farbname: 'Tiefes Schwarz Perleffekt',
     farbnummer: 'LC9Z',
-    lackart: 'perleffekt',
+    lackart: 'Perleffekt',  // FIXED: Match HTML capitalization
     vereinbarterPreis: '1250.00',
     notizen: 'Test-Notiz für automatisierten Test'
   };
@@ -33,6 +35,15 @@ async function fillVehicleIntakeForm(page, data = {}) {
   // Basis-Felder
   await page.fill('#kennzeichen', formData.kennzeichen);
   await page.fill('#kundenname', formData.kundenname);
+
+  // Optional: Only fill if explicitly provided (to avoid triggering customer autocomplete)
+  if (data.kundenEmail) {
+    await page.fill('#kundenEmail', formData.kundenEmail);
+  }
+  if (data.telefonnummer) {
+    await page.fill('#telefonnummer', formData.telefonnummer);
+  }
+
   await page.fill('#geplantesAbnahmeDatum', formData.geplantesAbnahmeDatum);
 
   // Service-Typ
@@ -40,7 +51,13 @@ async function fillVehicleIntakeForm(page, data = {}) {
 
   // CRITICAL: Wait for service-specific fields to become visible after serviceTyp selection
   // The JavaScript in annahme.html shows/hides fields based on selected service type
-  await page.waitForTimeout(500);
+  if (formData.serviceTyp === 'lackier' || formData.serviceTyp === 'all') {
+    // Wait for #lackierung-felder to become visible
+    await page.waitForSelector('#lackierung-felder', { state: 'visible', timeout: 5000 });
+    console.log('✅ Lackierung-Felder sind jetzt sichtbar');
+  }
+
+  await page.waitForTimeout(300); // Additional short wait for DOM updates
 
   // Fahrzeugabholung
   await page.click(`input[name="fahrzeugAbholung"][value="${formData.fahrzeugAbholung}"]`);
