@@ -256,14 +256,15 @@ async function findPartnerAnfrageWithRetry(page, kennzeichen, options = {}) {
  * @returns {Promise<void>}
  */
 async function loginAsTestAdmin(page) {
-  console.log('🔐 RUN #70: loginAsTestAdmin() START');
+  console.log('🔐 RUN #71: loginAsTestAdmin() START');
 
   try {
-    // Step 1: Sign in with Firebase Auth (creates user if not exists in Emulator)
+    // Step 1: Sign in with Firebase Auth (create user if not exists)
     const authResult = await page.evaluate(async () => {
       const auth = firebase.auth();
 
       try {
+        // Try to sign in first
         const userCredential = await auth.signInWithEmailAndPassword('admin@test.de', 'test123');
         console.log('✅ Firebase Auth: Signed in as', userCredential.user.email);
         return {
@@ -271,9 +272,26 @@ async function loginAsTestAdmin(page) {
           uid: userCredential.user.uid,
           email: userCredential.user.email
         };
-      } catch (error) {
-        console.error('❌ Firebase Auth failed:', error.message);
-        return { success: false, error: error.message };
+      } catch (signInError) {
+        // If user doesn't exist, create it
+        if (signInError.code === 'auth/user-not-found') {
+          console.log('👤 User not found, creating admin@test.de...');
+          try {
+            const newUserCredential = await auth.createUserWithEmailAndPassword('admin@test.de', 'test123');
+            console.log('✅ Firebase Auth: Created and signed in as', newUserCredential.user.email);
+            return {
+              success: true,
+              uid: newUserCredential.user.uid,
+              email: newUserCredential.user.email
+            };
+          } catch (createError) {
+            console.error('❌ Firebase Auth failed (create):', createError.message);
+            return { success: false, error: createError.message };
+          }
+        } else {
+          console.error('❌ Firebase Auth failed (sign in):', signInError.message);
+          return { success: false, error: signInError.message };
+        }
       }
     });
 
@@ -281,20 +299,21 @@ async function loginAsTestAdmin(page) {
       throw new Error(`Auth failed: ${authResult.error}`);
     }
 
-    console.log(`✅ RUN #70: Auth successful - UID: ${authResult.uid}`);
+    console.log(`✅ RUN #71: Auth successful - UID: ${authResult.uid}`);
 
     // Step 2: Set admin role in Firestore /users collection
+    // Using merge: true to allow repeated calls (e.g., in beforeEach hooks)
     await page.evaluate(async (uid) => {
       const db = window.firebaseApp.db();
 
       try {
+        // Use merge: true so this works even if user document already exists
         await db.collection('users').doc(uid).set({
           uid: uid,
           email: 'admin@test.de',
           role: 'admin',
           werkstattId: 'mosbach',
           isActive: true,
-          createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           displayName: 'E2E Test Admin'
         }, { merge: true });
@@ -307,7 +326,54 @@ async function loginAsTestAdmin(page) {
       }
     }, authResult.uid);
 
-    console.log('✅ RUN #70: Admin role configured in Firestore');
+    console.log('✅ RUN #71: Admin role configured in Firestore');
+
+    // Step 2.5: Initialize werkstattId for Multi-Tenant Collections (CRITICAL FIX!)
+    await page.evaluate((uid) => {
+      // Simulate werkstatt session (wie auth-manager.js L262-273)
+      const werkstattData = {
+        uid: uid,
+        email: 'admin@test.de',
+        name: 'E2E Test Admin',
+        werkstattId: 'mosbach',
+        role: 'werkstatt',
+        authType: 'firebase',
+        isOwner: true
+      };
+
+      // Set sessionStorage (für auth-manager.getCurrentUser())
+      sessionStorage.setItem('session_werkstatt', JSON.stringify(werkstattData));
+
+      // Set window.werkstattId (für firebase-config.getCollectionName())
+      window.werkstattId = 'mosbach';
+
+      console.log('✅ RUN #71: werkstattId initialized:', window.werkstattId);
+      console.log('   SessionStorage set:', sessionStorage.getItem('session_werkstatt') !== null);
+    }, authResult.uid);
+
+    console.log('✅ RUN #71: werkstattId + SessionStorage initialized');
+
+    // Step 2.6: Verify werkstattId is accessible
+    const verification = await page.evaluate(() => {
+      return {
+        windowWerkstattId: window.werkstattId,
+        hasSessionWerkstatt: sessionStorage.getItem('session_werkstatt') !== null,
+        canGetCollectionName: (() => {
+          try {
+            const name = window.getCollectionName('fahrzeuge');
+            return { success: true, name };
+          } catch (e) {
+            return { success: false, error: e.message };
+          }
+        })()
+      };
+    });
+
+    console.log('✅ RUN #71: Verification:', JSON.stringify(verification, null, 2));
+
+    if (!verification.canGetCollectionName.success) {
+      throw new Error(`werkstattId verification failed: ${verification.canGetCollectionName.error}`);
+    }
 
     // Step 3: Wait for auth state to propagate (Firestore Rules use request.auth)
     await page.waitForFunction(() => {
@@ -315,10 +381,10 @@ async function loginAsTestAdmin(page) {
       return auth.currentUser !== null && auth.currentUser.email === 'admin@test.de';
     }, { timeout: 5000, polling: 200 });
 
-    console.log('✅ RUN #70: loginAsTestAdmin() SUCCESS - Auth state propagated');
+    console.log('✅ RUN #71: loginAsTestAdmin() SUCCESS - Auth state + werkstattId ready');
 
   } catch (error) {
-    console.error('❌ RUN #70: loginAsTestAdmin() FAILED');
+    console.error('❌ RUN #71: loginAsTestAdmin() FAILED');
     console.error('   Error:', error.message);
     throw error;
   }
