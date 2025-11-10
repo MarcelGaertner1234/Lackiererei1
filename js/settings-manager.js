@@ -103,7 +103,18 @@ class SettingsManager {
         try {
             console.log('🔧 Settings Manager wird initialisiert...');
 
-            // Check if Firebase is initialized
+            // Wait for Firebase if not ready
+            if (!window.db) {
+                console.log('⏳ Warte auf Firebase Initialisierung...');
+                if (window.firebaseInitialized) {
+                    await window.firebaseInitialized;
+                } else {
+                    console.error('❌ Firebase Promise nicht verfügbar!');
+                    return false;
+                }
+            }
+
+            // Final check after waiting
             if (!window.db) {
                 console.error('❌ Firebase ist nicht initialisiert!');
                 return false;
@@ -126,6 +137,11 @@ class SettingsManager {
             // Use getCollection for consistency (though hardcoded werkstattId works too)
             this.settingsRef = window.getCollection('einstellungen');
 
+            if (!this.settingsRef) {
+                console.error('❌ Konnte Collection-Referenz nicht erstellen!');
+                return false;
+            }
+
             console.log('✅ Settings Manager initialisiert für Werkstatt:', this.werkstattId);
             return true;
         } catch (error) {
@@ -142,6 +158,16 @@ class SettingsManager {
     async loadSettings() {
         try {
             console.log('📥 Lade Einstellungen...');
+
+            // 🆕 AUTO-INIT: Falls noch nicht initialisiert, init() aufrufen
+            if (!this.settingsRef) {
+                console.log('⚠️ SettingsManager noch nicht initialisiert, rufe init() auf...');
+                const initialized = await this.init();
+                if (!initialized) {
+                    console.error('❌ Initialisierung fehlgeschlagen, verwende Default-Settings');
+                    return DEFAULT_SETTINGS;
+                }
+            }
 
             const doc = await this.settingsRef.doc('config').get();
 
@@ -421,20 +447,40 @@ class SettingsManager {
                 }
             };
 
-            // Count Fahrzeuge by status
+            // Count Fahrzeuge by status & Calculate Storage Size
             fahrzeugeSnap.docs.forEach(doc => {
-                const status = doc.data().status || 'unbekannt';
+                const data = doc.data();
+                const status = data.status || 'unbekannt';
                 stats.fahrzeuge.status[status] = (stats.fahrzeuge.status[status] || 0) + 1;
+
+                // Calculate Storage Size (estimate based on JSON size)
+                const docSize = JSON.stringify(data).length;
+                stats.storage.totalSize += docSize;
+
+                // Count photos
+                const fotos = data.fotos || [];
+                stats.storage.photoCount += fotos.length;
             });
 
-            // Count active/inactive Mitarbeiter
+            // Add Kunden document sizes to storage
+            kundenSnap.docs.forEach(doc => {
+                const docSize = JSON.stringify(doc.data()).length;
+                stats.storage.totalSize += docSize;
+            });
+
+            // Count active/inactive Mitarbeiter & Add storage sizes
             mitarbeiterSnap.docs.forEach(doc => {
-                const status = doc.data().status || 'active';
+                const data = doc.data();
+                const status = data.status || 'active';
                 if (status === 'active') {
                     stats.mitarbeiter.active++;
                 } else {
                     stats.mitarbeiter.inactive++;
                 }
+
+                // Add Mitarbeiter document size to storage
+                const docSize = JSON.stringify(data).length;
+                stats.storage.totalSize += docSize;
             });
 
             console.log('✅ Statistiken gesammelt:', stats);

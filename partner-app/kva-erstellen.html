@@ -416,6 +416,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+
+    <!-- jsPDF for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -481,9 +484,14 @@
                     <textarea id="notizen" placeholder="Zusätzliche Informationen zur Kalkulation..."></textarea>
                 </div>
 
-                <button type="submit" class="btn btn-primary" style="width: 100%;" id="submitBtn">
-                    ✅ KVA an Partner senden
-                </button>
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <button type="button" class="btn btn-secondary" onclick="downloadKVAPDF()" style="flex: 1;">
+                        📄 Als PDF herunterladen
+                    </button>
+                    <button type="submit" class="btn btn-primary" style="flex: 2;" id="submitBtn">
+                        ✅ KVA an Partner senden
+                    </button>
+                </div>
             </form>
         </div>
 
@@ -3192,6 +3200,184 @@
                 submitBtn.textContent = '✅ KVA an Partner senden';
             }
         });
+
+        // ============================================
+        // PDF GENERATION - KVA als PDF herunterladen
+        // ============================================
+
+        async function downloadKVAPDF() {
+            try {
+                // Load Werkstatt Settings
+                let settings = null;
+                try {
+                    settings = await window.settingsManager.loadSettings();
+                    console.log('✅ Werkstatt-Settings für KVA-PDF geladen:', settings.profil.name);
+                } catch (error) {
+                    console.warn('⚠️ Settings konnten nicht geladen werden, verwende Fallback');
+                    settings = {
+                        profil: {
+                            name: 'Auto-Lackierzentrum Mosbach',
+                            logoUrl: null,
+                            adresse: 'Industriestraße 1, 74821 Mosbach',
+                            telefon: '+49 6261 123456',
+                            email: 'info@auto-lackierzentrum.de'
+                        },
+                        standards: {
+                            waehrung: 'EUR'
+                        }
+                    };
+                }
+
+                // Get form data
+                const kennzeichen = document.getElementById('kennzeichen').value.trim();
+                const marke = document.getElementById('marke').value.trim();
+                const modell = document.getElementById('modell').value.trim();
+                const kundenName = document.getElementById('kundenName').value.trim();
+                const kundenEmail = document.getElementById('kundenEmail').value.trim();
+                const kundenTelefon = document.getElementById('kundenTelefon').value.trim();
+                const serviceTyp = document.getElementById('serviceTyp').value;
+                const serviceTypName = document.getElementById('serviceTyp').options[document.getElementById('serviceTyp').selectedIndex].text;
+                const gesamtpreis = document.getElementById('gesamtpreis').value.trim();
+                const notizen = document.getElementById('notizen').value.trim();
+
+                // Validation
+                if (!kennzeichen || !marke || !modell || !kundenName || !serviceTyp || !gesamtpreis) {
+                    alert('❌ Bitte fülle alle Pflichtfelder aus!');
+                    return;
+                }
+
+                // Create PDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                // Header with Logo & Werkstatt Name
+                doc.setFillColor(102, 126, 234); // Purple gradient color
+                doc.rect(0, 0, 210, 45, 'F');
+
+                // Logo (left side if available)
+                if (settings.profil.logoUrl) {
+                    try {
+                        doc.addImage(settings.profil.logoUrl, 'PNG', 15, 10, 35, 20);
+                        console.log('✅ Logo in KVA-PDF eingefügt');
+                    } catch (error) {
+                        console.warn('⚠️ Logo konnte nicht geladen werden:', error);
+                    }
+                }
+
+                // Title & Werkstatt Name
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(22);
+                doc.text('Kostenvoranschlag', 105, 20, { align: 'center' });
+                doc.setFontSize(11);
+                doc.text(settings.profil.name, 105, 30, { align: 'center' });
+
+                // Contact info in header
+                doc.setFontSize(8);
+                doc.text(settings.profil.adresse, 105, 37, { align: 'center' });
+                doc.text(`Tel: ${settings.profil.telefon} | Email: ${settings.profil.email}`, 105, 42, { align: 'center' });
+
+                // Main Content
+                doc.setTextColor(0, 0, 0);
+                let y = 60;
+
+                // Date
+                doc.setFontSize(10);
+                doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, 15, y);
+                y += 15;
+
+                // Fahrzeug-Daten
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text('Fahrzeugdaten', 15, y);
+                y += 10;
+
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Kennzeichen: ${kennzeichen}`, 15, y);
+                y += 7;
+                doc.text(`Marke: ${marke}`, 15, y);
+                y += 7;
+                doc.text(`Modell: ${modell}`, 15, y);
+                y += 15;
+
+                // Kunden-Daten
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text('Kundendaten', 15, y);
+                y += 10;
+
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Name: ${kundenName}`, 15, y);
+                y += 7;
+                if (kundenEmail) {
+                    doc.text(`Email: ${kundenEmail}`, 15, y);
+                    y += 7;
+                }
+                if (kundenTelefon) {
+                    doc.text(`Telefon: ${kundenTelefon}`, 15, y);
+                    y += 7;
+                }
+                y += 10;
+
+                // Service-Typ
+                doc.setFillColor(240, 240, 255);
+                doc.rect(15, y - 5, 180, 15, 'F');
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text('Leistung', 15, y + 5);
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'normal');
+                doc.text(serviceTypName, 180, y + 5, { align: 'right' });
+                y += 20;
+
+                // Preis
+                doc.setFillColor(102, 126, 234);
+                doc.rect(15, y, 180, 20, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(16);
+                doc.setFont(undefined, 'bold');
+                doc.text('Gesamtpreis:', 20, y + 12);
+                doc.text(`${gesamtpreis} ${settings.standards.waehrung}`, 185, y + 12, { align: 'right' });
+                doc.setTextColor(0, 0, 0);
+                y += 30;
+
+                // Notizen (if exists)
+                if (notizen) {
+                    doc.setFontSize(12);
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Notizen:', 15, y);
+                    y += 7;
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'normal');
+                    const lines = doc.splitTextToSize(notizen, 180);
+                    lines.forEach(line => {
+                        doc.text(line, 15, y);
+                        y += 5;
+                    });
+                }
+
+                // Footer
+                const pageHeight = doc.internal.pageSize.height;
+                doc.setFontSize(8);
+                doc.setTextColor(120, 120, 120);
+                const footerLine1 = `${settings.profil.name} | ${settings.profil.adresse}`;
+                const footerLine2 = `Tel: ${settings.profil.telefon} | Email: ${settings.profil.email}`;
+                doc.text(footerLine1, 105, pageHeight - 15, { align: 'center' });
+                doc.text(footerLine2, 105, pageHeight - 10, { align: 'center' });
+
+                // Save PDF
+                const filename = `KVA_${kennzeichen.replace(/\s/g, '_')}_${Date.now()}.pdf`;
+                doc.save(filename);
+
+                console.log('✅ KVA-PDF erfolgreich erstellt:', filename);
+                alert(`✅ KVA-PDF wurde heruntergeladen: ${filename}`);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Erstellen des KVA-PDF:', error);
+                alert('❌ Fehler beim Erstellen des PDF: ' + error.message);
+            }
+        }
     </script>
     <script src="../listener-registry.js"></script>
     <script src="../error-handler.js"></script>

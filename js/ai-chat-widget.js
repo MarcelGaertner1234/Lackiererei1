@@ -54,14 +54,14 @@ class AIChatWidget {
         const html = `
             <!-- Floating Chat Button -->
             <button id="aiChatButton" class="ai-chat-button" title="KI-Assistent">
-                🤖
+                💬
             </button>
 
             <!-- Chat Widget -->
             <div id="aiChatWidget" class="ai-chat-widget">
                 <!-- Header -->
                 <div class="ai-chat-header">
-                    <h3>🤖 KI-Assistent</h3>
+                    <h3>💬 KI-Assistent</h3>
                     <button id="aiChatClose" class="ai-chat-close">×</button>
                 </div>
 

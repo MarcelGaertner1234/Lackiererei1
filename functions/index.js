@@ -103,9 +103,47 @@ exports.onStatusChange = functions
         return null;
       }
 
-      // Load email template
-      const templatePath = path.join(__dirname, "email-templates", "status-change.html");
-      let template = fs.readFileSync(templatePath, "utf8");
+      // Load Werkstatt Settings from Firestore
+      let settings = null;
+      let werkstattName = "Auto-Lackierzentrum"; // Fallback
+      let werkstattEmail = SENDER_EMAIL; // Fallback
+      let template = "";
+
+      try {
+        const settingsRef = db.collection(`einstellungen_${werkstatt}`).doc('config');
+        const settingsDoc = await settingsRef.get();
+
+        if (settingsDoc.exists) {
+          settings = settingsDoc.data();
+          werkstattName = settings.profil?.name || werkstattName;
+          werkstattEmail = settings.profil?.email || werkstattEmail;
+
+          // Select template based on status
+          if (after.status === 'abgeschlossen' && settings.emailVorlagen?.abschluss?.body) {
+            template = settings.emailVorlagen.abschluss.body;
+            console.log('✅ Using custom "abschluss" template from Settings');
+          } else if (after.status === 'bereit' && settings.emailVorlagen?.erinnerung?.body) {
+            template = settings.emailVorlagen.erinnerung.body;
+            console.log('✅ Using custom "erinnerung" template from Settings');
+          } else if (settings.emailVorlagen?.bestaetigung?.body) {
+            template = settings.emailVorlagen.bestaetigung.body;
+            console.log('✅ Using custom "bestaetigung" template from Settings');
+          }
+
+          console.log(`✅ Settings loaded for ${werkstatt}: ${werkstattName}`);
+        } else {
+          console.warn(`⚠️ Settings not found for ${werkstatt}, using fallback template`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Error loading settings for ${werkstatt}:`, error.message);
+      }
+
+      // Fallback to hardcoded template if no custom template
+      if (!template) {
+        console.log('📄 Using fallback hardcoded template');
+        const templatePath = path.join(__dirname, "email-templates", "status-change.html");
+        template = fs.readFileSync(templatePath, "utf8");
+      }
 
       // Replace placeholders
       const variables = {
@@ -116,6 +154,8 @@ exports.onStatusChange = functions
         serviceTyp: getServiceLabel(after.serviceTyp),
         marke: after.marke || "k.A.",
         modell: after.modell || "",
+        werkstattName: werkstattName,
+        fahrzeugMarke: after.marke || "k.A.",
         quickViewLink: `https://marcelgaertner1234.github.io/Lackiererei1/partner-app/anfrage-detail.html?id=${context.params.vehicleId}&mode=quickview&kennzeichen=${encodeURIComponent(after.kennzeichen)}`,
       };
 
@@ -128,11 +168,11 @@ exports.onStatusChange = functions
       sgMail.setApiKey(apiKey);
       console.log("✅ SendGrid initialized for status change email");
 
-      // Send email
+      // Send email (use werkstatt email if available and verified in SendGrid)
       const msg = {
         to: kundenEmail,
-        from: SENDER_EMAIL,
-        subject: `🚗 Status-Update: ${after.kennzeichen}`,
+        from: werkstattEmail, // Dynamic from Settings (fallback to SENDER_EMAIL)
+        subject: `🚗 Status-Update: ${after.kennzeichen} - ${werkstattName}`,
         html: template,
       };
 

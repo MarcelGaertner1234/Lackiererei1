@@ -45,6 +45,7 @@
 
     <!-- Auth Manager für Multi-Tenant Support -->
     <script src="js/auth-manager.js"></script>
+    <script src="js/settings-manager.js"></script>
 
     <!-- Image Optimizer -->
     <script src="image-optimizer.js"></script>
@@ -1309,6 +1310,25 @@
 
         // PDF erstellen
         async function createPDF(data) {
+            // Load Werkstatt Settings from Firestore
+            let settings = null;
+            try {
+                settings = await window.settingsManager.loadSettings();
+                console.log('✅ Werkstatt-Settings geladen für PDF:', settings.profil.name);
+            } catch (error) {
+                console.warn('⚠️ Settings konnten nicht geladen werden, verwende Fallback:', error);
+                // Fallback to hardcoded values
+                settings = {
+                    profil: {
+                        name: 'Auto-Lackierzentrum Mosbach',
+                        logoUrl: null,
+                        adresse: 'Industriestraße 1, 74821 Mosbach',
+                        telefon: '+49 6261 123456',
+                        email: 'info@auto-lackierzentrum.de'
+                    }
+                };
+            }
+
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
@@ -1366,14 +1386,28 @@
                 }
             };
 
-            // Header
+            // Header with Logo & Dynamic Werkstatt Name
             doc.setFillColor(0, 191, 255);
             doc.rect(0, 0, 210, 40, 'F');
+
+            // Logo (left side if available)
+            if (settings.profil.logoUrl) {
+                try {
+                    doc.addImage(settings.profil.logoUrl, 'PNG', 15, 10, 35, 20);
+                    console.log('✅ Werkstatt-Logo in PDF-Header eingefügt');
+                } catch (error) {
+                    console.warn('⚠️ Logo konnte nicht in PDF eingefügt werden:', error);
+                }
+            }
+
+            // Title
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(24);
             doc.text('Fahrzeug-Abnahmeprotokoll', 105, 20, { align: 'center' });
+
+            // Werkstatt Name (dynamic from settings)
             doc.setFontSize(12);
-            doc.text('Auto-Lackierzentrum Mosbach', 105, 30, { align: 'center' });
+            doc.text(settings.profil.name, 105, 30, { align: 'center' });
 
             // Daten
             doc.setTextColor(0, 0, 0);
@@ -2187,6 +2221,14 @@
 
             safeAddImage(data.signature, 'PNG', 20, y, 70, 25, 'Annahme-Unterschrift');
             safeAddImage(data.abnahmeSignature, 'PNG', 110, y, 70, 25, 'Abnahme-Unterschrift');
+
+            // Footer with Contact Details
+            const pageHeight = doc.internal.pageSize.height;
+            doc.setFontSize(8);
+            doc.setTextColor(100, 100, 100);
+            const footerText = `${settings.profil.adresse} | Tel: ${settings.profil.telefon} | Email: ${settings.profil.email}`;
+            doc.text(footerText, 105, pageHeight - 10, { align: 'center' });
+            console.log('✅ Footer mit Kontaktdaten hinzugefügt');
 
             // PDF speichern
             const filename = `Abnahme_${data.kennzeichen.replace(/\s/g, '_')}_${data.abnahmeDatum.replace(/\./g, '')}.pdf`;
