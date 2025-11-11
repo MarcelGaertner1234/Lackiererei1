@@ -3499,18 +3499,18 @@ exports.parseDATPDF = functions
         );
       }
 
-      const { pdfBase64 } = data;
+      const { imageBase64 } = data;
 
-      if (!pdfBase64) {
+      if (!imageBase64) {
         throw new functions.https.HttpsError(
           'invalid-argument',
-          'pdfBase64 ist erforderlich'
+          'imageBase64 ist erforderlich (PNG/JPEG/WEBP)'
         );
       }
 
-      console.log('📄 [OPENAI] Starting PDF parsing...');
+      console.log('📄 [OPENAI] Starting image parsing...');
       console.log(`   User: ${context.auth.token.email}`);
-      console.log(`   PDF Size: ${(pdfBase64.length / 1024).toFixed(2)} KB`);
+      console.log(`   Image Size: ${(imageBase64.length / 1024).toFixed(2)} KB`);
 
       // Initialize OpenAI with secret
       const apiKey = getOpenAIApiKey();
@@ -3583,7 +3583,7 @@ WICHTIGE REGELN:
             {
               type: "image_url",
               image_url: {
-                url: `data:application/pdf;base64,${pdfBase64}`
+                url: `data:image/png;base64,${imageBase64}`
               }
             }
           ]

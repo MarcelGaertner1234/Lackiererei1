@@ -3068,6 +3068,67 @@
         // ============================================
 
         /**
+         * Convert PDF to PNG Image using PDF.js + Canvas
+         *
+         * OpenAI Vision API only accepts images (PNG/JPEG/WEBP), not PDFs
+         * This function converts the first page of a PDF to a high-quality PNG
+         *
+         * @param {File} pdfFile - PDF file to convert
+         * @returns {Promise<string>} Base64-encoded PNG image (without data URI prefix)
+         */
+        async function convertPdfToImage(pdfFile) {
+            console.log('🖼️ [PDF→PNG] Converting PDF to PNG for OpenAI Vision API...');
+
+            try {
+                // Read PDF as ArrayBuffer
+                const arrayBuffer = await pdfFile.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+
+                // Load PDF with PDF.js
+                const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+                const pdf = await loadingTask.promise;
+
+                console.log(`📄 [PDF→PNG] PDF loaded: ${pdf.numPages} page(s)`);
+
+                // Get first page
+                const page = await pdf.getPage(1);
+
+                // Set scale for high quality (2x for better OCR results)
+                const scale = 2.0;
+                const viewport = page.getViewport({ scale });
+
+                // Create canvas
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                console.log(`🎨 [PDF→PNG] Rendering to canvas (${viewport.width}x${viewport.height}px)...`);
+
+                // Render PDF page to canvas
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+
+                await page.render(renderContext).promise;
+
+                // Convert canvas to PNG base64
+                const pngDataUrl = canvas.toDataURL('image/png', 1.0); // Max quality
+                const pngBase64 = pngDataUrl.split(',')[1]; // Remove "data:image/png;base64," prefix
+
+                const sizeKB = (pngBase64.length / 1024).toFixed(2);
+                console.log(`✅ [PDF→PNG] Conversion successful: ${sizeKB} KB PNG`);
+
+                return pngBase64;
+
+            } catch (error) {
+                console.error('❌ [PDF→PNG] Conversion failed:', error);
+                throw new Error(`PDF to PNG conversion failed: ${error.message}`);
+            }
+        }
+
+        /**
          * Parse PDF with OpenAI GPT-4 Vision API
          * PRIMARY method for 100% accurate extraction
          *
@@ -3082,24 +3143,16 @@
             showToast('⏳ PDF wird analysiert mit AI...', 'info', 3000);
 
             try {
-                // Convert PDF to base64
-                console.log('📄 [OPENAI] Converting PDF to base64...');
-                const base64 = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const base64String = reader.result.split(',')[1];
-                        resolve(base64String);
-                    };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(pdfFile);
-                });
+                // Convert PDF to PNG (OpenAI Vision API only accepts images, not PDFs)
+                console.log('📄 [OPENAI] Converting PDF to PNG...');
+                const pngBase64 = await convertPdfToImage(pdfFile);
 
-                console.log(`✅ [OPENAI] PDF converted: ${(base64.length / 1024).toFixed(2)} KB`);
+                console.log(`✅ [OPENAI] PNG ready: ${(pngBase64.length / 1024).toFixed(2)} KB`);
 
                 // Call Cloud Function (Region bereits in firebase-config.js auf europe-west3 gesetzt!)
                 console.log('☁️ [OPENAI] Calling Cloud Function parseDATPDF (europe-west3)...');
                 const parseDATPDF = window.functions.httpsCallable('parseDATPDF');
-                const result = await parseDATPDF({ pdfBase64: base64 });
+                const result = await parseDATPDF({ imageBase64: pngBase64 });
 
                 if (!result.data.success) {
                     throw new Error('OpenAI Parsing fehlgeschlagen');
