@@ -1049,6 +1049,40 @@
                     </div>
                 </div>
 
+                <!-- TEXT-PARSING SECTION -->
+                <div class="form-group" style="background: var(--color-bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <label class="form-label">
+                        📋 Oder: DAT-Auftrag Text einfügen
+                        <span style="color: var(--color-text-tertiary); font-size: 12px; font-weight: normal; display: block; margin-top: 4px;">
+                            Kopiere den kompletten DAT-Kostenvoranschlag und klicke auf "Text auslesen"
+                        </span>
+                    </label>
+                    <textarea id="datTextInput"
+                              placeholder="Füge hier den DAT-Auftrag Text ein (Ersatzteile, Arbeitslohn, Lackierung)..."
+                              style="
+                                  width: 100%;
+                                  min-height: 150px;
+                                  padding: 12px;
+                                  border: 2px solid var(--color-border);
+                                  border-radius: 8px;
+                                  background: var(--color-surface);
+                                  color: var(--color-text-primary);
+                                  font-family: 'Courier New', monospace;
+                                  font-size: 12px;
+                                  resize: vertical;
+                                  margin-top: 10px;
+                              "></textarea>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                        <button type="button" id="parseTextBtn" class="btn btn-primary" style="font-size: 14px;" onclick="handleTextParsing()">
+                            🔍 Text auslesen
+                        </button>
+                        <span id="textParseStatus" style="color: var(--color-success); font-size: 14px;"></span>
+                        <button type="button" id="clearTextBtn" class="btn-icon-small"
+                                style="display: none; background: transparent; border: none; cursor: pointer; font-size: 18px;"
+                                onclick="clearDatText()">❌</button>
+                    </div>
+                </div>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label for="marke" class="form-label">Marke <span class="required">*</span></label>
@@ -3011,8 +3045,11 @@
             console.log('🔍 Extracting Ersatzteile from PDF...');
 
             // DAT-Tabelle Regex (ETN | Benennung | Anzahl | Preis/Stück | Gesamtpreis)
-            // Improved pattern: Support mixed case, German characters, more flexible whitespace
-            const ersatzteilRegex = /(\d{10})\s+([A-ZÄÖÜa-zäöüß0-9\s\.\,\-\(\)\/]+?)\s+(\d+)\s+([\d\'\.\,\s]+)\s+([\d\'\.\,\s]+)/g;
+            // Improved pattern: Support mixed case, German characters, ETN variants (e.g., "6925P8"), Swiss number format
+            // ETN can be:
+            //   - 10 digits (standard): 1622749580
+            //   - 4-8 digits + capital letter + 0-2 digits (variant): 6925P8
+            const ersatzteilRegex = /(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+([A-ZÄÖÜa-zäöüß0-9\s\.\,\-\(\)\/]+?)\s+(\d+)\s+([\d\'\.\,\s]+)\s+([\d\'\.\,\s]+)/g;
 
             let match;
             let count = 0;
@@ -3214,6 +3251,147 @@
             document.getElementById('pdfFileName').textContent = '';
             document.getElementById('pdfRemoveBtn').style.display = 'none';
             pdfData = null;
+        }
+
+        /**
+         * Handler für Text-Parsing Button
+         */
+        function handleTextParsing() {
+            const textInput = document.getElementById('datTextInput');
+            const text = textInput.value.trim();
+
+            if (!text) {
+                showToast('❌ Bitte Text einfügen', 'error');
+                return;
+            }
+
+            try {
+                console.log('📋 Parsing DAT-Text...');
+                const parsedData = parseDatText(text);
+
+                // Speichere in globalem pdfData (gleiche Struktur wie PDF)
+                pdfData = parsedData;
+
+                // Fill Form
+                fillFormFromPdf(parsedData);
+
+                // UI Feedback
+                const statusSpan = document.getElementById('textParseStatus');
+                const clearBtn = document.getElementById('clearTextBtn');
+
+                const teileCount = parsedData.ersatzteile.length;
+                statusSpan.textContent = `✅ ${teileCount} Ersatzteil${teileCount > 1 ? 'e' : ''} gefunden`;
+                clearBtn.style.display = 'inline-block';
+
+                showToast(`✅ ${teileCount} Ersatzteile extrahiert`, 'success');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Text-Parsing:', error);
+                showToast('❌ Fehler beim Auslesen des Textes', 'error');
+            }
+        }
+
+        /**
+         * Parse DAT-Text (kopierter Kostenvoranschlag)
+         * @param {string} text - DAT-Auftrag Text
+         * @returns {Object} Parsed data {fahrzeugdaten, ersatzteile, arbeitslohn, lackierung}
+         */
+        function parseDatText(text) {
+            const data = {
+                fahrzeugdaten: {},
+                ersatzteile: [],
+                arbeitslohn: [],
+                lackierung: []
+            };
+
+            // Ersatzteile extrahieren (Hauptfunktion)
+            extractErsatzteileFromText(text, data);
+
+            // Optional: Arbeitslohn + Lackierung (später implementieren)
+            // extractArbeitslohnFromText(text, data);
+            // extractLackierungFromText(text, data);
+
+            return data;
+        }
+
+        /**
+         * Extrahiert Ersatzteile aus DAT-Text
+         * Format:
+         * E 43864 REPARATURSATZ, BESTEHT AUS:
+         *         1622749580 NIET RADLAUFABDECKUNG V.R.    4    0.28      1.12
+         * E 45612 9853894380 SCHEINWERFER R.               1    1'532.10  1'532.10
+         */
+        function extractErsatzteileFromText(text, data) {
+            console.log('🔍 Extracting Ersatzteile from Text...');
+
+            // Split into lines
+            const lines = text.split('\n');
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                // Skip empty lines or header lines
+                if (!line || line.startsWith('RC DVN') || line.startsWith('Summenblock')) {
+                    continue;
+                }
+
+                // Pattern 1: ETN mit RC/DVN Prefix (z.B. "E 45612 9853894380 SCHEINWERFER R. ...")
+                // Pattern: [E/K/M] [DVN] [ETN] [Benennung] [Anzahl] [Einzelpreis] [Gesamtpreis]
+                const pattern1 = /^[A-Z]\s+\d+\s+(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)$/;
+
+                // Pattern 2: ETN ohne Prefix (eingerückt, Teil von REPARATURSATZ)
+                // Pattern: [whitespace] [ETN] [Benennung] [Anzahl] [Einzelpreis] [Gesamtpreis]
+                const pattern2 = /^\s+(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)$/;
+
+                let match = line.match(pattern1) || line.match(pattern2);
+
+                if (match) {
+                    const etn = match[1].trim();
+                    const benennung = match[2].trim();
+                    const anzahl = parseInt(match[3]);
+
+                    // Swiss number format: 1'532.10 → 1532.10
+                    const einzelpreisStr = match[4].replace(/'/g, '').replace(',', '.');
+                    const gesamtpreisStr = match[5].replace(/'/g, '').replace(',', '.');
+
+                    const einzelpreis = parseFloat(einzelpreisStr);
+                    const gesamtpreis = parseFloat(gesamtpreisStr);
+
+                    // Validate
+                    if (etn && benennung && anzahl > 0 && einzelpreis > 0 && gesamtpreis > 0) {
+                        data.ersatzteile.push({
+                            etn,
+                            benennung,
+                            anzahl,
+                            einzelpreis,
+                            gesamtpreis
+                        });
+                        console.log(`✅ Ersatzteil ${data.ersatzteile.length} gefunden:`, {
+                            etn,
+                            benennung,
+                            anzahl,
+                            einzelpreis: einzelpreis.toFixed(2),
+                            gesamtpreis: gesamtpreis.toFixed(2)
+                        });
+                    }
+                }
+            }
+
+            if (data.ersatzteile.length === 0) {
+                console.warn('⚠️ Keine Ersatzteile im Text gefunden');
+            } else {
+                console.log(`✅ Insgesamt ${data.ersatzteile.length} Ersatzteile aus Text extrahiert`);
+            }
+        }
+
+        /**
+         * Clear DAT-Text Textarea
+         */
+        function clearDatText() {
+            document.getElementById('datTextInput').value = '';
+            document.getElementById('textParseStatus').textContent = '';
+            document.getElementById('clearTextBtn').style.display = 'none';
+            // Keep pdfData (user might have parsed from PDF)
         }
 
         function getFormData() {
