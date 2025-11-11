@@ -1071,7 +1071,42 @@
                                   font-size: 12px;
                                   resize: vertical;
                                   margin-top: 10px;
+                                  white-space: pre-wrap;
+                                  word-break: break-all;
+                                  overflow-wrap: anywhere;
+                                  tab-size: 4;
                               "></textarea>
+                    <script>
+                    // FIX #1: Paste Event Sanitization (2025-11-11)
+                    // Bereinigt Copy-Paste von Word/Excel/PDF
+                    document.getElementById('datTextInput').addEventListener('paste', (e) => {
+                        e.preventDefault();
+                        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+
+                        // Normalisierung
+                        const cleaned = text
+                            .replace(/\r\n/g, '\n')     // Windows → Unix line endings
+                            .replace(/\r/g, '\n')       // Old Mac → Unix
+                            .replace(/\u00a0/g, ' ')    // Non-breaking space → regular
+                            .replace(/\u2009/g, ' ')    // Thin space → regular
+                            .replace(/\u202F/g, ' ')    // Narrow no-break space → regular
+                            .replace(/\t/g, '    ')     // Tab → 4 spaces
+                            .replace(/[""]/g, '"')      // Smart quotes → regular
+                            .replace(/['']/g, "'");     // Smart apostrophes → regular
+
+                        document.execCommand('insertText', false, cleaned);
+
+                        // Visual Feedback
+                        if (window.showToast) {
+                            showToast('✅ Text eingefügt und bereinigt', 'success');
+                        }
+                        const textarea = document.getElementById('datTextInput');
+                        textarea.style.borderColor = 'var(--color-success)';
+                        setTimeout(() => {
+                            textarea.style.borderColor = '';
+                        }, 2000);
+                    });
+                    </script>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
                         <button type="button" id="parseTextBtn" class="btn btn-primary" style="font-size: 14px;" onclick="handleTextParsing()">
                             🔍 Text auslesen
@@ -3466,11 +3501,13 @@
 
                 // Pattern 1: ETN mit RC/DVN Prefix (z.B. "E 45612 9853894380 SCHEINWERFER R. ...")
                 // Pattern: [E/K/M] [DVN] [ETN] [Benennung] [Anzahl] [Einzelpreis] [Gesamtpreis]
-                const pattern1 = /^[A-Z]\s+\d+\s+(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)$/;
+                // FIX #3: Tolerantere Regex - erlaubt Whitespace in Preisen + optional trailing space (2025-11-11)
+                const pattern1 = /^[A-Z]\s+\d+\s+(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,\s]+?)\s+([\d\'\.\,\s]+?)\s*$/;
 
                 // Pattern 2: ETN ohne Prefix (eingerückt, Teil von REPARATURSATZ)
                 // Pattern: [whitespace] [ETN] [Benennung] [Anzahl] [Einzelpreis] [Gesamtpreis]
-                const pattern2 = /^\s+(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)$/;
+                // FIX #3: * statt + für optional whitespace am Anfang, toleranter bei Preisen (2025-11-11)
+                const pattern2 = /^\s*(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,\s]+?)\s+([\d\'\.\,\s]+?)\s*$/;
 
                 let match = line.match(pattern1) || line.match(pattern2);
 
@@ -3495,6 +3532,7 @@
                             einzelpreis,
                             gesamtpreis
                         });
+                        // FIX #4: Verbessertes Debug Logging (2025-11-11)
                         console.log(`✅ Ersatzteil ${data.ersatzteile.length} gefunden:`, {
                             etn,
                             benennung,
@@ -3502,6 +3540,11 @@
                             einzelpreis: einzelpreis.toFixed(2),
                             gesamtpreis: gesamtpreis.toFixed(2)
                         });
+                    } else {
+                        // FIX #4: Warn bei fehlschlagenden Pattern-Matches (2025-11-11)
+                        if (line.match(/\d{10}|\d{4,8}[A-Z]\d{0,2}/)) {
+                            console.warn(`⚠️ Pattern-Match fehlgeschlagen für Zeile ${index + 1}:`, line);
+                        }
                     }
                 }
             }
