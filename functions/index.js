@@ -7,6 +7,7 @@
  */
 const functions = require("firebase-functions");
 const { defineSecret } = require("firebase-functions/params");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const sgMail = require("@sendgrid/mail");
 const { OpenAI } = require("openai");
@@ -3360,3 +3361,92 @@ exports.testMonthlyBonusReset = functions.https.onRequest(async (req, res) => {
     });
   }
 });
+
+// ================================================================================
+// 🧹 STALE SESSION CLEANUP - Scheduled Function (v2 / 2nd Gen)
+// ================================================================================
+// Automatically deletes sessions older than 2 hours without heartbeat
+// Runs every 15 minutes to keep session list clean
+// Fixes bug: Sessions accumulate forever after logout/crash/tab-close
+// Upgraded to v2 API for better performance & fewer permission issues
+// ================================================================================
+
+exports.cleanupStaleSessions = onSchedule({
+  schedule: 'every 15 minutes',
+  timeZone: 'Europe/Berlin',
+  region: 'europe-west3',
+  memory: '256MiB',          // Lower memory = cheaper (default is 1GB)
+  timeoutSeconds: 300        // 5 minutes max
+}, async (event) => {
+    console.log('🧹 Starting stale session cleanup (v2)...');
+
+    const now = admin.firestore.Timestamp.now();
+    const twoHoursAgo = new admin.firestore.Timestamp(
+      now.seconds - (2 * 60 * 60),  // 2 hours in seconds
+      now.nanoseconds
+    );
+
+    try {
+      // Find all werkstatt IDs dynamically (query users collection)
+      const usersSnapshot = await db.collection('users')
+        .where('role', '==', 'werkstatt')
+        .get();
+
+      let totalDeleted = 0;
+      const werkstaetten = [];
+
+      for (const userDoc of usersSnapshot.docs) {
+        const werkstattId = userDoc.data().werkstattId;
+        if (!werkstattId) continue;
+
+        werkstaetten.push(werkstattId);
+        const collectionName = `activeSessions_${werkstattId}`;
+
+        // Find stale sessions (lastActivity > 2 hours ago)
+        const staleSessionsSnapshot = await db.collection(collectionName)
+          .where('status', '==', 'active')
+          .where('lastActivity', '<', twoHoursAgo)
+          .get();
+
+        console.log(`   📍 ${werkstattId}: Found ${staleSessionsSnapshot.size} stale sessions`);
+
+        // Delete in batch for performance
+        if (staleSessionsSnapshot.size > 0) {
+          const batch = db.batch();
+          staleSessionsSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+          });
+
+          await batch.commit();
+          totalDeleted += staleSessionsSnapshot.size;
+          console.log(`   ✅ ${werkstattId}: Deleted ${staleSessionsSnapshot.size} stale sessions`);
+        }
+      }
+
+      console.log(`✅ Cleanup complete: ${totalDeleted} stale sessions deleted across ${werkstaetten.length} werkstatt(s)`);
+
+      // Log to Firestore for audit trail
+      await db.collection('systemLogs').add({
+        type: 'stale_session_cleanup',
+        timestamp: admin.firestore.Timestamp.now(),
+        deletedCount: totalDeleted,
+        werkstaetten: werkstaetten,
+        thresholdHours: 2
+      });
+
+      return { success: true, deleted: totalDeleted, werkstaetten: werkstaetten.length };
+
+    } catch (error) {
+      console.error('❌ Stale session cleanup failed:', error);
+
+      // Log error to Firestore
+      await db.collection('systemLogs').add({
+        type: 'stale_session_cleanup_error',
+        timestamp: admin.firestore.Timestamp.now(),
+        error: error.message,
+        stack: error.stack
+      });
+
+      throw error;  // Re-throw to mark function as failed in logs
+    }
+  });

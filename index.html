@@ -1257,6 +1257,10 @@
                     <button onclick="window.location.href='dienstplan.html'" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #007aff, #0051d5); border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;">
                         📅 Dienstplan ansehen
                     </button>
+                    <!-- 🆕 Session Cleanup Button -->
+                    <button onclick="cleanupAllStaleSessions()" style="width: 100%; padding: 12px; background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.3); border-radius: 8px; color: rgba(255,152,0,0.9); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        🧹 Stale Sessions aufräumen
+                    </button>
                 </div>
 
                 <!-- Active Mitarbeiter List (Multi-Tab Monitoring) -->
@@ -4199,6 +4203,65 @@
             } catch (error) {
                 console.error('❌ Fehler beim Erstellen der Service-Sessions:', error);
                 showToast('❌ Fehler beim Speichern der Services. Siehe Console.', 'error', 4000);
+            }
+        }
+
+        // ============================================
+        // 🧹 STALE SESSION CLEANUP FUNCTION
+        // ============================================
+        // Manually clean up inactive sessions (>2h without heartbeat)
+        // Fixes bug: 27 zombie sessions displayed after logout/crash/tab-close
+        // ============================================
+
+        async function cleanupAllStaleSessions() {
+            if (!confirm('Alle inaktiven Sessions (>2h ohne Heartbeat) löschen?\n\nDies entfernt Mitarbeiter, die angezeigt werden, aber nicht wirklich eingeloggt sind (z.B. nach Logout, Crash, oder Tab-Close).')) {
+                return;
+            }
+
+            const currentUser = window.authManager?.getCurrentUser();
+            if (!currentUser?.werkstattId) {
+                showToast('❌ Fehler: Keine Berechtigung', 'error');
+                return;
+            }
+
+            try {
+                // Show loading state
+                showToast('🧹 Suche inaktive Sessions...', 'info', 2000);
+
+                const now = new Date();
+                const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+
+                // Query stale sessions (lastActivity > 2h ago)
+                const staleSessionsSnapshot = await window.getCollection('activeSessions')
+                    .where('werkstattId', '==', currentUser.werkstattId)
+                    .where('status', '==', 'active')
+                    .where('lastActivity', '<', firebase.firestore.Timestamp.fromDate(twoHoursAgo))
+                    .get();
+
+                console.log(`🧹 Found ${staleSessionsSnapshot.size} stale sessions to delete`);
+
+                // Delete in batch for performance
+                if (staleSessionsSnapshot.size > 0) {
+                    const batch = window.db.batch();
+                    staleSessionsSnapshot.forEach(doc => {
+                        batch.delete(doc.ref);
+                        console.log(`   ❌ Deleting stale session: ${doc.id} (${doc.data().mitarbeiterName})`);
+                    });
+
+                    await batch.commit();
+                    showToast(`✅ ${staleSessionsSnapshot.size} inaktive Sessions gelöscht`, 'success', 4000);
+
+                    // Update display
+                    console.log('✅ Stale sessions cleanup complete');
+
+                } else {
+                    showToast('ℹ️ Keine inaktiven Sessions gefunden', 'info', 3000);
+                    console.log('ℹ️ No stale sessions found (all sessions have heartbeat within 2h)');
+                }
+
+            } catch (error) {
+                console.error('❌ Fehler beim Cleanup:', error);
+                showToast(`❌ Fehler beim Aufräumen: ${error.message}`, 'error', 5000);
             }
         }
 
