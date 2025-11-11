@@ -44,6 +44,42 @@ function canViewPrices() {
 }
 
 /**
+ * Prüft ob der aktuelle User Bestellungen verwalten darf
+ *
+ * @returns {boolean} true wenn Bestellungen verwalten erlaubt, false sonst
+ *
+ * @example
+ * if (canManageBestellungen()) {
+ *   // Zeige "Bestellen" Button an
+ * } else {
+ *   // Verstecke "Bestellen" Button
+ * }
+ */
+function canManageBestellungen() {
+    // 1. Prüfe aktuelle User-Rolle (Stage 1: Admin/Werkstatt)
+    const role = window.currentUser?.role;
+
+    // Admin, Werkstatt, Superadmin dürfen IMMER bestellen
+    if (role === 'admin' || role === 'werkstatt' || role === 'superadmin') {
+        return true;
+    }
+
+    // 2. Für Mitarbeiter (Stage 2): Prüfe Berechtigung
+    if (role === 'mitarbeiter') {
+        // Hole Mitarbeiter-Session aus sessionStorage
+        const mitarbeiter = getMitarbeiterSession();
+
+        // Prüfe Berechtigung (Default: false)
+        const hasPermission = mitarbeiter?.berechtigungen?.bestellungenVerwalten === true;
+
+        return hasPermission;
+    }
+
+    // 3. Partner/Kunde/Unbekannte Rolle: KEINE Berechtigung
+    return false;
+}
+
+/**
  * Hilfsfunktion: Hole aktuelle Mitarbeiter-Session
  *
  * @returns {Object|null} Mitarbeiter-Objekt oder null
@@ -70,11 +106,13 @@ function debugPermissions() {
     console.log('Role:', window.currentUser?.role);
     console.log('Mitarbeiter-Session:', getMitarbeiterSession());
     console.log('canViewPrices():', canViewPrices());
+    console.log('canManageBestellungen():', canManageBestellungen());
     console.groupEnd();
 }
 
 // Export für globale Verfügbarkeit
 window.canViewPrices = canViewPrices;
+window.canManageBestellungen = canManageBestellungen;
 window.getMitarbeiterSession = getMitarbeiterSession;
 window.debugPermissions = debugPermissions;
 

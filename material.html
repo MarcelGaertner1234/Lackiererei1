@@ -964,6 +964,30 @@
             </div>
         </div>
 
+        <!-- 📦 PHASE 4: Offene Ersatzteile-Bestellungen -->
+        <div class="material-list-section" style="margin-top: 40px;">
+            <div class="material-list-header">
+                <h3>
+                    <svg data-feather="shopping-cart"></svg>
+                    Offene Ersatzteile-Bestellungen
+                </h3>
+                <span class="count-badge" id="bestellungenCount">0</span>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 14px;">
+                    <input type="checkbox" id="showAngelieferte" onchange="loadBestellungen()" style="width: 18px; height: 18px; cursor: pointer;">
+                    Angelieferte Bestellungen anzeigen
+                </label>
+            </div>
+            <div id="bestellungenList" class="material-list">
+                <!-- Dynamisch gefüllt via JavaScript -->
+                <div class="empty-state">
+                    <div class="empty-icon">📦</div>
+                    <p>Keine offenen Bestellungen</p>
+                </div>
+            </div>
+        </div>
+
         <!-- 🆕 PHASE 3: Zentrale Ersatzteile-Datenbank -->
         <div class="material-list-section" style="margin-top: 40px;">
             <div class="material-list-header">
@@ -1001,6 +1025,85 @@
                     <div class="empty-icon">📦</div>
                     <p>Keine Ersatzteile in der Datenbank</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📦 BESTELL-MODAL (Phase 3) -->
+    <div id="bestellModal" style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0,0,0,0.8);
+        backdrop-filter: blur(10px);
+        z-index: 10000;
+        align-items: center;
+        justify-content: center;
+    ">
+        <div style="
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur-card));
+            border: 1px solid var(--color-border-glass);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: var(--shadow-glass);
+        ">
+            <h2 style="color: var(--color-text-primary); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                <svg data-feather="shopping-cart" style="width: 28px; height: 28px; stroke: var(--color-primary);"></svg>
+                Ersatzteil bestellen
+            </h2>
+
+            <div style="margin-bottom: 20px; padding: 15px; background: rgba(79, 172, 254, 0.1); border-radius: 12px; border-left: 4px solid var(--color-primary);">
+                <div style="font-size: 14px; color: var(--color-text-secondary); margin-bottom: 4px;">ETN:</div>
+                <div id="bestellModalEtn" style="font-size: 18px; font-weight: 700; color: var(--color-primary);"></div>
+                <div style="font-size: 14px; color: var(--color-text-primary); margin-top: 8px;" id="bestellModalBenennung"></div>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: var(--color-text-primary); font-weight: 600; margin-bottom: 8px;">
+                    Menge:
+                </label>
+                <input type="number"
+                       id="bestellMenge"
+                       min="1"
+                       value="1"
+                       style="
+                           width: 100%;
+                           padding: 12px;
+                           border-radius: 12px;
+                           border: 2px solid var(--color-border-glass);
+                           background: var(--color-surface);
+                           color: var(--color-text-primary);
+                           font-size: 16px;
+                           font-weight: 600;
+                       "
+                       oninput="updateBestellPreis()" />
+            </div>
+
+            <div style="margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 12px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="color: var(--color-text-secondary);">Einzelpreis:</span>
+                    <span id="bestellEinzelpreis" style="color: var(--color-text-primary); font-weight: 600;"></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <span style="color: var(--color-text-primary); font-weight: 600;">Gesamtpreis:</span>
+                    <span id="bestellGesamtpreis" style="color: var(--color-success); font-weight: 700; font-size: 18px;"></span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeBestellModal()" class="btn" style="background: rgba(255,255,255,0.1); color: var(--color-text-primary);">
+                    Abbrechen
+                </button>
+                <button onclick="saveBestellung()" class="btn btn-primary">
+                    <svg data-feather="check" style="width: 18px; height: 18px;"></svg>
+                    Bestellung aufgeben
+                </button>
             </div>
         </div>
     </div>
@@ -1084,6 +1187,10 @@
                 // 🆕 PHASE 3: Lade zentrale Ersatzteile-Datenbank
                 console.log('🔄 [PHASE 3] Loading zentrale Ersatzteile...');
                 loadZentraleErsatzteile();
+
+                // 📦 PHASE 4: Lade Ersatzteile-Bestellungen
+                console.log('🔄 [PHASE 4] Loading Bestellungen...');
+                loadBestellungen();
             })();
 
             // ============================================
@@ -1641,6 +1748,17 @@
                                 <span><svg data-feather="map-pin"></svg> ${werkstaettenStr}</span>
                             </div>
 
+                            ${typeof window.canManageBestellungen === 'function' && window.canManageBestellungen() ? `
+                                <div style="margin-top: 12px;">
+                                    <button class="btn btn-primary"
+                                            style="padding: 12px 20px; font-size: 14px; width: 100%;"
+                                            onclick="openBestellModal('${part.etn}', '${part.benennung.replace(/'/g, "\\'")}', ${part.letzterPreis || 0})">
+                                        <svg data-feather="shopping-cart"></svg>
+                                        Bestellen
+                                    </button>
+                                </div>
+                            ` : ''}
+
                             ${part.verwendungen && part.verwendungen.length > 1 ? `
                                 <div style="margin-top: 12px;">
                                     <button class="btn-secondary"
@@ -1692,6 +1810,320 @@
                     ? `<svg data-feather="list"></svg> ${count} Verwendungen anzeigen`
                     : `<svg data-feather="chevron-up"></svg> Verwendungen verbergen`;
                 feather.replace();
+            }
+        }
+
+        // ============================================
+        // 📦 PHASE 3: BESTELLSYSTEM FUNKTIONEN
+        // ============================================
+
+        // Store current bestellung data
+        let currentBestellung = {
+            etn: null,
+            benennung: null,
+            einzelpreis: 0
+        };
+
+        /**
+         * Öffnet Bestell-Modal für ein Ersatzteil
+         * @param {string} etn - ETN des Ersatzteils
+         * @param {string} benennung - Benennung des Ersatzteils
+         * @param {number} einzelpreis - Einzelpreis
+         */
+        function openBestellModal(etn, benennung, einzelpreis) {
+            currentBestellung = { etn, benennung, einzelpreis };
+
+            document.getElementById('bestellModalEtn').textContent = etn;
+            document.getElementById('bestellModalBenennung').textContent = benennung;
+            document.getElementById('bestellMenge').value = 1;
+
+            updateBestellPreis();
+
+            const modal = document.getElementById('bestellModal');
+            modal.style.display = 'flex';
+            feather.replace();
+        }
+
+        /**
+         * Schließt Bestell-Modal
+         */
+        function closeBestellModal() {
+            document.getElementById('bestellModal').style.display = 'none';
+            currentBestellung = { etn: null, benennung: null, einzelpreis: 0 };
+        }
+
+        /**
+         * Aktualisiert Preis-Anzeige im Modal
+         */
+        function updateBestellPreis() {
+            const menge = parseInt(document.getElementById('bestellMenge').value) || 1;
+            const einzelpreis = currentBestellung.einzelpreis;
+            const gesamtpreis = menge * einzelpreis;
+
+            document.getElementById('bestellEinzelpreis').textContent = `${einzelpreis.toFixed(2)} €`;
+            document.getElementById('bestellGesamtpreis').textContent = `${gesamtpreis.toFixed(2)} €`;
+        }
+
+        /**
+         * Speichert Bestellung in Firestore
+         */
+        async function saveBestellung() {
+            const menge = parseInt(document.getElementById('bestellMenge').value);
+
+            if (!menge || menge < 1) {
+                alert('❌ Bitte geben Sie eine gültige Menge ein (mindestens 1)');
+                return;
+            }
+
+            if (!window.db || !window.firebaseInitialized) {
+                alert('❌ Firebase nicht initialisiert. Bitte Seite neu laden.');
+                return;
+            }
+
+            const einzelpreis = currentBestellung.einzelpreis;
+            const gesamtpreis = menge * einzelpreis;
+
+            const bestellungId = 'best_' + Date.now();
+            const currentUser = window.authManager?.getCurrentUser();
+            const userName = currentUser?.name || localStorage.getItem('userName') || 'Unbekannt';
+
+            const bestellungData = {
+                id: bestellungId,
+                etn: currentBestellung.etn,
+                benennung: currentBestellung.benennung,
+                menge: menge,
+                einzelpreis: einzelpreis,
+                gesamtpreis: gesamtpreis,
+                status: 'bestellt',  // 'bestellt' | 'angeliefert'
+                bestelltVon: userName,
+                bestelltAm: new Date().toISOString(),
+                angeliefertAm: null,
+                angeliefertVon: null,
+                werkstattId: window.werkstattId || 'mosbach',
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                console.log('📦 [BESTELLUNG] Speichere Bestellung:', bestellungData);
+
+                // Save to Multi-Tenant Collection
+                await window.getCollection('bestellungen').doc(bestellungId).set(bestellungData);
+
+                console.log('✅ [BESTELLUNG] Bestellung gespeichert:', bestellungId);
+
+                // Close modal
+                closeBestellModal();
+
+                // Success message
+                alert(`✅ Bestellung aufgegeben!\n\n${menge}× ${currentBestellung.benennung}\nGesamtpreis: ${gesamtpreis.toFixed(2)} €`);
+
+                // Reload bestellungen list (if function exists)
+                if (typeof loadBestellungen === 'function') {
+                    loadBestellungen();
+                }
+
+            } catch (error) {
+                console.error('❌ [BESTELLUNG] Fehler beim Speichern:', error);
+                alert('❌ Fehler beim Speichern der Bestellung: ' + error.message);
+            }
+        }
+
+        // ============================================
+        // 📦 PHASE 4: BESTELLUNGEN ANZEIGEN
+        // ============================================
+
+        /**
+         * Lädt Bestellungen aus Firestore
+         */
+        async function loadBestellungen() {
+            if (!window.firebaseInitialized || !window.db) {
+                console.log('⏳ [BESTELLUNGEN] Waiting for Firebase...');
+                setTimeout(loadBestellungen, 500);
+                return;
+            }
+
+            const listContainer = document.getElementById('bestellungenList');
+            const countBadge = document.getElementById('bestellungenCount');
+            const showAngelieferte = document.getElementById('showAngelieferte').checked;
+
+            console.log('📦 [BESTELLUNGEN] Lade Bestellungen... (showAngelieferte:', showAngelieferte, ')');
+
+            // Loading state
+            listContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">⏳</div>
+                    <p>Lade Bestellungen...</p>
+                </div>
+            `;
+
+            try {
+                // Query: Lade alle Bestellungen (sortiert nach timestamp DESC)
+                const snapshot = await window.getCollection('bestellungen')
+                    .orderBy('timestamp', 'desc')
+                    .get();
+
+                const allBestellungen = [];
+                snapshot.forEach(doc => {
+                    allBestellungen.push(doc.data());
+                });
+
+                console.log(`📦 [BESTELLUNGEN] ${allBestellungen.length} Bestellungen geladen`);
+
+                // Filter: Nur "bestellt" standardmäßig, oder alle wenn Checkbox aktiviert
+                const filteredBestellungen = showAngelieferte
+                    ? allBestellungen
+                    : allBestellungen.filter(b => b.status === 'bestellt');
+
+                console.log(`📦 [BESTELLUNGEN] ${filteredBestellungen.length} Bestellungen nach Filter`);
+
+                renderBestellungen(filteredBestellungen);
+
+            } catch (error) {
+                console.error('❌ [BESTELLUNGEN] Fehler beim Laden:', error);
+                listContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">❌</div>
+                        <p>Fehler beim Laden der Bestellungen</p>
+                    </div>
+                `;
+                countBadge.textContent = '0';
+            }
+        }
+
+        /**
+         * Rendert Bestellungen-Liste
+         * @param {Array} bestellungen - Array von Bestellung-Objekten
+         */
+        function renderBestellungen(bestellungen) {
+            const listContainer = document.getElementById('bestellungenList');
+            const countBadge = document.getElementById('bestellungenCount');
+
+            // Count Badge aktualisieren
+            countBadge.textContent = bestellungen.length;
+
+            // Empty State wenn keine Bestellungen
+            if (bestellungen.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📦</div>
+                        <p>Keine Bestellungen gefunden</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Bestellungs-Cards generieren
+            listContainer.innerHTML = bestellungen.map(bestellung => {
+                const bestelltAmDate = new Date(bestellung.bestelltAm);
+                const bestelltAmStr = bestelltAmDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const bestelltAmTime = bestelltAmDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+                // Status Badge
+                const statusBadge = bestellung.status === 'angeliefert'
+                    ? '<span class="status-badge completed"><svg data-feather="check-circle"></svg> Angeliefert</span>'
+                    : '<span class="status-badge pending"><svg data-feather="clock"></svg> Bestellt</span>';
+
+                // Angeliefert-Info (wenn vorhanden)
+                let angeliefertInfo = '';
+                if (bestellung.status === 'angeliefert' && bestellung.angeliefertAm) {
+                    const angeliefertDate = new Date(bestellung.angeliefertAm);
+                    const angeliefertStr = angeliefertDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    angeliefertInfo = `
+                        <div style="margin-top: 12px; padding: 12px; background: rgba(34, 197, 94, 0.1); border-radius: 10px; border-left: 4px solid var(--color-success);">
+                            <div style="font-size: 13px; color: var(--color-success); font-weight: 600;">
+                                ✅ Angeliefert am ${angeliefertStr}
+                            </div>
+                            <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;">
+                                von ${bestellung.angeliefertVon || 'Unbekannt'}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Button "Als angeliefert markieren" (nur bei status="bestellt" UND mit Berechtigung)
+                const showMarkButton = bestellung.status === 'bestellt' &&
+                                       typeof window.canManageBestellungen === 'function' &&
+                                       window.canManageBestellungen();
+
+                return `
+                    <div class="material-card" style="grid-template-columns: 1fr; padding: 20px;" data-id="${bestellung.id}">
+                        <div class="material-content">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                                <div style="flex: 1;">
+                                    <div style="font-size: 18px; font-weight: 700; color: var(--color-primary); margin-bottom: 4px;">
+                                        📦 ETN: ${bestellung.etn}
+                                    </div>
+                                    <div class="material-description" style="margin-bottom: 8px;">
+                                        ${bestellung.benennung}
+                                    </div>
+                                    <div style="font-size: 16px; font-weight: 600; color: var(--color-text-primary);">
+                                        ${bestellung.menge}× à ${bestellung.einzelpreis.toFixed(2)} € = <strong style="color: var(--color-success);">${bestellung.gesamtpreis.toFixed(2)} €</strong>
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    ${statusBadge}
+                                </div>
+                            </div>
+
+                            <div class="material-meta" style="border-top: 1px solid var(--color-border-glass); padding-top: 12px;">
+                                <span><svg data-feather="user"></svg> ${bestellung.bestelltVon}</span>
+                                <span><svg data-feather="calendar"></svg> ${bestelltAmStr}</span>
+                                <span><svg data-feather="clock"></svg> ${bestelltAmTime}</span>
+                            </div>
+
+                            ${angeliefertInfo}
+
+                            ${showMarkButton ? `
+                                <div style="margin-top: 12px;">
+                                    <button class="btn btn-primary"
+                                            style="padding: 10px 18px; font-size: 14px; width: 100%;"
+                                            onclick="markAsAngeliefert('${bestellung.id}')">
+                                        <svg data-feather="check-circle"></svg>
+                                        Als angeliefert markieren
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Feather Icons in neu erstellten Cards rendern
+            feather.replace();
+        }
+
+        /**
+         * Markiert Bestellung als angeliefert
+         * @param {string} bestellungId - ID der Bestellung
+         */
+        async function markAsAngeliefert(bestellungId) {
+            if (!confirm('Bestellung als angeliefert markieren?')) {
+                return;
+            }
+
+            try {
+                console.log(`📦 [BESTELLUNGEN] Markiere als angeliefert: ${bestellungId}`);
+
+                const currentUser = window.authManager?.getCurrentUser();
+                const userName = currentUser?.name || localStorage.getItem('userName') || 'Unbekannt';
+
+                await window.getCollection('bestellungen').doc(bestellungId).update({
+                    status: 'angeliefert',
+                    angeliefertAm: new Date().toISOString(),
+                    angeliefertVon: userName
+                });
+
+                console.log('✅ [BESTELLUNGEN] Status aktualisiert');
+
+                // Success message
+                alert('✅ Bestellung als angeliefert markiert!');
+
+                // Reload list
+                loadBestellungen();
+
+            } catch (error) {
+                console.error('❌ [BESTELLUNGEN] Fehler beim Status-Update:', error);
+                alert('❌ Fehler beim Aktualisieren des Status: ' + error.message);
             }
         }
     </script>
