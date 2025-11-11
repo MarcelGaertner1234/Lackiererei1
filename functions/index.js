@@ -45,17 +45,35 @@ function getSendGridApiKey() {
 
 // Helper function: Get and validate OpenAI API Key
 function getOpenAIApiKey() {
-  const apiKey = openaiApiKey.value();
+  let apiKey = openaiApiKey.value();
 
   if (!apiKey) {
     throw new Error("Missing OPENAI_API_KEY - run: firebase functions:secrets:set OPENAI_API_KEY");
   }
 
+  // Sanitization: URL-decode if encoded (fixes node-fetch header validation error)
+  if (apiKey.includes('%')) {
+    console.log("🔧 Decoding URL-encoded API key...");
+    apiKey = decodeURIComponent(apiKey);
+  }
+
+  // Sanitization: Trim whitespace
+  apiKey = apiKey.trim();
+
+  // Validation: Check format
   if (!apiKey.startsWith("sk-")) {
     console.warn("⚠️ WARNING: OPENAI_API_KEY startet nicht mit 'sk-' - möglicherweise ungültig!");
   }
 
-  console.log("✅ OpenAI API Key loaded from Secret Manager");
+  // Validation: Check for invalid HTTP header characters
+  // node-fetch rejects certain characters in Authorization header
+  const invalidChars = /[\r\n\t]/g;
+  if (invalidChars.test(apiKey)) {
+    console.error("❌ API Key contains invalid HTTP header characters (newline/tab)");
+    throw new Error("Invalid OPENAI_API_KEY format - contains control characters");
+  }
+
+  console.log("✅ OpenAI API Key loaded and sanitized from Secret Manager");
   return apiKey;
 }
 
