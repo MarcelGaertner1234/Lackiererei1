@@ -3572,11 +3572,15 @@ WICHTIGE REGELN:
 3. Deutsches Format (1.532,10) → 1532.10
 4. ETN: 10-stellig ODER 6-8 Stellen + Buchstabe (z.B. "6925P8")
 5. ALLE Ersatzteile extrahieren (auch bei REPARATURSATZ-Unterteilen)
+   - WICHTIG: SCHEINWERFER, STOSSSTANGE, KOTFLÜGEL = Ersatzteile!
+   - Auch teure Teile (>1000€) sind Ersatzteile, NICHT Arbeitszeiten!
+   - Wenn du 6 Teile siehst, gib 6 zurück (nicht 5!)
 6. ALLE Arbeitszeiten extrahieren (Art: E=Elektrik, K=Karosserie, M=Mechanik)
 7. ALLE Lackier-Positionen extrahieren
 8. Wenn ein Feld leer ist: null verwenden
 9. Arrays können leer sein: []
-10. Keine zusätzlichen Felder hinzufügen`
+10. Keine zusätzlichen Felder hinzufügen
+11. ZÄHLE GENAU: Wenn PDF 6 Ersatzteile zeigt, return 6 items (nicht 5!)`
         }
       ];
 
@@ -3599,25 +3603,68 @@ WICHTIGE REGELN:
           content: messageContent
         }],
         max_tokens: 4096,
-        temperature: 0.1  // Low temperature for consistent extraction
+        temperature: 0.3  // Slightly higher for better vision edge-case handling (was 0.1)
       });
 
       const content = response.choices[0].message.content;
+      const finishReason = response.choices[0].finish_reason;
+
       console.log('✅ [OPENAI] Response received');
       console.log(`   Tokens used: ${response.usage.total_tokens}`);
       console.log(`   Estimated cost: $${(response.usage.total_tokens * 0.00001).toFixed(4)}`);
+      console.log(`   Finish reason: ${finishReason}`);
 
-      // Parse JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.error('❌ [OPENAI] No JSON found in response:', content);
-        throw new functions.https.HttpsError(
-          'internal',
-          'Keine JSON-Daten in OpenAI Response gefunden'
-        );
+      // Log raw response for debugging (first 500 + last 200 chars)
+      if (content.length > 700) {
+        console.log('   Response preview (first 500 chars):');
+        console.log('   ' + content.substring(0, 500));
+        console.log('   Response preview (last 200 chars):');
+        console.log('   ' + content.substring(content.length - 200));
+      } else {
+        console.log('   Full response:');
+        console.log('   ' + content);
       }
 
-      const parsedData = JSON.parse(jsonMatch[0]);
+      // Check finish reason
+      if (finishReason !== 'stop') {
+        console.warn(`⚠️ [OPENAI] Unexpected finish_reason: ${finishReason} (expected: stop)`);
+        if (finishReason === 'length') {
+          console.error('❌ [OPENAI] Response was truncated due to max_tokens limit!');
+        }
+      }
+
+      // Parse JSON from response - TRY DIRECT PARSE FIRST (more robust)
+      let parsedData;
+      try {
+        // Attempt 1: Direct JSON parse (assumes clean JSON response)
+        parsedData = JSON.parse(content);
+        console.log('✅ [OPENAI] Direct JSON parse successful');
+      } catch (directParseError) {
+        console.warn('⚠️ [OPENAI] Direct parse failed, trying regex extraction...');
+
+        // Attempt 2: Regex extraction (fallback for responses with extra text)
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          console.error('❌ [OPENAI] No JSON found in response');
+          console.error('   Content:', content);
+          throw new functions.https.HttpsError(
+            'internal',
+            'Keine JSON-Daten in OpenAI Response gefunden'
+          );
+        }
+
+        try {
+          parsedData = JSON.parse(jsonMatch[0]);
+          console.log('✅ [OPENAI] Regex-extracted JSON parse successful');
+        } catch (regexParseError) {
+          console.error('❌ [OPENAI] JSON parsing failed even with regex');
+          console.error('   Extracted JSON:', jsonMatch[0]);
+          throw new functions.https.HttpsError(
+            'internal',
+            `JSON parsing fehlgeschlagen: ${regexParseError.message}`
+          );
+        }
+      }
 
       // Validate structure
       if (!parsedData.fahrzeugdaten && !parsedData.ersatzteile) {
