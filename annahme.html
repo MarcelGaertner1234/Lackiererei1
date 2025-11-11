@@ -3078,6 +3078,24 @@
                 // Neue Methode (95% success): Table rows mit Spalten-Erkennung
                 const tableRows = extractTableRows(textContent.items);
 
+                // =====================================================================
+                // STAGE 1 DEBUG: Verstehe warum Column-based nichts findet
+                // =====================================================================
+                console.log(`🔍 [COLUMN-DEBUG] Page ${pageNum}: ${tableRows.length} rows found`);
+                tableRows.forEach((row, i) => {
+                    console.log(`   Row ${i+1}: ${row.columns.length} columns -`, row.columns.slice(0, 5));
+
+                    // Zeige auch welche Spalte wie ein ETN aussieht
+                    row.columns.forEach((col, colIdx) => {
+                        if (/^\d{10}$/.test(col)) {
+                            console.log(`      ✓ Column ${colIdx} matches 10-digit ETN: "${col}"`);
+                        } else if (/^\d{4,8}[A-Z]\d{0,2}$/.test(col)) {
+                            console.log(`      ⚠️ Column ${colIdx} matches 6-8 digit ETN: "${col}" (NOT YET SUPPORTED)`);
+                        }
+                    });
+                });
+                console.log('---');
+
                 // Fahrzeugdaten: Nutze alte Regex-Methode (funktioniert gut für Header-Daten)
                 extractFahrzeugdaten(text, extractedData);
 
@@ -3088,10 +3106,22 @@
                     // Beispiel: "E" "45612" "9853894380" "SCHEINWERFER R. KOMPL" "1" "1532.10" "1532.10"
 
                     if (row.columns.length >= 5) {
-                        // Finde ETN-Spalte (10-stellige Nummer)
-                        const etnIndex = row.columns.findIndex(col => /^\d{10}$/.test(col));
+                        // =====================================================================
+                        // STAGE 2: Erweiterte ETN-Erkennung (10-digit ODER 6-8 digit mit Buchstabe)
+                        // =====================================================================
+                        // Finde ETN-Spalte (10-stellige Nummer oder 6-8 Stellen + Buchstabe)
+                        let etnIndex = row.columns.findIndex(col => /^\d{10}$/.test(col));
+                        let etnPattern = '10-digit';
+
+                        // Fallback: 6-8 Stellen + Buchstabe (z.B. "6925P8")
+                        if (etnIndex < 0) {
+                            etnIndex = row.columns.findIndex(col => /^\d{4,8}[A-Z]\d{0,2}$/.test(col));
+                            etnPattern = '6-8-digit';
+                        }
 
                         if (etnIndex >= 0 && etnIndex < row.columns.length - 2) {
+                            console.log(`   🔍 [STAGE2] Found ETN at column ${etnIndex} (${etnPattern}): "${row.columns[etnIndex]}"`);
+
                             const etn = row.columns[etnIndex];
                             const benennung = row.columns[etnIndex + 1];
                             const anzahl = parseInt(row.columns[etnIndex + 2]) || 1;
@@ -3202,12 +3232,18 @@
         function extractErsatzteile(text, extractedData) {
             console.log('🔍 Extracting Ersatzteile from PDF...');
 
+            // =====================================================================
+            // STAGE 3: Verbessertes Regex Pattern für zuverlässige Preis-Extraktion
+            // =====================================================================
             // DAT-Tabelle Regex (ETN | Benennung | Anzahl | Preis/Stück | Gesamtpreis)
             // Improved pattern: Support mixed case, German characters, ETN variants (e.g., "6925P8"), Swiss number format
             // ETN can be:
             //   - 10 digits (standard): 1622749580
             //   - 4-8 digits + capital letter + 0-2 digits (variant): 6925P8
-            const ersatzteilRegex = /(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+([A-ZÄÖÜa-zäöüß0-9\s\.\,\-\(\)\/]+?)\s+(\d+)\s+([\d\'\.\,\s]+)\s+([\d\'\.\,\s]+)/g;
+            //
+            // WICHTIG: Preise ohne \s (spaces) im Pattern - Spaces nur als Trenner zwischen Feldern
+            // Benennung: Nicht zu gierig, aber auch nicht zu restriktiv
+            const ersatzteilRegex = /(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+([A-ZÄÖÜa-zäöüß0-9\.\,\-\(\)\/]+(?:\s+[A-ZÄÖÜa-zäöüß0-9\.\,\-\(\)\/]+)*?)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)/g;
 
             let match;
             let count = 0;
@@ -3844,13 +3880,13 @@
 
                 // Pattern 1: ETN mit RC/DVN Prefix (z.B. "E 45612 9853894380 SCHEINWERFER R. ...")
                 // Pattern: [E/K/M] [DVN] [ETN] [Benennung] [Anzahl] [Einzelpreis] [Gesamtpreis]
-                // FIX #3: Tolerantere Regex - erlaubt Whitespace in Preisen + optional trailing space (2025-11-11)
-                const pattern1 = /^[A-Z]\s+\d+\s+(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,\s]+?)\s+([\d\'\.\,\s]+?)\s*$/;
+                // STAGE 3 FIX: Preise OHNE \s (spaces) - nur als Trenner zwischen Feldern (2025-11-11)
+                const pattern1 = /^[A-Z]\s+\d+\s+(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)\s*$/;
 
                 // Pattern 2: ETN ohne Prefix (eingerückt, Teil von REPARATURSATZ)
                 // Pattern: [whitespace] [ETN] [Benennung] [Anzahl] [Einzelpreis] [Gesamtpreis]
-                // FIX #3: * statt + für optional whitespace am Anfang, toleranter bei Preisen (2025-11-11)
-                const pattern2 = /^\s*(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,\s]+?)\s+([\d\'\.\,\s]+?)\s*$/;
+                // STAGE 3 FIX: Preise OHNE \s (spaces) - nur als Trenner zwischen Feldern (2025-11-11)
+                const pattern2 = /^\s*(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+(.+?)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)\s*$/;
 
                 let match = line.match(pattern1) || line.match(pattern2);
 
