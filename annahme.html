@@ -2286,6 +2286,26 @@
                 console.log('   Kunde:', annahmeData.kundenname);
                 console.log('   Fotos:', annahmeData.photos.length);
 
+                // ═══════════════════════════════════════════════════════════
+                // DEBUG: TABELLEN-DATEN VALIDIERUNG
+                // ═══════════════════════════════════════════════════════════
+                console.log('📊 === TABELLEN-DATEN BEIM SUBMIT ===');
+                console.log('   Ersatzteile (global):', ersatzteileData.length, 'Zeilen');
+                console.log('   Arbeitslohn (global):', arbeitslohnData.length, 'Zeilen');
+                console.log('   Lackierung (global):', lackierungData.length, 'Zeilen');
+                console.log('   In annahmeData.pdfImport.editedData:', {
+                    ersatzteile: annahmeData.pdfImport?.editedData?.ersatzteile?.length || 0,
+                    arbeitslohn: annahmeData.pdfImport?.editedData?.arbeitslohn?.length || 0,
+                    lackierung: annahmeData.pdfImport?.editedData?.lackierung?.length || 0
+                });
+
+                const totalRows = ersatzteileData.length + arbeitslohnData.length + lackierungData.length;
+                if (totalRows > 0) {
+                    console.log('✅ Tabellen-Daten vorhanden und bereit für Firestore');
+                } else {
+                    console.warn('⚠️ WARNUNG: Alle Tabellen sind leer!');
+                }
+
                 // Nachannahme-Modus? Dann Duplikat-Prüfung überspringen
                 if (window.istNachannahme) {
                     console.log('🔄 Nachannahme-Modus: Überspringe Duplikat-Prüfung');
@@ -2436,6 +2456,43 @@
                         }
 
                         delete dataForFirestore.photos;
+
+                        // ═══════════════════════════════════════════════════════════
+                        // SAFETY CHECK: Sicherstellen, dass editedData existiert
+                        // ═══════════════════════════════════════════════════════════
+                        if (!dataForFirestore.pdfImport || !dataForFirestore.pdfImport.editedData) {
+                            console.error('❌ KRITISCHER FEHLER: pdfImport.editedData fehlt!');
+                            console.error('   Wiederherstelle von globalen Arrays...');
+
+                            dataForFirestore.pdfImport = {
+                                imported: !!pdfData,
+                                editedData: {
+                                    ersatzteile: JSON.parse(JSON.stringify(ersatzteileData)),
+                                    arbeitslohn: JSON.parse(JSON.stringify(arbeitslohnData)),
+                                    lackierung: JSON.parse(JSON.stringify(lackierungData))
+                                },
+                                manualPriceOverride: document.getElementById('manualPriceOverride')?.checked || false
+                            };
+
+                            console.log('✅ editedData wiederhergestellt:', {
+                                ersatzteile: dataForFirestore.pdfImport.editedData.ersatzteile.length,
+                                arbeitslohn: dataForFirestore.pdfImport.editedData.arbeitslohn.length,
+                                lackierung: dataForFirestore.pdfImport.editedData.lackierung.length
+                            });
+                        }
+
+                        // Zusätzliche Validierung: Warnen wenn Daten verloren gegangen sind
+                        const totalRows = ersatzteileData.length + arbeitslohnData.length + lackierungData.length;
+                        const savedRows = (dataForFirestore.pdfImport.editedData.ersatzteile?.length || 0) +
+                                          (dataForFirestore.pdfImport.editedData.arbeitslohn?.length || 0) +
+                                          (dataForFirestore.pdfImport.editedData.lackierung?.length || 0);
+
+                        if (totalRows > 0 && savedRows === 0) {
+                            console.error('⚠️⚠️⚠️ WARNUNG: Tabellen-Daten gehen verloren!');
+                            console.error('   Global:', totalRows, 'Zeilen | Zu speichern:', savedRows, 'Zeilen');
+                        } else if (totalRows === savedRows) {
+                            console.log(`✅ Tabellen-Daten-Validierung erfolgreich: ${totalRows} Zeilen werden gespeichert`);
+                        }
 
                         await firebaseApp.saveFahrzeug(dataForFirestore);
                         console.log('   ✅ Fahrzeug in Firestore gespeichert');
@@ -5085,18 +5142,18 @@
                         lackierung: pdfData.lackierung
                     },
                     editedData: {
-                        ersatzteile: ersatzteileData,
-                        arbeitslohn: arbeitslohnData,
-                        lackierung: lackierungData
+                        ersatzteile: JSON.parse(JSON.stringify(ersatzteileData)),  // Deep Copy (verhindert Referenz-Mutation)
+                        arbeitslohn: JSON.parse(JSON.stringify(arbeitslohnData)),
+                        lackierung: JSON.parse(JSON.stringify(lackierungData))
                     },
                     originalPdfName: document.getElementById('pdfFileName').textContent
                 } : {
                     // Kein PDF-Import, aber manuelle Eingabe
                     imported: false,
                     editedData: {
-                        ersatzteile: ersatzteileData,
-                        arbeitslohn: arbeitslohnData,
-                        lackierung: lackierungData
+                        ersatzteile: JSON.parse(JSON.stringify(ersatzteileData)),  // Deep Copy
+                        arbeitslohn: JSON.parse(JSON.stringify(arbeitslohnData)),
+                        lackierung: JSON.parse(JSON.stringify(lackierungData))
                     }
                 },
                 // Manual Price Override Flag
