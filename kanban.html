@@ -2240,6 +2240,9 @@
                 <button class="auftrag-tab" onclick="switchAuftragTab('bestellungen')" data-tab="bestellungen">
                     📦 Bestellungen
                 </button>
+                <button class="auftrag-tab" onclick="switchAuftragTab('pdf')" data-tab="pdf">
+                    📄 PDF
+                </button>
             </div>
 
             <!-- Tab Content: Übersicht -->
@@ -2292,6 +2295,13 @@
             <div class="auftrag-tab-content" id="tab-bestellungen" style="display: none;">
                 <div id="detail-bestellungen" style="padding: 20px;">
                     <p style="color: var(--color-text-secondary);">Lade Bestellungen...</p>
+                </div>
+            </div>
+
+            <!-- Tab Content: PDF -->
+            <div class="auftrag-tab-content" id="tab-pdf" style="display: none;">
+                <div id="detail-pdf" style="padding: 20px;">
+                    <p style="color: var(--color-text-secondary);">Lade PDF...</p>
                 </div>
             </div>
 
@@ -4569,8 +4579,8 @@
                 }
                 servicesHTML += '</div>';
             }
-            // 💰 Preis nur wenn Berechtigung
-            const canShow = typeof window.canViewPrices === 'function' ? window.canViewPrices() : true;
+            // 💰 Preis nur wenn Berechtigung (Default: false für Sicherheit)
+            const canShow = typeof window.canViewPrices === 'function' ? window.canViewPrices() : false;
             if (canShow) {
                 const preis = fahrzeug.vereinbarterPreis || fahrzeug.kva?.varianten?.original?.gesamt || 0;
                 if (preis > 0) {
@@ -4583,10 +4593,22 @@
 
             // Tab: Bilder
             if (fahrzeug.photos && fahrzeug.photos.length > 0) {
-                let photosHTML = '';
-                fahrzeug.photos.forEach(url => {
-                    photosHTML += `<img src="${url}" style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px; cursor: pointer;" onclick="window.open('${url}', '_blank')">`;
+                let photosHTML = '<div style="display: grid; gap: 15px;">';
+                fahrzeug.photos.forEach((photoData, index) => {
+                    // Support both Base64 and URLs
+                    const src = photoData.startsWith('http') ? photoData : photoData;
+                    photosHTML += `
+                        <div style="position: relative;">
+                            <img src="${src}"
+                                 alt="Foto ${index + 1}"
+                                 style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 2px solid var(--color-border);"
+                                 onclick="window.open('${src}', '_blank')"
+                                 onerror="this.parentElement.innerHTML='<div style=\\'padding: 20px; background: rgba(244, 67, 54, 0.1); border-radius: 8px; color: var(--color-error); text-align: center;\\'>❌ Bild ${index + 1} konnte nicht geladen werden</div>'">
+                            <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Foto ${index + 1}</div>
+                        </div>
+                    `;
                 });
+                photosHTML += '</div>';
                 document.getElementById('detail-photos').innerHTML = photosHTML;
             } else {
                 document.getElementById('detail-photos').innerHTML = '<p style="color: var(--color-text-secondary); padding: 20px;">Keine Bilder vorhanden</p>';
@@ -4594,6 +4616,39 @@
 
             // Tab: Notizen
             document.getElementById('detail-notes').textContent = fahrzeug.notizen || 'Keine Notizen vorhanden';
+
+            // Tab: PDF
+            if (fahrzeug.pdfUrl) {
+                document.getElementById('detail-pdf').innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 15px;">
+                        <iframe src="${fahrzeug.pdfUrl}"
+                                style="width: 100%; height: 600px; border: 2px solid var(--color-border); border-radius: 8px; background: white;">
+                        </iframe>
+                        <div style="display: flex; gap: 10px; justify-content: center;">
+                            <a href="${fahrzeug.pdfUrl}" target="_blank" class="btn btn-primary">
+                                <svg data-feather="external-link" style="width: 16px; height: 16px;"></svg>
+                                PDF in neuem Tab öffnen
+                            </a>
+                            <a href="${fahrzeug.pdfUrl}" download class="btn btn-secondary">
+                                <svg data-feather="download" style="width: 16px; height: 16px;"></svg>
+                                PDF herunterladen
+                            </a>
+                        </div>
+                    </div>
+                `;
+                if (typeof feather !== 'undefined') feather.replace();
+            } else {
+                document.getElementById('detail-pdf').innerHTML = `
+                    <div style="padding: 40px; text-align: center;">
+                        <svg data-feather="file-text" style="width: 64px; height: 64px; color: var(--color-text-secondary); margin-bottom: 15px;"></svg>
+                        <p style="color: var(--color-text-secondary); font-size: 16px; margin-bottom: 10px;">Kein PDF vorhanden</p>
+                        <p style="font-size: 13px; color: var(--color-text-secondary);">
+                            💡 Das Annahme-PDF wird automatisch generiert, wenn das Fahrzeug aufgenommen wird.
+                        </p>
+                    </div>
+                `;
+                if (typeof feather !== 'undefined') feather.replace();
+            }
 
             // Modal anzeigen
             document.getElementById('auftragModal').classList.add('active');
@@ -4630,6 +4685,12 @@
         async function loadBestellungenForModal(fahrzeugId) {
             const container = document.getElementById('detail-bestellungen');
 
+            console.log('📦 loadBestellungenForModal START:', {
+                fahrzeugId: fahrzeugId,
+                fahrzeugIdType: typeof fahrzeugId,
+                werkstattId: window.werkstattId
+            });
+
             if (!window.db) {
                 container.innerHTML = '<p style="color: var(--color-error); padding: 20px;">❌ Firebase nicht verfügbar</p>';
                 return;
@@ -4639,13 +4700,26 @@
                 // Lade-Indikator anzeigen
                 container.innerHTML = '<p style="color: var(--color-text-secondary); padding: 20px;">Lade Bestellungen...</p>';
 
-                // Query: Alle Bestellungen für dieses Fahrzeug (OHNE .orderBy() - vermeidet Composite Index)
+                // Query: Alle Bestellungen für dieses Fahrzeug (Type-safe String comparison)
                 const snapshot = await window.getCollection('bestellungen')
-                    .where('fahrzeugId', '==', fahrzeugId)
+                    .where('fahrzeugId', '==', String(fahrzeugId))
                     .get();
 
+                console.log('📦 Query Result:', {
+                    empty: snapshot.empty,
+                    size: snapshot.size,
+                    docs: snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                });
+
                 if (snapshot.empty) {
-                    container.innerHTML = '<p style="color: var(--color-text-secondary); padding: 20px;">Keine Bestellungen vorhanden</p>';
+                    container.innerHTML = `
+                        <div style="padding: 20px; text-align: center;">
+                            <p style="color: var(--color-text-secondary); margin-bottom: 15px;">Keine Bestellungen vorhanden</p>
+                            <p style="font-size: 13px; color: var(--color-text-secondary);">
+                                💡 Tipp: PDF-Ersatzteile in <a href="material.html" style="color: var(--color-primary);">Material-Verwaltung</a> als Bestellung aufgeben
+                            </p>
+                        </div>
+                    `;
                     return;
                 }
 

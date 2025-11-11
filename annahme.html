@@ -2535,8 +2535,31 @@
                         }
 
                         console.log('   → Erstelle PDF...');
-                        await createPDF(annahmeData);
+                        const pdfBlob = await createPDF(annahmeData);
                         console.log('   ✅ PDF erstellt');
+
+                        // Upload PDF zu Firebase Storage
+                        if (pdfBlob && window.storage) {
+                            try {
+                                console.log('   → Lade PDF zu Firebase Storage hoch...');
+                                const pdfFileName = `Annahme_${annahmeData.kennzeichen.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toLocaleDateString('de-DE').replace(/\./g, '')}.pdf`;
+                                const pdfRef = window.storage.ref(`pdfs/${annahmeData.id}/${pdfFileName}`);
+                                const uploadTask = await pdfRef.put(pdfBlob);
+                                const pdfUrl = await uploadTask.ref.getDownloadURL();
+
+                                console.log('   ✅ PDF hochgeladen:', pdfUrl);
+
+                                // Update Firestore mit PDF URL
+                                await window.getCollection('fahrzeuge').doc(annahmeData.id).update({
+                                    pdfUrl: pdfUrl,
+                                    pdfUploadedAt: new Date().toISOString()
+                                });
+                                console.log('   ✅ Firestore mit pdfUrl aktualisiert');
+                            } catch (uploadError) {
+                                console.error('   ⚠️ PDF-Upload fehlgeschlagen:', uploadError);
+                                // Fahrzeug ist bereits gespeichert, PDF-Upload ist optional
+                            }
+                        }
                     }
 
                     console.log('✅ === SPEICHERUNG ERFOLGREICH ===');
@@ -4454,6 +4477,8 @@
                 vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis').value) || null,
                 photos,
                 signature: canvas.toDataURL(),
+                pdfUrl: null, // Wird nach Upload gesetzt
+                pdfUploadedAt: null,
                 status: 'angenommen',
                 prozessStatus: 'angenommen',
                 prozessTimestamps: {
@@ -5422,6 +5447,9 @@
 
             const filename = `Annahme_${data.kennzeichen.replace(/\s/g, '_')}_${data.datum.replace(/\./g, '')}.pdf`;
             doc.save(filename);
+
+            // Return PDF Blob for Firebase Storage upload
+            return doc.output('blob');
         }
 
         // Arbeitsauftrag erstellen
