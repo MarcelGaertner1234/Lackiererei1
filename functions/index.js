@@ -3499,32 +3499,30 @@ exports.parseDATPDF = functions
         );
       }
 
-      const { imageBase64 } = data;
+      const { imagesBase64 } = data;
 
-      if (!imageBase64) {
+      if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
         throw new functions.https.HttpsError(
           'invalid-argument',
-          'imageBase64 ist erforderlich (PNG/JPEG/WEBP)'
+          'imagesBase64 array ist erforderlich (PNG/JPEG/WEBP)'
         );
       }
 
-      console.log('📄 [OPENAI] Starting image parsing...');
+      console.log('📄 [OPENAI] Starting multi-page image parsing...');
       console.log(`   User: ${context.auth.token.email}`);
-      console.log(`   Image Size: ${(imageBase64.length / 1024).toFixed(2)} KB`);
+      console.log(`   Pages: ${imagesBase64.length}`);
+      const totalSizeKB = imagesBase64.reduce((sum, img) => sum + img.length, 0) / 1024;
+      console.log(`   Total Size: ${totalSizeKB.toFixed(2)} KB`);
 
       // Initialize OpenAI with secret
       const apiKey = getOpenAIApiKey();
       const openai = new OpenAI({ apiKey });
 
-      // Call GPT-4 Vision
-      const response = await openai.chat.completions.create({
-        model: "gpt-4-turbo",
-        messages: [{
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Extrahiere ALLE Daten aus dieser DAT-Rechnung/Kalkulation.
+      // Build content array with text prompt + all page images
+      const messageContent = [
+        {
+          type: "text",
+          text: `Extrahiere ALLE Daten aus dieser VOLLSTÄNDIGEN DAT-Rechnung/Kalkulation (${imagesBase64.length} Seiten).
 
 WICHTIG: Gib die Daten als JSON zurück mit dieser exakten Struktur:
 
@@ -3579,14 +3577,26 @@ WICHTIGE REGELN:
 8. Wenn ein Feld leer ist: null verwenden
 9. Arrays können leer sein: []
 10. Keine zusätzlichen Felder hinzufügen`
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/png;base64,${imageBase64}`
-              }
-            }
-          ]
+        }
+      ];
+
+      // Add all page images to content array
+      for (let i = 0; i < imagesBase64.length; i++) {
+        messageContent.push({
+          type: "image_url",
+          image_url: {
+            url: `data:image/png;base64,${imagesBase64[i]}`
+          }
+        });
+        console.log(`   📄 Added page ${i + 1} to OpenAI request`);
+      }
+
+      // Call GPT-4 Vision with all pages
+      const response = await openai.chat.completions.create({
+        model: "gpt-4-turbo",
+        messages: [{
+          role: "user",
+          content: messageContent
         }],
         max_tokens: 4096,
         temperature: 0.1  // Low temperature for consistent extraction
