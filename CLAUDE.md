@@ -4,7 +4,585 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🆕 NEUE FEATURES: PDF-UPLOAD MIT AUTO-BEFÜLLUNG + ZENTRALE ERSATZTEILE-DB (2025-11-11)
+## 🆕 NEUESTES FEATURE: STEUERBERATER-DASHBOARD MIT CHART.JS (2025-11-11)
+
+**Status:** ✅ **PRODUKTIONSREIF** - Vollständiges Dashboard für Finanz-Reporting
+**Commits:**
+- Phase 1: `fb5c52b` - "feat: Steuerberater-Kachel in index.html (Phase 1)"
+- Phase 2: `5b2cb1d` - "feat: Steuerberater-Rolle & Read-Only Zugriffsrechte (Phase 2)"
+- Phase 3: `7543cda` - "feat: Steuerberater Dashboard-Seiten (Phase 3)"
+- Phase 4: `d2f5ecd` - "feat: Chart.js Integration - Interaktive Statistiken (Phase 4)"
+**Deployment:** GitHub Pages (Auto-Deploy in 2-3 Minuten)
+**Live URLs:**
+- https://marcelgaertner1234.github.io/Lackiererei1/steuerberater-bilanz.html
+- https://marcelgaertner1234.github.io/Lackiererei1/steuerberater-statistiken.html
+- https://marcelgaertner1234.github.io/Lackiererei1/steuerberater-kosten.html
+- https://marcelgaertner1234.github.io/Lackiererei1/steuerberater-export.html
+
+### **ÜBERSICHT: 4-Phasen Dashboard-System**
+
+**Problem:** Steuerberater benötigen Read-Only Zugriff auf Finanzdaten ohne die Möglichkeit, Daten zu ändern.
+
+**Lösung:** Neue Rolle "steuerberater" mit dediziertem Dashboard + 4 interaktiven Chart.js Visualisierungen + CSV-Export
+
+**Workflow:**
+1. **Phase 1:** Neue Kachel "Steuerberater & Bilanz" in index.html mit 4 Quick-Links
+2. **Phase 2:** Security Rules (firestore.rules) - Read-Only Access für 4 Collections
+3. **Phase 3:** 4 Dashboard-Seiten mit Tabellen & Filtern (3.090 Zeilen Code)
+4. **Phase 4:** Chart.js Integration - 4 interaktive Diagramme (Umsatz-Trend, Service-Verteilung, Gewinn-Marge, Kosten-Analyse)
+
+---
+
+### **PHASE 1: index.html - Steuerberater-Kachel**
+
+**Commit:** `fb5c52b`
+**Files Modified:** 1 file (`index.html`)
+**Lines Added:** +33 lines
+
+**Implementation:**
+
+```html
+<!-- Neue Kachel in index.html (Lines 1378-1408) -->
+<div class="hero-card">
+    <div class="shine-overlay"></div>
+    <div class="hero-card__header">
+        <i data-feather="bar-chart-3"></i>
+        <h3>Steuerberater & Bilanz</h3>
+        <span class="badge badge--success" id="badge-bilanz">Jahresabschluss 2025</span>
+    </div>
+    <p class="hero-card__desc">Finanzdaten, Statistiken & Export für Steuerberater</p>
+
+    <div class="hero-card__actions">
+        <a href="steuerberater-bilanz.html" class="quick-link" data-permission="steuerberaterBilanz">
+            <i data-feather="pie-chart"></i>
+            <span>Bilanz-Übersicht</span>
+        </a>
+        <a href="steuerberater-statistiken.html" class="quick-link" data-permission="steuerberaterStatistiken">
+            <i data-feather="trending-up"></i>
+            <span>Statistiken</span>
+        </a>
+        <a href="steuerberater-kosten.html" class="quick-link" data-permission="steuerberaterKosten">
+            <i data-feather="layers"></i>
+            <span>Kostenaufschlüsselung</span>
+        </a>
+        <a href="steuerberater-export.html" class="quick-link" data-permission="steuerberaterExport">
+            <i data-feather="download"></i>
+            <span>Export & Berichte</span>
+        </a>
+    </div>
+</div>
+```
+
+**Features:**
+- ✅ Grünes Badge (badge--success) + bar-chart-3 Icon
+- ✅ 4 Quick-Links mit data-permission Attributen
+- ✅ Konsistente Hero-Card Struktur
+
+---
+
+### **PHASE 2: firestore.rules - Security Rules**
+
+**Commit:** `5b2cb1d`
+**Files Modified:** 2 files (`index.html`, `firestore.rules`)
+**Lines Added:** +75 lines
+
+**Implementation:**
+
+```javascript
+// firestore.rules - Helper Function (Lines 65-67)
+function isSteuerberater() {
+    return isAuthenticated() && getUserRole() == 'steuerberater';
+}
+
+// Read-Only Access für 4 Collections:
+
+// 1. fahrzeuge_{werkstattId} (Lines 939-944)
+allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
+            && isSteuerberater()
+            && isActive();
+
+// 2. kunden_{werkstattId} (Lines 1012-1015)
+allow read: if kundenCollection.matches('kunden_.*')
+            && isSteuerberater()
+            && isActive();
+
+// 3. mitarbeiter_{werkstattId} (Lines 1042-1045)
+allow read: if mitarbeiterCollection.matches('mitarbeiter_.*')
+            && isSteuerberater()
+            && isActive();
+
+// 4. zeiterfassung_{werkstattId} (Lines 1388-1391)
+allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
+            && isSteuerberater()
+            && isActive();
+```
+
+**Permission System (index.html Lines 3239-3283):**
+```javascript
+// Steuerberater: Zugriff nur auf Steuerberater-Kacheln (Read-Only)
+if (currentUser.role === 'steuerberater') {
+    console.log('📊 Steuerberater-Rolle: Nur Finanz-Kacheln freigeschaltet');
+    links.forEach(link => {
+        const permission = link.getAttribute('data-permission');
+        const isSteuerberaterLink = permission && permission.startsWith('steuerberater');
+
+        if (isSteuerberaterLink) {
+            // UNLOCK: Steuerberater-Kacheln
+            link.style.opacity = '1';
+            link.style.pointerEvents = 'auto';
+            link.style.filter = 'none';
+        } else {
+            // LOCK: Alle anderen Kacheln
+            link.style.opacity = '0.5';
+            link.style.pointerEvents = 'none';
+            link.style.filter = 'grayscale(1)';
+
+            // Add lock icon
+            const lockIcon = document.createElement('i');
+            lockIcon.setAttribute('data-feather', 'lock');
+            lockIcon.className = 'lock-icon';
+            link.appendChild(lockIcon);
+
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                showToast('Zugriff verweigert! Steuerberater haben nur Zugriff auf Finanz-Berichte.', 'warning', 4000);
+            });
+        }
+    });
+}
+```
+
+**Security:**
+- ✅ NO write access (implizites deny)
+- ✅ Alle Rules mit isActive() Check
+- ✅ Multi-Tenant Isolation (werkstattId)
+- ✅ Visual Feedback (Grayscale + Lock Icon + Toast)
+
+---
+
+### **PHASE 3: Dashboard-Seiten (4x HTML)**
+
+**Commit:** `7543cda`
+**Files Modified:** 4 files (new)
+**Lines Added:** +3.090 lines total
+
+#### **3.1: steuerberater-bilanz.html (907 Zeilen)**
+
+**Features:**
+- **4 KPI Cards:** Gesamtumsatz, Gesamtkosten, Bruttogewinn, Ø Auftragswert
+- **Period Selector:** Monat, Quartal, Jahr, Gesamtzeitraum
+- **Monatliche Übersicht:** Tabelle mit 12 Monaten (Fahrzeuge, Umsatz, Kosten, Gewinn, Marge)
+- **Service-Übersicht:** Top Services sortiert nach Umsatz mit prozentualen Anteilen
+
+**Key Functions:**
+```javascript
+// Calculate KPIs
+function calculateAndDisplayData() {
+    const filtered = filterByPeriod(allFahrzeuge, currentPeriod);
+
+    let totalUmsatz = 0;
+    let totalKosten = 0;
+
+    filtered.forEach(fahrzeug => {
+        totalUmsatz += parseFloat(fahrzeug.gesamtsummeBrutto || 0);
+        totalKosten += calculateNettoKosten(fahrzeug);
+    });
+
+    const totalGewinn = totalUmsatz - totalKosten;
+    const marge = totalUmsatz > 0 ? ((totalGewinn / totalUmsatz) * 100).toFixed(1) : 0;
+}
+
+function calculateNettoKosten(fahrzeug) {
+    const data = fahrzeug.pdfImport?.editedData || {};
+    let kosten = 0;
+
+    if (data.ersatzteile) kosten += data.ersatzteile.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+    if (data.arbeitslohn) kosten += data.arbeitslohn.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+    if (data.lackierung) kosten += data.lackierung.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+    if (data.materialien) kosten += data.materialien.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+
+    return kosten;
+}
+```
+
+#### **3.2: steuerberater-kosten.html (993 Zeilen)**
+
+**Features:**
+- **4 Cost Summary Cards:** Ersatzteile, Arbeitslohn, Lackierung, Materialien
+- **Doppelter Filter:** Zeitraum + Service-Typ
+- **4 Detail-Tabellen (Top 20 pro Kategorie):**
+  - Ersatzteile: Teilenummer, Bezeichnung, Anzahl, Ø Preis, Gesamtkosten
+  - Arbeitslohn: Arbeitstyp, Anzahl Aufträge, Gesamtstunden, Ø Stundensatz
+  - Lackierung: Lackierte Teile, Anzahl, Ø Preis
+  - Materialien: Material-Typ, Anzahl, Gesamtmenge (mit Einheit), Ø Preis
+
+**Key Functions:**
+```javascript
+function calculateAndDisplayCosts() {
+    const period = document.getElementById('periodFilter').value;
+    const service = document.getElementById('serviceFilter').value;
+
+    let filtered = filterByPeriod(allFahrzeuge, period);
+    if (service !== 'all') {
+        filtered = filtered.filter(f => f.serviceTyp === service);
+    }
+
+    // Aggregate costs by category
+    const aggregated = {
+        ersatzteile: {},
+        arbeitslohn: {},
+        lackierung: {},
+        materialien: {}
+    };
+
+    filtered.forEach(f => {
+        const data = f.pdfImport?.editedData || {};
+
+        // Ersatzteile aggregation
+        if (data.ersatzteile) {
+            data.ersatzteile.forEach(item => {
+                const key = `${item.teilenummer}_${item.bezeichnung}`;
+                if (!aggregated.ersatzteile[key]) {
+                    aggregated.ersatzteile[key] = { ...item, count: 0, total: 0 };
+                }
+                aggregated.ersatzteile[key].count += parseInt(item.anzahl || 1);
+                aggregated.ersatzteile[key].total += parseFloat(item.gesamtpreis || 0);
+            });
+        }
+    });
+}
+```
+
+#### **3.3: steuerberater-export.html (1.015 Zeilen)**
+
+**Features:**
+- **3 Export-Varianten:**
+  1. **Umsatz-Übersicht:** Auftragsnummer, Datum, Service, Kennzeichen, Kunde, Umsatz, Kosten, Gewinn, Marge
+  2. **Kostenaufschlüsselung:** Alle Kategorien oder einzeln (Ersatzteile, Arbeitslohn, Lackierung, Materialien)
+  3. **Monatliche Übersicht:** Aggregierte Monatswerte für ein ganzes Jahr
+
+**CSV-Format:**
+- UTF-8 mit BOM (Excel-kompatibel)
+- Semikolon als Trennzeichen
+- Deutsches Zahlenformat (1234,56)
+- Deutsches Datumsformat (TT.MM.JJJJ)
+
+**Key Functions:**
+```javascript
+function exportUmsatz() {
+    const period = document.getElementById('periodUmsatz').value;
+    const filtered = filterByPeriod(allFahrzeuge, period);
+
+    // CSV Header
+    let csv = 'Auftragsnummer;Datum;Service;Kennzeichen;Kunde;Umsatz (Brutto);Kosten (Netto);Gewinn;Marge (%)\n';
+
+    // CSV Rows
+    filtered.forEach(f => {
+        const datum = formatDate(f.abgeschlossenAm.toDate());
+        const umsatz = parseFloat(f.gesamtsummeBrutto || 0);
+        const kosten = calculateNettoKosten(f);
+        const gewinn = umsatz - kosten;
+        const marge = umsatz > 0 ? ((gewinn / umsatz) * 100).toFixed(1) : '0';
+
+        csv += `${f.auftragsnummer};${datum};${f.serviceTyp};${f.kennzeichen};${f.kundenName};${formatNumber(umsatz)};${formatNumber(kosten)};${formatNumber(gewinn)};${marge}\n`;
+    });
+
+    downloadCSV(csv, `Umsatz_${period}_${werkstattId}.csv`);
+}
+
+function downloadCSV(content, filename) {
+    const BOM = '\uFEFF';  // UTF-8 BOM for Excel
+    const blob = new Blob([BOM + content], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+```
+
+#### **3.4: steuerberater-statistiken.html (218 → 926 Zeilen)**
+
+**Siehe Phase 4 unten für vollständige Chart.js Integration**
+
+---
+
+### **PHASE 4: Chart.js Integration**
+
+**Commit:** `d2f5ecd`
+**Files Modified:** 1 file (`steuerberater-statistiken.html`)
+**Lines Changed:** +743 insertions, -108 deletions
+
+**Chart.js Version:** 4.4.1 (CDN)
+```html
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+```
+
+#### **4 Interaktive Diagramme:**
+
+**1. Umsatz-Entwicklung (Line Chart - Full Width)**
+```javascript
+umsatzTrendChart = new Chart(ctx1, {
+    type: 'line',
+    data: {
+        labels: ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'],
+        datasets: [
+            {
+                label: 'Umsatz (Brutto)',
+                data: umsatzData,
+                borderColor: '#22c55e',
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                fill: true,
+                tension: 0.4
+            },
+            {
+                label: 'Kosten (Netto)',
+                data: kostenData,
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                fill: true,
+                tension: 0.4
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: true, position: 'top' },
+            tooltip: {
+                callbacks: {
+                    label: (context) => context.dataset.label + ': ' + formatCurrency(context.parsed.y)
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: { callback: (value) => formatCurrencyShort(value) }
+            }
+        }
+    }
+});
+```
+
+**2. Service-Verteilung (Doughnut Chart)**
+```javascript
+serviceVerteilungChart = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+        labels: serviceNames,
+        datasets: [{
+            data: serviceUmsatz,
+            backgroundColor: ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: true, position: 'right' },
+            tooltip: {
+                callbacks: {
+                    label: (context) => {
+                        const label = context.label || '';
+                        const value = formatCurrency(context.parsed);
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((context.parsed / total) * 100).toFixed(1);
+                        return `${label}: ${value} (${percentage}%)`;
+                    }
+                }
+            }
+        }
+    }
+});
+```
+
+**3. Gewinn & Marge (Dual-Axis Line Chart)**
+```javascript
+gewinnMargeChart = new Chart(ctx3, {
+    type: 'line',
+    data: {
+        labels: months,
+        datasets: [
+            {
+                label: 'Gewinn (€)',
+                data: gewinnData,
+                borderColor: '#22c55e',
+                yAxisID: 'y'
+            },
+            {
+                label: 'Marge (%)',
+                data: margeData,
+                borderColor: '#3b82f6',
+                yAxisID: 'y1'
+            }
+        ]
+    },
+    options: {
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: { callback: (value) => formatCurrencyShort(value) }
+            },
+            y1: {
+                position: 'right',
+                beginAtZero: true,
+                max: 100,
+                ticks: { callback: (value) => value + '%' },
+                grid: { drawOnChartArea: false }
+            }
+        }
+    }
+});
+```
+
+**4. Kosten-Aufschlüsselung (Stacked Bar Chart - Full Width)**
+```javascript
+kostenAnalyseChart = new Chart(ctx4, {
+    type: 'bar',
+    data: {
+        labels: months,
+        datasets: [
+            { label: 'Ersatzteile', data: ersatzteileData, backgroundColor: '#ff9800' },
+            { label: 'Arbeitslohn', data: arbeitslohnData, backgroundColor: '#2196F3' },
+            { label: 'Lackierung', data: lackierungData, backgroundColor: '#9C27B0' },
+            { label: 'Materialien', data: materialienData, backgroundColor: '#009688' }
+        ]
+    },
+    options: {
+        scales: {
+            x: { stacked: true },
+            y: { stacked: true, beginAtZero: true }
+        }
+    }
+});
+```
+
+**Data Aggregation:**
+```javascript
+function aggregateByMonth(fahrzeuge) {
+    const monthlyData = {};
+    for (let i = 0; i < 12; i++) {
+        monthlyData[i] = { count: 0, umsatz: 0, kosten: 0 };
+    }
+
+    fahrzeuge.forEach(f => {
+        if (!f.abgeschlossenAm) return;
+        const date = f.abgeschlossenAm.toDate();
+        const month = date.getMonth();
+
+        monthlyData[month].count++;
+        monthlyData[month].umsatz += parseFloat(f.gesamtsummeBrutto || 0);
+        monthlyData[month].kosten += calculateNettoKosten(f);
+    });
+
+    return monthlyData;
+}
+
+function aggregateByMonthWithDetails(fahrzeuge) {
+    const monthlyData = {};
+    for (let i = 0; i < 12; i++) {
+        monthlyData[i] = { ersatzteile: 0, arbeitslohn: 0, lackierung: 0, materialien: 0 };
+    }
+
+    fahrzeuge.forEach(f => {
+        if (!f.abgeschlossenAm) return;
+        const month = f.abgeschlossenAm.toDate().getMonth();
+        const data = f.pdfImport?.editedData || {};
+
+        if (data.ersatzteile) monthlyData[month].ersatzteile += data.ersatzteile.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+        if (data.arbeitslohn) monthlyData[month].arbeitslohn += data.arbeitslohn.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+        if (data.lackierung) monthlyData[month].lackierung += data.lackierung.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+        if (data.materialien) monthlyData[month].materialien += data.materialien.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+    });
+
+    return monthlyData;
+}
+```
+
+**Currency Formatting:**
+```javascript
+function formatCurrency(value) {
+    return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value);
+}
+
+function formatCurrencyShort(value) {
+    if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M €';
+    else if (value >= 1000) return (value / 1000).toFixed(0) + 'k €';
+    return value.toFixed(0) + ' €';
+}
+```
+
+**Update Pattern:**
+```javascript
+// 1. Create charts once (on page load)
+createAllCharts();
+
+// 2. Update all charts when period changes
+function updateAllCharts() {
+    const filtered = filterByPeriod(allFahrzeuge, currentPeriod);
+    updateUmsatzTrendChart(filtered);
+    updateServiceVerteilungChart(filtered);
+    updateGewinnMargeChart(filtered);
+    updateKostenAnalyseChart(filtered);
+}
+
+// 3. Individual chart updates (no destroy/recreate)
+function updateUmsatzTrendChart(fahrzeuge) {
+    const monthlyData = aggregateByMonth(fahrzeuge);
+    umsatzTrendChart.data.labels = months;
+    umsatzTrendChart.data.datasets[0].data = umsatzData;
+    umsatzTrendChart.data.datasets[1].data = kostenData;
+    umsatzTrendChart.update();  // Efficient update (no recreate)
+}
+```
+
+**Performance:**
+- ✅ Charts werden nur EINMAL initialisiert
+- ✅ Updates via `chart.update()` (kein destroy/recreate)
+- ✅ Firestore Query gecached
+
+---
+
+### **ZUSAMMENFASSUNG: Steuerberater-Dashboard**
+
+**Gesamt-Statistiken:**
+- **5 HTML-Seiten** (index.html + 4 Dashboard-Seiten)
+- **~4.000 Zeilen Code** (HTML + CSS + JavaScript)
+- **4 Commits** über 4 Phasen
+- **4 interaktive Charts** (Line, Doughnut, Dual-Axis, Stacked Bar)
+- **4 Firestore Collections** mit Read-Only Access
+- **3 Export-Formate** (CSV: Umsatz, Kosten, Monatlich)
+
+**Security:**
+- ✅ Neue Rolle "steuerberater" in firestore.rules
+- ✅ Read-Only Access (NO write permissions)
+- ✅ 4 Collections: fahrzeuge, kunden, mitarbeiter, zeiterfassung
+- ✅ Multi-Tenant Isolation (werkstattId)
+- ✅ Visual Feedback (Lock Icons + Toast Notifications)
+
+**Benefits:**
+- ✅ Steuerberater können Finanzdaten einsehen ohne Daten zu ändern
+- ✅ Interaktive Visualisierungen mit Chart.js
+- ✅ CSV-Export für Excel/DATEV
+- ✅ Period Selector (Monat, Quartal, Jahr, Gesamt)
+- ✅ Responsive Design (Mobile-First)
+
+---
+
+## 🆕 FEATURES: PDF-UPLOAD MIT AUTO-BEFÜLLUNG + ZENTRALE ERSATZTEILE-DB (2025-11-11)
 
 **Status:** ✅ **PRODUKTIONSREIF** - 3-Phasen Feature für DAT-PDF Automatisierung
 **Commits:**
