@@ -4735,6 +4735,9 @@
 
                 console.log(`✅ ${bestellungen.length} Bestellungen für Fahrzeug ${fahrzeugId} geladen (client-side sorted)`);
 
+                // Permission Check für Warenannahme-Button
+                const canManage = typeof window.canManageBestellungen === 'function' && window.canManageBestellungen();
+
                 // Tabelle erstellen
                 let html = `
                     <table style="width: 100%; border-collapse: collapse;">
@@ -4746,6 +4749,7 @@
                                 <th style="padding: 12px; text-align: right;">Gesamtpreis</th>
                                 <th style="padding: 12px; text-align: center;">Status</th>
                                 <th style="padding: 12px;">Bestellt</th>
+                                ${canManage ? '<th style="padding: 12px; text-align: center;">Warenannahme</th>' : ''}
                             </tr>
                         </thead>
                         <tbody>
@@ -4771,6 +4775,23 @@
 
                     const bestelltVon = bestellung.bestelltVon || 'Unbekannt';
 
+                    // Warenannahme Button (nur für status='bestellt' + Permission)
+                    let actionButton = '';
+                    if (bestellung.status === 'bestellt' && canManage) {
+                        actionButton = `
+                            <button onclick="markAsAngeliefertInModal('${bestellung.id}', '${fahrzeugId}')"
+                                    style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; margin: 0 auto;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                Angeliefert
+                            </button>
+                        `;
+                    } else if (bestellung.status === 'angeliefert') {
+                        // Zeige Angeliefert-Info
+                        const angeliefertAm = bestellung.angeliefertAm ? new Date(bestellung.angeliefertAm).toLocaleDateString('de-DE') : 'N/A';
+                        const angeliefertVon = bestellung.angeliefertVon || 'Unbekannt';
+                        actionButton = `<div style="font-size: 11px; color: #4caf50; text-align: center;">${angeliefertAm}<br>${angeliefertVon}</div>`;
+                    }
+
                     html += `
                         <tr style="border-bottom: 1px solid var(--color-border); background: ${bgColor};">
                             <td style="padding: 12px; font-family: 'Courier New', monospace; font-weight: 600;">${bestellung.etn || 'N/A'}</td>
@@ -4779,6 +4800,7 @@
                             <td style="padding: 12px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; color: #2196f3;">${(bestellung.gesamtpreis || 0).toFixed(2)} €</td>
                             <td style="padding: 12px; text-align: center;">${statusBadge}</td>
                             <td style="padding: 12px; font-size: 13px; color: var(--color-text-secondary);">${bestelltAm}<br><span style="font-size: 11px;">${bestelltVon}</span></td>
+                            ${canManage ? `<td style="padding: 12px; text-align: center;">${actionButton}</td>` : ''}
                         </tr>
                     `;
                 });
@@ -4793,6 +4815,48 @@
             } catch (error) {
                 console.error('❌ Fehler beim Laden der Bestellungen:', error);
                 container.innerHTML = `<p style="color: var(--color-error); padding: 20px;">❌ Fehler: ${error.message}</p>`;
+            }
+        }
+
+        async function markAsAngeliefertInModal(bestellungId, fahrzeugId) {
+            if (!confirm('Bestellung als angeliefert markieren?\n\nDies bestätigt die Warenannahme.')) {
+                return;
+            }
+
+            try {
+                console.log('📦 [WARENANNAHME] Markiere Bestellung als angeliefert:', bestellungId);
+
+                // User-Info abrufen
+                const currentUser = window.authManager?.getCurrentUser();
+                const userName = currentUser?.name || localStorage.getItem('userName') || 'Unbekannt';
+
+                // Firestore Update
+                await window.getCollection('bestellungen').doc(bestellungId).update({
+                    status: 'angeliefert',
+                    angeliefertAm: new Date().toISOString(),
+                    angeliefertVon: userName
+                });
+
+                console.log('✅ [WARENANNAHME] Status aktualisiert');
+
+                // Reload Bestellungen im Modal (aktualisiert Tabelle)
+                await loadBestellungenForModal(fahrzeugId);
+
+                // Success Notification
+                alert('✅ Bestellung als angeliefert markiert!\n\nWareneingang wurde erfasst.');
+
+                // Event emittieren (falls andere Komponenten benachrichtigt werden müssen)
+                if (typeof window.appEvents?.emit === 'function') {
+                    window.appEvents.emit('materialUpdated', {
+                        bestellungId,
+                        status: 'angeliefert',
+                        timestamp: new Date().toISOString()
+                    });
+                }
+
+            } catch (error) {
+                console.error('❌ [WARENANNAHME] Fehler beim Status-Update:', error);
+                alert(`❌ Fehler beim Markieren:\n\n${error.message}\n\nBitte erneut versuchen oder Support kontaktieren.`);
             }
         }
 
