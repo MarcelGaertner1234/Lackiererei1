@@ -2048,6 +2048,7 @@
 
                 // Speicherung
                 console.log('4️⃣ Speicherung starten...');
+                let materialRequestsCreated = 0; // Track PDF-imported material requests
                 try {
                     if (firebaseInitialized && firebaseApp) {
                         console.log('💾 Hybrid-Speicherung: Daten → Firestore, Fotos → LocalStorage');
@@ -2133,6 +2134,24 @@
 
                         await firebaseApp.saveFahrzeug(dataForFirestore);
                         console.log('   ✅ Fahrzeug in Firestore gespeichert');
+
+                        // ============================================
+                        // PDF-IMPORT: Ersatzteile als Material-Requests speichern
+                        // ============================================
+                        if (pdfData && pdfData.ersatzteile && pdfData.ersatzteile.length > 0) {
+                            console.log('   📦 PDF-Import: Speichere Ersatzteile als Material-Requests...');
+                            try {
+                                materialRequestsCreated = await savePdfErsatzteileAsRequests(
+                                    pdfData.ersatzteile,
+                                    annahmeData.kennzeichen
+                                );
+                                if (materialRequestsCreated > 0) {
+                                    console.log(`   ✅ ${materialRequestsCreated} Ersatzteile als Material-Requests gespeichert`);
+                                }
+                            } catch (error) {
+                                console.error('   ❌ Fehler beim Speichern der Ersatzteile:', error);
+                            }
+                        }
 
                         console.log('   d) Registriere Kunde und setze kundenId...');
                         try {
@@ -2366,7 +2385,17 @@
                 console.log('   ✅ Entwurf gelöscht');
 
                 // Success Message
-                document.getElementById('successMessage').style.display = 'block';
+                const successMessage = document.getElementById('successMessage');
+                if (materialRequestsCreated > 0) {
+                    successMessage.innerHTML = `✅ Fahrzeug erfolgreich aufgenommen!<br>
+                        <small style="font-size: 0.9em; margin-top: 8px; display: block;">
+                            📦 ${materialRequestsCreated} Ersatzteil${materialRequestsCreated > 1 ? 'e' : ''} aus PDF importiert
+                            → Siehe <a href="material.html" style="color: #4f46e5; text-decoration: underline;">Material-Übersicht</a>
+                        </small>`;
+                } else {
+                    successMessage.innerHTML = '✅ Fahrzeug erfolgreich aufgenommen!';
+                }
+                successMessage.style.display = 'block';
                 console.log('   ✅ Success-Message angezeigt');
 
                 // Auto-Redirect zur Übersicht nach 2 Sekunden
@@ -2924,56 +2953,105 @@
         }
 
         function extractFahrzeugdaten(text, extractedData) {
-            // Hersteller: "Hersteller: Peugeot"
-            const herstellerMatch = text.match(/Hersteller:\s*(\w+)/i);
-            if (herstellerMatch) {
+            // Hersteller: "Hersteller: Peugeot" oder "Hersteller Peugeot"
+            const herstellerMatch = text.match(/Hersteller:?\s*([A-ZÄÖÜa-zäöüß]+)/i);
+            if (herstellerMatch && !extractedData.fahrzeugdaten.marke) {
                 extractedData.fahrzeugdaten.marke = herstellerMatch[1];
+                console.log('✅ Marke gefunden:', herstellerMatch[1]);
             }
 
-            // Haupttyp: "Haupttyp: 508 SW (10.2018->)"
-            const haupttypMatch = text.match(/Haupttyp:\s*([^\n]+)/i);
-            if (haupttypMatch) {
+            // Haupttyp: "Haupttyp: 508 SW (10.2018->)" oder "Typ: 508 SW"
+            const haupttypMatch = text.match(/(?:Haupt)?[Tt]yp:?\s*([^\n\r]{3,50}?)(?:\s+\(|\s+$)/i);
+            if (haupttypMatch && !extractedData.fahrzeugdaten.modell) {
                 extractedData.fahrzeugdaten.modell = haupttypMatch[1].trim().split(' ').slice(0, 3).join(' ');
+                console.log('✅ Modell gefunden:', extractedData.fahrzeugdaten.modell);
             }
 
-            // VIN: "VIN: VR3FCYHZTPY554388"
-            const vinMatch = text.match(/VIN[:\s]+([A-HJ-NPR-Z0-9]{17})/i);
-            if (vinMatch) {
+            // VIN: "VIN: VR3FCYHZTPY554388" oder "Fahrgestell-Nr. VR3FCYHZTPY554388"
+            const vinMatch = text.match(/(?:VIN|Fahrgestell[-\s]?Nr\.?)[:\s]+([A-HJ-NPR-Z0-9]{17})/i);
+            if (vinMatch && !extractedData.fahrzeugdaten.vin) {
                 extractedData.fahrzeugdaten.vin = vinMatch[1];
+                console.log('✅ VIN gefunden:', vinMatch[1]);
             }
 
-            // Kontrollschild (Kennzeichen): "Kontrollschild ROW-M 9044"
-            const kennzeichenMatch = text.match(/Kontrollschild\s+([A-Z]{1,3}[-\s][A-Z]{1,2}\s?\d{1,4})/i);
-            if (kennzeichenMatch) {
-                extractedData.fahrzeugdaten.kennzeichen = kennzeichenMatch[1].replace(/\s+/g, ' ');
+            // Kennzeichen: Multiple Patterns
+            // Pattern 1: "Kontrollschild ROW-M 9044"
+            // Pattern 2: "Kennzeichen: MOS-CG 1234"
+            // Pattern 3: "amtl. Kennzeichen MOS CG 1234"
+            const kennzeichenPatterns = [
+                /(?:Kontrollschild|Kennzeichen|amtl\.\s+Kennzeichen)[:\s]+([A-ZÄÖÜ]{1,3}[-\s][A-ZÄÖÜ]{1,2}\s?\d{1,4}[A-Z]?)/i,
+                /([A-ZÄÖÜ]{1,3}[-\s][A-ZÄÖÜ]{1,2}\s?\d{1,4}[A-Z]?)\s+(?:Kennzeichen|Kontrollschild)/i
+            ];
+
+            for (const pattern of kennzeichenPatterns) {
+                const match = text.match(pattern);
+                if (match && !extractedData.fahrzeugdaten.kennzeichen) {
+                    extractedData.fahrzeugdaten.kennzeichen = match[1].replace(/\s+/g, ' ').trim();
+                    console.log('✅ Kennzeichen gefunden:', extractedData.fahrzeugdaten.kennzeichen);
+                    break;
+                }
             }
 
-            // Farbcode: "Farbcode: B0NVL/B0MM0/EVL"
-            const farbcodeMatch = text.match(/Farbcode:\s*([A-Z0-9\/]+)/i);
-            if (farbcodeMatch) {
+            // Farbcode: "Farbcode: B0NVL/B0MM0/EVL" oder "Farbnummer: B0NVL"
+            const farbcodeMatch = text.match(/(?:Farbcode|Farbnummer|Lackcode)[:\s]+([A-Z0-9\/\-]+)/i);
+            if (farbcodeMatch && !extractedData.fahrzeugdaten.farbcode) {
                 extractedData.fahrzeugdaten.farbcode = farbcodeMatch[1];
+                console.log('✅ Farbcode gefunden:', farbcodeMatch[1]);
             }
 
-            // Fahrzeugfarbe: "LACKIERUNG PLATINIUM-GRAU/TYP"
-            const farbMatch = text.match(/LACKIERUNG\s+([A-Z\-]+)/i);
-            if (farbMatch) {
-                extractedData.fahrzeugdaten.farbname = farbMatch[1].replace(/-/g, ' ');
+            // Fahrzeugfarbe: "LACKIERUNG PLATINIUM-GRAU/TYP" oder "Farbe: Grau"
+            const farbMatch = text.match(/(?:LACKIERUNG|Farbe)[:\s]+([A-ZÄÖÜ\-\s]+?)(?:\s+\/|\s+TYP|$)/i);
+            if (farbMatch && !extractedData.fahrzeugdaten.farbname) {
+                extractedData.fahrzeugdaten.farbname = farbMatch[1].trim().replace(/-/g, ' ');
+                console.log('✅ Farbname gefunden:', extractedData.fahrzeugdaten.farbname);
             }
         }
 
         function extractErsatzteile(text, extractedData) {
+            console.log('🔍 Extracting Ersatzteile from PDF...');
+
             // DAT-Tabelle Regex (ETN | Benennung | Anzahl | Preis/Stück | Gesamtpreis)
-            const ersatzteilRegex = /(\d{10})\s+([A-Z\s\.\,\-]+?)\s+(\d+)\s+([\d\']+\.\d{2})\s+([\d\']+\.\d{2})/g;
+            // Improved pattern: Support mixed case, German characters, more flexible whitespace
+            const ersatzteilRegex = /(\d{10})\s+([A-ZÄÖÜa-zäöüß0-9\s\.\,\-\(\)\/]+?)\s+(\d+)\s+([\d\'\.\,\s]+)\s+([\d\'\.\,\s]+)/g;
 
             let match;
+            let count = 0;
             while ((match = ersatzteilRegex.exec(text)) !== null) {
-                extractedData.ersatzteile.push({
-                    etn: match[1].trim(),
-                    benennung: match[2].trim(),
-                    anzahl: parseInt(match[3]),
-                    einzelpreis: parseFloat(match[4].replace(/'/g, '').replace(',', '.')),
-                    gesamtpreis: parseFloat(match[5].replace(/'/g, '').replace(',', '.'))
-                });
+                const etn = match[1].trim();
+                const benennung = match[2].trim();
+                const anzahl = parseInt(match[3]);
+
+                // Handle different number formats (Swiss: 1'234.50, German: 1.234,50)
+                const einzelpreisStr = match[4].replace(/\s/g, '').replace(/'/g, '').replace(',', '.');
+                const gesamtpreisStr = match[5].replace(/\s/g, '').replace(/'/g, '').replace(',', '.');
+
+                const einzelpreis = parseFloat(einzelpreisStr);
+                const gesamtpreis = parseFloat(gesamtpreisStr);
+
+                // Validate extracted data
+                if (etn && benennung && anzahl > 0 && einzelpreis > 0) {
+                    extractedData.ersatzteile.push({
+                        etn: etn,
+                        benennung: benennung,
+                        anzahl: anzahl,
+                        einzelpreis: einzelpreis,
+                        gesamtpreis: gesamtpreis
+                    });
+                    count++;
+                    console.log(`✅ Ersatzteil ${count} gefunden:`, {
+                        etn,
+                        benennung,
+                        anzahl,
+                        einzelpreis: einzelpreis.toFixed(2),
+                        gesamtpreis: gesamtpreis.toFixed(2)
+                    });
+                }
+            }
+
+            if (count === 0) {
+                console.warn('⚠️ Keine Ersatzteile gefunden. Überprüfe PDF-Format.');
+            } else {
+                console.log(`✅ Insgesamt ${count} Ersatzteile extrahiert`);
             }
         }
 
@@ -3032,6 +3110,103 @@
             if (fd.farbname) {
                 document.getElementById('farbname').value = fd.farbname;
             }
+        }
+
+        /**
+         * Speichert PDF-extrahierte Ersatzteile als Material-Requests
+         * @param {Array} ersatzteile - Array von Ersatzteil-Objekten aus PDF
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs für Zuordnung
+         * @returns {Promise<number>} Anzahl der erstellten Requests
+         */
+        async function savePdfErsatzteileAsRequests(ersatzteile, kennzeichen) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile zum Speichern');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`📦 Speichere ${ersatzteile.length} Ersatzteile als Material-Requests...`);
+
+            const today = new Date().toISOString().split('T')[0];
+            const userName = localStorage.getItem('userName') || 'Admin';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            // Kalender-Einträge sammeln
+            const calendarEntries = [];
+
+            for (const teil of ersatzteile) {
+                try {
+                    const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    // Material-Request Daten
+                    const requestData = {
+                        id: requestId,
+                        photo: null, // Kein Foto bei PDF-Import
+                        description: `ETN: ${teil.etn} - ${teil.benennung} (Anzahl: ${teil.anzahl}, Einzelpreis: ${teil.einzelpreis.toFixed(2)} €)`,
+                        requestedBy: userName,
+                        timestamp: new Date().toISOString(),
+                        status: 'pending',
+                        // Zusätzliche Daten für PDF-Import
+                        source: 'pdf-import',
+                        kennzeichen: kennzeichen || 'Unbekannt',
+                        etn: teil.etn,
+                        benennung: teil.benennung,
+                        anzahl: teil.anzahl,
+                        einzelpreis: teil.einzelpreis,
+                        gesamtpreis: teil.gesamtpreis
+                    };
+
+                    // In Batch hinzufügen
+                    const docRef = window.getCollection('materialRequests').doc(requestId);
+                    batch.set(docRef, requestData);
+
+                    // Kalender-Eintrag vorbereiten
+                    calendarEntries.push({
+                        type: 'material',
+                        requestId: requestId,
+                        description: `PDF-Import: ${teil.benennung}`,
+                        requestedBy: userName,
+                        zeit: new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+                    });
+
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Erstellen von Request für Teil:', teil, error);
+                }
+            }
+
+            // Batch commit
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Material-Requests erfolgreich erstellt`);
+
+                // Kalender-Einträge hinzufügen
+                const calendarDoc = await window.getCollection('calendar').doc(today).get();
+
+                if (calendarDoc.exists) {
+                    const existingEntries = calendarDoc.data().entries || [];
+                    await window.getCollection('calendar').doc(today).update({
+                        entries: [...existingEntries, ...calendarEntries]
+                    });
+                } else {
+                    await window.getCollection('calendar').doc(today).set({
+                        entries: calendarEntries
+                    });
+                }
+
+                console.log(`✅ ${calendarEntries.length} Kalender-Einträge erstellt`);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern der Material-Requests:', error);
+                return 0;
+            }
+
+            return successCount;
         }
 
         function removePdf() {

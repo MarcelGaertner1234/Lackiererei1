@@ -1085,6 +1085,30 @@
                        oninput="updateBestellPreis()" />
             </div>
 
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; color: var(--color-text-primary); font-weight: 600; margin-bottom: 8px;">
+                    <svg data-feather="truck" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle; margin-right: 4px;"></svg>
+                    Zuordnung zu Fahrzeug (optional):
+                </label>
+                <select id="bestellFahrzeug"
+                        style="
+                            width: 100%;
+                            padding: 12px;
+                            border-radius: 12px;
+                            border: 2px solid var(--color-border-glass);
+                            background: var(--color-surface);
+                            color: var(--color-text-primary);
+                            font-size: 14px;
+                            font-weight: 600;
+                            cursor: pointer;
+                        ">
+                    <option value="">Kein Fahrzeug zugeordnet</option>
+                </select>
+                <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;">
+                    💡 Für Kanban-Board Anzeige
+                </div>
+            </div>
+
             <div style="margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 12px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                     <span style="color: var(--color-text-secondary);">Einzelpreis:</span>
@@ -1825,6 +1849,43 @@
         };
 
         /**
+         * Lädt offene Fahrzeuge für Bestellung-Zuordnung
+         * @returns {Promise<void>}
+         */
+        async function loadFahrzeugeForBestellung() {
+            const select = document.getElementById('bestellFahrzeug');
+            select.innerHTML = '<option value="">Kein Fahrzeug zugeordnet</option>';
+
+            try {
+                if (!window.db || !window.firebaseInitialized) {
+                    console.warn('⚠️ Firebase nicht initialisiert - kann Fahrzeuge nicht laden');
+                    return;
+                }
+
+                // Lade Fahrzeuge mit Status != "abgeschlossen"
+                const snapshot = await window.getCollection('fahrzeuge')
+                    .where('status', '!=', 'abgeschlossen')
+                    .orderBy('status')
+                    .orderBy('datum', 'desc')
+                    .get();
+
+                console.log(`📋 ${snapshot.size} offene Fahrzeuge geladen`);
+
+                snapshot.forEach(doc => {
+                    const fahrzeug = doc.data();
+                    const option = document.createElement('option');
+                    option.value = fahrzeug.id;
+                    option.dataset.kennzeichen = fahrzeug.kennzeichen;
+                    option.textContent = `${fahrzeug.kennzeichen} - ${fahrzeug.marke} ${fahrzeug.modell} (${fahrzeug.status})`;
+                    select.appendChild(option);
+                });
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Fahrzeuge:', error);
+            }
+        }
+
+        /**
          * Öffnet Bestell-Modal für ein Ersatzteil
          * @param {string} etn - ETN des Ersatzteils
          * @param {string} benennung - Benennung des Ersatzteils
@@ -1838,6 +1899,9 @@
             document.getElementById('bestellMenge').value = 1;
 
             updateBestellPreis();
+
+            // Lade Fahrzeuge für Dropdown
+            loadFahrzeugeForBestellung();
 
             const modal = document.getElementById('bestellModal');
             modal.style.display = 'flex';
@@ -1887,6 +1951,13 @@
             const currentUser = window.authManager?.getCurrentUser();
             const userName = currentUser?.name || localStorage.getItem('userName') || 'Unbekannt';
 
+            // Get selected fahrzeug (optional)
+            const fahrzeugSelect = document.getElementById('bestellFahrzeug');
+            const selectedFahrzeugId = fahrzeugSelect.value || null;
+            const selectedKennzeichen = selectedFahrzeugId
+                ? fahrzeugSelect.options[fahrzeugSelect.selectedIndex].dataset.kennzeichen
+                : null;
+
             const bestellungData = {
                 id: bestellungId,
                 etn: currentBestellung.etn,
@@ -1900,7 +1971,10 @@
                 angeliefertAm: null,
                 angeliefertVon: null,
                 werkstattId: window.werkstattId || 'mosbach',
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                // Fahrzeug-Zuordnung (optional)
+                fahrzeugId: selectedFahrzeugId,
+                kennzeichen: selectedKennzeichen
             };
 
             try {
@@ -2070,6 +2144,15 @@
                                 <span><svg data-feather="calendar"></svg> ${bestelltAmStr}</span>
                                 <span><svg data-feather="clock"></svg> ${bestelltAmTime}</span>
                             </div>
+
+                            ${bestellung.kennzeichen ? `
+                                <div style="margin-top: 12px; padding: 10px; background: rgba(79, 70, 229, 0.1); border-radius: 10px; border-left: 4px solid var(--color-primary);">
+                                    <div style="font-size: 13px; color: var(--color-primary); font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                        <svg data-feather="truck" style="width: 16px; height: 16px;"></svg>
+                                        Zugeordnet zu: ${bestellung.kennzeichen}
+                                    </div>
+                                </div>
+                            ` : ''}
 
                             ${angeliefertInfo}
 

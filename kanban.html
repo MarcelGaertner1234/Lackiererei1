@@ -3003,6 +3003,69 @@
         }
 
         // Kanban-Karte erstellen
+        /**
+         * Lädt Material-Status für ein Fahrzeug und zeigt Badge an
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         */
+        async function loadMaterialStatusForCard(fahrzeugId) {
+            try {
+                if (!window.db || !window.firebaseInitialized) {
+                    return; // Kein Badge wenn Firebase nicht verfügbar
+                }
+
+                // Query: Hole alle Bestellungen für dieses Fahrzeug
+                const snapshot = await window.getCollection('bestellungen')
+                    .where('fahrzeugId', '==', String(fahrzeugId))
+                    .get();
+
+                if (snapshot.empty) {
+                    return; // Kein Badge wenn keine Bestellungen
+                }
+
+                // Zähle Teile nach Status
+                const bestellungen = [];
+                snapshot.forEach(doc => bestellungen.push(doc.data()));
+
+                const totalTeile = bestellungen.length;
+                const bestelltTeile = bestellungen.filter(b => b.status === 'bestellt').length;
+                const angeliefertTeile = bestellungen.filter(b => b.status === 'angeliefert').length;
+
+                // Badge-Container
+                const badgeContainer = document.getElementById(`materialStatus_${fahrzeugId}`);
+                if (!badgeContainer) return;
+
+                // Badge-Styling basierend auf Status
+                let badgeClass = 'dringlichkeit-badge';
+                let badgeIcon = '';
+                let badgeText = '';
+                let badgeBackground = '';
+
+                if (bestelltTeile > 0) {
+                    // ⚠️ Warnung: Teile fehlen noch
+                    badgeClass += ' diese-woche';
+                    badgeIcon = '⚠️';
+                    badgeText = `${bestelltTeile} Teil${bestelltTeile > 1 ? 'e' : ''} bestellt`;
+                    badgeBackground = 'rgba(255, 152, 0, 0.7)'; // Orange
+                } else if (angeliefertTeile > 0) {
+                    // ✅ Alle Teile angeliefert
+                    badgeIcon = '✅';
+                    badgeText = `${angeliefertTeile} Teil${angeliefertTeile > 1 ? 'e' : ''} angeliefert`;
+                    badgeBackground = 'rgba(76, 175, 80, 0.7)'; // Grün
+                }
+
+                // Badge anzeigen
+                badgeContainer.innerHTML = `
+                    <div class="${badgeClass}" style="background: ${badgeBackground}; backdrop-filter: blur(8px); margin-bottom: 8px; font-size: 10px; padding: 4px 8px;">
+                        ${badgeIcon} ${badgeText}
+                    </div>
+                `;
+                badgeContainer.style.display = 'block';
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden von Material-Status:', error);
+            }
+        }
+
         function createKanbanCard(fahrzeug) {
             const card = document.createElement('div');
             card.className = 'kanban-card';
@@ -3257,6 +3320,7 @@
                 ${dringlichkeitBadge}
                 ${abholungBadge}
                 ${bearbeitungsBadge}
+                <div id="materialStatus_${fahrzeug.id}" class="material-status-badge" style="display: none;"></div>
                 <div class="card-kennzeichen">${fahrzeug.kennzeichen}</div>
                 <div class="card-info">👤 <span class="card-kunde">${fahrzeug.kundenname}</span></div>
                 <div class="card-info">🚗 ${fahrzeug.marke} ${fahrzeug.modell}</div>
@@ -3267,6 +3331,9 @@
                 </button>
                 ${bereitButton}
             `;
+
+            // Load Material-Status asynchronously (non-blocking)
+            loadMaterialStatusForCard(fahrzeug.id);
 
             // Click Event - Details anzeigen (öffnet Detail-Modal in liste.html)
             const cardClickHandler = () => {
