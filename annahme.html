@@ -1232,6 +1232,40 @@
                     </table>
                 </div>
 
+                <!-- MATERIALIEN TABELLE (Permanent, Editierbar) -->
+                <div id="materialienSection" style="margin-top: 20px; padding: 15px; background: rgba(255, 152, 0, 0.1); border-radius: 8px; border-left: 4px solid #ff9800;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="color: #ff9800; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+                            <svg data-feather="package" style="width: 20px; height: 20px;"></svg>
+                            Materialien (<span id="materialienCount">0</span>)
+                        </h4>
+                        <button type="button" id="addMaterialienBtn" onclick="addMaterialienRow()" style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: #ff9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s;">
+                            <svg data-feather="plus" style="width: 16px; height: 16px;"></svg>
+                            Material hinzufügen
+                        </button>
+                    </div>
+                    <table id="materialienTable" style="width: 100%; border-collapse: collapse; font-size: 13px; background: white; border-radius: 4px; overflow: hidden;">
+                        <thead style="background: rgba(255, 152, 0, 0.1);">
+                            <tr>
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ff9800;">Material-Typ</th>
+                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ff9800;">Menge</th>
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #ff9800;">Einheit</th>
+                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ff9800;">Einheitspreis (€)</th>
+                                <th style="padding: 10px; text-align: right; border-bottom: 2px solid #ff9800;">Gesamtpreis</th>
+                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid #ff9800; width: 60px;">Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="materialienTableBody"></tbody>
+                        <tfoot style="background: rgba(255, 152, 0, 0.15); font-weight: bold;">
+                            <tr>
+                                <td colspan="4" style="padding: 10px; text-align: right; border-top: 2px solid #ff9800;">SUMME:</td>
+                                <td id="materialienTotal" style="padding: 10px; text-align: right; color: #ff9800; font-size: 1.1em; border-top: 2px solid #ff9800;">0.00 €</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
                 <!-- GESAMTSUMME (GRAND TOTAL) -->
                 <div id="gesamtsummePreview" style="display: none; margin-top: 25px; padding: 20px; background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 165, 0, 0.15)); border-radius: 12px; border: 3px solid #ffa500; box-shadow: 0 4px 12px rgba(255, 165, 0, 0.2);">
                     <h3 style="color: #ff8c00; margin: 0 0 15px 0; display: flex; align-items: center; gap: 10px;">
@@ -1495,6 +1529,12 @@
                             <input type="number" id="kostenLackierung" class="form-input" placeholder="0.00" step="0.01" min="0" readonly style="background: #f5f5f5;">
                             <small style="color: var(--color-text-tertiary);">Lackierarbeiten</small>
                         </div>
+
+                        <div class="form-group">
+                            <label for="kostenMaterialien" class="form-label">📦 Materialien (Netto)</label>
+                            <input type="number" id="kostenMaterialien" class="form-input" placeholder="0.00" step="0.01" min="0" readonly style="background: #f5f5f5;">
+                            <small style="color: var(--color-text-tertiary);">Folien, Pflegeprodukte, etc.</small>
+                        </div>
                     </div>
 
                     <!-- Netto-Summe -->
@@ -1734,6 +1774,7 @@
             const serviceTyp = document.getElementById('serviceTyp').value;
             const lackschadenWert = document.getElementById('lackschaden').value;
             const lackierDiv = document.getElementById('lackierung-felder');
+            const lackierungSection = document.getElementById('lackierungSection');
 
             if (!lackierDiv) return;
 
@@ -1741,7 +1782,8 @@
             if (serviceTyp === 'dellen') {
                 if (lackschadenWert === 'ja') {
                     lackierDiv.style.display = 'block';
-                    console.log('🎨 Lackier-Felder angezeigt (Dellen + Lackschaden)');
+                    if (lackierungSection) lackierungSection.style.display = 'block'; // NEU: Lackierung-TABELLE einblenden
+                    console.log('🎨 Lackier-Felder UND Lackierung-Tabelle angezeigt (Dellen + Lackschaden)');
 
                     // Farbnummer PFLICHT machen
                     const farbnummerInput = document.getElementById('farbnummer');
@@ -1750,7 +1792,8 @@
                     }
                 } else {
                     lackierDiv.style.display = 'none';
-                    console.log('🔧 Lackier-Felder versteckt (Dellen ohne Lackschaden)');
+                    if (lackierungSection) lackierungSection.style.display = 'none'; // NEU: Lackierung-TABELLE ausblenden
+                    console.log('🔧 Lackier-Felder UND Lackierung-Tabelle versteckt (Dellen ohne Lackschaden)');
 
                     // Farbnummer OPTIONAL machen
                     const farbnummerInput = document.getElementById('farbnummer');
@@ -1856,30 +1899,32 @@
             const ersatzteileSection = document.getElementById('ersatzteileSection');
             const arbeitslohnSection = document.getElementById('arbeitslohnSection');
             const lackierungSection = document.getElementById('lackierungSection');
+            const materialienSection = document.getElementById('materialienSection');
 
             // Service-Matrix: Welche Tabellen für welchen Service?
             const tabellenConfig = {
-                'lackier': { ersatzteile: true, arbeitslohn: true, lackierung: true },
-                'reifen': { ersatzteile: true, arbeitslohn: true, lackierung: false },
-                'mechanik': { ersatzteile: true, arbeitslohn: true, lackierung: false },
-                'pflege': { ersatzteile: false, arbeitslohn: true, lackierung: false },
-                'tuev': { ersatzteile: false, arbeitslohn: true, lackierung: false },
-                'versicherung': { ersatzteile: true, arbeitslohn: true, lackierung: true },
-                'glas': { ersatzteile: true, arbeitslohn: true, lackierung: false },
-                'klima': { ersatzteile: true, arbeitslohn: true, lackierung: false },
-                'dellen': { ersatzteile: false, arbeitslohn: true, lackierung: false }, // Lackierung conditional via toggleDellenLackierung()
-                'folierung': { ersatzteile: false, arbeitslohn: true, lackierung: true }, // Folie als "Material" in Lackierung-Tabelle
-                'steinschutz': { ersatzteile: false, arbeitslohn: true, lackierung: true }, // Steinschutzfolie
-                'werbebeklebung': { ersatzteile: false, arbeitslohn: true, lackierung: true } // Werbematerial
+                'lackier': { ersatzteile: true, arbeitslohn: true, lackierung: true, materialien: false },
+                'reifen': { ersatzteile: true, arbeitslohn: true, lackierung: false, materialien: false },
+                'mechanik': { ersatzteile: true, arbeitslohn: true, lackierung: false, materialien: false },
+                'pflege': { ersatzteile: false, arbeitslohn: true, lackierung: false, materialien: true }, // Pflegeprodukte
+                'tuev': { ersatzteile: false, arbeitslohn: true, lackierung: false, materialien: false },
+                'versicherung': { ersatzteile: true, arbeitslohn: true, lackierung: true, materialien: false },
+                'glas': { ersatzteile: true, arbeitslohn: true, lackierung: false, materialien: false },
+                'klima': { ersatzteile: true, arbeitslohn: true, lackierung: false, materialien: false },
+                'dellen': { ersatzteile: false, arbeitslohn: true, lackierung: false, materialien: false }, // Lackierung conditional via toggleDellenLackierung()
+                'folierung': { ersatzteile: false, arbeitslohn: true, lackierung: true, materialien: true }, // HYBRID: Lackierung + Materialien
+                'steinschutz': { ersatzteile: false, arbeitslohn: true, lackierung: true, materialien: true }, // HYBRID: Lackierung + Materialien
+                'werbebeklebung': { ersatzteile: false, arbeitslohn: true, lackierung: true, materialien: true } // HYBRID: Lackierung + Materialien
             };
 
             // Default: Alle anzeigen (für unbekannte Services oder "alle")
-            const config = tabellenConfig[serviceTyp] || { ersatzteile: true, arbeitslohn: true, lackierung: true };
+            const config = tabellenConfig[serviceTyp] || { ersatzteile: true, arbeitslohn: true, lackierung: true, materialien: false };
 
             // Tabellen ein/ausblenden
             if (ersatzteileSection) ersatzteileSection.style.display = config.ersatzteile ? 'block' : 'none';
             if (arbeitslohnSection) arbeitslohnSection.style.display = config.arbeitslohn ? 'block' : 'none';
             if (lackierungSection) lackierungSection.style.display = config.lackierung ? 'block' : 'none';
+            if (materialienSection) materialienSection.style.display = config.materialien ? 'block' : 'none';
 
             // Dellen-Spezial-Fall: Lackierung conditional basierend auf "Lackschaden"
             if (serviceTyp === 'dellen') {
@@ -2342,13 +2387,15 @@
                 console.log('   Ersatzteile (global):', ersatzteileData.length, 'Zeilen');
                 console.log('   Arbeitslohn (global):', arbeitslohnData.length, 'Zeilen');
                 console.log('   Lackierung (global):', lackierungData.length, 'Zeilen');
+                console.log('   Materialien (global):', materialienData.length, 'Zeilen');
                 console.log('   In annahmeData.pdfImport.editedData:', {
                     ersatzteile: annahmeData.pdfImport?.editedData?.ersatzteile?.length || 0,
                     arbeitslohn: annahmeData.pdfImport?.editedData?.arbeitslohn?.length || 0,
-                    lackierung: annahmeData.pdfImport?.editedData?.lackierung?.length || 0
+                    lackierung: annahmeData.pdfImport?.editedData?.lackierung?.length || 0,
+                    materialien: annahmeData.pdfImport?.editedData?.materialien?.length || 0
                 });
 
-                const totalRows = ersatzteileData.length + arbeitslohnData.length + lackierungData.length;
+                const totalRows = ersatzteileData.length + arbeitslohnData.length + lackierungData.length + materialienData.length;
                 if (totalRows > 0) {
                     console.log('✅ Tabellen-Daten vorhanden und bereit für Firestore');
                 } else {
@@ -2518,7 +2565,8 @@
                                 editedData: {
                                     ersatzteile: JSON.parse(JSON.stringify(ersatzteileData)),
                                     arbeitslohn: JSON.parse(JSON.stringify(arbeitslohnData)),
-                                    lackierung: JSON.parse(JSON.stringify(lackierungData))
+                                    lackierung: JSON.parse(JSON.stringify(lackierungData)),
+                                    materialien: JSON.parse(JSON.stringify(materialienData))
                                 },
                                 manualPriceOverride: document.getElementById('manualPriceOverride')?.checked || false
                             };
@@ -2526,15 +2574,17 @@
                             console.log('✅ editedData wiederhergestellt:', {
                                 ersatzteile: dataForFirestore.pdfImport.editedData.ersatzteile.length,
                                 arbeitslohn: dataForFirestore.pdfImport.editedData.arbeitslohn.length,
-                                lackierung: dataForFirestore.pdfImport.editedData.lackierung.length
+                                lackierung: dataForFirestore.pdfImport.editedData.lackierung.length,
+                                materialien: dataForFirestore.pdfImport.editedData.materialien.length
                             });
                         }
 
                         // Zusätzliche Validierung: Warnen wenn Daten verloren gegangen sind
-                        const totalRows = ersatzteileData.length + arbeitslohnData.length + lackierungData.length;
+                        const totalRows = ersatzteileData.length + arbeitslohnData.length + lackierungData.length + materialienData.length;
                         const savedRows = (dataForFirestore.pdfImport.editedData.ersatzteile?.length || 0) +
                                           (dataForFirestore.pdfImport.editedData.arbeitslohn?.length || 0) +
-                                          (dataForFirestore.pdfImport.editedData.lackierung?.length || 0);
+                                          (dataForFirestore.pdfImport.editedData.lackierung?.length || 0) +
+                                          (dataForFirestore.pdfImport.editedData.materialien?.length || 0);
 
                         if (totalRows > 0 && savedRows === 0) {
                             console.error('⚠️⚠️⚠️ WARNUNG: Tabellen-Daten gehen verloren!');
@@ -4649,18 +4699,21 @@
             const ersatzteileSumme = ersatzteileData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const arbeitslohnSumme = arbeitslohnData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const lackierungSumme = lackierungData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
+            const materialienSumme = materialienData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
 
-            // Update alle 3 Kostenfelder
+            // Update alle 4 Kostenfelder
             const kostenErsatzteile = document.getElementById('kostenErsatzteile');
             const kostenArbeitslohn = document.getElementById('kostenArbeitslohn');
             const kostenLackierung = document.getElementById('kostenLackierung');
+            const kostenMaterialien = document.getElementById('kostenMaterialien');
 
             if (kostenErsatzteile) kostenErsatzteile.value = ersatzteileSumme.toFixed(2);
             if (kostenArbeitslohn) kostenArbeitslohn.value = arbeitslohnSumme.toFixed(2);
             if (kostenLackierung) kostenLackierung.value = lackierungSumme.toFixed(2);
+            if (kostenMaterialien) kostenMaterialien.value = materialienSumme.toFixed(2);
 
             // Netto-Summe berechnen
-            const nettoSumme = ersatzteileSumme + arbeitslohnSumme + lackierungSumme;
+            const nettoSumme = ersatzteileSumme + arbeitslohnSumme + lackierungSumme + materialienSumme;
             const summeNetto = document.getElementById('summeNetto');
             if (summeNetto) summeNetto.value = nettoSumme.toFixed(2);
 
@@ -4788,6 +4841,11 @@
         // ========================================
         let lackierungData = [];
 
+        // ========================================
+        // MATERIALIEN EDITABLE TABLE
+        // ========================================
+        let materialienData = [];
+
         /**
          * Rendert Lackierung-Preview (Painting Work) - Lädt Daten in editierbare Tabelle
          * @param {Array} lackierung - Array von Lackierung-Objekten aus PDF
@@ -4877,6 +4935,108 @@
             const summe = lackierungData.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
             document.getElementById('lackierungTotal').textContent = summe.toFixed(2) + ' €';
             document.getElementById('lackierungCount').textContent = lackierungData.length;
+        }
+
+        // ========================================
+        // MATERIALIEN TABLE FUNCTIONS
+        // ========================================
+
+        /**
+         * Rendert Materialien-Preview - Lädt Daten in editierbare Tabelle
+         * @param {Array} materialien - Array von Materialien-Objekten aus PDF
+         */
+        function renderMaterialienPreview(materialien) {
+            if (materialien && materialien.length > 0) {
+                materialien.forEach(item => addMaterialienRow(item));
+                console.log(`✅ ${materialien.length} Materialien-Einträge in Tabelle geladen`);
+            }
+        }
+
+        function addMaterialienRow(data = {}) {
+            const rowIndex = materialienData.length;
+            const item = {
+                materialTyp: data.materialTyp || '',
+                menge: data.menge || 0,
+                einheit: data.einheit || 'm²',
+                einheitspreis: data.einheitspreis || 0,
+                gesamtpreis: data.gesamtpreis || (data.menge || 0) * (data.einheitspreis || 0)
+            };
+            materialienData.push(item);
+
+            const tableBody = document.getElementById('materialienTableBody');
+            const row = document.createElement('tr');
+            row.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
+            row.style.background = rowIndex % 2 === 0 ? 'rgba(255,255,255,0.5)' : 'transparent';
+
+            row.innerHTML = `
+                <td style="padding: 10px;">
+                    <input type="text" value="${item.materialTyp}" onchange="updateMaterialien(${rowIndex}, 'materialTyp', this.value)" placeholder="z.B. 3M Folie matt schwarz" style="width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 4px;">
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    <input type="number" value="${item.menge.toFixed(2)}" onchange="updateMaterialien(${rowIndex}, 'menge', this.value)" step="0.01" min="0" style="width: 80px; border: 1px solid #ddd; border-radius: 4px; padding: 4px; text-align: center; font-family: 'Courier New', monospace;">
+                </td>
+                <td style="padding: 10px;">
+                    <select onchange="updateMaterialien(${rowIndex}, 'einheit', this.value)" style="width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 4px;">
+                        <option value="m²" ${item.einheit === 'm²' ? 'selected' : ''}>m²</option>
+                        <option value="Stück" ${item.einheit === 'Stück' ? 'selected' : ''}>Stück</option>
+                        <option value="Liter" ${item.einheit === 'Liter' ? 'selected' : ''}>Liter</option>
+                        <option value="kg" ${item.einheit === 'kg' ? 'selected' : ''}>kg</option>
+                        <option value="Meter" ${item.einheit === 'Meter' ? 'selected' : ''}>Meter</option>
+                        <option value="Set" ${item.einheit === 'Set' ? 'selected' : ''}>Set</option>
+                    </select>
+                </td>
+                <td style="padding: 10px; text-align: right;">
+                    <input type="number" value="${item.einheitspreis.toFixed(2)}" onchange="updateMaterialien(${rowIndex}, 'einheitspreis', this.value)" step="0.01" min="0" style="width: 100px; border: 1px solid #ddd; border-radius: 4px; padding: 4px; text-align: right; font-family: 'Courier New', monospace;">
+                </td>
+                <td style="padding: 10px; text-align: right;">
+                    <input type="number" value="${item.gesamtpreis.toFixed(2)}" readonly style="width: 100px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 4px; text-align: right; font-weight: 600; color: #ff9800; font-family: 'Courier New', monospace;">
+                </td>
+                <td style="padding: 10px; text-align: center;">
+                    <button type="button" onclick="deleteMaterialienRow(${rowIndex})" style="background: #f44336; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 14px;">🗑️</button>
+                </td>
+            `;
+
+            tableBody.appendChild(row);
+            updateMaterialienSumme();
+        }
+
+        function updateMaterialien(index, field, value) {
+            if (field === 'menge' || field === 'einheitspreis') {
+                materialienData[index][field] = parseFloat(value) || 0;
+                materialienData[index].gesamtpreis = materialienData[index].menge * materialienData[index].einheitspreis;
+
+                // Update readonly Gesamtpreis field
+                const rows = document.querySelectorAll('#materialienTableBody tr');
+                const gesamtpreisInput = rows[index]?.querySelectorAll('input[type="number"]')[2];
+                if (gesamtpreisInput) {
+                    gesamtpreisInput.value = materialienData[index].gesamtpreis.toFixed(2);
+                }
+            } else {
+                materialienData[index][field] = value;
+            }
+
+            updateMaterialienSumme();
+            updateKostenaufschluesselung();
+        }
+
+        function deleteMaterialienRow(index) {
+            if (!confirm('Diese Zeile wirklich löschen?')) return;
+            materialienData.splice(index, 1);
+            reRenderMaterialienTable();
+        }
+
+        function reRenderMaterialienTable() {
+            const tableBody = document.getElementById('materialienTableBody');
+            tableBody.innerHTML = '';
+            const tempData = [...materialienData];
+            materialienData = [];
+            tempData.forEach(item => addMaterialienRow(item));
+        }
+
+        function updateMaterialienSumme() {
+            const summe = materialienData.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+            document.getElementById('materialienTotal').textContent = summe.toFixed(2) + ' €';
+            document.getElementById('materialienCount').textContent = materialienData.length;
         }
 
         /**
@@ -5188,12 +5348,14 @@
                     originalPdf: {
                         ersatzteile: pdfData.ersatzteile,
                         arbeitslohn: pdfData.arbeitslohn,
-                        lackierung: pdfData.lackierung
+                        lackierung: pdfData.lackierung,
+                        materialien: pdfData.materialien || []
                     },
                     editedData: {
                         ersatzteile: JSON.parse(JSON.stringify(ersatzteileData)),  // Deep Copy (verhindert Referenz-Mutation)
                         arbeitslohn: JSON.parse(JSON.stringify(arbeitslohnData)),
-                        lackierung: JSON.parse(JSON.stringify(lackierungData))
+                        lackierung: JSON.parse(JSON.stringify(lackierungData)),
+                        materialien: JSON.parse(JSON.stringify(materialienData))
                     },
                     originalPdfName: document.getElementById('pdfFileName').textContent
                 } : {
@@ -5202,7 +5364,8 @@
                     editedData: {
                         ersatzteile: JSON.parse(JSON.stringify(ersatzteileData)),  // Deep Copy
                         arbeitslohn: JSON.parse(JSON.stringify(arbeitslohnData)),
-                        lackierung: JSON.parse(JSON.stringify(lackierungData))
+                        lackierung: JSON.parse(JSON.stringify(lackierungData)),
+                        materialien: JSON.parse(JSON.stringify(materialienData))
                     }
                 },
                 // Manual Price Override Flag
