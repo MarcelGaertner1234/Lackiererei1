@@ -1635,16 +1635,18 @@
                                 <span><svg data-feather="clock"></svg> ${timeStr}</span>
                                 ${statusBadge}
                             </div>
+
+                            ${renderMaterialRequestEditFields(request)}
                         </div>
 
                         <div class="material-actions">
-                            ${request.source === 'pdf-import' && request.etn && request.status === 'pending' ? `
+                            ${request.status === 'pending' ? `
                                 <button class="btn btn-primary"
-                                        onclick="convertToBestellung('${request.id}', '${request.etn}', '${(request.benennung || '').replace(/'/g, "\\'")}', ${request.einzelpreis || 0}, ${request.anzahl || 1}, '${request.kennzeichen || ''}')"
-                                        title="Als Bestellung aufgeben"
+                                        onclick="convertToBestellung('${request.id}', '${request.etn || ''}', '${(request.benennung || '').replace(/'/g, "\\'")}', ${request.einzelpreis || 0}, ${request.anzahl || 1}, '${request.kennzeichen || ''}')"
+                                        title="Als bestellt markieren"
                                         style="margin-right: 10px;">
                                     <svg data-feather="shopping-cart"></svg>
-                                    Als Bestellung aufgeben
+                                    Als bestellt markieren
                                 </button>
                             ` : ''}
                             ${showDeleteBtn ? `
@@ -1804,6 +1806,48 @@
             }
 
             try {
+                // 0. VALIDATION: Lade vollständige Material-Anfrage und prüfe erforderliche Felder
+                console.log(`🔍 Lade Material-Anfrage: ${requestId}`);
+                const requestDoc = await window.getCollection('materialRequests').doc(requestId).get();
+
+                if (!requestDoc.exists) {
+                    alert('❌ Material-Anfrage nicht gefunden');
+                    return;
+                }
+
+                const request = requestDoc.data();
+
+                // Prüfe erforderliche Felder
+                const validationErrors = [];
+
+                if (!request.etn || request.etn.trim() === '') {
+                    validationErrors.push('❌ ETN (Ersatzteilnummer) fehlt');
+                }
+
+                if (!request.einzelpreis || request.einzelpreis <= 0) {
+                    validationErrors.push('❌ Einzelpreis fehlt oder ist ungültig');
+                }
+
+                if (!request.lieferant || !request.lieferant.name || request.lieferant.name.trim() === '') {
+                    validationErrors.push('❌ Lieferant fehlt');
+                }
+
+                // Wenn Validierung fehlschlägt, zeige Fehler und blockiere
+                if (validationErrors.length > 0) {
+                    const errorMessage = `⚠️ Bestellung kann nicht aufgegeben werden!\n\nFehlende Pflichtfelder:\n\n${validationErrors.join('\n')}\n\nℹ️ Bitte füllen Sie alle Felder mit * aus, bevor Sie "Als bestellt markieren" klicken.`;
+                    alert(errorMessage);
+                    return;
+                }
+
+                console.log('✅ Validierung erfolgreich - alle Pflichtfelder ausgefüllt');
+
+                // Verwende aktuelle Werte aus der Datenbank (nicht die übergebenen Parameter)
+                etn = request.etn;
+                benennung = request.benennung || benennung;
+                einzelpreis = request.einzelpreis;
+                menge = request.anzahl || menge;
+                kennzeichen = request.kennzeichen || kennzeichen;
+
                 // 1. Fahrzeug finden (aktiv, nicht abgeschlossen)
                 console.log(`🔍 Suche Fahrzeug: ${kennzeichen}`);
 
@@ -1846,7 +1890,13 @@
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                     fahrzeugId: fahrzeug.id,
                     kennzeichen: kennzeichen,
-                    sourceRequestId: requestId  // Link back to original request
+                    sourceRequestId: requestId,  // Link back to original request
+
+                    // Übertrage zusätzliche Felder von Material-Anfrage
+                    lieferant: request.lieferant || null,
+                    voraussichtlicheAnkunft: request.voraussichtlicheAnkunft || null,
+                    notizen: request.notizen || '',
+                    preisTatsaechlich: request.einzelpreis  // Übernehme eingegebenen Preis als tatsächlichen Preis
                 };
 
                 console.log('📦 Erstelle Bestellung:', bestellungData);
@@ -2452,6 +2502,310 @@
         }
 
         /**
+         * ============================================
+         * INLINE-EDIT FELDER FÜR MATERIAL-ANFRAGE (NEU 2025-11-12)
+         * ============================================
+         * Rendert editierbare Felder für ETN, Benennung, Preis, Lieferant, Ankunftsdatum, Notizen
+         * Diese Felder erscheinen in der Material-Anfragen Sektion (OBEN)
+         * @param {Object} request - MaterialRequest-Objekt
+         * @returns {string} HTML für Inline-Edit-Felder
+         */
+        function renderMaterialRequestEditFields(request) {
+            // Admin-Check: Verwende getCurrentUser() statt nicht-existierendem isAdmin()
+            const currentUser = window.authManager?.getCurrentUser();
+            const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
+
+            // ETN und Benennung (aus PDF-Import oder manuell eingegeben)
+            const etn = request.etn || '';
+            const benennung = request.benennung || '';
+
+            // Preis-Felder (nur Admin kann bearbeiten)
+            const einzelpreis = request.einzelpreis || '';
+            const anzahl = request.anzahl || 1;
+            const preisFieldDisabled = !isAdmin;
+
+            // Ankunftsdatum formatieren (falls vorhanden)
+            let voraussichtlicheAnkunftValue = '';
+            if (request.voraussichtlicheAnkunft) {
+                try {
+                    const date = new Date(request.voraussichtlicheAnkunft);
+                    voraussichtlicheAnkunftValue = date.toISOString().split('T')[0]; // YYYY-MM-DD
+                } catch (e) {
+                    console.warn('Ungültiges Datum:', request.voraussichtlicheAnkunft);
+                }
+            }
+
+            // Lieferanten-Daten
+            const lieferantName = request.lieferant?.name || '';
+            const lieferantKontakt = request.lieferant?.kontakt || '';
+            const lieferantBestellnummer = request.lieferant?.bestellnummer || '';
+
+            // Notizen
+            const notizen = request.notizen || '';
+
+            return `
+                <div style="margin-top: 16px; padding: 16px; background: rgba(59, 130, 246, 0.05); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                    <div style="font-size: 14px; font-weight: 600; color: var(--color-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <svg data-feather="edit-3" style="width: 16px; height: 16px;"></svg>
+                        Bestelldetails
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <!-- ETN -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                🔢 ETN (Ersatzteilnummer) *
+                            </label>
+                            <input type="text"
+                                   placeholder="z.B. 51117205673"
+                                   value="${etn}"
+                                   data-field="etn"
+                                   data-request-id="${request.id}"
+                                   onblur="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+
+                        <!-- Benennung -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📦 Benennung
+                            </label>
+                            <input type="text"
+                                   placeholder="z.B. Stoßstange vorne"
+                                   value="${benennung}"
+                                   data-field="benennung"
+                                   data-request-id="${request.id}"
+                                   onblur="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <!-- Einzelpreis (nur Admin) -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                💰 Einzelpreis * ${preisFieldDisabled ? '(nur Admin)' : ''}
+                            </label>
+                            <input type="number"
+                                   step="0.01"
+                                   min="0"
+                                   placeholder="0.00 €"
+                                   value="${einzelpreis}"
+                                   data-field="einzelpreis"
+                                   data-request-id="${request.id}"
+                                   ${preisFieldDisabled ? 'disabled' : ''}
+                                   onblur="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px; background: ${preisFieldDisabled ? '#f3f4f6' : 'white'}; ${preisFieldDisabled ? 'cursor: not-allowed;' : ''}">
+                        </div>
+
+                        <!-- Anzahl -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📊 Anzahl
+                            </label>
+                            <input type="number"
+                                   step="1"
+                                   min="1"
+                                   value="${anzahl}"
+                                   data-field="anzahl"
+                                   data-request-id="${request.id}"
+                                   onblur="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+
+                        <!-- Voraussichtliche Ankunft -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📅 Voraussichtliche Ankunft
+                            </label>
+                            <input type="date"
+                                   value="${voraussichtlicheAnkunftValue}"
+                                   data-field="voraussichtlicheAnkunft"
+                                   data-request-id="${request.id}"
+                                   onchange="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <!-- Lieferant Name -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                🚚 Lieferant *
+                            </label>
+                            <input type="text"
+                                   placeholder="z.B. AutoTeile GmbH"
+                                   value="${lieferantName}"
+                                   data-field="lieferant.name"
+                                   data-request-id="${request.id}"
+                                   onblur="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+
+                        <!-- Lieferant Kontakt -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📞 Kontakt
+                            </label>
+                            <input type="text"
+                                   placeholder="Tel. / Email"
+                                   value="${lieferantKontakt}"
+                                   data-field="lieferant.kontakt"
+                                   data-request-id="${request.id}"
+                                   onblur="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+
+                        <!-- Bestellnummer -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                🔢 Bestellnummer
+                            </label>
+                            <input type="text"
+                                   placeholder="Bestellnr."
+                                   value="${lieferantBestellnummer}"
+                                   data-field="lieferant.bestellnummer"
+                                   data-request-id="${request.id}"
+                                   onblur="updateMaterialRequestField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+                    </div>
+
+                    <!-- Notizen -->
+                    <div>
+                        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                            📝 Notizen
+                        </label>
+                        <textarea
+                            placeholder="Interne Notizen zur Bestellung..."
+                            data-field="notizen"
+                            data-request-id="${request.id}"
+                            onblur="updateMaterialRequestField(this)"
+                            rows="2"
+                            style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px; resize: vertical; font-family: inherit;">${notizen}</textarea>
+                    </div>
+
+                    <div style="margin-top: 8px; padding: 8px; background: rgba(251, 191, 36, 0.1); border-radius: 8px; font-size: 12px; color: var(--color-text-secondary);">
+                        ℹ️ Felder mit * sind erforderlich, um "Als bestellt markieren" zu können
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * ============================================
+         * READ-ONLY VIEW FÜR BESTELLTE ERSATZTEILE (NEU 2025-11-12)
+         * ============================================
+         * Zeigt Bestelldetails als READ-ONLY an (für untere Section)
+         * @param {Object} bestellung - Bestellung-Objekt
+         * @returns {string} HTML für Read-Only-View
+         */
+        function renderBestellungReadOnlyView(bestellung) {
+            // Ankunftsdatum formatieren (falls vorhanden)
+            let voraussichtlicheAnkunftText = 'Nicht angegeben';
+            if (bestellung.voraussichtlicheAnkunft) {
+                try {
+                    const date = new Date(bestellung.voraussichtlicheAnkunft);
+                    voraussichtlicheAnkunftText = date.toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                    });
+                } catch (e) {
+                    voraussichtlicheAnkunftText = 'Ungültiges Datum';
+                }
+            }
+
+            // Lieferanten-Daten
+            const lieferantName = bestellung.lieferant?.name || 'Nicht angegeben';
+            const lieferantKontakt = bestellung.lieferant?.kontakt || '—';
+            const lieferantBestellnummer = bestellung.lieferant?.bestellnummer || '—';
+
+            // Preis
+            const preisTatsaechlich = bestellung.preisTatsaechlich !== null && bestellung.preisTatsaechlich !== undefined
+                ? bestellung.preisTatsaechlich.toFixed(2) + ' €'
+                : bestellung.einzelpreis.toFixed(2) + ' € (geschätzt)';
+
+            // Notizen
+            const notizen = bestellung.notizen || '—';
+
+            return `
+                <div style="margin-top: 16px; padding: 16px; background: rgba(107, 114, 128, 0.05); border-radius: 12px; border: 1px solid rgba(107, 114, 128, 0.2);">
+                    <div style="font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <svg data-feather="info" style="width: 16px; height: 16px;"></svg>
+                        Bestellinformationen (Read-Only)
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <!-- Preis -->
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                💰 Preis
+                            </div>
+                            <div style="font-size: 14px; font-weight: 600; color: var(--color-text-primary);">
+                                ${preisTatsaechlich}
+                            </div>
+                        </div>
+
+                        <!-- Voraussichtliche Ankunft -->
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📅 Voraussichtliche Ankunft
+                            </div>
+                            <div style="font-size: 14px; color: var(--color-text-primary);">
+                                ${voraussichtlicheAnkunftText}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <!-- Lieferant -->
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                🚚 Lieferant
+                            </div>
+                            <div style="font-size: 14px; color: var(--color-text-primary);">
+                                ${lieferantName}
+                            </div>
+                        </div>
+
+                        <!-- Kontakt -->
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📞 Kontakt
+                            </div>
+                            <div style="font-size: 14px; color: var(--color-text-primary);">
+                                ${lieferantKontakt}
+                            </div>
+                        </div>
+
+                        <!-- Bestellnummer -->
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                🔢 Bestellnummer
+                            </div>
+                            <div style="font-size: 14px; color: var(--color-text-primary);">
+                                ${lieferantBestellnummer}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notizen -->
+                    ${notizen !== '—' ? `
+                        <div>
+                            <div style="font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📝 Notizen
+                            </div>
+                            <div style="font-size: 14px; color: var(--color-text-primary); white-space: pre-wrap;">
+                                ${notizen}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        /**
          * Rendert Bestellungen-Liste
          * @param {Array} bestellungen - Array von Bestellung-Objekten
          */
@@ -2546,7 +2900,7 @@
                                 </div>
                             </div>
 
-                            ${renderBestellungEditFields(bestellung)}
+                            ${renderBestellungReadOnlyView(bestellung)}
 
                             <div class="material-meta" style="border-top: 1px solid var(--color-border-glass); padding-top: 12px;">
                                 <span><svg data-feather="user"></svg> ${bestellung.bestelltVon}</span>
@@ -2748,6 +3102,142 @@
         }
 
         /**
+         * ============================================
+         * INLINE-EDIT UPDATE-FUNKTION FÜR MATERIAL-ANFRAGEN (NEU 2025-11-12)
+         * ============================================
+         * Aktualisiert ein Material-Anfrage-Feld inline (auto-save on blur)
+         * @param {HTMLElement} inputElement - Das Input-Element das geändert wurde
+         */
+        async function updateMaterialRequestField(inputElement) {
+            const requestId = inputElement.getAttribute('data-request-id');
+            const fieldPath = inputElement.getAttribute('data-field');
+            let value = inputElement.value.trim();
+
+            // Validation
+            if (!requestId || !fieldPath) {
+                console.error('❌ Fehlende Attribute: requestId oder field');
+                return;
+            }
+
+            // Skip if no change (empty value allowed for clearing fields)
+            if (value === '' && fieldPath !== 'notizen' && fieldPath !== 'benennung' && !fieldPath.startsWith('lieferant.')) {
+                // Empty values nur erlaubt für optionale Felder
+                return;
+            }
+
+            // Berechtigungs-Check für Preis-Feld
+            if (fieldPath === 'einzelpreis') {
+                // Admin-Check: Verwende getCurrentUser() statt nicht-existierendem isAdmin()
+                const currentUser = window.authManager?.getCurrentUser();
+                const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
+                if (!isAdmin) {
+                    alert('❌ Nur Admins können den Preis bearbeiten!');
+                    inputElement.value = ''; // Reset
+                    return;
+                }
+            }
+
+            // Validierung: Preis
+            if (fieldPath === 'einzelpreis') {
+                const preis = parseFloat(value);
+                if (value !== '' && (isNaN(preis) || preis < 0)) {
+                    alert('❌ Ungültiger Preis. Bitte eine positive Zahl eingeben.');
+                    inputElement.value = '';
+                    return;
+                }
+                value = preis; // Convert to number
+            }
+
+            // Validierung: Anzahl
+            if (fieldPath === 'anzahl') {
+                const anzahl = parseInt(value);
+                if (isNaN(anzahl) || anzahl < 1) {
+                    alert('❌ Ungültige Anzahl. Bitte eine Zahl >= 1 eingeben.');
+                    inputElement.value = '1';
+                    return;
+                }
+                value = anzahl; // Convert to integer
+            }
+
+            // Validierung: Datum
+            if (fieldPath === 'voraussichtlicheAnkunft') {
+                if (value !== '') {
+                    try {
+                        const date = new Date(value);
+                        if (isNaN(date.getTime())) {
+                            alert('❌ Ungültiges Datum.');
+                            return;
+                        }
+                        value = date.toISOString(); // Store as ISO string
+                    } catch (e) {
+                        alert('❌ Ungültiges Datum.');
+                        return;
+                    }
+                } else {
+                    value = null; // Allow clearing date
+                }
+            }
+
+            // Loading state
+            inputElement.style.opacity = '0.5';
+            inputElement.style.pointerEvents = 'none';
+
+            try {
+                console.log(`📦 [MATERIAL-ANFRAGEN] Aktualisiere ${fieldPath} für ${requestId}:`, value);
+
+                // Nested field handling (lieferant.name, lieferant.kontakt, etc.)
+                let updateData = {};
+                if (fieldPath.includes('.')) {
+                    const [parent, child] = fieldPath.split('.');
+
+                    // Lade aktuelle Anfrage um nested object zu mergen
+                    const requestDoc = await window.getCollection('materialRequests').doc(requestId).get();
+                    if (!requestDoc.exists) {
+                        throw new Error('Material-Anfrage nicht gefunden');
+                    }
+
+                    const currentData = requestDoc.data();
+                    const currentParent = currentData[parent] || {};
+
+                    // Merge: Nur das spezifische Feld ändern
+                    updateData[parent] = {
+                        ...currentParent,
+                        [child]: value
+                    };
+                } else {
+                    // Simple field
+                    updateData[fieldPath] = value;
+                }
+
+                // Firestore Update
+                await window.getCollection('materialRequests').doc(requestId).update(updateData);
+
+                console.log('✅ [MATERIAL-ANFRAGEN] Feld erfolgreich aktualisiert');
+
+                // Success indication (green border briefly)
+                inputElement.style.border = '2px solid #22c55e';
+                setTimeout(() => {
+                    inputElement.style.border = '';
+                    inputElement.style.opacity = '';
+                    inputElement.style.pointerEvents = '';
+                }, 1000);
+
+                // Toast notification
+                showToast(`✅ ${getFieldLabel(fieldPath)} gespeichert`, 'success', 2000);
+
+            } catch (error) {
+                console.error('❌ [MATERIAL-ANFRAGEN] Fehler beim Feld-Update:', error);
+
+                // Error indication (red border)
+                inputElement.style.border = '2px solid #ef4444';
+                inputElement.style.opacity = '';
+                inputElement.style.pointerEvents = '';
+
+                alert(`❌ Fehler beim Speichern: ${error.message}`);
+            }
+        }
+
+        /**
          * Hilfsfunktion: Feld-Label für Toast-Nachricht
          * @param {string} fieldPath - Feld-Pfad (z.B. "preisTatsaechlich")
          * @returns {string} Menschenlesbares Label
@@ -2759,7 +3249,12 @@
                 'lieferant.name': 'Lieferant',
                 'lieferant.kontakt': 'Kontakt',
                 'lieferant.bestellnummer': 'Bestellnummer',
-                'notizen': 'Notizen'
+                'notizen': 'Notizen',
+                // Material-Anfragen specific fields
+                'etn': 'ETN',
+                'benennung': 'Benennung',
+                'einzelpreis': 'Einzelpreis',
+                'anzahl': 'Anzahl'
             };
             return labels[fieldPath] || 'Feld';
         }
@@ -2903,55 +3398,56 @@
             const werkstattId = window.werkstattId || 'mosbach';
 
             try {
-                console.log('📦 [MANUAL BESTELLUNG] Erstelle neue Bestellung...');
+                console.log('📦 [MANUAL MATERIAL-ANFRAGE] Erstelle neue Material-Anfrage...');
 
-                const bestellungId = 'best_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                const requestId = 'matreq_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
-                const bestellungData = {
-                    id: bestellungId,
+                const requestData = {
+                    id: requestId,
                     etn: etn,
                     benennung: benennung,
-                    menge: menge,
+                    anzahl: menge,  // Note: "anzahl" für materialRequests, "menge" für bestellungen
                     einzelpreis: einzelpreis,
                     gesamtpreis: gesamtpreis,
-                    status: 'bestellt',
-                    bestelltVon: userName,
-                    bestelltAm: new Date().toISOString(),
+                    status: 'pending',  // WICHTIG: 'pending' statt 'bestellt' - geht nach OBEN
+                    requestedBy: userName,
+                    requestedAt: new Date().toISOString(),
                     werkstattId: werkstattId,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                     fahrzeugId: fahrzeugId || null,
                     kennzeichen: kennzeichen || null,
                     source: 'manual',  // WICHTIG: Source-Tag für Badge
-                    sourceRequestId: null,
+                    description: `Manuell erstellt: ${benennung}`,  // Benötigt für Anzeige
 
-                    // NEUE FELDER (sofort ausgefüllt)
-                    preisGeschaetzt: einzelpreis,
-                    preisTatsaechlich: einzelpreis,  // Bei manueller Erstellung = eingegebener Preis
+                    // FELDER die im Inline-Edit bearbeitet werden können
                     voraussichtlicheAnkunft: voraussichtlicheAnkunft,
                     lieferant: {
                         name: lieferantName,
                         kontakt: lieferantKontakt,
                         bestellnummer: lieferantBestellnr
                     },
-                    notizen: notizen
+                    notizen: notizen,
+
+                    // Photo-Feld (leer bei manueller Erstellung)
+                    photo: null
                 };
 
-                await window.getCollection('bestellungen').doc(bestellungId).set(bestellungData);
+                // ❗ WICHTIG: Speichere in materialRequests statt bestellungen
+                await window.getCollection('materialRequests').doc(requestId).set(requestData);
 
-                console.log('✅ [MANUAL BESTELLUNG] Bestellung erfolgreich erstellt:', bestellungId);
+                console.log('✅ [MANUAL MATERIAL-ANFRAGE] Material-Anfrage erfolgreich erstellt:', requestId);
 
                 // Success feedback
-                showToast('✅ Bestellung erfolgreich erstellt', 'success', 3000);
+                showToast('✅ Material-Anfrage erfolgreich erstellt', 'success', 3000);
 
                 // Close modal
                 closeManualBestellModal();
 
-                // Reload Bestellungen list
-                setTimeout(() => loadBestellungen(), 1000);
+                // Keine Reload-Funktion nötig - realtime listener aktualisiert automatisch
 
             } catch (error) {
-                console.error('❌ [MANUAL BESTELLUNG] Fehler beim Speichern:', error);
-                alert('❌ Fehler beim Speichern der Bestellung: ' + error.message);
+                console.error('❌ [MANUAL MATERIAL-ANFRAGE] Fehler beim Speichern:', error);
+                alert('❌ Fehler beim Speichern der Material-Anfrage: ' + error.message);
             }
         }
     </script>
