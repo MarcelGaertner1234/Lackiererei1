@@ -122,7 +122,16 @@ class SettingsManager {
 
             // Check if Auth Manager is available
             if (!window.authManager || typeof window.authManager.getCurrentUser !== 'function') {
-                console.error('❌ Auth Manager ist nicht verfügbar oder nicht initialisiert!');
+                console.warn('⚠️ Auth Manager nicht verfügbar (Partner-App Seite?) - verwende Fallback');
+                // Fallback für partner-app: Nutze window.werkstattId direkt
+                if (window.werkstattId) {
+                    console.log('✅ Verwende werkstattId aus window.werkstattId:', window.werkstattId);
+                    this.werkstattId = window.werkstattId;
+                    this.settingsRef = window.getCollection('einstellungen'); // ✅ FIX: Set settingsRef for partner-app
+                    this.initialized = true;
+                    return true;
+                }
+                console.error('❌ Weder Auth Manager noch window.werkstattId verfügbar!');
                 return false;
             }
 
@@ -181,6 +190,11 @@ class SettingsManager {
             console.log('✅ Einstellungen geladen');
             return this.currentSettings;
         } catch (error) {
+            // ✅ FIX 8: Partner haben keine Berechtigung für einstellungen_* - das ist korrekt!
+            if (error.code === 'permission-denied') {
+                console.log('ℹ️ Partner-User - keine Berechtigung für Einstellungen (erwartet). Verwende DEFAULT_SETTINGS.');
+                return DEFAULT_SETTINGS;
+            }
             console.error('❌ Fehler beim Laden der Einstellungen:', error);
             return DEFAULT_SETTINGS;
         }

@@ -29,19 +29,20 @@
             justify-content: center;
             padding: var(--space-5);
             position: relative;
-            overflow: hidden;
+            /* ✅ FIX 13a: overflow: hidden entfernt - ermöglicht Scrollen */
         }
 
         .login-container {
             max-width: 420px;
             width: 100%;
+            max-height: 90vh; /* ✅ FIX 13b: Verhindert Overflow über Viewport */
             background: var(--color-surface);
             backdrop-filter: blur(var(--glass-blur-strong));
             -webkit-backdrop-filter: blur(var(--glass-blur-strong));
             border-radius: var(--radius-card);
             border: 1px solid var(--color-border-glass);
             box-shadow: var(--shadow-2xl);
-            overflow: hidden;
+            overflow-y: auto; /* ✅ FIX 13b: Erlaubt vertikales Scrollen (vorher: overflow: hidden) */
             position: relative;
             z-index: 1;
             transition: all var(--duration-base) var(--ease-out);
@@ -430,6 +431,15 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 
+    <!-- ✅ PRE-INITIALIZE werkstattId (BEFORE chat-notifications.js) -->
+    <script>
+        // CRITICAL: Set werkstattId BEFORE partner-chat-notifications.js loads
+        // to prevent "werkstattId nicht gefunden" errors
+        const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+        window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+        console.log('✅ [PRE-INIT] werkstattId:', window.werkstattId);
+    </script>
+
     <!-- Partner Chat Notifications -->
     <link rel="stylesheet" href="partner-chat-notifications.css">
     <script src="partner-chat-notifications.js"></script>
@@ -451,7 +461,7 @@
             <p id="werkstattName">Auto-Lackierzentrum Mosbach</p>
         </div>
 
-        <div class="login-body">
+        <div id="loginBody" class="login-body">
             <div class="info-box">
                 <strong>Neu: </strong>Wir haben auf ein sicheres Login-System umgestellt.
                 Verwenden Sie Ihre E-Mail und Ihr Passwort, das Sie per Mail erhalten haben.
@@ -490,6 +500,17 @@
                     Anmelden
                 </button>
             </form>
+
+            <!-- ✅ FIX 14: Registrierungs-Link für neue Partner -->
+            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--color-border); text-align: center;">
+                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 12px;">
+                    Noch kein Partner-Account?
+                </p>
+                <a href="../registrierung.html"
+                   style="display: inline-block; color: var(--color-primary); font-weight: 600; text-decoration: none; font-size: 15px; transition: all 0.2s ease;">
+                    Jetzt kostenlos registrieren →
+                </a>
+            </div>
         </div>
 
         <div class="login-footer">
@@ -595,135 +616,76 @@
                     }
                 }
             } catch (error) {
-                console.warn('⚠️ [PARTNER-INDEX] Werkstatt-Branding konnte nicht geladen werden:', error);
+                // ✅ FIX: Partners don't have permission to read einstellungen_* (by design)
+                if (error.code === 'permission-denied') {
+                    console.log('ℹ️ [PARTNER-INDEX] Partner user - using default branding (permission-denied expected)');
+                    document.title = 'Partner Portal | Auto-Lackierzentrum Mosbach';
+                } else {
+                    console.warn('⚠️ [PARTNER-INDEX] Werkstatt-Branding konnte nicht geladen werden:', error);
+                }
             }
+
+            // ========================================
+            // HELPER FUNCTIONS: Already Logged In UI
+            // ========================================
+
+            /**
+             * Zeigt UI für bereits eingeloggte User mit Wahlmöglichkeit
+             * @param {Object} user - Firebase User object
+             */
+            function showAlreadyLoggedInUI(user) {
+                console.log('ℹ️ User bereits eingeloggt - zeige Wahlmöglichkeit');
+                const loginBody = document.getElementById('loginBody');
+                loginBody.innerHTML = `
+                    <div style="text-align: center; padding: 40px 20px;">
+                        <h2 style="margin-bottom: 20px; color: var(--color-text-primary);">Bereits angemeldet</h2>
+                        <p style="margin-bottom: 30px; font-size: 16px;">
+                            Sie sind eingeloggt als:<br>
+                            <strong style="color: var(--color-primary);">${user.email}</strong>
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 15px; max-width: 300px; margin: 0 auto;">
+                            <button
+                                onclick="window.safeNavigate('meine-anfragen.html')"
+                                style="padding: 15px 30px; background: var(--color-primary); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                                Zum Dashboard
+                            </button>
+                            <button
+                                onclick="handleLogoutAndShowLogin()"
+                                style="padding: 15px 30px; background: transparent; color: var(--color-text-primary); border: 2px solid var(--color-border); border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                                Abmelden und anderen Account verwenden
+                            </button>
+                        </div>
+                    </div>
+                `;
+                loginBody.style.display = 'block';
+            }
+
+            /**
+             * Meldet User ab und lädt Seite neu, um Login-Formular anzuzeigen
+             * ✅ FIX: Global scope assignment for inline onclick handlers
+             */
+            window.handleLogoutAndShowLogin = async function() {
+                try {
+                    console.log('🔓 User möchte sich abmelden...');
+                    await firebase.auth().signOut();
+                    console.log('✅ Logout erfolgreich - lade Seite neu');
+                    location.reload(); // Seite neu laden → Login-Formular erscheint
+                } catch (error) {
+                    console.error('❌ Fehler beim Logout:', error);
+                    alert('Fehler beim Abmelden. Bitte versuchen Sie es erneut.');
+                }
+            };
 
             // ✅ AUTH STATE OBSERVER - NACH Firebase Init!
             firebase.auth().onAuthStateChanged(async (user) => {
                 if (user) {
-                    // User ist eingeloggt
-                    try {
-                        console.log('✅ User eingeloggt:', user.email);
-
-                        // ⚠️ TESTING-MODUS: Claims-Check deaktiviert!
-                        // In Production: Custom Claims prüfen (idTokenResult.claims.role === 'partner')
-                        // Für Testing: Jeder eingeloggte Firebase Auth User kann ins Portal
-
-                        // Partner-Daten für LocalStorage (vereinfacht)
-                        const partnerId = user.email.split('@')[0]; // z.B. "marcel" von "marcel@test.de"
-                        let partner = {
-                            id: partnerId,
-                            name: user.email,
-                            email: user.email,
-                            uid: user.uid
-                        };
-
-                        // 🆕 PHASE 2.1: Set Custom Claims via Cloud Function
-                        try {
-                            console.log('🔐 Setting custom claims for partner...');
-                            // ✅ FIX: Use window.functions (europe-west3) instead of firebase.functions() (us-central1)
-                            const setPartnerClaims = window.functions.httpsCallable('setPartnerClaims');
-                            const claimsResult = await setPartnerClaims({
-                                uid: user.uid,
-                                email: user.email,
-                                werkstattId: 'mosbach' // Default: mosbach (später dynamisch)
-                            });
-
-                            if (claimsResult.data.success) {
-                                console.log('✅ Custom claims set:', claimsResult.data.claims);
-
-                                // Force token refresh to load new claims
-                                await user.getIdToken(true);
-                                console.log('✅ Token refreshed with new claims');
-                            } else {
-                                console.warn('⚠️ Custom claims nicht gesetzt:', claimsResult.data.message);
-                            }
-                        } catch (claimsError) {
-                            console.error('❌ Fehler beim Setzen der Custom Claims:', claimsError);
-                            // Non-critical error - continue with login
-                        }
-
-                        // 🆕 MULTI-TENANT: Fetch werkstattId from Firestore partners collection
-                        try {
-                            const db = firebase.firestore();
-                            const partnerDoc = await window.getCollection('partners').doc(partnerId).get();
-
-                            if (partnerDoc.exists) {
-                                const firestoreData = partnerDoc.data();
-                                console.log('✅ Partner-Dokument aus Firestore geladen:', firestoreData);
-
-                                // Merge Firestore-Daten in partner object
-                                partner = {
-                                    ...partner,
-                                    ...firestoreData,
-                                    partnerId: partner.id, // ✅ Ensure partnerId field exists (consistency with auto-login)
-                                    werkstattId: firestoreData.werkstattId || 'mosbach' // Default: mosbach
-                                };
-                            } else {
-                                console.warn('⚠️ Partner-Dokument nicht gefunden in Firestore - erstelle neues Dokument');
-                                // Create new partner document with default werkstattId
-                                partner.werkstattId = 'mosbach'; // Default werkstatt
-                                partner.partnerId = partner.id; // ✅ Ensure partnerId field exists (consistency with auto-login)
-                                await window.getCollection('partners').doc(partnerId).set({
-                                    email: user.email,
-                                    name: user.email,
-                                    werkstattId: 'mosbach',
-                                    createdAt: new Date().toISOString(),
-                                    bonusPunkte: 0
-                                });
-                                console.log('✅ Neues Partner-Dokument erstellt mit werkstattId:', partner.werkstattId);
-                            }
-
-                            // Set window.werkstattId (CRITICAL for window.getCollection()!)
-                            window.werkstattId = partner.werkstattId;
-                            console.log('✅ window.werkstattId gesetzt:', window.werkstattId);
-
-                        } catch (firestoreError) {
-                            console.error('❌ Fehler beim Laden von Partner-Daten aus Firestore:', firestoreError);
-                            // Fallback: Default werkstattId
-                            partner.werkstattId = 'mosbach';
-                            window.werkstattId = 'mosbach';
-                            console.warn('⚠️ Fallback: werkstattId = mosbach');
-                        }
-
-                        // LocalStorage für Abwärtskompatibilität
-                        localStorage.setItem('partner', JSON.stringify(partner));
-                        localStorage.setItem('partner_email', user.email);
-
-                        console.log('✅ Partner-Daten gespeichert:', partner);
-
-                        // 🆕 FORCE PASSWORD CHANGE CHECK (aus partners_mosbach Collection)
-                        try {
-                            const partnersMosbachDoc = await window.getCollection('partners').doc(partnerId).get();
-
-                            if (partnersMosbachDoc.exists) {
-                                const partnerData = partnersMosbachDoc.data();
-                                console.log('🔐 Prüfe Passwort-Status:', partnerData);
-
-                                if (partnerData.requiresPasswordChange) {
-                                    console.log('⚠️ Partner muss Passwort ändern - zeige Modal');
-                                    // Modal anzeigen statt Redirect
-                                    showForcePasswordChangeModal(user.email, partnerId);
-                                    return; // STOP - kein Redirect!
-                                } else {
-                                    console.log('✅ Passwort bereits geändert oder nicht erforderlich');
-                                }
-                            }
-                        } catch (pwCheckError) {
-                            console.error('❌ Fehler beim Prüfen des Passwort-Status:', pwCheckError);
-                            // Non-critical - continue with redirect
-                        }
-
-                        console.log('🔀 Redirect zum Dashboard (meine-anfragen.html)...');
-
-                        // Redirect zum Partner-Dashboard
-                        window.safeNavigate('meine-anfragen.html');
-
-                    } catch (error) {
-                        console.error('❌ Fehler beim Login:', error);
-                        await firebase.auth().signOut();
-                        showError('Fehler beim Login. Bitte versuchen Sie es erneut.');
-                    }
+                    // User ist bereits eingeloggt - zeige Wahlmöglichkeit
+                    console.log('✅ User bereits eingeloggt:', user.email);
+                    showAlreadyLoggedInUI(user);
+                } else {
+                    // Kein User eingeloggt - Login-Formular zeigen
+                    console.log('ℹ️ Kein User eingeloggt - zeige Login-Formular');
+                    document.getElementById('loginBody').style.display = 'block';
                 }
             });
         });

@@ -118,25 +118,36 @@
 
                     totalUnread += chatSnapshot.size;
                 } catch (error) {
-                    // Fallback ohne timestamp filter
-                    const chatSnapshot = await window.getCollection('partnerAnfragen')
-                        .doc(anfrageDoc.id)
-                        .collection('chat')
-                        .where('sender', '==', 'werkstatt')
-                        .get();
+                    // ✅ FIX 9: Fallback ohne timestamp filter - auch absichern!
+                    try {
+                        const chatSnapshot = await window.getCollection('partnerAnfragen')
+                            .doc(anfrageDoc.id)
+                            .collection('chat')
+                            .where('sender', '==', 'werkstatt')
+                            .get();
 
-                    const unreadMessages = chatSnapshot.docs.filter(doc =>
-                        doc.data().timestamp > lastRead
-                    );
+                        const unreadMessages = chatSnapshot.docs.filter(doc =>
+                            doc.data().timestamp > lastRead
+                        );
 
-                    totalUnread += unreadMessages.length;
+                        totalUnread += unreadMessages.length;
+                    } catch (fallbackError) {
+                        // Permission denied oder anderer Fehler - überspringe diese Anfrage
+                        console.warn(`⚠️ Kann Chat für Anfrage ${anfrageDoc.id} nicht laden:`, fallbackError.code);
+                    }
                 }
             }
 
             updateBellBadge(totalUnread);
 
         } catch (error) {
-            console.error('❌ Fehler beim Laden der Unread-Counts:', error);
+            // ✅ FIX 11: Permission-Denied graceful behandeln
+            if (error.code === 'permission-denied') {
+                console.log('ℹ️ Keine Berechtigung für Unread-Counts (Partner ohne Anfragen?)');
+                updateBellBadge(0); // Badge auf 0 setzen
+            } else {
+                console.error('❌ Fehler beim Laden der Unread-Counts:', error);
+            }
         }
     }
 
@@ -176,36 +187,51 @@
                 anfrageSnapshot.forEach((anfrageDoc) => {
                     const anfrageId = anfrageDoc.id;
 
-                    // Pro Anfrage: Listener auf chat subcollection
-                    const chatCollection = anfrageCollection.doc(anfrageId).collection('chat');
+                    // ✅ FIX 10: Chat-Listener absichern gegen Permission-Errors
+                    try {
+                        // Pro Anfrage: Listener auf chat subcollection
+                        const chatCollection = anfrageCollection.doc(anfrageId).collection('chat');
 
-                    chatCollection
-                        .where('sender', '==', 'werkstatt')
-                        .orderBy('timestamp', 'desc')
-                        .limit(10)
-                        .onSnapshot((chatSnapshot) => {
-                            chatSnapshot.docChanges().forEach((change) => {
-                                if (change.type === 'added') {
-                                    const message = change.doc.data();
-                                    const messageTime = new Date(message.timestamp);
-                                    const lastCheckTime = new Date(lastCheck);
+                        chatCollection
+                            .where('sender', '==', 'werkstatt')
+                            .orderBy('timestamp', 'desc')
+                            .limit(10)
+                            .onSnapshot((chatSnapshot) => {
+                                chatSnapshot.docChanges().forEach((change) => {
+                                    if (change.type === 'added') {
+                                        const message = change.doc.data();
+                                        const messageTime = new Date(message.timestamp);
+                                        const lastCheckTime = new Date(lastCheck);
 
-                                    // Nur Nachrichten seit letztem Check anzeigen
-                                    if (messageTime > lastCheckTime) {
-                                        handleNewMessage(message, anfrageId);
+                                        // Nur Nachrichten seit letztem Check anzeigen
+                                        if (messageTime > lastCheckTime) {
+                                            handleNewMessage(message, anfrageId);
+                                        }
                                     }
+                                });
+                            }, (error) => {
+                                // Graceful Error Handling - keine Permission? Listener überspringen
+                                if (error.code === 'permission-denied') {
+                                    console.warn(`⚠️ Keine Berechtigung für Chat-Listener bei Anfrage ${anfrageId}`);
+                                } else {
+                                    console.error('Firebase Chat Listener Error:', error);
                                 }
                             });
-                        }, (error) => {
-                            console.error('Firebase Chat Listener Error:', error);
-                        });
+                    } catch (error) {
+                        console.warn(`⚠️ Kann Chat-Listener für Anfrage ${anfrageId} nicht starten:`, error.code);
+                    }
                 });
 
                 // Last check aktualisieren
                 lastCheck = new Date().toISOString();
                 localStorage.setItem('partner_chat_last_check', lastCheck);
             }, (error) => {
-                console.error('Firebase Anfragen Listener Error:', error);
+                // ✅ FIX 12: Permission-Denied graceful behandeln
+                if (error.code === 'permission-denied') {
+                    console.log('ℹ️ Keine Berechtigung für Anfragen-Listener (Partner ohne Anfragen?)');
+                } else {
+                    console.error('Firebase Anfragen Listener Error:', error);
+                }
             });
     }
 

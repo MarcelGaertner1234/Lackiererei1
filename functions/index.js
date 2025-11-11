@@ -801,7 +801,7 @@ User ID: ${userId || "unbekannt"}`
         // Call OpenAI with Function Calling
         console.log("🤖 Calling OpenAI GPT-4 with Function Calling...");
         const completion = await openai.chat.completions.create({
-          model: "gpt-4-turbo-preview",
+          model: "gpt-4-turbo",
           messages: messages,
           tools: tools,
           tool_choice: "auto",
@@ -890,7 +890,7 @@ User ID: ${userId || "unbekannt"}`
           // Get final response from OpenAI with tool results
           console.log("🤖 Getting final response from OpenAI...");
           const finalCompletion = await openai.chat.completions.create({
-            model: "gpt-4-turbo-preview",
+            model: "gpt-4-turbo",
             messages: messages,
             temperature: 0.7,
             max_tokens: 1000
@@ -3500,7 +3500,7 @@ exports.parseDATPDF = functions
 
       // Call GPT-4 Vision
       const response = await openai.chat.completions.create({
-        model: "gpt-4-vision-preview",
+        model: "gpt-4-turbo",
         messages: [{
           role: "user",
           content: [

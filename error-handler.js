@@ -21,6 +21,12 @@ class ErrorHandler {
    * @param {object} metadata - Zusätzliche Informationen
    */
   handle(error, context = 'Unbekannt', metadata = {}) {
+    // ✅ NULL CHECK: Prevent "Cannot read properties of null" error
+    if (!error) {
+      console.warn('[ErrorHandler] ⚠️ handle() called with null/undefined error');
+      error = new Error('Unknown error (null/undefined error object)');
+    }
+
     const errorInfo = {
       message: error.message || 'Unbekannter Fehler',
       code: error.code || 'UNKNOWN',
