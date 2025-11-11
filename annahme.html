@@ -2426,6 +2426,24 @@
                         console.log('   ✅ Fahrzeug in Firestore gespeichert');
 
                         // ============================================
+                        // ZENTRALE ERSATZTEILE-DB: Dual Save (Auftrag + Collection)
+                        // ============================================
+                        if (ersatzteileData && ersatzteileData.length > 0) {
+                            console.log('   🗄️ ZENTRALE DB: Speichere Ersatzteile in zentrale Collection...');
+                            try {
+                                await saveErsatzteileToCentralDB(
+                                    ersatzteileData,
+                                    annahmeData.id,
+                                    annahmeData.kennzeichen,
+                                    annahmeData.kundenname
+                                );
+                                console.log(`   ✅ ${ersatzteileData.length} Ersatzteile in zentraler DB gespeichert`);
+                            } catch (error) {
+                                console.error('   ❌ Fehler beim Speichern in zentrale Ersatzteile-DB:', error);
+                            }
+                        }
+
+                        // ============================================
                         // PDF-IMPORT: Ersatzteile als Material-Requests speichern
                         // ============================================
                         if (pdfData && pdfData.ersatzteile && pdfData.ersatzteile.length > 0) {
@@ -4011,6 +4029,77 @@
             }
             if (fd.farbname) {
                 document.getElementById('farbname').value = fd.farbname;
+            }
+        }
+
+        /**
+         * Speichert Ersatzteile in zentrale Ersatzteile-DB (ersatzteile_mosbach)
+         * Ermöglicht spätere Statistiken, API-Integrationen und Ersatzteil-Suche
+         * @param {Array} ersatzteile - Array von Ersatzteilen (ersatzteileData)
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} kundenname - Name des Kunden
+         * @returns {Promise<number>} Anzahl der gespeicherten Ersatzteile
+         */
+        async function saveErsatzteileToCentralDB(ersatzteile, fahrzeugId, kennzeichen, kundenname) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile zum Speichern');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`🗄️ Speichere ${ersatzteile.length} Ersatzteile in zentrale DB (ersatzteile_${window.werkstattId || 'mosbach'})...`);
+
+            const userName = localStorage.getItem('userName') || 'Admin';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            for (const teil of ersatzteile) {
+                try {
+                    const ersatzteilId = 'et_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    // Zentrale Ersatzteil-Daten
+                    const ersatzteilData = {
+                        id: ersatzteilId,
+                        etn: teil.etn || '',
+                        benennung: teil.benennung || '',
+                        einzelpreis: teil.einzelpreis || 0,
+                        // Referenz-Daten
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: kennzeichen,
+                        kundenname: kundenname,
+                        // Meta-Daten
+                        werkstattId: werkstattId,
+                        createdAt: new Date().toISOString(),
+                        createdBy: userName,
+                        // Optional: Anzahl aus diesem spezifischen Auftrag
+                        anzahlInAuftrag: teil.anzahl || 1,
+                        gesamtpreisInAuftrag: teil.gesamtpreis || 0
+                    };
+
+                    // In Batch hinzufügen
+                    const docRef = window.getCollection('ersatzteile').doc(ersatzteilId);
+                    batch.set(docRef, ersatzteilData);
+
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern von Ersatzteil:', teil, error);
+                }
+            }
+
+            // Batch commit
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Ersatzteile erfolgreich in zentraler DB gespeichert`);
+                return successCount;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                throw error;
             }
         }
 
