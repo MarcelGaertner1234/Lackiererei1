@@ -62,6 +62,10 @@ service cloud.firestore {
       return isAuthenticated() && getUserRole() == 'kunde';
     }
 
+    function isSteuerberater() {
+      return isAuthenticated() && getUserRole() == 'steuerberater';
+    }
+
     function isActive() {
       return getUserStatus() == 'active';
     }
@@ -932,6 +936,13 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && fahrzeugeCollection.matches('fahrzeuge_.*');
 
+      // 🆕 2025-11-11: Steuerberater Read-Only Access (für Bilanz-Dashboard)
+      // Security: Read-only for financial reports, NO write access
+      // Access: All vehicles (completed & in-progress) for revenue calculations
+      allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
+                  && isSteuerberater()
+                  && isActive();
+
       // Production Rule: Werkstatt & Mitarbeiter mit Rollenchecks
       // 🆕 2025-11-11: Includes 'rechnung' object updates (only Admin/Werkstatt can modify invoices)
       allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
@@ -998,6 +1009,11 @@ service cloud.firestore {
       allow read: if request.auth != null
                   && kundenCollection.matches('kunden_.*');
 
+      // 🆕 2025-11-11: Steuerberater can read customer data (für Umsatz-Analysen)
+      allow read: if kundenCollection.matches('kunden_.*')
+                  && isSteuerberater()
+                  && isActive();
+
       // Production Rule: Werkstatt & Mitarbeiter mit Rollenchecks
       allow read, write: if kundenCollection.matches('kunden_.*')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
@@ -1027,6 +1043,11 @@ service cloud.firestore {
     // Mitarbeiter Collections: mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.
     match /{mitarbeiterCollection}/{mitarbeiterId} {
       allow read, write: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
+
+      // 🆕 2025-11-11: Steuerberater can read employee data (für Lohnkosten-Berechnungen)
+      allow read: if mitarbeiterCollection.matches('mitarbeiter_.*')
+                  && isSteuerberater()
+                  && isActive();
 
       // RELAXED: Allow werkstatt OR mitarbeiter role to read all mitarbeiter
       // This allows SessionStorage-based mitarbeiter sessions (without Custom Claims)
@@ -1373,6 +1394,11 @@ service cloud.firestore {
       // Admins can read all time tracking records
       allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
                   && isAdmin();
+
+      // 🆕 2025-11-11: Steuerberater can read all time tracking (für Lohnkosten-Analysen)
+      allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                  && isSteuerberater()
+                  && isActive();
 
       // Employees can read ONLY their own records
       allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')

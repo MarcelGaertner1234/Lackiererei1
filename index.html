@@ -3223,15 +3223,61 @@
 
             const links = document.querySelectorAll('a[data-permission]');
 
-            // Admin hat immer vollen Zugriff - alle Kacheln freischalten
-            if (currentUser.role === 'admin' || currentUser.role === 'superadmin') {
-                console.log('✅ Admin-Rolle: Alle Kacheln freigeschaltet');
+            // Admin & Werkstatt haben immer vollen Zugriff - alle Kacheln freischalten
+            if (currentUser.role === 'admin' || currentUser.role === 'superadmin' || currentUser.role === 'werkstatt') {
+                console.log('✅ Admin/Werkstatt-Rolle: Alle Kacheln freigeschaltet');
                 links.forEach(link => {
                     link.style.opacity = '1';
                     link.style.pointerEvents = 'auto';
                     link.style.filter = 'none';
                     const lockIcon = link.querySelector('.lock-icon');
                     if (lockIcon) lockIcon.remove();
+                });
+                return;
+            }
+
+            // Steuerberater: Zugriff nur auf Steuerberater-Kacheln (Read-Only)
+            if (currentUser.role === 'steuerberater') {
+                console.log('📊 Steuerberater-Rolle: Nur Finanz-Kacheln freigeschaltet');
+                links.forEach(link => {
+                    const permission = link.getAttribute('data-permission');
+                    const isSteuerberaterLink = permission && permission.startsWith('steuerberater');
+
+                    if (isSteuerberaterLink) {
+                        // UNLOCK: Steuerberater-Kacheln
+                        link.style.opacity = '1';
+                        link.style.pointerEvents = 'auto';
+                        link.style.filter = 'none';
+                        const lockIcon = link.querySelector('.lock-icon');
+                        if (lockIcon) lockIcon.remove();
+                    } else {
+                        // LOCK: Alle anderen Kacheln
+                        link.style.opacity = '0.5';
+                        link.style.pointerEvents = 'none';
+                        link.style.filter = 'grayscale(1)';
+
+                        if (!link.querySelector('.lock-icon')) {
+                            const lockIcon = document.createElement('i');
+                            lockIcon.setAttribute('data-feather', 'lock');
+                            lockIcon.className = 'lock-icon';
+                            lockIcon.style.position = 'absolute';
+                            lockIcon.style.top = '5px';
+                            lockIcon.style.right = '5px';
+                            lockIcon.style.width = '16px';
+                            lockIcon.style.height = '16px';
+                            lockIcon.style.color = '#ff4444';
+
+                            link.style.position = 'relative';
+                            link.appendChild(lockIcon);
+                            feather.replace();
+                        }
+
+                        link.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            showToast('Zugriff verweigert! Steuerberater haben nur Zugriff auf Finanz-Berichte.', 'warning', 4000);
+                            return false;
+                        });
+                    }
                 });
                 return;
             }
