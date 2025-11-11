@@ -1414,13 +1414,13 @@
                     const requests = [];
                     snapshot.forEach(doc => {
                         const data = doc.data();
-                        // Filter: nur pending Anfragen
-                        if (data.status === 'pending') {
+                        // Filter: pending + ordered Anfragen (nicht abgeschlossen/gelöscht)
+                        if (data.status === 'pending' || data.status === 'ordered') {
                             requests.push(data);
                         }
                     });
 
-                    console.log(`📦 ${requests.length} offene Material-Anfragen geladen`);
+                    console.log(`📦 ${requests.length} Material-Anfragen geladen (pending + ordered)`);
                     renderMaterialRequests(requests);
                 }, (error) => {
                     console.error('❌ Fehler beim Laden der Material-Anfragen:', error);
@@ -1465,7 +1465,9 @@
                 });
 
                 // Status Badge
-                const statusBadge = request.status === 'completed'
+                const statusBadge = request.status === 'ordered'
+                    ? '<span class="status-badge completed"><svg data-feather="check-circle"></svg> Bestellt</span>'
+                    : request.status === 'completed'
                     ? '<span class="status-badge completed"><svg data-feather="check-circle"></svg> Erledigt</span>'
                     : '<span class="status-badge pending"><svg data-feather="clock"></svg> Offen</span>';
 
@@ -1492,6 +1494,15 @@
                         </div>
 
                         <div class="material-actions">
+                            ${request.source === 'pdf-import' && request.etn && request.status === 'pending' ? `
+                                <button class="btn btn-primary"
+                                        onclick="convertToBestellung('${request.id}', '${request.etn}', '${(request.benennung || '').replace(/'/g, "\\'")}', ${request.einzelpreis || 0}, ${request.anzahl || 1}, '${request.kennzeichen || ''}')"
+                                        title="Als Bestellung aufgeben"
+                                        style="margin-right: 10px;">
+                                    <svg data-feather="shopping-cart"></svg>
+                                    Als Bestellung aufgeben
+                                </button>
+                            ` : ''}
                             ${showDeleteBtn ? `
                                 <button class="btn-delete"
                                         onclick="deleteMaterialRequest('${request.id}')"
@@ -1628,6 +1639,97 @@
                 setTimeout(() => {
                     errorMsg.classList.remove('show');
                 }, 5000);
+            }
+        }
+
+        /**
+         * Konvertiert Material Request zu Bestellung
+         * Verbindet PDF-extrahierte Ersatzteile mit Kanban-System
+         *
+         * @param {string} requestId - Material Request ID
+         * @param {string} etn - ETN (Ersatzteilnummer)
+         * @param {string} benennung - Bezeichnung des Teils
+         * @param {number} einzelpreis - Preis pro Stück
+         * @param {number} menge - Anzahl
+         * @param {string} kennzeichen - Fahrzeug-Kennzeichen
+         */
+        async function convertToBestellung(requestId, etn, benennung, einzelpreis, menge, kennzeichen) {
+            if (!window.db) {
+                alert('❌ Firebase nicht initialisiert');
+                return;
+            }
+
+            try {
+                // 1. Fahrzeug finden (aktiv, nicht abgeschlossen)
+                console.log(`🔍 Suche Fahrzeug: ${kennzeichen}`);
+                const snapshot = await window.getCollection('fahrzeuge')
+                    .where('kennzeichen', '==', kennzeichen)
+                    .where('status', '!=', 'abgeschlossen')
+                    .limit(1)
+                    .get();
+
+                if (snapshot.empty) {
+                    alert(`❌ Fahrzeug "${kennzeichen}" nicht gefunden oder bereits abgeschlossen.\n\nBitte zuerst Fahrzeug aufnehmen.`);
+                    return;
+                }
+
+                const fahrzeugDoc = snapshot.docs[0];
+                const fahrzeug = fahrzeugDoc.data();
+
+                console.log(`✅ Fahrzeug gefunden: ${fahrzeug.id}`);
+
+                // 2. Bestellung erstellen
+                const bestellungId = 'best_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                const userName = localStorage.getItem('userName') || 'Admin';
+                const werkstattId = window.werkstattId || 'mosbach';
+
+                const bestellungData = {
+                    id: bestellungId,
+                    etn: etn,
+                    benennung: benennung,
+                    menge: parseInt(menge) || 1,
+                    einzelpreis: parseFloat(einzelpreis) || 0,
+                    gesamtpreis: (parseFloat(einzelpreis) || 0) * (parseInt(menge) || 1),
+                    status: 'bestellt',
+                    bestelltVon: userName,
+                    bestelltAm: new Date().toISOString(),
+                    angeliefertAm: null,
+                    angeliefertVon: null,
+                    werkstattId: werkstattId,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    fahrzeugId: fahrzeug.id,
+                    kennzeichen: kennzeichen,
+                    sourceRequestId: requestId  // Link back to original request
+                };
+
+                console.log('📦 Erstelle Bestellung:', bestellungData);
+
+                await window.getCollection('bestellungen').doc(bestellungId).set(bestellungData);
+
+                // 3. Material Request als "ordered" markieren
+                await window.getCollection('materialRequests').doc(requestId).update({
+                    status: 'ordered',
+                    convertedToBestellung: bestellungId,
+                    convertedAt: new Date().toISOString(),
+                    convertedBy: userName
+                });
+
+                console.log('✅ Material Request markiert als ordered');
+
+                // 4. Erfolgs-Nachricht
+                alert(`✅ Bestellung aufgegeben!\n\n${menge}× ${benennung}\nETN: ${etn}\nFahrzeug: ${kennzeichen}\n\nBestellung erscheint jetzt im Kanban.`);
+
+                // 5. Listen aktualisieren
+                if (typeof loadBestellungen === 'function') {
+                    loadBestellungen();
+                }
+
+                // Material Requests neu laden (zeigt jetzt "Bestellt" Badge)
+                setupMaterialRequestsListener();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Konvertieren:', error);
+                alert(`❌ Fehler: ${error.message}\n\nBitte erneut versuchen oder Support kontaktieren.`);
             }
         }
 
