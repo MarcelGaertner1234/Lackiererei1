@@ -419,6 +419,9 @@
 
     <!-- jsPDF for PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- PDF.js for PDF Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -429,6 +432,25 @@
 
         <div class="nav-buttons">
             <a href="admin-anfragen.html" class="btn btn-secondary">← Zurück zu Anfragen</a>
+        </div>
+
+        <!-- PDF-UPLOAD SECTION -->
+        <div class="pdf-upload-section" style="background: #f0f9ff; padding: 15px; border-radius: 10px; border-left: 4px solid #003366; margin: 20px 0;">
+            <div style="margin-bottom: 10px;">
+                <strong style="color: #003366;">📄 DAT-Kalkulation hochladen (optional)</strong>
+                <p style="color: #666; font-size: 13px; margin: 5px 0;">Ersatzteile, Arbeitslöhne und Lackierung werden automatisch übernommen</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button type="button" class="btn btn-secondary" style="font-size: 14px;"
+                        onclick="document.getElementById('datKvaPdfInput').click()">
+                    📄 PDF auswählen
+                </button>
+                <input type="file" id="datKvaPdfInput" accept="application/pdf" style="display: none;">
+                <span id="kvaPdfFileName" style="color: #28a745; font-size: 14px;"></span>
+                <button type="button" id="kvaPdfRemoveBtn" class="btn-icon-small"
+                        style="display: none; background: transparent; border: none; cursor: pointer; font-size: 18px;"
+                        onclick="removeKvaPdf()">❌</button>
+            </div>
         </div>
 
         <div id="loading" class="loading">
@@ -1824,6 +1846,206 @@
             }
         };
 
+        // ============================================
+        // PDF-PARSING FUNKTIONEN (DAT-Kalkulation)
+        // ============================================
+
+        let kvaPdfData = null;
+
+        async function handleKvaPdfUpload(event) {
+            const file = event.target.files[0];
+            if (!file || file.type !== 'application/pdf') {
+                alert('❌ Bitte wählen Sie eine PDF-Datei');
+                return;
+            }
+
+            document.getElementById('kvaPdfFileName').textContent = file.name;
+            document.getElementById('kvaPdfRemoveBtn').style.display = 'inline-block';
+
+            try {
+                console.log('⏳ PDF wird gelesen...');
+                kvaPdfData = await parseKvaDatPdf(file);
+                fillKvaFromPdf(kvaPdfData);
+                await saveErsatzteileToFirestore(kvaPdfData);
+                alert('✅ KVA-Daten aus PDF übernommen!');
+            } catch (error) {
+                console.error('❌ PDF-Parsing Fehler:', error);
+                alert('Fehler beim Lesen der PDF. Bitte Daten manuell eingeben.');
+                removeKvaPdf();
+            }
+        }
+
+        async function parseKvaDatPdf(file) {
+            if (typeof pdfjsLib === 'undefined') {
+                throw new Error('PDF.js Library nicht geladen');
+            }
+
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+            let extractedData = {
+                fahrzeugdaten: {},
+                ersatzteile: [],
+                arbeitslohn: [],
+                lackierung: []
+            };
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const textContent = await page.getTextContent();
+                const text = textContent.items.map(item => item.str).join(' ');
+
+                extractKvaFahrzeugdaten(text, extractedData);
+                extractKvaErsatzteile(text, extractedData);
+                extractKvaArbeitslohn(text, extractedData);
+                extractKvaLackierung(text, extractedData);
+            }
+
+            console.log('📄 KVA Extracted Data:', extractedData);
+            return extractedData;
+        }
+
+        function extractKvaFahrzeugdaten(text, extractedData) {
+            const herstellerMatch = text.match(/Hersteller:\s*(\w+)/i);
+            if (herstellerMatch) extractedData.fahrzeugdaten.marke = herstellerMatch[1];
+
+            const vinMatch = text.match(/VIN[:\s]+([A-HJ-NPR-Z0-9]{17})/i);
+            if (vinMatch) extractedData.fahrzeugdaten.vin = vinMatch[1];
+        }
+
+        function extractKvaErsatzteile(text, extractedData) {
+            const ersatzteilRegex = /(\d{10})\s+([A-ZÄÖÜ\s\.\,\-]+?)\s+(\d+)\s+([\d\']+\.\d{2})\s+([\d\']+\.\d{2})/g;
+            let match;
+            while ((match = ersatzteilRegex.exec(text)) !== null) {
+                extractedData.ersatzteile.push({
+                    etn: match[1].trim(),
+                    benennung: match[2].trim(),
+                    anzahl: parseInt(match[3]),
+                    einzelpreis: parseFloat(match[4].replace(/'/g, '')),
+                    gesamtpreis: parseFloat(match[5].replace(/'/g, ''))
+                });
+            }
+        }
+
+        function extractKvaArbeitslohn(text, extractedData) {
+            const arbeitslohnRegex = /(ARBEITSAUFWAND|ZUSATZARBEIT)\s+([A-ZÄÖÜ\s\.\-]+?)\s+([EKM])\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/g;
+            let match;
+            while ((match = arbeitslohnRegex.exec(text)) !== null) {
+                extractedData.arbeitslohn.push({
+                    position: match[2].trim(),
+                    art: match[3],
+                    stunden: parseFloat(match[4]),
+                    stundensatz: parseFloat(match[5]),
+                    gesamtpreis: parseFloat(match[6])
+                });
+            }
+        }
+
+        function extractKvaLackierung(text, extractedData) {
+            const lackRegex = /(OBERFLAECHE|INSTANDSETZUNG)\s+([A-ZÄÖÜ\s\.\-]+?)\s+(\d+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/g;
+            let match;
+            while ((match = lackRegex.exec(text)) !== null) {
+                extractedData.lackierung.push({
+                    typ: match[1],
+                    teil: match[2].trim(),
+                    materialpunkte: parseInt(match[3]),
+                    materialkosten: parseFloat(match[5]),
+                    arbeitskosten: parseFloat(match[6])
+                });
+            }
+        }
+
+        function fillKvaFromPdf(pdfData) {
+            const teilekosten = pdfData.ersatzteile.reduce((sum, teil) => sum + teil.gesamtpreis, 0);
+            const arbeitslohn = pdfData.arbeitslohn.reduce((sum, lohn) => sum + lohn.gesamtpreis, 0);
+            const lackkosten = pdfData.lackierung.reduce((sum, lack) => sum + (lack.materialkosten + lack.arbeitskosten), 0);
+
+            const activeVariantBox = document.querySelector('.varianten-box.active');
+            if (!activeVariantBox) {
+                console.warn('⚠️ Keine aktive Variante gefunden');
+                return;
+            }
+
+            const variant = activeVariantBox.dataset.variant;
+
+            const teilekostenInput = document.getElementById(`${variant}_teilekosten`);
+            if (teilekostenInput) teilekostenInput.value = teilekosten.toFixed(2);
+
+            const arbeitszeitInput = document.getElementById(`${variant}_arbeitszeit`);
+            if (arbeitszeitInput) arbeitszeitInput.value = arbeitslohn.toFixed(2);
+
+            const lackkostenInput = document.getElementById(`${variant}_lackkosten`);
+            if (lackkostenInput && lackkosten > 0) lackkostenInput.value = lackkosten.toFixed(2);
+
+            document.querySelectorAll('.varianten-box.active input').forEach(input => {
+                if (input.value && !isNaN(parseFloat(input.value))) {
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+
+            console.log('✅ KVA befüllt - Teile:', teilekosten, 'Arbeit:', arbeitslohn, 'Lack:', lackkosten);
+        }
+
+        async function saveErsatzteileToFirestore(pdfData) {
+            if (!pdfData.ersatzteile || pdfData.ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile zum Speichern');
+                return;
+            }
+
+            const db = firebase.firestore();
+            const batch = db.batch();
+
+            for (const teil of pdfData.ersatzteile) {
+                const etn = teil.etn;
+                const ersatzteilRef = db.collection('ersatzteile').doc(etn);
+
+                const docSnap = await ersatzteilRef.get();
+
+                if (docSnap.exists) {
+                    batch.update(ersatzteilRef, {
+                        benennung: teil.benennung,
+                        letzterPreis: teil.einzelpreis,
+                        verwendungen: firebase.firestore.FieldValue.arrayUnion({
+                            werkstattId: window.werkstattId,
+                            datum: new Date().toISOString(),
+                            anzahl: teil.anzahl,
+                            einzelpreis: teil.einzelpreis
+                        }),
+                        totalBestellungen: firebase.firestore.FieldValue.increment(teil.anzahl),
+                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } else {
+                    batch.set(ersatzteilRef, {
+                        id: etn,
+                        etn: etn,
+                        benennung: teil.benennung,
+                        letzterPreis: teil.einzelpreis,
+                        verwendungen: [{
+                            werkstattId: window.werkstattId,
+                            datum: new Date().toISOString(),
+                            anzahl: teil.anzahl,
+                            einzelpreis: teil.einzelpreis
+                        }],
+                        totalBestellungen: teil.anzahl,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            }
+
+            await batch.commit();
+            console.log(`✅ ${pdfData.ersatzteile.length} Ersatzteile in zentrale DB gespeichert`);
+        }
+
+        function removeKvaPdf() {
+            document.getElementById('datKvaPdfInput').value = '';
+            document.getElementById('kvaPdfFileName').textContent = '';
+            document.getElementById('kvaPdfRemoveBtn').style.display = 'none';
+            kvaPdfData = null;
+        }
+
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
 
@@ -1836,6 +2058,15 @@
             console.log('✅ [KVA-ERSTELLEN] werkstattId initialized:', window.werkstattId, '(from URL:', werkstattFromUrl, ')');
 
             await loadAnfrage();
+
+            // 📄 PDF-Upload Event Listener
+            const kvaPdfInput = document.getElementById('datKvaPdfInput');
+            if (kvaPdfInput) {
+                kvaPdfInput.addEventListener('change', handleKvaPdfUpload);
+                console.log('✅ PDF-Upload Event Listener registered (kva-erstellen.html)');
+            } else {
+                console.warn('⚠️ datKvaPdfInput nicht gefunden');
+            }
         });
 
         // ============================================
