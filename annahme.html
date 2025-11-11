@@ -1081,6 +1081,30 @@
                                 style="display: none; background: transparent; border: none; cursor: pointer; font-size: 18px;"
                                 onclick="clearDatText()">❌</button>
                     </div>
+
+                    <!-- ERSATZTEILE PREVIEW -->
+                    <div id="ersatzteilePreview" style="display: none; margin-top: 20px; padding: 15px; background: rgba(79, 172, 254, 0.1); border-radius: 8px; border-left: 4px solid var(--color-primary);">
+                        <h4 style="color: var(--color-primary); font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <svg data-feather="package" style="width: 20px; height: 20px;"></svg>
+                            <span id="previewTitle">Gefundene Ersatzteile (0):</span>
+                        </h4>
+                        <div style="overflow-x: auto;">
+                            <table id="ersatzteileTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead>
+                                    <tr style="background: rgba(0,0,0,0.1); text-align: left;">
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary);">ETN</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary);">Benennung</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: center;">Anzahl</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right;">Einzelpreis</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right;">Gesamtpreis</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ersatzteileTableBody">
+                                    <!-- Dynamisch gefüllt -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-row">
@@ -3275,6 +3299,9 @@
                 // Fill Form
                 fillFormFromPdf(parsedData);
 
+                // WICHTIG: Zeige Preview-Tabelle
+                renderErsatzteilePreview(parsedData.ersatzteile);
+
                 // UI Feedback
                 const statusSpan = document.getElementById('textParseStatus');
                 const clearBtn = document.getElementById('clearTextBtn');
@@ -3315,6 +3342,105 @@
         }
 
         /**
+         * Normalisiert DAT-Text für zuverlässiges Parsing
+         * Fixes:
+         * - Entfernt Header-Zeilen
+         * - Merged broken lines (Zeilen ohne ETN)
+         * - Stoppt bei "Arbeitslohn"
+         *
+         * @param {string} text - Raw DAT-Text
+         * @returns {string} Normalized text
+         */
+        function normalizeDatText(text) {
+            console.log('🔧 Normalizing DAT-Text...');
+
+            // Split into lines
+            const lines = text.split('\n');
+            const normalizedLines = [];
+            let currentLine = '';
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                // Skip empty lines
+                if (!line) {
+                    continue;
+                }
+
+                // Stop at "Arbeitslohn" (only parse Ersatzteile section)
+                if (line.includes('Arbeitslohn')) {
+                    break;
+                }
+
+                // Skip header lines
+                if (line.startsWith('RC DVN ETN') || line.startsWith('Reparaturkosten') || line.includes('Gesamtpreis')) {
+                    continue;
+                }
+
+                // Check if line starts with ETN pattern OR RC/DVN prefix
+                const startsWithETN = /^(\d{10}|\d{4,8}[A-Z]\d{0,2})/.test(line);
+                const startsWithPrefix = /^[A-Z]\s+\d+/.test(line);
+
+                if (startsWithETN || startsWithPrefix) {
+                    // New entry starts
+                    if (currentLine) {
+                        normalizedLines.push(currentLine);
+                    }
+                    currentLine = line;
+                } else {
+                    // Continuation of previous line (broken line)
+                    currentLine += ' ' + line;
+                }
+            }
+
+            // Add last line
+            if (currentLine) {
+                normalizedLines.push(currentLine);
+            }
+
+            const normalizedText = normalizedLines.join('\n');
+            console.log('✅ Text normalized:', normalizedLines.length, 'lines');
+            return normalizedText;
+        }
+
+        /**
+         * Zeigt Preview der extrahierten Ersatzteile
+         * @param {Array} ersatzteile - Array von Ersatzteil-Objekten
+         */
+        function renderErsatzteilePreview(ersatzteile) {
+            const previewDiv = document.getElementById('ersatzteilePreview');
+            const previewTitle = document.getElementById('previewTitle');
+            const tableBody = document.getElementById('ersatzteileTableBody');
+
+            if (!ersatzteile || ersatzteile.length === 0) {
+                previewDiv.style.display = 'none';
+                return;
+            }
+
+            // Update title
+            previewTitle.textContent = `Gefundene Ersatzteile (${ersatzteile.length}):`;
+
+            // Fill table
+            tableBody.innerHTML = ersatzteile.map((teil, index) => `
+                <tr style="border-bottom: 1px solid rgba(0,0,0,0.1); ${index % 2 === 0 ? 'background: rgba(255,255,255,0.5);' : ''}">
+                    <td style="padding: 8px; font-family: 'Courier New', monospace; font-weight: 600; color: var(--color-primary);">${teil.etn}</td>
+                    <td style="padding: 8px;">${teil.benennung}</td>
+                    <td style="padding: 8px; text-align: center; font-weight: 600;">${teil.anzahl}</td>
+                    <td style="padding: 8px; text-align: right; font-family: 'Courier New', monospace;">${teil.einzelpreis.toFixed(2)} €</td>
+                    <td style="padding: 8px; text-align: right; font-weight: 600; color: var(--color-success); font-family: 'Courier New', monospace;">${teil.gesamtpreis.toFixed(2)} €</td>
+                </tr>
+            `).join('');
+
+            // Show preview
+            previewDiv.style.display = 'block';
+
+            // Re-render feather icons
+            if (typeof feather !== 'undefined') {
+                feather.replace();
+            }
+        }
+
+        /**
          * Extrahiert Ersatzteile aus DAT-Text
          * Format:
          * E 43864 REPARATURSATZ, BESTEHT AUS:
@@ -3324,8 +3450,11 @@
         function extractErsatzteileFromText(text, data) {
             console.log('🔍 Extracting Ersatzteile from Text...');
 
+            // CRITICAL: Normalize text first (fix broken lines)
+            const normalizedText = normalizeDatText(text);
+
             // Split into lines
-            const lines = text.split('\n');
+            const lines = normalizedText.split('\n');
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
@@ -3391,6 +3520,7 @@
             document.getElementById('datTextInput').value = '';
             document.getElementById('textParseStatus').textContent = '';
             document.getElementById('clearTextBtn').style.display = 'none';
+            document.getElementById('ersatzteilePreview').style.display = 'none';
             // Keep pdfData (user might have parsed from PDF)
         }
 
