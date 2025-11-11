@@ -3555,12 +3555,10 @@ WICHTIG: Gib die Daten als JSON zurück mit dieser exakten Struktur:
   ],
   "lackierung": [
     {
-      "stufe": 1,
-      "benennung": "OBERFLAECHE KOTFLUEGEL L.",
-      "materialpunkte": 8,
-      "materialkosten": 31.92,
+      "position": "OBERFLAECHE KOTFLUEGEL L.",
+      "bereich": "Lackierung",
       "stunden": 0.50,
-      "lohn": 40.00,
+      "stundensatz": 40.00,
       "gesamtpreis": 71.92
     }
   ]
