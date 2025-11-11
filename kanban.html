@@ -2237,6 +2237,9 @@
                 <button class="auftrag-tab" onclick="switchAuftragTab('notes')" data-tab="notes">
                     📝 Notizen
                 </button>
+                <button class="auftrag-tab" onclick="switchAuftragTab('bestellungen')" data-tab="bestellungen">
+                    📦 Bestellungen
+                </button>
             </div>
 
             <!-- Tab Content: Übersicht -->
@@ -2282,6 +2285,13 @@
             <div class="auftrag-tab-content" id="tab-notes" style="display: none;">
                 <div id="detail-notes" style="padding: 20px; background: rgba(255, 193, 7, 0.1); border-radius: 8px; white-space: pre-wrap;">
                     <p style="color: var(--color-text-secondary);">Keine Notizen vorhanden</p>
+                </div>
+            </div>
+
+            <!-- Tab Content: Bestellungen -->
+            <div class="auftrag-tab-content" id="tab-bestellungen" style="display: none;">
+                <div id="detail-bestellungen" style="padding: 20px;">
+                    <p style="color: var(--color-text-secondary);">Lade Bestellungen...</p>
                 </div>
             </div>
 
@@ -4533,6 +4543,9 @@
 
             console.log('📄 Öffne Auftrag-Modal für:', fahrzeug.kennzeichen);
 
+            // Fahrzeug-ID für Tabs speichern
+            document.getElementById('auftragModal').dataset.fahrzeugId = fahrzeug.id;
+
             // Kennzeichen im Header
             document.getElementById('auftragKennzeichen').textContent = fahrzeug.kennzeichen;
 
@@ -4604,6 +4617,99 @@
 
             if (activeTab) activeTab.classList.add('active');
             if (activeContent) activeContent.style.display = 'block';
+
+            // Lazy Loading: Bestellungen Tab
+            if (tabName === 'bestellungen') {
+                const fahrzeugId = document.getElementById('auftragModal').dataset.fahrzeugId;
+                if (fahrzeugId) {
+                    loadBestellungenForModal(fahrzeugId);
+                }
+            }
+        }
+
+        async function loadBestellungenForModal(fahrzeugId) {
+            const container = document.getElementById('detail-bestellungen');
+
+            if (!window.db) {
+                container.innerHTML = '<p style="color: var(--color-error); padding: 20px;">❌ Firebase nicht verfügbar</p>';
+                return;
+            }
+
+            try {
+                // Lade-Indikator anzeigen
+                container.innerHTML = '<p style="color: var(--color-text-secondary); padding: 20px;">Lade Bestellungen...</p>';
+
+                // Query: Alle Bestellungen für dieses Fahrzeug
+                const snapshot = await window.getCollection('bestellungen')
+                    .where('fahrzeugId', '==', fahrzeugId)
+                    .orderBy('bestelltAm', 'desc')
+                    .get();
+
+                if (snapshot.empty) {
+                    container.innerHTML = '<p style="color: var(--color-text-secondary); padding: 20px;">Keine Bestellungen vorhanden</p>';
+                    return;
+                }
+
+                // Tabelle erstellen
+                let html = `
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--color-border); text-align: left;">
+                                <th style="padding: 12px;">ETN</th>
+                                <th style="padding: 12px;">Bezeichnung</th>
+                                <th style="padding: 12px; text-align: center;">Menge</th>
+                                <th style="padding: 12px; text-align: right;">Gesamtpreis</th>
+                                <th style="padding: 12px; text-align: center;">Status</th>
+                                <th style="padding: 12px;">Bestellt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                snapshot.docs.forEach((doc, index) => {
+                    const bestellung = doc.data();
+                    const bgColor = index % 2 === 0 ? 'rgba(0,0,0,0.02)' : 'transparent';
+
+                    // Status Badge
+                    let statusBadge = '';
+                    if (bestellung.status === 'angeliefert') {
+                        statusBadge = '<span style="background: #4caf50; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">✓ Angeliefert</span>';
+                    } else {
+                        statusBadge = '<span style="background: #ff9800; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">📦 Bestellt</span>';
+                    }
+
+                    // Bestellt am formatieren
+                    const bestelltAm = bestellung.bestelltAm ? new Date(bestellung.bestelltAm).toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                    }) : 'N/A';
+
+                    const bestelltVon = bestellung.bestelltVon || 'Unbekannt';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid var(--color-border); background: ${bgColor};">
+                            <td style="padding: 12px; font-family: 'Courier New', monospace; font-weight: 600;">${bestellung.etn || 'N/A'}</td>
+                            <td style="padding: 12px;">${bestellung.benennung || 'Unbekannt'}</td>
+                            <td style="padding: 12px; text-align: center; font-weight: 600;">${bestellung.menge || 1}</td>
+                            <td style="padding: 12px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; color: #2196f3;">${(bestellung.gesamtpreis || 0).toFixed(2)} €</td>
+                            <td style="padding: 12px; text-align: center;">${statusBadge}</td>
+                            <td style="padding: 12px; font-size: 13px; color: var(--color-text-secondary);">${bestelltAm}<br><span style="font-size: 11px;">${bestelltVon}</span></td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+
+                container.innerHTML = html;
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Bestellungen:', error);
+                container.innerHTML = `<p style="color: var(--color-error); padding: 20px;">❌ Fehler: ${error.message}</p>`;
+            }
         }
 
         // ============================================
