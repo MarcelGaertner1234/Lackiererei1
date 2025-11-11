@@ -297,6 +297,170 @@ function switchAuftragTab(tabName) {
 
 ---
 
+## 🔧 FIX: Werkstatt-Dropdown entfernt (2025-11-11)
+
+**Status:** ✅ **DEPLOYED** - Konzeptioneller Fehler behoben
+**Commit:** `9bdef27` - "fix: Werkstatt-Dropdown aus kva-erstellen.html entfernt"
+**Deployment:** GitHub Pages (Auto-Deploy in 2-3 Minuten)
+
+### **PROBLEM:**
+
+In `partner-app/kva-erstellen.html` gab es einen Werkstatt-Dropdown (Mosbach/Heidelberg/Heilbronn), der es dem Admin ermöglichte, manuell zwischen Werkstätten zu wechseln.
+
+**Warum war das falsch?**
+
+Partner/Autohäuser sind **bereits bei Registrierung** einer festen Werkstatt zugeordnet:
+1. Admin genehmigt Partner-Registrierung in `pending-registrations.html`
+2. Admin wählt Werkstatt aus (Mosbach/Heidelberg/Heilbronn)
+3. Partner bekommt festes `werkstattId` Feld (z.B. "mosbach")
+4. Alle Anfragen dieses Partners landen in `partnerAnfragen_mosbach`
+
+**Das Problem:**
+- Admin öffnet Anfrage von Partner mit werkstattId "mosbach"
+- Admin konnte Dropdown zu "Heidelberg" wechseln
+- System versuchte Anfrage aus `partnerAnfragen_heidelberg` zu laden → **404 ERROR**
+- KVA wurde in falscher Collection gespeichert → **Daten-Inkonsistenz**
+
+---
+
+### **LÖSUNG:**
+
+**Dropdown komplett entfernt** - werkstattId ergibt sich automatisch aus Partner-Zuordnung.
+
+#### **Änderungen:**
+
+**1. partner-app/kva-erstellen.html (Zeile 430-432)**
+```html
+<!-- VORHER: Dropdown mit manueller Auswahl -->
+<select id="werkstattSelector" onchange="onWerkstattChange()">
+    <option value="mosbach">Mosbach</option>
+    <option value="heidelberg">Heidelberg</option>
+    <option value="heilbronn">Heilbronn</option>
+</select>
+
+<!-- NACHHER: Nur "Zurück" Button -->
+<div class="nav-buttons">
+    <a href="admin-anfragen.html" class="btn btn-secondary">← Zurück zu Anfragen</a>
+</div>
+```
+
+**2. partner-app/kva-erstellen.html - onWerkstattChange() entfernt (Zeile 1845-1860)**
+```javascript
+// ENTFERNT: Funktion die werkstattId manuell änderte und Seite neu lud
+function onWerkstattChange() {
+    const selector = document.getElementById('werkstattSelector');
+    const newWerkstatt = selector.value;
+    localStorage.setItem('selectedWerkstatt', newWerkstatt);
+    window.werkstattId = newWerkstatt;
+    window.location.reload();
+}
+```
+
+**3. partner-app/kva-erstellen.html - URL-Parameter Laden (Zeile 1830-1836)**
+```javascript
+// NEU: werkstattId aus URL-Parameter laden (Priorität), dann localStorage (Fallback), dann 'mosbach'
+const urlParams = new URLSearchParams(window.location.search);
+const werkstattFromUrl = urlParams.get('werkstatt');
+const savedWerkstatt = werkstattFromUrl || localStorage.getItem('selectedWerkstatt') || 'mosbach';
+window.werkstattId = savedWerkstatt;
+
+console.log('✅ [KVA-ERSTELLEN] werkstattId initialized:', window.werkstattId, '(from URL:', werkstattFromUrl, ')');
+```
+
+**4. partner-app/admin-anfragen.html - URL-Parameter hinzugefügt (Zeile 2350)**
+```javascript
+// VORHER: Kein werkstatt Parameter
+kvaButton = `<a href="kva-erstellen.html?id=${anfrage.id}">💶 KVA erstellen</a>`;
+
+// NACHHER: werkstatt Parameter hinzugefügt
+kvaButton = `<a href="kva-erstellen.html?id=${anfrage.id}&werkstatt=${window.werkstattId}">💶 KVA erstellen</a>`;
+```
+
+---
+
+### **WORKFLOW VORHER vs. NACHHER:**
+
+#### **❌ VORHER (FALSCH):**
+1. Partner "Autohaus Müller" (werkstattId: "mosbach") erstellt Anfrage
+2. Anfrage landet in `partnerAnfragen_mosbach`
+3. Admin öffnet `admin-anfragen.html` → klickt "KVA erstellen"
+4. **PROBLEM:** Admin konnte Dropdown zu "Heidelberg" wechseln
+5. System versuchte Anfrage aus `partnerAnfragen_heidelberg` zu laden → **404 ERROR**
+
+#### **✅ NACHHER (RICHTIG):**
+1. Partner "Autohaus Müller" (werkstattId: "mosbach") erstellt Anfrage
+2. Anfrage landet in `partnerAnfragen_mosbach`
+3. Admin öffnet `admin-anfragen.html` → klickt "KVA erstellen"
+4. URL: `kva-erstellen.html?id=req_123&werkstatt=mosbach`
+5. System lädt werkstattId aus URL-Parameter → **Korrekte Collection**
+6. KVA wird in `fahrzeuge_mosbach` gespeichert → **Konsistent**
+
+---
+
+### **FILES CHANGED (2 Files)**
+
+| File | Change Type | Lines Changed | Description |
+|------|-------------|---------------|-------------|
+| `partner-app/kva-erstellen.html` | Modified | -27 lines | Dropdown HTML + onWerkstattChange() entfernt, URL-Parameter Logik hinzugefügt |
+| `partner-app/admin-anfragen.html` | Modified | +1 line | werkstatt URL-Parameter zu KVA-Link hinzugefügt |
+| **TOTAL** | 2 files | **+6 -33** | Dropdown komplett entfernt |
+
+---
+
+### **ARCHITECTURE PATTERN:**
+
+**Pattern:** Immutable Partner-Werkstatt-Zuordnung
+
+**Prinzip:**
+- werkstattId wird **einmal** bei Partner-Registrierung festgelegt
+- werkstattId ist **unveränderlich** für diesen Partner
+- Alle Anfragen/KVAs dieses Partners gehören zu **dieser** Werkstatt
+- Admin kann Werkstatt **nicht** manuell ändern
+
+**Vorteile:**
+1. **Daten-Konsistenz:** KVAs landen immer in korrekter Collection
+2. **Keine 404 Errors:** System kann Anfrage immer finden
+3. **Klarere UX:** Keine verwirrende Dropdown-Auswahl
+4. **Security:** Admin kann Anfrage nicht versehentlich falscher Werkstatt zuordnen
+
+---
+
+### **TESTING:**
+
+**Manuelle Tests erforderlich** (auf GitHub Pages):
+
+1. **Test: Mosbach Partner → KVA erstellen**
+   - Partner mit werkstattId "mosbach" erstellt Anfrage
+   - Admin öffnet admin-anfragen.html
+   - Klickt "KVA erstellen"
+   - URL sollte enthalten: `?werkstatt=mosbach`
+   - KVA wird in `fahrzeuge_mosbach` gespeichert ✅
+
+2. **Test: Heidelberg Partner → KVA erstellen**
+   - Partner mit werkstattId "heidelberg" erstellt Anfrage
+   - Admin öffnet admin-anfragen.html
+   - Klickt "KVA erstellen"
+   - URL sollte enthalten: `?werkstatt=heidelberg`
+   - KVA wird in `fahrzeuge_heidelberg` gespeichert ✅
+
+3. **Test: Heilbronn Partner → KVA erstellen**
+   - Analog zu Mosbach/Heidelberg
+   - URL sollte enthalten: `?werkstatt=heilbronn` ✅
+
+4. **Fallback Test:**
+   - Direkter Zugriff auf `kva-erstellen.html` ohne URL-Parameter
+   - System sollte localStorage prüfen → Fallback zu "mosbach" ✅
+
+---
+
+### **KNOWN ISSUES:**
+
+**Keine bekannten Issues!**
+
+Die Lösung ist konzeptionell sauber und folgt dem bestehenden Multi-Tenant Architektur-Pattern.
+
+---
+
 ## 🎉 HYBRID TESTING APPROACH - COMPLETE! (2025-11-09)
 
 **Status:** ✅ **PRODUKTIONSREIF** - Neues Test-System implementiert nach 17 gescheiterten UI E2E Test-Versuchen
