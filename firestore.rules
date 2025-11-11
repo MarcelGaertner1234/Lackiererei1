@@ -1103,13 +1103,19 @@ service cloud.firestore {
     // Lifecycle: bestellt → angeliefert
     //
     // Security Requirements:
-    // - Admin: Full read/write access
+    // - Admin: Full read/write access (inkl. Preis-Felder)
     // - Mitarbeiter: Read + Create (können Bestellungen aufgeben)
-    // - Mitarbeiter: Update nur für Status-Änderung (angeliefert markieren)
+    // - Mitarbeiter: Update für Status + Lieferant + Ankunftsdatum + Notizen
+    // - Mitarbeiter: KEIN Update für Preis-Felder (nur Admin)
     // - Partner: NO ACCESS (interne Collection)
+    //
+    // UPDATE 2025-11-11: Erweiterte Bestellverwaltung
+    // - Neue Felder: preisTatsaechlich, preisGeschaetzt, voraussichtlicheAnkunft, lieferant, notizen
+    // - Mitarbeiter können Lieferdatum/Lieferant/Notizen bearbeiten
+    // - Nur Admins können Preise ändern (Kostenkontrolle)
 
     match /{bestellungenCollection}/{bestellungId} {
-      // Admins: Full access
+      // Admins: Full access (alle Felder inkl. Preis-Änderungen)
       allow read, write: if bestellungenCollection.matches('bestellungen_.*')
                          && isAdmin();
 
@@ -1118,13 +1124,22 @@ service cloud.firestore {
                           && isMitarbeiter()
                           && isActive();
 
-      // Mitarbeiter: Update nur für Status-Änderung (angeliefert markieren)
+      // Mitarbeiter: Update für operationale Felder (OHNE Preis-Felder)
+      // Erlaubt: Status, Lieferant, Ankunftsdatum, Notizen
+      // Verboten: preisTatsaechlich, preisGeschaetzt, einzelpreis, gesamtpreis
       allow update: if bestellungenCollection.matches('bestellungen_.*')
                     && isMitarbeiter()
                     && isActive()
                     && request.resource.data.diff(resource.data)
                         .affectedKeys()
-                        .hasOnly(['status', 'angeliefertAm', 'angeliefertVon']);
+                        .hasOnly([
+                          'status',                      // Status-Änderung (bestellt → angeliefert)
+                          'angeliefertAm',               // Lieferdatum
+                          'angeliefertVon',              // Lieferant-Person
+                          'voraussichtlicheAnkunft',     // Erwartetes Ankunftsdatum
+                          'lieferant',                   // Lieferanten-Objekt (name, kontakt, bestellnummer)
+                          'notizen'                      // Interne Notizen
+                        ]);
     }
 
     // ============================================

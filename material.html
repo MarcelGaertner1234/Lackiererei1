@@ -2184,6 +2184,143 @@
         }
 
         /**
+         * ============================================
+         * INLINE-EDIT FELDER FÜR BESTELLUNG (NEU 2025-11-11)
+         * ============================================
+         * Rendert editierbare Felder für Preis, Lieferant, Ankunftsdatum, Notizen
+         * @param {Object} bestellung - Bestellung-Objekt
+         * @returns {string} HTML für Inline-Edit-Felder
+         */
+        function renderBestellungEditFields(bestellung) {
+            const isAdmin = window.authManager?.isAdmin() || false;
+            const currentRole = localStorage.getItem('userRole') || '';
+
+            // Preis-Feld (nur Admin kann bearbeiten)
+            const preisTatsaechlich = bestellung.preisTatsaechlich !== null && bestellung.preisTatsaechlich !== undefined
+                ? bestellung.preisTatsaechlich
+                : '';
+            const preisFieldDisabled = !isAdmin && currentRole !== 'admin';
+
+            // Ankunftsdatum formatieren (falls vorhanden)
+            let voraussichtlicheAnkunftValue = '';
+            if (bestellung.voraussichtlicheAnkunft) {
+                try {
+                    const date = new Date(bestellung.voraussichtlicheAnkunft);
+                    voraussichtlicheAnkunftValue = date.toISOString().split('T')[0]; // YYYY-MM-DD
+                } catch (e) {
+                    console.warn('Ungültiges Datum:', bestellung.voraussichtlicheAnkunft);
+                }
+            }
+
+            // Lieferanten-Daten
+            const lieferantName = bestellung.lieferant?.name || '';
+            const lieferantKontakt = bestellung.lieferant?.kontakt || '';
+            const lieferantBestellnummer = bestellung.lieferant?.bestellnummer || '';
+
+            // Notizen
+            const notizen = bestellung.notizen || '';
+
+            return `
+                <div style="margin-top: 16px; padding: 16px; background: rgba(59, 130, 246, 0.05); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                    <div style="font-size: 14px; font-weight: 600; color: var(--color-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <svg data-feather="edit-3" style="width: 16px; height: 16px;"></svg>
+                        Bestelldetails
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <!-- Tatsächlicher Preis (nur Admin) -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                💰 Tatsächlicher Preis ${preisFieldDisabled ? '(nur Admin)' : ''}
+                            </label>
+                            <input type="number"
+                                   step="0.01"
+                                   min="0"
+                                   placeholder="${bestellung.einzelpreis.toFixed(2)} €"
+                                   value="${preisTatsaechlich}"
+                                   data-field="preisTatsaechlich"
+                                   data-bestellung-id="${bestellung.id}"
+                                   ${preisFieldDisabled ? 'disabled' : ''}
+                                   onblur="updateBestellungField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px; background: ${preisFieldDisabled ? '#f3f4f6' : 'white'}; ${preisFieldDisabled ? 'cursor: not-allowed;' : ''}">
+                        </div>
+
+                        <!-- Voraussichtliche Ankunft -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📅 Voraussichtliche Ankunft
+                            </label>
+                            <input type="date"
+                                   value="${voraussichtlicheAnkunftValue}"
+                                   data-field="voraussichtlicheAnkunft"
+                                   data-bestellung-id="${bestellung.id}"
+                                   onchange="updateBestellungField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <!-- Lieferant Name -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                🚚 Lieferant
+                            </label>
+                            <input type="text"
+                                   placeholder="z.B. AutoTeile GmbH"
+                                   value="${lieferantName}"
+                                   data-field="lieferant.name"
+                                   data-bestellung-id="${bestellung.id}"
+                                   onblur="updateBestellungField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+
+                        <!-- Lieferant Kontakt -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                📞 Kontakt
+                            </label>
+                            <input type="text"
+                                   placeholder="Tel. / Email"
+                                   value="${lieferantKontakt}"
+                                   data-field="lieferant.kontakt"
+                                   data-bestellung-id="${bestellung.id}"
+                                   onblur="updateBestellungField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+
+                        <!-- Bestellnummer -->
+                        <div>
+                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                                🔢 Bestellnummer
+                            </label>
+                            <input type="text"
+                                   placeholder="Bestellnr."
+                                   value="${lieferantBestellnummer}"
+                                   data-field="lieferant.bestellnummer"
+                                   data-bestellung-id="${bestellung.id}"
+                                   onblur="updateBestellungField(this)"
+                                   style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px;">
+                        </div>
+                    </div>
+
+                    <!-- Notizen -->
+                    <div>
+                        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px;">
+                            📝 Notizen
+                        </label>
+                        <textarea
+                            placeholder="Interne Notizen zur Bestellung..."
+                            data-field="notizen"
+                            data-bestellung-id="${bestellung.id}"
+                            onblur="updateBestellungField(this)"
+                            rows="2"
+                            style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--color-border-glass); font-size: 14px; resize: vertical; font-family: inherit;">${notizen}</textarea>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
          * Rendert Bestellungen-Liste
          * @param {Array} bestellungen - Array von Bestellung-Objekten
          */
@@ -2264,6 +2401,8 @@
                                 </div>
                             </div>
 
+                            ${renderBestellungEditFields(bestellung)}
+
                             <div class="material-meta" style="border-top: 1px solid var(--color-border-glass); padding-top: 12px;">
                                 <span><svg data-feather="user"></svg> ${bestellung.bestelltVon}</span>
                                 <span><svg data-feather="calendar"></svg> ${bestelltAmStr}</span>
@@ -2333,6 +2472,150 @@
                 console.error('❌ [BESTELLUNGEN] Fehler beim Status-Update:', error);
                 alert('❌ Fehler beim Aktualisieren des Status: ' + error.message);
             }
+        }
+
+        /**
+         * ============================================
+         * INLINE-EDIT UPDATE-FUNKTION (NEU 2025-11-11)
+         * ============================================
+         * Aktualisiert ein Bestellungs-Feld inline (auto-save on blur)
+         * @param {HTMLElement} inputElement - Das Input-Element das geändert wurde
+         */
+        async function updateBestellungField(inputElement) {
+            const bestellungId = inputElement.getAttribute('data-bestellung-id');
+            const fieldPath = inputElement.getAttribute('data-field');
+            let value = inputElement.value.trim();
+
+            // Validation
+            if (!bestellungId || !fieldPath) {
+                console.error('❌ Fehlende Attribute: bestellungId oder field');
+                return;
+            }
+
+            // Skip if no change (empty value allowed for clearing fields)
+            if (value === '' && fieldPath !== 'notizen' && !fieldPath.startsWith('lieferant.')) {
+                // Empty values nur erlaubt für Notizen und Lieferant-Felder
+                return;
+            }
+
+            // Berechtigungs-Check für Preis-Feld
+            if (fieldPath === 'preisTatsaechlich') {
+                const isAdmin = window.authManager?.isAdmin() || false;
+                const currentRole = localStorage.getItem('userRole') || '';
+                if (!isAdmin && currentRole !== 'admin') {
+                    alert('❌ Nur Admins können den Preis bearbeiten!');
+                    inputElement.value = ''; // Reset
+                    return;
+                }
+            }
+
+            // Validierung: Preis
+            if (fieldPath === 'preisTatsaechlich') {
+                const preis = parseFloat(value);
+                if (isNaN(preis) || preis < 0) {
+                    alert('❌ Ungültiger Preis. Bitte eine positive Zahl eingeben.');
+                    inputElement.value = '';
+                    return;
+                }
+                value = preis; // Convert to number
+            }
+
+            // Validierung: Datum
+            if (fieldPath === 'voraussichtlicheAnkunft') {
+                if (value !== '') {
+                    try {
+                        const date = new Date(value);
+                        if (isNaN(date.getTime())) {
+                            alert('❌ Ungültiges Datum.');
+                            return;
+                        }
+                        value = date.toISOString(); // Store as ISO string
+                    } catch (e) {
+                        alert('❌ Ungültiges Datum.');
+                        return;
+                    }
+                } else {
+                    value = null; // Allow clearing date
+                }
+            }
+
+            // Loading state
+            inputElement.style.opacity = '0.5';
+            inputElement.style.pointerEvents = 'none';
+
+            try {
+                console.log(`📦 [BESTELLUNGEN] Aktualisiere ${fieldPath} für ${bestellungId}:`, value);
+
+                // Nested field handling (lieferant.name, lieferant.kontakt, etc.)
+                let updateData = {};
+                if (fieldPath.includes('.')) {
+                    const [parent, child] = fieldPath.split('.');
+
+                    // Lade aktuelle Bestellung um nested object zu mergen
+                    const bestellungDoc = await window.getCollection('bestellungen').doc(bestellungId).get();
+                    if (!bestellungDoc.exists) {
+                        throw new Error('Bestellung nicht gefunden');
+                    }
+
+                    const currentData = bestellungDoc.data();
+                    const currentParent = currentData[parent] || {};
+
+                    // Merge: Nur das spezifische Feld ändern
+                    updateData[parent] = {
+                        ...currentParent,
+                        [child]: value
+                    };
+                } else {
+                    // Simple field
+                    updateData[fieldPath] = value;
+                }
+
+                // Firestore Update
+                await window.getCollection('bestellungen').doc(bestellungId).update(updateData);
+
+                console.log('✅ [BESTELLUNGEN] Feld erfolgreich aktualisiert');
+
+                // Success indication (green border briefly)
+                inputElement.style.border = '2px solid #22c55e';
+                setTimeout(() => {
+                    inputElement.style.border = '';
+                    inputElement.style.opacity = '';
+                    inputElement.style.pointerEvents = '';
+                }, 1000);
+
+                // Toast notification
+                showToast(`✅ ${getFieldLabel(fieldPath)} gespeichert`, 'success', 2000);
+
+                // Reload list to reflect changes
+                setTimeout(() => loadBestellungen(), 1500);
+
+            } catch (error) {
+                console.error('❌ [BESTELLUNGEN] Fehler beim Feld-Update:', error);
+
+                // Error indication (red border)
+                inputElement.style.border = '2px solid #ef4444';
+                inputElement.style.opacity = '';
+                inputElement.style.pointerEvents = '';
+
+                alert(`❌ Fehler beim Speichern: ${error.message}`);
+            }
+        }
+
+        /**
+         * Hilfsfunktion: Feld-Label für Toast-Nachricht
+         * @param {string} fieldPath - Feld-Pfad (z.B. "preisTatsaechlich")
+         * @returns {string} Menschenlesbares Label
+         */
+        function getFieldLabel(fieldPath) {
+            const labels = {
+                'preisTatsaechlich': 'Preis',
+                'voraussichtlicheAnkunft': 'Ankunftsdatum',
+                'lieferant.name': 'Lieferant',
+                'lieferant.kontakt': 'Kontakt',
+                'lieferant.bestellnummer': 'Bestellnummer',
+                'notizen': 'Notizen'
+            };
+            return labels[fieldPath] || 'Feld';
         }
     </script>
 
