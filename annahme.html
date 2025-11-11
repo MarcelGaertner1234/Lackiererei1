@@ -1141,6 +1141,36 @@
                             </table>
                         </div>
                     </div>
+
+                    <!-- ARBEITSLOHN PREVIEW -->
+                    <div id="arbeitslohnPreview" style="display: none; margin-top: 20px; padding: 15px; background: rgba(76, 175, 80, 0.1); border-radius: 8px; border-left: 4px solid #4caf50;">
+                        <h4 style="color: #4caf50; font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <svg data-feather="clock" style="width: 20px; height: 20px;"></svg>
+                            <span id="arbeitslohnTitle">Gefundene Arbeitsleistungen (0):</span>
+                        </h4>
+                        <div style="overflow-x: auto;">
+                            <table id="arbeitslohnTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead>
+                                    <tr style="background: rgba(0,0,0,0.1); text-align: left;">
+                                        <th style="padding: 8px; border-bottom: 2px solid #4caf50;">Position</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid #4caf50; text-align: center;">Art</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid #4caf50; text-align: right;">Stunden</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid #4caf50; text-align: right;">Stundensatz</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid #4caf50; text-align: right;">Gesamtpreis</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="arbeitslohnTableBody">
+                                    <!-- Dynamisch gefüllt -->
+                                </tbody>
+                                <tfoot style="background: rgba(76, 175, 80, 0.1); font-weight: 600;">
+                                    <tr>
+                                        <td colspan="4" style="padding: 8px; text-align: right;">SUMME:</td>
+                                        <td style="padding: 8px; text-align: right; color: #4caf50;" id="arbeitslohnTotal">0.00 €</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-row">
@@ -3043,6 +3073,7 @@
                         pdfData = mergeExtractions(pdfExtraction, pdfData, 'pdf-primary');
                         fillFormFromPdf(pdfData);
                         renderErsatzteilePreview(pdfData.ersatzteile);
+                        renderArbeitslohnPreview(pdfData.arbeitslohn);
                         showToast(`✅ Kombiniert: ${pdfData.ersatzteile.length} Ersatzteile (PDF + Text)`, 'success');
                     } else {
                         // Replace text with PDF
@@ -3050,6 +3081,7 @@
                         pdfData = pdfExtraction;
                         fillFormFromPdf(pdfData);
                         renderErsatzteilePreview(pdfData.ersatzteile);
+                        renderArbeitslohnPreview(pdfData.arbeitslohn);
                         showToast('✅ Fahrzeugdaten aus PDF übernommen!', 'success');
                     }
                 } else {
@@ -3057,6 +3089,7 @@
                     pdfData = pdfExtraction;
                     fillFormFromPdf(pdfData);
                     renderErsatzteilePreview(pdfData.ersatzteile);
+                    renderArbeitslohnPreview(pdfData.arbeitslohn);
                     showToast('✅ Fahrzeugdaten aus PDF übernommen!', 'success');
                 }
             } catch (error) {
@@ -3928,6 +3961,7 @@
                         // Fill Form with merged data
                         fillFormFromPdf(pdfData);
                         renderErsatzteilePreview(pdfData.ersatzteile);
+                        renderArbeitslohnPreview(pdfData.arbeitslohn);
 
                         // UI Feedback
                         const statusSpan = document.getElementById('textParseStatus');
@@ -3953,6 +3987,7 @@
 
                 // WICHTIG: Zeige Preview-Tabelle
                 renderErsatzteilePreview(parsedData.ersatzteile);
+                renderArbeitslohnPreview(parsedData.arbeitslohn);
 
                 // UI Feedback
                 const statusSpan = document.getElementById('textParseStatus');
@@ -4082,6 +4117,50 @@
                     <td style="padding: 8px; text-align: right; font-weight: 600; color: var(--color-success); font-family: 'Courier New', monospace;">${teil.gesamtpreis.toFixed(2)} €</td>
                 </tr>
             `).join('');
+
+            // Show preview
+            previewDiv.style.display = 'block';
+
+            // Re-render feather icons
+            if (typeof feather !== 'undefined') {
+                feather.replace();
+            }
+        }
+
+        /**
+         * Rendert Arbeitslohn-Preview (Labor Costs)
+         * @param {Array} arbeitslohn - Array von Arbeitslohn-Objekten aus PDF
+         */
+        function renderArbeitslohnPreview(arbeitslohn) {
+            const previewDiv = document.getElementById('arbeitslohnPreview');
+            const previewTitle = document.getElementById('arbeitslohnTitle');
+            const tableBody = document.getElementById('arbeitslohnTableBody');
+            const totalCell = document.getElementById('arbeitslohnTotal');
+
+            if (!arbeitslohn || arbeitslohn.length === 0) {
+                previewDiv.style.display = 'none';
+                return;
+            }
+
+            // Update title
+            previewTitle.textContent = `Gefundene Arbeitsleistungen (${arbeitslohn.length}):`;
+
+            // Calculate total
+            const total = arbeitslohn.reduce((sum, item) => sum + item.gesamtpreis, 0);
+
+            // Fill table
+            tableBody.innerHTML = arbeitslohn.map((item, index) => `
+                <tr style="border-bottom: 1px solid rgba(0,0,0,0.1); ${index % 2 === 0 ? 'background: rgba(255,255,255,0.5);' : ''}">
+                    <td style="padding: 8px;">${item.position}</td>
+                    <td style="padding: 8px; text-align: center; font-weight: 600; color: #4caf50;">${item.art}</td>
+                    <td style="padding: 8px; text-align: center; font-family: 'Courier New', monospace;">${item.stunden.toFixed(2)}</td>
+                    <td style="padding: 8px; text-align: right; font-family: 'Courier New', monospace;">${item.stundensatz.toFixed(2)} €</td>
+                    <td style="padding: 8px; text-align: right; font-weight: 600; color: #4caf50; font-family: 'Courier New', monospace;">${item.gesamtpreis.toFixed(2)} €</td>
+                </tr>
+            `).join('');
+
+            // Update total
+            totalCell.textContent = total.toFixed(2) + ' €';
 
             // Show preview
             previewDiv.style.display = 'block';
