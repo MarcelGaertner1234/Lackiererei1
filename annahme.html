@@ -1118,28 +1118,45 @@
                                 onclick="clearDatText()">❌</button>
                     </div>
 
-                    <!-- ERSATZTEILE PREVIEW -->
-                    <div id="ersatzteilePreview" style="display: none; margin-top: 20px; padding: 15px; background: rgba(79, 172, 254, 0.1); border-radius: 8px; border-left: 4px solid var(--color-primary);">
-                        <h4 style="color: var(--color-primary); font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                            <svg data-feather="package" style="width: 20px; height: 20px;"></svg>
-                            <span id="previewTitle">Gefundene Ersatzteile (0):</span>
-                        </h4>
+                    <!-- ERSATZTEILE TABELLE (Permanent, Editierbar) -->
+                    <div id="ersatzteileSection" style="margin-top: 20px; padding: 15px; background: rgba(79, 172, 254, 0.1); border-radius: 8px; border-left: 4px solid var(--color-primary);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h4 style="color: var(--color-primary); font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                                <svg data-feather="package" style="width: 20px; height: 20px;"></svg>
+                                <span>Ersatzteile (<span id="ersatzteileCount">0</span>)</span>
+                            </h4>
+                            <button type="button" id="addErsatzteilBtn" onclick="addErsatzteilRow()" style="padding: 6px 12px; background: var(--color-primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <svg data-feather="plus" style="width: 14px; height: 14px;"></svg>
+                                Zeile hinzufügen
+                            </button>
+                        </div>
                         <div style="overflow-x: auto;">
                             <table id="ersatzteileTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
                                 <thead>
                                     <tr style="background: rgba(0,0,0,0.1); text-align: left;">
-                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary);">ETN</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); width: 120px;">ETN</th>
                                         <th style="padding: 8px; border-bottom: 2px solid var(--color-primary);">Benennung</th>
-                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: center;">Anzahl</th>
-                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right;">Einzelpreis</th>
-                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right;">Gesamtpreis</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: center; width: 80px;">Anzahl</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right; width: 100px;">Einzelpreis</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right; width: 100px;">Gesamtpreis</th>
+                                        <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: center; width: 60px;">Aktion</th>
                                     </tr>
                                 </thead>
                                 <tbody id="ersatzteileTableBody">
-                                    <!-- Dynamisch gefüllt -->
+                                    <!-- Dynamisch gefüllt - Zeilen werden durch JavaScript hinzugefügt -->
                                 </tbody>
+                                <tfoot style="background: rgba(79, 172, 254, 0.1); font-weight: 600;">
+                                    <tr>
+                                        <td colspan="4" style="padding: 8px; text-align: right;">SUMME:</td>
+                                        <td style="padding: 8px; text-align: right; color: var(--color-primary);" id="ersatzteileSumme">0.00 €</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
+                        <p style="font-size: 11px; color: var(--color-text-secondary); margin-top: 10px; font-style: italic;">
+                            💡 Tipp: PDF hochladen befüllt die Tabelle automatisch. Oder manuell Zeilen hinzufügen mit dem "+ Zeile hinzufügen" Button.
+                        </p>
                     </div>
 
                     <!-- ARBEITSLOHN PREVIEW -->
@@ -4256,40 +4273,163 @@
             return normalizedText;
         }
 
+        // ═══════════════════════════════════════════════════════════
+        // ERSATZTEILE TABELLE: Permanent, Editierbar
+        // ═══════════════════════════════════════════════════════════
+
+        let ersatzteileData = []; // Global array to store all Ersatzteile
+
         /**
-         * Zeigt Preview der extrahierten Ersatzteile
-         * @param {Array} ersatzteile - Array von Ersatzteil-Objekten
+         * Lädt Ersatzteile in die editierbare Tabelle
+         * @param {Array} ersatzteile - Array von Ersatzteil-Objekten (aus PDF oder manuell)
          */
         function renderErsatzteilePreview(ersatzteile) {
-            const previewDiv = document.getElementById('ersatzteilePreview');
-            const previewTitle = document.getElementById('previewTitle');
-            const tableBody = document.getElementById('ersatzteileTableBody');
+            if (ersatzteile && ersatzteile.length > 0) {
+                // PDF-Daten → in globales Array laden
+                ersatzteile.forEach(teil => addErsatzteilRow(teil));
+                console.log(`✅ ${ersatzteile.length} Ersatzteile in Tabelle geladen (PDF-Import)`);
+            }
+        }
 
-            if (!ersatzteile || ersatzteile.length === 0) {
-                previewDiv.style.display = 'none';
-                return;
+        /**
+         * Fügt eine neue Ersatzteil-Zeile hinzu (leer oder mit Daten)
+         * @param {Object} data - Optional: { etn, benennung, anzahl, einzelpreis }
+         */
+        function addErsatzteilRow(data = {}) {
+            const tableBody = document.getElementById('ersatzteileTableBody');
+            const rowIndex = ersatzteileData.length;
+
+            // Daten mit Defaults
+            const teil = {
+                etn: data.etn || '',
+                benennung: data.benennung || '',
+                anzahl: data.anzahl || 1,
+                einzelpreis: data.einzelpreis || 0,
+                gesamtpreis: data.gesamtpreis || (data.anzahl || 1) * (data.einzelpreis || 0)
+            };
+
+            // In globales Array speichern
+            ersatzteileData.push(teil);
+
+            // Neue Zeile erstellen
+            const row = document.createElement('tr');
+            row.dataset.index = rowIndex;
+            row.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
+            row.style.background = rowIndex % 2 === 0 ? 'rgba(255,255,255,0.5)' : 'transparent';
+
+            row.innerHTML = `
+                <td style="padding: 4px;">
+                    <input type="text" value="${teil.etn}" onchange="updateErsatzteil(${rowIndex}, 'etn', this.value)"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="text" value="${teil.benennung}" onchange="updateErsatzteil(${rowIndex}, 'benennung', this.value)"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="number" value="${teil.anzahl}" onchange="updateErsatzteil(${rowIndex}, 'anzahl', this.value)" min="1" step="1"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: center; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="number" value="${teil.einzelpreis.toFixed(2)}" onchange="updateErsatzteil(${rowIndex}, 'einzelpreis', this.value)" min="0" step="0.01"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: right; font-family: 'Courier New', monospace; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="number" value="${teil.gesamtpreis.toFixed(2)}" readonly
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: right; background: #f5f5f5; font-weight: 600; color: var(--color-success); font-family: 'Courier New', monospace; font-size: 12px;">
+                </td>
+                <td style="padding: 4px; text-align: center;">
+                    <button type="button" onclick="deleteErsatzteilRow(${rowIndex})"
+                            style="padding: 4px 8px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                        🗑️
+                    </button>
+                </td>
+            `;
+
+            tableBody.appendChild(row);
+            updateErsatzteileSumme();
+
+            // Feather icons neu rendern
+            if (typeof feather !== 'undefined') feather.replace();
+        }
+
+        /**
+         * Aktualisiert ein Ersatzteil-Feld
+         */
+        function updateErsatzteil(index, field, value) {
+            if (!ersatzteileData[index]) return;
+
+            // Wert aktualisieren
+            if (field === 'anzahl' || field === 'einzelpreis') {
+                ersatzteileData[index][field] = parseFloat(value) || 0;
+                // Gesamtpreis neu berechnen
+                ersatzteileData[index].gesamtpreis = ersatzteileData[index].anzahl * ersatzteileData[index].einzelpreis;
+
+                // Gesamtpreis-Feld aktualisieren
+                const row = document.querySelector(`tr[data-index="${index}"]`);
+                if (row) {
+                    const gesamtpreisInput = row.querySelectorAll('input')[4]; // 5. Input = Gesamtpreis
+                    gesamtpreisInput.value = ersatzteileData[index].gesamtpreis.toFixed(2);
+                }
+            } else {
+                ersatzteileData[index][field] = value;
             }
 
-            // Update title
-            previewTitle.textContent = `Gefundene Ersatzteile (${ersatzteile.length}):`;
+            updateErsatzteileSumme();
+            updateKostenaufschluesselung();
+        }
 
-            // Fill table
-            tableBody.innerHTML = ersatzteile.map((teil, index) => `
-                <tr style="border-bottom: 1px solid rgba(0,0,0,0.1); ${index % 2 === 0 ? 'background: rgba(255,255,255,0.5);' : ''}">
-                    <td style="padding: 8px; font-family: 'Courier New', monospace; font-weight: 600; color: var(--color-primary);">${teil.etn}</td>
-                    <td style="padding: 8px;">${teil.benennung}</td>
-                    <td style="padding: 8px; text-align: center; font-weight: 600;">${teil.anzahl}</td>
-                    <td style="padding: 8px; text-align: right; font-family: 'Courier New', monospace;">${teil.einzelpreis.toFixed(2)} €</td>
-                    <td style="padding: 8px; text-align: right; font-weight: 600; color: var(--color-success); font-family: 'Courier New', monospace;">${teil.gesamtpreis.toFixed(2)} €</td>
-                </tr>
-            `).join('');
+        /**
+         * Löscht eine Ersatzteil-Zeile
+         */
+        function deleteErsatzteilRow(index) {
+            if (!confirm('Diese Zeile wirklich löschen?')) return;
 
-            // Show preview
-            previewDiv.style.display = 'block';
+            // Aus Array entfernen
+            ersatzteileData.splice(index, 1);
 
-            // Re-render feather icons
-            if (typeof feather !== 'undefined') {
-                feather.replace();
+            // Tabelle neu rendern
+            reRenderErsatzteileTable();
+            updateErsatzteileSumme();
+            updateKostenaufschluesselung();
+        }
+
+        /**
+         * Rendert die komplette Tabelle neu (nach Delete)
+         */
+        function reRenderErsatzteileTable() {
+            const tableBody = document.getElementById('ersatzteileTableBody');
+            tableBody.innerHTML = '';
+
+            // Alle Zeilen neu erstellen
+            const tempData = [...ersatzteileData];
+            ersatzteileData = [];
+            tempData.forEach(teil => addErsatzteilRow(teil));
+        }
+
+        /**
+         * Berechnet und aktualisiert die Summe
+         */
+        function updateErsatzteileSumme() {
+            const summe = ersatzteileData.reduce((sum, teil) => sum + (teil.gesamtpreis || 0), 0);
+            document.getElementById('ersatzteileSumme').textContent = summe.toFixed(2) + ' €';
+            document.getElementById('ersatzteileCount').textContent = ersatzteileData.length;
+        }
+
+        /**
+         * Aktualisiert die Kostenaufschlüsselung (sync mit Tabellen)
+         */
+        function updateKostenaufschluesselung() {
+            const ersatzteileSumme = ersatzteileData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
+
+            // Kostenaufschlüsselung-Feld aktualisieren
+            const kostenErsatzteile = document.getElementById('kostenErsatzteile');
+            if (kostenErsatzteile) {
+                kostenErsatzteile.value = ersatzteileSumme.toFixed(2);
+
+                // Trigger change event für MwSt-Neuberechnung
+                const event = new Event('change', { bubbles: true });
+                kostenErsatzteile.dispatchEvent(event);
             }
         }
 
