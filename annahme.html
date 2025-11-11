@@ -2634,6 +2634,24 @@
                             } catch (error) {
                                 console.error('   ❌ Fehler beim Speichern der Ersatzteile:', error);
                             }
+
+                            // ============================================
+                            // AUTOMATISCHE PIPELINE (NEU 2025-11-11)
+                            // Konvertiere Ersatzteile automatisch zu Bestellungen
+                            // ============================================
+                            console.log('   🔄 AUTO-PIPELINE: Konvertiere Ersatzteile zu Bestellungen...');
+                            try {
+                                const bestellungenCreated = await autoConvertErsatzteileToBestellungen(
+                                    pdfData.ersatzteile,
+                                    annahmeData.kennzeichen,
+                                    annahmeData.id
+                                );
+                                if (bestellungenCreated > 0) {
+                                    console.log(`   ✅ ${bestellungenCreated} Bestellungen automatisch erstellt`);
+                                }
+                            } catch (error) {
+                                console.error('   ❌ Fehler bei Auto-Konvertierung:', error);
+                            }
                         }
 
                         console.log('   d) Registriere Kunde und setze kundenId...');
@@ -4373,6 +4391,96 @@
             }
 
             return successCount;
+        }
+
+        /**
+         * ============================================
+         * AUTOMATISCHE ERSATZTEILE-PIPELINE (2025-11-11)
+         * ============================================
+         * Konvertiert PDF-extrahierte Ersatzteile automatisch zu Bestellungen
+         * WICHTIG: Nur Teile mit ETN werden bestellt (ETN = Identifikationsnummer)
+         *
+         * @param {Array} ersatzteile - Array von Ersatzteil-Objekten aus PDF
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} fahrzeugId - ID des Fahrzeugs in Firestore
+         * @returns {Promise<number>} Anzahl der erstellten Bestellungen
+         */
+        async function autoConvertErsatzteileToBestellungen(ersatzteile, kennzeichen, fahrzeugId) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile für Auto-Konvertierung');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`🔄 AUTO-PIPELINE: Konvertiere ${ersatzteile.length} Ersatzteile zu Bestellungen...`);
+
+            const userName = localStorage.getItem('userName') || 'Admin';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let bestellungenCreated = 0;
+            let bestellungenSkipped = 0;
+
+            for (const teil of ersatzteile) {
+                // Skip wenn kein ETN vorhanden (keine Teilenummer = nicht bestellbar)
+                if (!teil.etn || teil.etn.trim() === '') {
+                    console.log(`   ⏭️ Überspringe Teil ohne ETN: ${teil.benennung}`);
+                    bestellungenSkipped++;
+                    continue;
+                }
+
+                try {
+                    const bestellungId = 'best_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    const bestellungData = {
+                        id: bestellungId,
+                        etn: teil.etn,
+                        benennung: teil.benennung,
+                        menge: teil.anzahl || 1,
+                        einzelpreis: parseFloat(teil.einzelpreis) || 0,
+                        gesamtpreis: parseFloat(teil.gesamtpreis) || 0,
+                        status: 'bestellt',
+                        bestelltVon: userName,
+                        bestelltAm: new Date().toISOString(),
+                        werkstattId: werkstattId,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: kennzeichen,
+                        source: 'pdf-auto',  // Markierung für automatische Erstellung
+                        sourceRequestId: null  // Keine Material-Request (direkt aus PDF)
+                    };
+
+                    const docRef = window.getCollection('bestellungen').doc(bestellungId);
+                    batch.set(docRef, bestellungData);
+
+                    bestellungenCreated++;
+                    console.log(`   ✅ Bestellung erstellt: ${teil.etn} - ${teil.benennung}`);
+
+                } catch (error) {
+                    console.error(`   ❌ Fehler beim Erstellen von Bestellung für Teil:`, teil, error);
+                }
+            }
+
+            // Batch commit
+            if (bestellungenCreated > 0) {
+                try {
+                    await batch.commit();
+                    console.log(`✅ AUTO-PIPELINE: ${bestellungenCreated} Bestellungen automatisch erstellt`);
+                    if (bestellungenSkipped > 0) {
+                        console.log(`ℹ️ AUTO-PIPELINE: ${bestellungenSkipped} Teile übersprungen (kein ETN)`);
+                    }
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern der Auto-Bestellungen:', error);
+                    return 0;
+                }
+            } else {
+                console.log('ℹ️ AUTO-PIPELINE: Keine Bestellungen erstellt (alle Teile ohne ETN)');
+            }
+
+            return bestellungenCreated;
         }
 
         function removePdf() {

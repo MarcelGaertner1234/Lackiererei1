@@ -1095,6 +1095,54 @@ service cloud.firestore {
                          && (isAdmin() || (isMitarbeiter() && isActive()));
     }
 
+    // ============================================
+    // BESTELLUNGEN COLLECTION (Multi-Tenant) - 2025-11-11
+    // ============================================
+    // Ersatzteile-Bestellungen aus PDF-Import oder manueller Anforderung
+    // Pattern: bestellungen_mosbach, bestellungen_heidelberg, etc.
+    // Lifecycle: bestellt → angeliefert
+    //
+    // Security Requirements:
+    // - Admin: Full read/write access
+    // - Mitarbeiter: Read + Create (können Bestellungen aufgeben)
+    // - Mitarbeiter: Update nur für Status-Änderung (angeliefert markieren)
+    // - Partner: NO ACCESS (interne Collection)
+
+    match /{bestellungenCollection}/{bestellungId} {
+      // Admins: Full access
+      allow read, write: if bestellungenCollection.matches('bestellungen_.*')
+                         && isAdmin();
+
+      // Mitarbeiter: Read + Create (können Bestellungen aufgeben)
+      allow read, create: if bestellungenCollection.matches('bestellungen_.*')
+                          && isMitarbeiter()
+                          && isActive();
+
+      // Mitarbeiter: Update nur für Status-Änderung (angeliefert markieren)
+      allow update: if bestellungenCollection.matches('bestellungen_.*')
+                    && isMitarbeiter()
+                    && isActive()
+                    && request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly(['status', 'angeliefertAm', 'angeliefertVon']);
+    }
+
+    // ============================================
+    // ERSATZTEILE COLLECTION (Zentrale Datenbank) - 2025-11-11
+    // ============================================
+    // Werkstattübergreifende Datenbank für häufig bestellte Ersatzteile
+    // Collection: ersatzteile (NICHT multi-tenant!)
+    // Purpose: Historische Datenbasis für Preis-Vorschläge & Bestelloptimierung
+    //
+    // Security Requirements:
+    // - Admin & Mitarbeiter: Full access
+    // - Automatische Befüllung via PDF-Import (annahme.html)
+
+    match /ersatzteile/{ersatzteilId} {
+      // Admins & Mitarbeiter: Full access
+      allow read, write: if isAdmin() || (isMitarbeiter() && isActive());
+    }
+
     // Einstellungen Collections: einstellungen_mosbach, etc.
     match /{einstellungenCollection}/{docId} {
       allow read, write: if einstellungenCollection.matches('einstellungen_.*') && isAdmin();
