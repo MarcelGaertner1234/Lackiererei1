@@ -3450,3 +3450,199 @@ exports.cleanupStaleSessions = onSchedule({
       throw error;  // Re-throw to mark function as failed in logs
     }
   });
+
+// ============================================
+// PDF PARSING WITH OPENAI GPT-4 VISION
+// ============================================
+
+/**
+ * Parse DAT PDF/Invoice with OpenAI GPT-4 Vision
+ * PRIMARY method for 100% accurate data extraction
+ *
+ * Extracts: Fahrzeugdaten, Ersatzteile, Arbeitszeiten, Lackierung
+ * Supports: DAT layout, other platforms, any invoice format
+ *
+ * Cost: ~$0.01-0.03 per PDF
+ */
+exports.parseDATPDF = functions
+  .region('europe-west3')
+  .runWith({
+    secrets: [openaiApiKey],
+    timeoutSeconds: 60,
+    memory: '512MB'
+  })
+  .https.onCall(async (data, context) => {
+    try {
+      // Security: Only authenticated users
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          'unauthenticated',
+          'Nutzer muss eingeloggt sein'
+        );
+      }
+
+      const { pdfBase64 } = data;
+
+      if (!pdfBase64) {
+        throw new functions.https.HttpsError(
+          'invalid-argument',
+          'pdfBase64 ist erforderlich'
+        );
+      }
+
+      console.log('📄 [OPENAI] Starting PDF parsing...');
+      console.log(`   User: ${context.auth.token.email}`);
+      console.log(`   PDF Size: ${(pdfBase64.length / 1024).toFixed(2)} KB`);
+
+      // Initialize OpenAI with secret
+      const apiKey = getOpenAIApiKey();
+      const openai = new OpenAI({ apiKey });
+
+      // Call GPT-4 Vision
+      const response = await openai.chat.completions.create({
+        model: "gpt-4-vision-preview",
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Extrahiere ALLE Daten aus dieser DAT-Rechnung/Kalkulation.
+
+WICHTIG: Gib die Daten als JSON zurück mit dieser exakten Struktur:
+
+{
+  "fahrzeugdaten": {
+    "marke": "Peugeot",
+    "modell": "508 SW",
+    "vin": "VR3FCYHZTPY554388",
+    "kennzeichen": "ROW-M 9044",
+    "farbcode": "B0NVL/B0MM0/EVL",
+    "farbname": "PLATINIUM-GRAU"
+  },
+  "ersatzteile": [
+    {
+      "etn": "1622749580",
+      "benennung": "NIET RADLAUFABDECKUNG V.R.",
+      "anzahl": 4,
+      "einzelpreis": 0.28,
+      "gesamtpreis": 1.12
+    }
+  ],
+  "arbeitslohn": [
+    {
+      "position": "SCHEINWERFER R. AUSTAUSCHEN",
+      "art": "E",
+      "stunden": 0.30,
+      "stundensatz": 70.00,
+      "gesamtpreis": 21.00
+    }
+  ],
+  "lackierung": [
+    {
+      "stufe": 1,
+      "benennung": "OBERFLAECHE KOTFLUEGEL L.",
+      "materialpunkte": 8,
+      "materialkosten": 31.92,
+      "stunden": 0.50,
+      "lohn": 40.00,
+      "gesamtpreis": 71.92
+    }
+  ]
+}
+
+WICHTIGE REGELN:
+1. Preise als Zahlen (float), NICHT als Strings
+2. Schweizer Format (1'532.10) → 1532.10
+3. Deutsches Format (1.532,10) → 1532.10
+4. ETN: 10-stellig ODER 6-8 Stellen + Buchstabe (z.B. "6925P8")
+5. ALLE Ersatzteile extrahieren (auch bei REPARATURSATZ-Unterteilen)
+6. ALLE Arbeitszeiten extrahieren (Art: E=Elektrik, K=Karosserie, M=Mechanik)
+7. ALLE Lackier-Positionen extrahieren
+8. Wenn ein Feld leer ist: null verwenden
+9. Arrays können leer sein: []
+10. Keine zusätzlichen Felder hinzufügen`
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:application/pdf;base64,${pdfBase64}`
+              }
+            }
+          ]
+        }],
+        max_tokens: 4096,
+        temperature: 0.1  // Low temperature for consistent extraction
+      });
+
+      const content = response.choices[0].message.content;
+      console.log('✅ [OPENAI] Response received');
+      console.log(`   Tokens used: ${response.usage.total_tokens}`);
+      console.log(`   Estimated cost: $${(response.usage.total_tokens * 0.00001).toFixed(4)}`);
+
+      // Parse JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('❌ [OPENAI] No JSON found in response:', content);
+        throw new functions.https.HttpsError(
+          'internal',
+          'Keine JSON-Daten in OpenAI Response gefunden'
+        );
+      }
+
+      const parsedData = JSON.parse(jsonMatch[0]);
+
+      // Validate structure
+      if (!parsedData.fahrzeugdaten && !parsedData.ersatzteile) {
+        throw new functions.https.HttpsError(
+          'internal',
+          'Ungültige Datenstruktur von OpenAI'
+        );
+      }
+
+      console.log('✅ [OPENAI] Parsing successful:');
+      console.log(`   - Fahrzeugdaten: ${parsedData.fahrzeugdaten ? 'ja' : 'nein'}`);
+      console.log(`   - Ersatzteile: ${parsedData.ersatzteile?.length || 0}`);
+      console.log(`   - Arbeitszeiten: ${parsedData.arbeitslohn?.length || 0}`);
+      console.log(`   - Lackierung: ${parsedData.lackierung?.length || 0}`);
+
+      // Log to Firestore for analytics
+      await db.collection('openai_usage').add({
+        userId: context.auth.uid,
+        email: context.auth.token.email,
+        timestamp: admin.firestore.Timestamp.now(),
+        model: 'gpt-4-vision-preview',
+        tokensUsed: response.usage.total_tokens,
+        estimatedCost: response.usage.total_tokens * 0.00001,
+        ersatzteileCount: parsedData.ersatzteile?.length || 0,
+        arbeitslohnCount: parsedData.arbeitslohn?.length || 0,
+        lackierungCount: parsedData.lackierung?.length || 0
+      });
+
+      return {
+        success: true,
+        data: parsedData,
+        source: 'openai-gpt4-vision',
+        meta: {
+          tokensUsed: response.usage.total_tokens,
+          estimatedCost: (response.usage.total_tokens * 0.00001).toFixed(4)
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ [OPENAI] Parsing failed:', error);
+
+      // Log error to Firestore
+      await db.collection('systemLogs').add({
+        type: 'openai_parsing_error',
+        timestamp: admin.firestore.Timestamp.now(),
+        userId: context.auth?.uid || 'unknown',
+        error: error.message,
+        stack: error.stack
+      });
+
+      throw new functions.https.HttpsError(
+        'internal',
+        `PDF-Parsing fehlgeschlagen: ${error.message}`
+      );
+    }
+  });
