@@ -933,6 +933,7 @@ service cloud.firestore {
                   && fahrzeugeCollection.matches('fahrzeuge_.*');
 
       // Production Rule: Werkstatt & Mitarbeiter mit Rollenchecks
+      // 🆕 2025-11-11: Includes 'rechnung' object updates (only Admin/Werkstatt can modify invoices)
       allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 
@@ -1091,15 +1092,20 @@ service cloud.firestore {
                   && isActive()
                   && isOwner(partnerId);
 
-      // Partners: Can update password-related fields + bonus-fields
+      // Partners: Can update password/bonus + settings-fields (profil, benachrichtigungen)
       // 🆕 BUGFIX 2025-11-06: Added bonus-related fields für KVA-Annahme
+      // 🆕 BUGFIX 2025-11-11: Added profil, benachrichtigungen, lastModifiedAt für Partner Settings
       allow update: if partnersCollection.matches('partners_.*')
                     && isPartner()
                     && isActive()
                     && isOwner(partnerId)
                     && request.resource.data.diff(resource.data)
                         .affectedKeys()
-                        .hasOnly(['requiresPasswordChange', 'passwordChangedAt', 'initialPassword', 'lastLogin', 'bonusErhalten', 'rabattKonditionen']);
+                        .hasOnly([
+                          'requiresPasswordChange', 'passwordChangedAt', 'initialPassword', 'lastLogin',
+                          'bonusErhalten', 'rabattKonditionen',
+                          'profil', 'benachrichtigungen', 'lastModifiedAt'
+                        ]);
     }
 
     // Global Partner Collection (used by Cloud Functions for Auth data)
@@ -1413,6 +1419,50 @@ service cloud.firestore {
 
       // Only admins can delete time tracking records
       allow delete: if zeiterfassungCollection.matches('zeiterfassung_.*')
+                    && isAdmin();
+    }
+
+    // ============================================
+    // COUNTERS COLLECTION (Multi-Tenant) - 2025-11-11
+    // ============================================
+    // Stores global counters like invoice numbers (rechnungsnummer)
+    // Pattern: counters_mosbach, counters_heidelberg
+    // Documents: rechnungsnummer, etc.
+    //
+    // Security Requirements:
+    // - Admin/Werkstatt: Full read/write access for counter management
+    // - Mitarbeiter: Read-only access (for display purposes)
+    // - Partner: NO ACCESS (counters are internal-only)
+    //
+    // Used by:
+    // - kanban.html: generateUniqueRechnungsnummer() (automatic invoice creation)
+    // - rechnungen-admin.html: manualCreateRechnung() (manual invoice creation)
+
+    match /{countersCollection}/{counterId} {
+      // ============================================
+      // READ Rules
+      // ============================================
+
+      // Admin/Werkstatt: Full read access
+      allow read: if countersCollection.matches('counters_.*')
+                  && isAdmin();
+
+      // Mitarbeiter (Active): Read-only access
+      allow read: if countersCollection.matches('counters_.*')
+                  && isMitarbeiter()
+                  && isActive();
+
+      // ============================================
+      // WRITE Rules (Create/Update/Delete)
+      // ============================================
+
+      // Admin/Werkstatt: Full write access for counter updates
+      // Used for incrementing invoice numbers via Firestore Transactions
+      allow create, update: if countersCollection.matches('counters_.*')
+                            && isAdmin();
+
+      // Delete: Only admins (rarely needed, but available for cleanup)
+      allow delete: if countersCollection.matches('counters_.*')
                     && isAdmin();
     }
 
