@@ -4639,16 +4639,27 @@
                 // Lade-Indikator anzeigen
                 container.innerHTML = '<p style="color: var(--color-text-secondary); padding: 20px;">Lade Bestellungen...</p>';
 
-                // Query: Alle Bestellungen für dieses Fahrzeug
+                // Query: Alle Bestellungen für dieses Fahrzeug (OHNE .orderBy() - vermeidet Composite Index)
                 const snapshot = await window.getCollection('bestellungen')
                     .where('fahrzeugId', '==', fahrzeugId)
-                    .orderBy('bestelltAm', 'desc')
                     .get();
 
                 if (snapshot.empty) {
                     container.innerHTML = '<p style="color: var(--color-text-secondary); padding: 20px;">Keine Bestellungen vorhanden</p>';
                     return;
                 }
+
+                // Client-Side Sorting: Bestellungen nach bestelltAm sortieren (neueste zuerst)
+                const bestellungen = [];
+                snapshot.forEach(doc => bestellungen.push(doc.data()));
+
+                bestellungen.sort((a, b) => {
+                    const dateA = new Date(a.bestelltAm || 0);
+                    const dateB = new Date(b.bestelltAm || 0);
+                    return dateB - dateA; // Descending order (neueste zuerst)
+                });
+
+                console.log(`✅ ${bestellungen.length} Bestellungen für Fahrzeug ${fahrzeugId} geladen (client-side sorted)`);
 
                 // Tabelle erstellen
                 let html = `
@@ -4666,8 +4677,7 @@
                         <tbody>
                 `;
 
-                snapshot.docs.forEach((doc, index) => {
-                    const bestellung = doc.data();
+                bestellungen.forEach((bestellung, index) => {
                     const bgColor = index % 2 === 0 ? 'rgba(0,0,0,0.02)' : 'transparent';
 
                     // Status Badge
