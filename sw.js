@@ -14,7 +14,7 @@
 // KONFIGURATION
 // ============================================
 
-const CACHE_VERSION = 'v4.5-dienstplan-fix';
+const CACHE_VERSION = 'v4.6-openai-integration';
 const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;
