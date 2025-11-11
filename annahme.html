@@ -3159,10 +3159,19 @@
                     }
                 });
 
-                // Fallback: Wenn Column-based nichts gefunden hat, nutze alte Regex-Methode
-                const ersatzteilCountBefore = extractedData.ersatzteile.length;
-                if (ersatzteilCountBefore === 0) {
-                    console.log('⚠️ Column-based extraction fand nichts, fallback zu Regex...');
+                // Fallback-Chain: Column → Row-based → Flattened text
+                const ersatzteilCountAfterColumn = extractedData.ersatzteile.length;
+
+                // Fallback 1: Row-basiertes Regex Parsing
+                if (ersatzteilCountAfterColumn === 0) {
+                    console.log('⚠️ Column-based extraction fand nichts, versuche Row-basiertes Regex...');
+                    extractErsatzteileFromRows(tableRows, extractedData);
+                }
+
+                // Fallback 2: Flattened text Regex (letzte Option)
+                const ersatzteilCountAfterRows = extractedData.ersatzteile.length;
+                if (ersatzteilCountAfterRows === 0) {
+                    console.log('⚠️ Row-based Regex fand nichts, fallback zu flattened text...');
                     extractErsatzteile(text, extractedData);
                 }
 
@@ -3289,6 +3298,65 @@
                 console.warn('⚠️ Keine Ersatzteile gefunden. Überprüfe PDF-Format.');
             } else {
                 console.log(`✅ Insgesamt ${count} Ersatzteile extrahiert`);
+            }
+        }
+
+        // =====================================================================
+        // STAGE 6: Row-basiertes Regex Parsing (2025-11-11)
+        // Parsed jede PDF-Zeile EINZELN statt flattened text
+        // Verhindert dass greedy pattern über mehrere Zeilen matcht
+        // =====================================================================
+        function extractErsatzteileFromRows(tableRows, extractedData) {
+            console.log('🔍 [ROW-BASED] Extracting Ersatzteile from table rows...');
+
+            // Gleiches Regex wie extractErsatzteile() - aber angewendet auf einzelne Rows
+            const ersatzteilRegex = /(?:[A-Z]\s+\d+\s+)?(\d{10}|\d{4,8}[A-Z]\d{0,2})\s+([A-ZÄÖÜa-zäöüß0-9\.\,\-\(\)\/]+(?:\s+[A-ZÄÖÜa-zäöüß0-9\.\,\-\(\)\/]+)*)\s+(\d+)\s+([\d\'\.\,]+)\s+([\d\'\.\,]+)/;
+
+            let count = 0;
+            tableRows.forEach((row, rowIndex) => {
+                // Join columns zu einem String für diese Row
+                const rowText = row.columns.join(' ');
+
+                // Parse diese Row mit Regex (nicht global, nur erste Match)
+                const match = rowText.match(ersatzteilRegex);
+
+                if (match) {
+                    const etn = match[1].trim();
+                    const benennung = match[2].trim();
+                    const anzahl = parseInt(match[3]);
+
+                    // Handle different number formats (Swiss: 1'234.50, German: 1.234,50)
+                    const einzelpreisStr = match[4].replace(/\s/g, '').replace(/'/g, '').replace(',', '.');
+                    const gesamtpreisStr = match[5].replace(/\s/g, '').replace(/'/g, '').replace(',', '.');
+
+                    const einzelpreis = parseFloat(einzelpreisStr);
+                    const gesamtpreis = parseFloat(gesamtpreisStr);
+
+                    // Validate extracted data
+                    if (etn && benennung && anzahl > 0 && einzelpreis > 0) {
+                        extractedData.ersatzteile.push({
+                            etn: etn,
+                            benennung: benennung,
+                            anzahl: anzahl,
+                            einzelpreis: einzelpreis,
+                            gesamtpreis: gesamtpreis
+                        });
+                        count++;
+                        console.log(`✅ [ROW ${rowIndex}] Ersatzteil ${count}:`, {
+                            etn,
+                            benennung: benennung.substring(0, 40) + (benennung.length > 40 ? '...' : ''),
+                            anzahl,
+                            einzelpreis: einzelpreis.toFixed(2),
+                            gesamtpreis: gesamtpreis.toFixed(2)
+                        });
+                    }
+                }
+            });
+
+            if (count === 0) {
+                console.warn('⚠️ [ROW-BASED] Keine Ersatzteile gefunden');
+            } else {
+                console.log(`✅ [ROW-BASED] Insgesamt ${count} Ersatzteile extrahiert`);
             }
         }
 
