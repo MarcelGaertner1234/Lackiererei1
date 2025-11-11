@@ -963,6 +963,46 @@
                 </div>
             </div>
         </div>
+
+        <!-- 🆕 PHASE 3: Zentrale Ersatzteile-Datenbank -->
+        <div class="material-list-section" style="margin-top: 40px;">
+            <div class="material-list-header">
+                <h3>
+                    <svg data-feather="database"></svg>
+                    Zentrale Ersatzteile-Datenbank
+                </h3>
+                <span class="count-badge" id="ersatzteileCount">0</span>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="color: var(--color-text-secondary); font-size: 14px; display: block; margin-bottom: 8px;">
+                    📍 Werkstatt filtern:
+                </label>
+                <select id="werkstattFilter" style="
+                    width: 100%;
+                    padding: 12px;
+                    border-radius: 12px;
+                    border: 2px solid var(--color-border-glass);
+                    background: var(--color-surface);
+                    color: var(--color-text-primary);
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                " onchange="loadZentraleErsatzteile()">
+                    <option value="alle">🌍 Alle Werkstätten</option>
+                    <option value="mosbach" selected>🏭 Mosbach</option>
+                    <option value="heidelberg">🏭 Heidelberg</option>
+                    <option value="heilbronn">🏭 Heilbronn</option>
+                </select>
+            </div>
+            <div id="ersatzteileList" class="material-list">
+                <!-- Dynamisch gefüllt via JavaScript -->
+                <div class="empty-state">
+                    <div class="empty-icon">📦</div>
+                    <p>Keine Ersatzteile in der Datenbank</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="firebase-config.js?v=a4192c4"></script>
@@ -1040,6 +1080,10 @@
                 // 🆕 PHASE 2.4: Setup listeners AFTER Auth State is ready
                 console.log('🔄 [MATERIAL] Setting up Material Requests Listener...');
                 setupMaterialRequestsListener();
+
+                // 🆕 PHASE 3: Lade zentrale Ersatzteile-Datenbank
+                console.log('🔄 [PHASE 3] Loading zentrale Ersatzteile...');
+                loadZentraleErsatzteile();
             })();
 
             // ============================================
@@ -1453,6 +1497,201 @@
                 setTimeout(() => {
                     errorMsg.classList.remove('show');
                 }, 5000);
+            }
+        }
+
+        // ============================================
+        // 🆕 PHASE 3: ZENTRALE ERSATZTEILE-DATENBANK
+        // ============================================
+
+        /**
+         * Lädt Ersatzteile aus der zentralen Datenbank (werkstattübergreifend)
+         * Collection: 'ersatzteile' (NICHT multi-tenant!)
+         */
+        async function loadZentraleErsatzteile() {
+            // Warte bis Firebase initialisiert ist
+            if (!window.firebaseInitialized || !window.db) {
+                console.log('⏳ Waiting for Firebase...');
+                setTimeout(loadZentraleErsatzteile, 500);
+                return;
+            }
+
+            const listContainer = document.getElementById('ersatzteileList');
+            const countBadge = document.getElementById('ersatzteileCount');
+            const werkstattFilter = document.getElementById('werkstattFilter').value;
+
+            console.log('📦 [PHASE 3] Lade zentrale Ersatzteile... (Filter:', werkstattFilter, ')');
+
+            // Loading state
+            listContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">⏳</div>
+                    <p>Lade Ersatzteile...</p>
+                </div>
+            `;
+
+            try {
+                // CRITICAL: Verwende DIREKT firebase.firestore().collection('ersatzteile')
+                // NICHT window.getCollection() (würde _mosbach anhängen)
+                const snapshot = await firebase.firestore()
+                    .collection('ersatzteile')
+                    .orderBy('totalBestellungen', 'desc')
+                    .limit(100)
+                    .get();
+
+                const allParts = [];
+                snapshot.forEach(doc => {
+                    allParts.push(doc.data());
+                });
+
+                console.log(`📦 [PHASE 3] ${allParts.length} Ersatzteile geladen aus zentraler DB`);
+
+                // Filter nach Werkstatt (falls ausgewählt)
+                let filteredParts = allParts;
+                if (werkstattFilter !== 'alle') {
+                    filteredParts = allParts.filter(part => {
+                        // Prüfe ob Werkstatt in verwendungen[] enthalten ist
+                        return part.verwendungen?.some(v => v.werkstattId === werkstattFilter);
+                    });
+                    console.log(`📦 [PHASE 3] ${filteredParts.length} Ersatzteile für Werkstatt '${werkstattFilter}'`);
+                }
+
+                // Render
+                renderZentraleErsatzteile(filteredParts);
+
+            } catch (error) {
+                console.error('❌ [PHASE 3] Fehler beim Laden der Ersatzteile:', error);
+                listContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">❌</div>
+                        <p>Fehler beim Laden der Ersatzteile</p>
+                    </div>
+                `;
+                countBadge.textContent = '0';
+            }
+        }
+
+        /**
+         * Rendert Ersatzteile-Liste
+         * @param {Array} parts - Array von Ersatzteil-Objekten
+         */
+        function renderZentraleErsatzteile(parts) {
+            const listContainer = document.getElementById('ersatzteileList');
+            const countBadge = document.getElementById('ersatzteileCount');
+
+            // Count Badge aktualisieren
+            countBadge.textContent = parts.length;
+
+            // Empty State wenn keine Ersatzteile
+            if (parts.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📦</div>
+                        <p>Keine Ersatzteile für diesen Filter gefunden</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Ersatzteil-Cards generieren
+            listContainer.innerHTML = parts.map(part => {
+                // Letzte Verwendung (neueste)
+                const letzteVerwendung = part.verwendungen && part.verwendungen.length > 0
+                    ? new Date(part.verwendungen[part.verwendungen.length - 1].datum)
+                    : null;
+
+                const letzteVerwendungStr = letzteVerwendung
+                    ? letzteVerwendung.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                    : 'Unbekannt';
+
+                // Werkstätten die dieses Teil verwenden
+                const werkstaetten = part.verwendungen
+                    ? [...new Set(part.verwendungen.map(v => v.werkstattId))]
+                    : [];
+
+                const werkstaettenStr = werkstaetten.length > 0
+                    ? werkstaetten.join(', ')
+                    : 'Keine';
+
+                return `
+                    <div class="material-card" style="grid-template-columns: 1fr; padding: 20px;" data-etn="${part.etn}">
+                        <div class="material-content">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                                <div>
+                                    <div style="font-size: 20px; font-weight: 700; color: var(--color-primary); margin-bottom: 4px;">
+                                        📦 ETN: ${part.etn}
+                                    </div>
+                                    <div class="material-description" style="margin-bottom: 0;">
+                                        ${part.benennung}
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 24px; font-weight: 700; color: var(--color-success);">
+                                        ${part.totalBestellungen || 0}×
+                                    </div>
+                                    <div style="font-size: 11px; color: var(--color-text-secondary);">
+                                        Bestellungen
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="material-meta" style="border-top: 1px solid var(--color-border-glass); padding-top: 12px;">
+                                <span><svg data-feather="dollar-sign"></svg> ${part.letzterPreis?.toFixed(2) || 'N/A'} €</span>
+                                <span><svg data-feather="calendar"></svg> ${letzteVerwendungStr}</span>
+                                <span><svg data-feather="map-pin"></svg> ${werkstaettenStr}</span>
+                            </div>
+
+                            ${part.verwendungen && part.verwendungen.length > 1 ? `
+                                <div style="margin-top: 12px;">
+                                    <button class="btn-secondary"
+                                            style="padding: 8px 16px; font-size: 13px; width: 100%;"
+                                            onclick="toggleVerwendungen('${part.etn}')">
+                                        <svg data-feather="list"></svg>
+                                        ${part.verwendungen.length} Verwendungen anzeigen
+                                    </button>
+                                    <div id="verwendungen_${part.etn}" style="display: none; margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 10px;">
+                                        ${part.verwendungen.slice().reverse().map(v => `
+                                            <div style="padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+                                                <div style="display: flex; justify-content: space-between; color: var(--color-text-secondary);">
+                                                    <span>🏭 ${v.werkstattId}</span>
+                                                    <span>${new Date(v.datum).toLocaleDateString('de-DE')}</span>
+                                                </div>
+                                                <div style="margin-top: 4px;">
+                                                    <strong>${v.anzahl}× à ${v.einzelpreis?.toFixed(2) || 'N/A'} €</strong>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Feather Icons in neu erstellten Cards rendern
+            feather.replace();
+        }
+
+        /**
+         * Toggle Verwendungen-Liste für ein Ersatzteil
+         * @param {string} etn - ETN des Ersatzteils
+         */
+        function toggleVerwendungen(etn) {
+            const verwendungenDiv = document.getElementById(`verwendungen_${etn}`);
+            if (!verwendungenDiv) return;
+
+            const isVisible = verwendungenDiv.style.display !== 'none';
+            verwendungenDiv.style.display = isVisible ? 'none' : 'block';
+
+            // Button-Text aktualisieren
+            const button = verwendungenDiv.previousElementSibling;
+            if (button) {
+                const count = verwendungenDiv.querySelectorAll('div[style*="padding: 8px 0"]').length;
+                button.innerHTML = isVisible
+                    ? `<svg data-feather="list"></svg> ${count} Verwendungen anzeigen`
+                    : `<svg data-feather="chevron-up"></svg> Verwendungen verbergen`;
+                feather.replace();
             }
         }
     </script>
