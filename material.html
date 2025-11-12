@@ -1648,6 +1648,18 @@
                              ${hasPhoto ? `onclick="openLightbox('${request.photo}')" title="Klicken zum Vergrößern"` : 'title="Kein Foto verfügbar (PDF-Import)" style="cursor: default;"'}>
                         </div>
 
+                        ${!hasPhoto ? `
+                            <div style="padding: 8px; text-align: center;">
+                                <button class="btn btn-sm"
+                                        onclick="openPhotoUploadDialog('${request.id}')"
+                                        title="Foto hochladen"
+                                        style="padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #2563eb;">
+                                    <svg data-feather="camera" style="width: 14px; height: 14px;"></svg>
+                                    <span>Foto hinzufügen</span>
+                                </button>
+                            </div>
+                        ` : ''}
+
                         <div class="material-content">
                             <div class="material-description">${request.description}</div>
                             <div class="material-meta">
@@ -1765,6 +1777,107 @@
             if (e.key === 'Escape') {
                 closeLightbox();
             }
+        }
+
+        /**
+         * ============================================
+         * FOTO-UPLOAD DIALOG (NEU 2025-11-12)
+         * ============================================
+         * Öffnet Dialog zum Hochladen eines Fotos für Material-Request
+         * @param {string} requestId - ID des Material-Requests
+         */
+        async function openPhotoUploadDialog(requestId) {
+            // Erstelle unsichtbaren File Input
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = 'image/*';
+            fileInput.style.display = 'none';
+
+            // File Selected Event
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                // Validierung: Nur Bilder erlaubt
+                if (!file.type.startsWith('image/')) {
+                    if (typeof showToast === 'function') {
+                        showToast('❌ Bitte nur Bilder hochladen (JPG, PNG, etc.)', 'error');
+                    } else {
+                        alert('❌ Bitte nur Bilder hochladen (JPG, PNG, etc.)');
+                    }
+                    return;
+                }
+
+                // Größen-Validierung: Max 10MB
+                if (file.size > 10 * 1024 * 1024) {
+                    if (typeof showToast === 'function') {
+                        showToast('❌ Bild zu groß. Maximal 10MB erlaubt.', 'error');
+                    } else {
+                        alert('❌ Bild zu groß. Maximal 10MB erlaubt.');
+                    }
+                    return;
+                }
+
+                // Loading Toast
+                if (typeof showToast === 'function') {
+                    showToast('📤 Foto wird hochgeladen...', 'info');
+                }
+
+                try {
+                    // Convert to Base64 DataURL (simple approach, no Firebase Storage needed)
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        const photoDataURL = event.target.result;
+
+                        // Update Firestore Document
+                        const materialCollection = window.getCollection('material_anfragen');
+                        const docRef = db.collection(materialCollection).doc(requestId);
+
+                        await docRef.update({
+                            photo: photoDataURL,
+                            photoUploadedAt: new Date().toISOString(),
+                            photoUploadedBy: localStorage.getItem('userName') || 'Unbekannt'
+                        });
+
+                        // Success Toast
+                        if (typeof showToast === 'function') {
+                            showToast('✅ Foto erfolgreich hochgeladen!', 'success');
+                        }
+
+                        // Refresh Material-Requests Liste
+                        await loadMaterialRequests();
+                    };
+
+                    reader.onerror = () => {
+                        if (typeof showToast === 'function') {
+                            showToast('❌ Fehler beim Lesen der Datei', 'error');
+                        } else {
+                            alert('❌ Fehler beim Lesen der Datei');
+                        }
+                    };
+
+                    reader.readAsDataURL(file);
+
+                } catch (error) {
+                    console.error('Foto-Upload Fehler:', error);
+                    if (typeof showToast === 'function') {
+                        showToast('❌ Upload fehlgeschlagen: ' + error.message, 'error');
+                    } else {
+                        alert('❌ Upload fehlgeschlagen: ' + error.message);
+                    }
+                }
+            });
+
+            // Trigger File Picker
+            document.body.appendChild(fileInput);
+            fileInput.click();
+
+            // Cleanup nach kurzer Zeit
+            setTimeout(() => {
+                if (fileInput.parentNode) {
+                    fileInput.parentNode.removeChild(fileInput);
+                }
+            }, 1000);
         }
 
         /**
