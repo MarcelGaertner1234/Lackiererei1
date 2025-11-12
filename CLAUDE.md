@@ -1687,6 +1687,442 @@ function toggleAdditionalServiceFields() {
 4. ⏳ Write smoke tests for annahme.html multi-service UI
 5. ⏳ Consider adding service-specific pricing (Phase 2)
 
+**⚠️ WICHTIG: Partner-Daten Pipeline Fixes (Nov 12, 23:06-23:53):**
+Nach der Initial-Implementation wurden **4 kritische Bugs** gefunden und behoben:
+1. **Kanban Modal:** "Übersicht" Tab fehlte → `b88e8c9`
+2. **Kanban Display:** Partner-Felder nicht in Kanban angezeigt → `9c16d18`
+3. **KVA-Konvertierung:** serviceDetails wurde nicht erstellt (**KRITISCH!**) → `066b67a`
+4. **PDF Generation:** Partner-Felder fehlten in Primary & Additional Services → `3ee0b55`
+
+→ **Siehe Sektion "Partner-Daten Pipeline Fixes" unten für vollständige Details**
+
+---
+
+## 🔧 PARTNER-DATEN PIPELINE FIXES (2025-11-12)
+
+**Status:** ✅ **PRODUCTION-READY** - Vollständige Partner-Daten-Integration für 5 Services
+
+**Problem:** Partner-spezifische Felder (z.B. `reifengroesse`, `glasposition`, `kategorie`) wurden nicht korrekt durch die Pipeline übertragen:
+- **Partner → KVA Conversion:** Felder wurden NICHT zu `serviceDetails` kopiert
+- **KVA → PDF Generation:** Partner-Felder fehlten in Primary & Additional Services rendering
+- **Kanban Modal:** Partner-Service-Daten wurden nicht im "Services" Tab angezeigt
+
+**Betroffene Services:** reifen, mechanik, glas, klima, dellen
+
+**Lösung:** 4-Commit Pipeline-Fix Serie (b88e8c9 → 3ee0b55, 23:06-23:53 Uhr)
+
+---
+
+### **COMMIT 1: Service-Übersicht in Kanban Modal (b88e8c9)**
+
+**Zeitstempel:** 2025-11-12 23:06
+**File:** `kanban.html`
+**Lines Changed:** +65 (neues Tab "Übersicht")
+
+**Implementation:**
+```html
+<!-- NEW TAB: Übersicht (Service Summary) -->
+<li class="modal-tab" data-tab="uebersicht">📋 Übersicht</li>
+
+<div class="modal-tab-content" id="modalTabUebersicht">
+  <div id="serviceUebersicht" class="service-overview">
+    <!-- Dynamically populated with primary + additional services -->
+  </div>
+</div>
+```
+
+**Funktion `buildServiceLabel()`:**
+```javascript
+function buildServiceLabel(serviceTyp, isPrimary) {
+    const icons = { 'reifen': '🔧', 'glas': '🪟', 'mechanik': '⚙️', 'klima': '❄️', 'dellen': '🔨' };
+    const labels = { 'reifen': 'Reifen', 'glas': 'Glas', 'mechanik': 'Mechanik', 'klima': 'Klima', 'dellen': 'Dellen' };
+
+    const badge = `<span class="service-badge ${isPrimary ? 'primary' : 'additional'}">
+        ${icons[serviceTyp] || '[?]'} ${labels[serviceTyp] || serviceTyp}
+    </span>`;
+
+    return badge;
+}
+```
+
+**Features:**
+- ✅ Primary Service Badge (blau mit "PRIMARY" Label)
+- ✅ Additional Services Badges (lila)
+- ✅ Konsistentes Design mit Service-Icons
+- ✅ Übersichtliche Darstellung aller Services
+
+---
+
+### **COMMIT 2: Partner-Daten-Integration Kanban Modal (9c16d18)**
+
+**Zeitstempel:** 2025-11-12 23:22
+**File:** `kanban.html`
+**Changes:** 2 kritische Fixes
+
+**Fix 1: Additional Services → Partner-Felder Anzeige**
+```javascript
+// BEFORE: Nur serviceTyp wurde angezeigt
+html += buildServiceLabel(service.serviceTyp, false);
+
+// AFTER: Partner-Felder werden extrahiert und angezeigt
+html += buildServiceLabel(service.serviceTyp, false);
+
+if (service.serviceData) {
+    html += '<div class="service-fields">';
+    if (service.serviceData.reifengroesse) {
+        html += `<p>📏 Größe: ${service.serviceData.reifengroesse}</p>`;
+    }
+    if (service.serviceData.reifentyp) {
+        html += `<p>🛞 Typ: ${service.serviceData.reifentyp}</p>`;
+    }
+    // ... more service-specific fields
+    html += '</div>';
+}
+```
+
+**Fix 2: Primary Service → serviceDetails Anzeige**
+```javascript
+// BEFORE: Nur fahrzeug.serviceTyp angezeigt, keine Details
+html += buildServiceLabel(fahrzeug.serviceTyp, true);
+
+// AFTER: Partner-Felder aus serviceDetails extrahiert
+html += buildServiceLabel(fahrzeug.serviceTyp, true);
+
+if (fahrzeug.serviceDetails) {
+    html += '<div class="service-fields">';
+
+    // Service-specific rendering
+    if (fahrzeug.serviceTyp === 'reifen') {
+        if (fahrzeug.serviceDetails.reifengroesse) {
+            html += `<p>📏 Größe: ${fahrzeug.serviceDetails.reifengroesse}</p>`;
+        }
+        if (fahrzeug.serviceDetails.reifenanzahl) {
+            html += `<p>🔢 Anzahl: ${fahrzeug.serviceDetails.reifenanzahl}</p>`;
+        }
+    }
+
+    // Repeat for glas, mechanik, klima, dellen
+
+    html += '</div>';
+}
+```
+
+**Impact:**
+- ✅ Kanban Modal "Übersicht" Tab zeigt JETZT alle Partner-Felder
+- ✅ Mitarbeiter sehen vollständige Service-Informationen im Kanban Board
+
+---
+
+### **COMMIT 3: KVA-Konvertierung Fix (066b67a) - KRITISCH!**
+
+**Zeitstempel:** 2025-11-12 23:42
+**File:** `partner-app/admin-anfragen.html` (Lines 2864-2980)
+**Lines Changed:** ~120 (vollständiges `serviceDetails` IIFE)
+
+**Problem:** Partner-Felder wurden bei KVA-Akzeptierung NICHT zu `serviceDetails` kopiert.
+
+**Root Cause:**
+```javascript
+// BEFORE: serviceDetails war NULL/undefined
+const fahrzeugData = {
+    kennzeichen: anfrage.kennzeichen,
+    marke: anfrage.marke,
+    modell: anfrage.modell,
+    // ❌ serviceDetails fehlte komplett!
+};
+```
+
+**Solution - IIFE für serviceDetails Erstellung:**
+```javascript
+// 🆕 FIX (2025-11-12): SERVICE DETAILS - Partner-Felder übernehmen
+serviceDetails: (() => {
+    const details = {};
+    const serviceTyp = anfrage.serviceTyp || 'lackier';
+    const serviceData = anfrage.serviceData || {};
+
+    // Service-spezifische Felder mappen
+    switch(serviceTyp) {
+        case 'reifen':
+            // Werkstatt-Felder (mit Partner-Feldnamen-Mapping)
+            details.reifengroesse = serviceData.dimension || '';
+            details.reifentyp = serviceData.typ || '';
+            details.reifenanzahl = serviceData.anzahl || '4';
+
+            // Partner-spezifische Felder
+            if (serviceData.art) details.art = serviceData.art;
+            if (serviceData.marke) details.marke = serviceData.marke;
+            break;
+
+        case 'glas':
+            details.scheibentyp = serviceData.scheibentyp || '';
+            details.glasposition = serviceData.position || '';
+            details.schadensgroesse = serviceData.schadensgroesse || '';
+
+            // Partner-Feld
+            if (serviceData.art) details.art = serviceData.art;
+            break;
+
+        case 'mechanik':
+            details.problem = serviceData.beschreibung || serviceData.problem || '';
+            details.symptome = serviceData.symptome || '';
+
+            // Partner-Feld
+            if (serviceData.kategorie) details.kategorie = serviceData.kategorie;
+            break;
+
+        case 'klima':
+            details.klimaservice = serviceData.typ || '';
+            details.kaeltemittel = serviceData.kaeltemittel || '';
+            details.klimaproblem = serviceData.beschreibung || '';
+
+            // Partner-Feld
+            if (serviceData.art) details.art = serviceData.art;
+            break;
+
+        case 'dellen':
+            details.dellenanzahl = serviceData.anzahl || '';
+            details.dellengroesse = serviceData.groesse || '';
+            details.lackschaden = serviceData.lackschaden ? 'Ja' : 'Nein';
+            details.dellenpositionen = serviceData.positionen || '';
+            break;
+
+        // ... (6 weitere Services: versicherung, pflege, tuev, folierung, steinschutz, werbebeklebung)
+    }
+
+    // 🆕 Partner-Standard-Felder (für ALLE Services)
+    if (anfrage.anliefertermin) details.anliefertermin = anfrage.anliefertermin;
+    if (anfrage.dringlichkeitLabel) details.dringlichkeitLabel = anfrage.dringlichkeitLabel;
+    if (anfrage.lieferoption) details.lieferoption = anfrage.lieferoption;
+    if (anfrage.abholadresse) details.abholadresse = anfrage.abholadresse;
+    if (anfrage.ersatzfahrzeugGewuenscht !== undefined) {
+        details.ersatzfahrzeugGewuenscht = anfrage.ersatzfahrzeugGewuenscht;
+    }
+    if (serviceData.info) details.info = serviceData.info;
+
+    return details;
+})(),
+```
+
+**Impact:**
+- ✅ **Pipeline JETZT komplett:** Partner → KVA → `serviceDetails` → Werkstatt
+- ✅ Alle Partner-Felder werden korrekt in Firestore gespeichert
+- ✅ Kanban & PDF haben nun Zugriff auf vollständige Service-Daten
+
+**Feldname-Mappings (wichtig):**
+| Partner-Feld | Werkstatt-Feld | Service |
+|--------------|----------------|---------|
+| `dimension` | `reifengroesse` | reifen |
+| `typ` | `reifentyp` | reifen |
+| `anzahl` | `reifenanzahl` | reifen |
+| `position` | `glasposition` | glas |
+| `beschreibung` | `problem` | mechanik |
+
+---
+
+### **COMMIT 4: PDF Partner-Felder Anzeige (3ee0b55)**
+
+**Zeitstempel:** 2025-11-12 23:53
+**File:** `annahme.html` (PDF rendering in `generatePDF()`)
+**Lines Changed:** ~499 (Primary + Additional Services für 5 Services)
+
+**Problem:** Partner-Felder wurden in PDF NICHT angezeigt (weder Primary noch Additional).
+
+**Solution 1: Primary Service Partner-Felder (Lines 6379-6734)**
+
+Erweitert für: **reifen, mechanik, glas, klima, dellen**
+
+**Beispiel: reifen Service**
+```javascript
+case 'reifen':
+    // Existing Werkstatt fields
+    if (data.serviceDetails.reifengroesse) {
+        doc.text('Reifengröße:', 20, y);
+        doc.text(data.serviceDetails.reifengroesse, 60, y);
+        y += 7;
+    }
+
+    // 🆕 NEW: Partner-spezifische Felder
+    if (data.serviceDetails.art) {
+        doc.setFont(undefined, 'bold');
+        doc.text('Service-Art:', 20, y);
+        doc.setFont(undefined, 'normal');
+        const artLabels = {
+            'montage': 'Montage (neue Reifen aufziehen)',
+            'wechsel': 'Reifenwechsel (Sommer/Winter)',
+            'einlagerung': 'Einlagerung'
+        };
+        doc.text(artLabels[data.serviceDetails.art] || data.serviceDetails.art, 60, y);
+        y += 7;
+    }
+
+    if (data.serviceDetails.marke) {
+        doc.text('Reifenmarke:', 20, y);
+        doc.text(data.serviceDetails.marke, 60, y);
+        y += 7;
+    }
+
+    if (data.serviceDetails.anliefertermin) {
+        doc.text('Anliefertermin:', 20, y);
+        const datum = new Date(data.serviceDetails.anliefertermin).toLocaleDateString('de-DE');
+        doc.text(datum, 60, y);
+        y += 7;
+    }
+
+    if (data.serviceDetails.dringlichkeitLabel) {
+        doc.text('Dringlichkeit:', 20, y);
+        if (data.serviceDetails.dringlichkeitLabel === 'DRINGEND') {
+            doc.setTextColor(199, 37, 78); // ROT für DRINGEND
+            doc.setFont(undefined, 'bold');
+        }
+        doc.text(data.serviceDetails.dringlichkeitLabel, 60, y);
+        doc.setTextColor(0, 0, 0); // Reset
+        y += 7;
+    }
+
+    // ... more Partner fields (lieferoption, abholadresse, ersatzfahrzeug, info)
+    break;
+```
+
+**Solution 2: Additional Services Partner-Felder (Lines 5870-6118)**
+
+Erweitert für: **reifen, mechanik, glas, klima, dellen**
+
+**Beispiel: mechanik Service**
+```javascript
+case 'mechanik':
+    // Existing fields
+    if (addServiceData.problem) {
+        doc.text('Problem:', 30, y);
+        const problemText = doc.splitTextToSize(addServiceData.problem, 140);
+        doc.text(problemText, 70, y);
+        y += problemText.length * 5 + 2;
+    }
+
+    // 🆕 NEW: Partner-Felder
+    if (addServiceData.kategorie) {
+        doc.text('Kategorie:', 30, y);
+        const kategorieLabels = {
+            'motor': 'Motor',
+            'bremsen': 'Bremsen',
+            'fahrwerk': 'Fahrwerk',
+            'elektrik': 'Elektrik',
+            'abgasanlage': 'Abgasanlage',
+            'sonstiges': 'Sonstiges'
+        };
+        doc.text(kategorieLabels[addServiceData.kategorie] || addServiceData.kategorie, 70, y);
+        y += 6;
+    }
+
+    if (addServiceData.anliefertermin) {
+        doc.text('Anliefertermin:', 30, y);
+        const datum = new Date(addServiceData.anliefertermin).toLocaleDateString('de-DE');
+        doc.text(datum, 70, y);
+        y += 6;
+    }
+
+    if (addServiceData.dringlichkeitLabel) {
+        doc.text('Dringlichkeit:', 30, y);
+        if (addServiceData.dringlichkeitLabel === 'DRINGEND') {
+            doc.setTextColor(199, 37, 78);
+            doc.setFont(undefined, 'bold');
+        }
+        doc.text(addServiceData.dringlichkeitLabel, 70, y);
+        doc.setTextColor(0, 0, 0);
+        y += 6;
+    }
+    break;
+```
+
+**Features:**
+- ✅ Service-Art Labels mit professionellem Mapping
+- ✅ **DRINGEND-Label in ROT** (#c7254e) für visuelle Hervorhebung
+- ✅ Deutsche Datums-Formatierung (de-DE)
+- ✅ Lieferoption-Labels (z.B. "selbst" → "Kunde bringt Fahrzeug selbst")
+- ✅ Text-Wrapping für lange Felder (`abholadresse`, `info`)
+- ✅ Boolean-Display für `ersatzfahrzeugGewuenscht` ("Ja, gewünscht" / "Nein")
+
+**Impact:**
+- ✅ PDF zeigt JETZT vollständige Partner-Daten für Primary + Additional Services
+- ✅ Mitarbeiter sehen alle wichtigen Auftragsinfos im generierten PDF
+
+---
+
+### **TESTING & VALIDATION**
+
+**Manual Testing Completed (2025-11-12 23:06-23:53):**
+1. ✅ Partner creates anfrage with service-specific fields
+   Beispiel: `reifengroesse: "205/55 R16"`, `art: "montage"`
+2. ✅ Admin converts to KVA → `serviceDetails` populated correctly
+3. ✅ Werkstatt creates vehicle → `serviceDetails` transferred from Partner-Anfrage
+4. ✅ Kanban Modal "Übersicht" Tab → Partner-Felder displayed
+5. ✅ Kanban Modal "Services" Tab → Service-specific fields displayed
+6. ✅ PDF Generation → Primary Service Partner-Felder displayed
+7. ✅ PDF Generation → Additional Services Partner-Felder displayed
+
+**Automated Tests:** ⏳ NOT YET IMPLEMENTED (Future work)
+
+**Recommended Tests:**
+- Integration test: Partner → KVA → Werkstatt pipeline
+- PDF regression test: Verify Partner fields rendering
+- Kanban UI test: Verify service-details display
+
+---
+
+### **FILES CHANGED**
+
+| File | Lines Changed | Purpose | Commit |
+|------|---------------|---------|--------|
+| `kanban.html` | +65 | Service-Übersicht Tab (neues Tab) | b88e8c9 |
+| `kanban.html` | +15 | Partner-Daten Display (Services Tab) | 9c16d18 |
+| `partner-app/admin-anfragen.html` | +120 | serviceDetails IIFE (KVA Conversion) | 066b67a |
+| `annahme.html` | +499 | Partner-Felder in PDF (Primary + Additional) | 3ee0b55 |
+
+**Total:** ~699 Zeilen geändert in 3 Dateien
+
+---
+
+### **ZUSAMMENFASSUNG**
+
+**Problem gelöst:** Partner-Daten-Pipeline JETZT 100% vollständig für 5 Services
+
+**Pipeline-Status:**
+```
+Partner-Anfrage (reifen-anfrage.html)
+   → serviceData: { dimension, typ, anzahl, art, marke }
+      ↓
+KVA-Konvertierung (admin-anfragen.html) ✅ FIX 066b67a
+   → serviceDetails: { reifengroesse, reifentyp, reifenanzahl, art, marke }
+      ↓
+Werkstatt-Fahrzeug (fahrzeuge_mosbach collection)
+   → serviceDetails gespeichert in Firestore
+      ↓
+Kanban Board (kanban.html) ✅ FIX 9c16d18
+   → "Übersicht" Tab zeigt Partner-Felder ✅ FIX b88e8c9
+   → "Services" Tab zeigt Service-Details
+      ↓
+PDF Generation (annahme.html) ✅ FIX 3ee0b55
+   → Primary Service zeigt Partner-Felder
+   → Additional Services zeigen Partner-Felder
+```
+
+**Services mit vollständiger Pipeline:**
+- ✅ reifen (art, marke, anliefertermin, dringlichkeit)
+- ✅ mechanik (kategorie, anliefertermin, dringlichkeit)
+- ✅ glas (art, anliefertermin, dringlichkeit)
+- ✅ klima (art, anliefertermin, dringlichkeit)
+- ✅ dellen (anliefertermin, dringlichkeit)
+
+**Commits:**
+- `b88e8c9` - Service-Übersicht Tab (Kanban Modal)
+- `9c16d18` - Kanban Modal Partner-Daten Integration
+- `066b67a` - **KVA Conversion Fix (serviceDetails)** ← KRITISCHSTER FIX
+- `3ee0b55` - PDF Partner-Felder Anzeige
+
+**Next Steps:**
+1. ⏳ Extend to remaining 7 services (versicherung, pflege, tuev, folierung, steinschutz, werbebeklebung, lackier)
+2. ⏳ Write integration tests for Partner-Daten-Pipeline
+3. ⏳ Add Partner-Felder validation in annahme.html forms
+
 ---
 
 ## 🔧 UTILITY FUNCTIONS: NACHBESTELLUNGEN-TRANSFER BEIM FAHRZEUG-ABSCHLUSS (2025-11-12)
@@ -4631,7 +5067,10 @@ npm run test:all
 
 ## 📚 Session History
 
-**Latest Sessions (2025-11-06 to 2025-11-10):**
+**Latest Sessions (2025-11-06 to 2025-11-12):**
+- ✅ **Partner-Daten Pipeline Fixes** (4 Commits: b88e8c9, 9c16d18, 066b67a, 3ee0b55) - 100% vollständig für 5 Services (Nov 12)
+- ✅ **Multi-Service Booking System** (3 Commits: b40646c, 339a0e0, 8c13e8c) - Production-Ready (Nov 12)
+- ✅ **Material Photo-Upload + Ersatzteil-DB** (4 Commits: d6a5d78 → 80ef5a8) - Complete (Nov 12)
 - ✅ **Werkstatt-Logo Branding & UX Improvements** (Commits: 209cdf1, fd997e0) - 34 pages, Dark Mode, Auto-Init (Nov 10)
 - ✅ **Hybrid Testing Approach** (Commit: 97ddb25) - 100% Success Rate (Nov 9)
 - ✅ Zeiterfassungs-System (11 commits: d4fb0b2 → 0e6bdcb + Service Worker fix 271feb6)
@@ -4930,7 +5369,7 @@ git push origin main
 
 ---
 
-_Last Updated: 2025-11-12 (Multi-Service Booking + Nachbestellungen-Transfer + Backup Procedures) by Claude Code (Sonnet 4.5)_
-_Version: v2025.11.12.2 | File Size: 4936 lines (comprehensive + up-to-date)_
-_Recent Sessions: Nov 12 (Multi-Service Booking System, Nachbestellungen-Transfer, Backup Procedures), Nov 5-12 (Material Photo-Upload, Ersatzteil bestellen, Rechnungs-System, Logo Branding, Dark Mode) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
+_Last Updated: 2025-11-12 (Partner-Daten Pipeline Fixes + Multi-Service Booking + Nachbestellungen) by Claude Code (Sonnet 4.5)_
+_Version: v2025.11.12.3 | File Size: ~5375 lines (comprehensive + up-to-date)_
+_Recent Sessions: Nov 12 (Partner-Daten Pipeline Fixes, Multi-Service Booking, Nachbestellungen-Transfer), Nov 5-12 (Material Photo-Upload, Ersatzteil bestellen, Logo Branding, Dark Mode) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
 _Note: README.md is outdated (v1.0/2.0) and has deprecation notice - Always use CLAUDE.md for development guidance_
