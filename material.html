@@ -6,6 +6,42 @@
         // window.werkstattId is set automatically after successful login
         // This ensures proper multi-tenant data isolation
     </script>
+
+    <!--
+    ⚠️ WICHTIG: FIRESTORE SECURITY RULES UPDATE ERFORDERLICH ⚠️
+
+    Die folgenden Features wurden hinzugefügt:
+    1. Firebase Storage für Fotos (statt Base64 in Firestore)
+    2. Auto-Population zentrale Ersatzteile-Datenbank
+
+    Erforderliche Security Rules in firestore.rules:
+
+    // Zentrale Ersatzteile-Datenbank (READ & WRITE für authentifizierte User)
+    match /ersatzteile/{partId} {
+      // Jeder authentifizierte User kann lesen
+      allow read: if request.auth != null;
+
+      // Nur Werkstatt-Rollen können schreiben (für Auto-Population)
+      allow write: if request.auth != null &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['meister', 'admin', 'werkstatt', 'lager'];
+    }
+
+    // Firebase Storage Rules (storage.rules):
+    service firebase.storage {
+      match /b/{bucket}/o {
+        match /material_photos/{photoId} {
+          // Nur authentifizierte User können Photos hochladen
+          allow read: if request.auth != null;
+          allow write: if request.auth != null;
+        }
+      }
+    }
+
+    Deployment:
+    1. Firebase Console → Firestore Database → Rules → Update
+    2. Firebase Console → Storage → Rules → Update
+    -->
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Material nachbestellen | Auto-Lackierzentrum Mosbach</title>
@@ -2381,39 +2417,45 @@
                 }
 
                 try {
-                    // Convert to Base64 DataURL (simple approach, no Firebase Storage needed)
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                        const photoDataURL = event.target.result;
+                    // ✨ NEU: Firebase Storage Upload (statt Base64 in Firestore)
+                    // 1. Create Storage Reference
+                    const storageRef = firebase.storage().ref();
+                    const fileName = `material_photos/${requestId}_${Date.now()}.jpg`;
+                    const photoRef = storageRef.child(fileName);
 
-                        // Update Firestore Document
-                        const materialCollection = window.getCollection('materialRequests');
-                        const docRef = db.collection(materialCollection).doc(requestId);
-
-                        await docRef.update({
-                            photo: photoDataURL,
-                            photoUploadedAt: new Date().toISOString(),
-                            photoUploadedBy: localStorage.getItem('userName') || 'Unbekannt'
-                        });
-
-                        // Success Toast
-                        if (typeof showToast === 'function') {
-                            showToast('✅ Foto erfolgreich hochgeladen!', 'success');
+                    // 2. Upload File to Firebase Storage
+                    const uploadTask = await photoRef.put(file, {
+                        contentType: file.type,
+                        customMetadata: {
+                            uploadedBy: localStorage.getItem('userName') || 'Unbekannt',
+                            uploadedAt: new Date().toISOString(),
+                            requestId: requestId
                         }
+                    });
 
-                        // Refresh Material-Requests Liste
-                        await loadMaterialRequests();
-                    };
+                    console.log('✅ [STORAGE] Foto hochgeladen:', uploadTask.metadata.fullPath);
 
-                    reader.onerror = () => {
-                        if (typeof showToast === 'function') {
-                            showToast('❌ Fehler beim Lesen der Datei', 'error');
-                        } else {
-                            alert('❌ Fehler beim Lesen der Datei');
-                        }
-                    };
+                    // 3. Get Download URL
+                    const photoURL = await photoRef.getDownloadURL();
 
-                    reader.readAsDataURL(file);
+                    // 4. Update Firestore Document (nur URL speichern, nicht Base64)
+                    const materialCollection = window.getCollection('materialRequests');
+                    const docRef = db.collection(materialCollection).doc(requestId);
+
+                    await docRef.update({
+                        photo: photoURL,  // Firebase Storage URL
+                        photoStoragePath: fileName,  // For potential deletion
+                        photoUploadedAt: new Date().toISOString(),
+                        photoUploadedBy: localStorage.getItem('userName') || 'Unbekannt'
+                    });
+
+                    // Success Toast
+                    if (typeof showToast === 'function') {
+                        showToast('✅ Foto erfolgreich hochgeladen!', 'success');
+                    }
+
+                    // Refresh Material-Requests Liste
+                    await loadMaterialRequests();
 
                 } catch (error) {
                     console.error('Foto-Upload Fehler:', error);
@@ -2598,6 +2640,15 @@
 
                 await window.getCollection('bestellungen').doc(bestellungId).set(bestellungData);
 
+                // 2.5. ✨ NEU: Update zentrale Ersatzteile-Datenbank
+                await updateZentraleErsatzteileDatenbank({
+                    etn: etn,
+                    benennung: benennung,
+                    einzelpreis: parseFloat(einzelpreis) || 0,
+                    lieferant: request.lieferant,
+                    werkstattId: werkstattId
+                });
+
                 // 3. Material Request als "ordered" markieren
                 await window.getCollection('materialRequests').doc(requestId).update({
                     status: 'ordered',
@@ -2622,6 +2673,119 @@
             } catch (error) {
                 console.error('❌ Fehler beim Konvertieren:', error);
                 alert(`❌ Fehler: ${error.message}\n\nBitte erneut versuchen oder Support kontaktieren.`);
+            }
+        }
+
+        /**
+         * Aktualisiert zentrale Ersatzteile-Datenbank mit neuen/aktualisierten Teilen
+         * Auto-Population beim Erstellen von Bestellungen
+         * @param {Object} partData - { etn, benennung, einzelpreis, lieferant, werkstattId }
+         */
+        async function updateZentraleErsatzteileDatenbank(partData) {
+            try {
+                const { etn, benennung, einzelpreis, lieferant, werkstattId } = partData;
+
+                // Validation
+                if (!etn || !benennung) {
+                    console.warn('⚠️ [ZENTRALE DB] ETN oder Benennung fehlt, überspringe Update');
+                    return;
+                }
+
+                if (!einzelpreis || einzelpreis <= 0) {
+                    console.warn('⚠️ [ZENTRALE DB] Ungültiger Preis, überspringe Update');
+                    return;
+                }
+
+                console.log(`📦 [ZENTRALE DB] Update für ETN: ${etn}...`);
+
+                // Direkte Referenz zur zentralen Collection (KEIN window.getCollection!)
+                const ersatzteileRef = firebase.firestore().collection('ersatzteile').doc(etn);
+                const ersatzteilDoc = await ersatzteileRef.get();
+
+                const lieferantName = lieferant?.name || 'Unbekannt';
+                const currentDate = new Date().toISOString();
+
+                if (ersatzteilDoc.exists) {
+                    // Teil existiert bereits → Update Statistiken
+                    const existingData = ersatzteilDoc.data();
+
+                    // Berechne neuen Durchschnittspreis
+                    const totalOrders = (existingData.totalBestellungen || 0) + 1;
+                    const oldAvg = existingData.durchschnittspreis || einzelpreis;
+                    const newAvg = ((oldAvg * (totalOrders - 1)) + einzelpreis) / totalOrders;
+
+                    await ersatzteileRef.update({
+                        // Statistiken
+                        totalBestellungen: firebase.firestore.FieldValue.increment(1),
+                        letzteBestellung: currentDate,
+                        letzteBestellungWerkstatt: werkstattId,
+                        durchschnittspreis: Math.round(newAvg * 100) / 100,  // 2 Dezimalstellen
+
+                        // Lieferanten-Array (unique values)
+                        lieferanten: firebase.firestore.FieldValue.arrayUnion(lieferantName),
+
+                        // Preis-Historie (letzte 50 Einträge)
+                        preisHistorie: firebase.firestore.FieldValue.arrayUnion({
+                            preis: einzelpreis,
+                            datum: currentDate,
+                            werkstatt: werkstattId,
+                            lieferant: lieferantName
+                        })
+                    });
+
+                    // Verwendungen-Array aktualisieren (manuell, da arrayUnion nicht für Objekte mit gleichen IDs funktioniert)
+                    const verwendungen = existingData.verwendungen || [];
+                    const werkstattIndex = verwendungen.findIndex(v => v.werkstattId === werkstattId);
+
+                    if (werkstattIndex >= 0) {
+                        // Werkstatt existiert → Counter erhöhen
+                        verwendungen[werkstattIndex].anzahlBestellungen += 1;
+                        verwendungen[werkstattIndex].letzteVerwendung = currentDate;
+                    } else {
+                        // Neue Werkstatt hinzufügen
+                        verwendungen.push({
+                            werkstattId: werkstattId,
+                            anzahlBestellungen: 1,
+                            letzteVerwendung: currentDate
+                        });
+                    }
+
+                    await ersatzteileRef.update({ verwendungen });
+
+                    console.log(`✅ [ZENTRALE DB] Ersatzteil '${etn}' aktualisiert (Total: ${totalOrders} Bestellungen)`);
+
+                } else {
+                    // Neues Teil → Erstellen
+                    await ersatzteileRef.set({
+                        etn: etn,
+                        benennung: benennung,
+                        totalBestellungen: 1,
+                        erstBestellung: currentDate,
+                        letzteBestellung: currentDate,
+                        erstBestellungWerkstatt: werkstattId,
+                        letzteBestellungWerkstatt: werkstattId,
+                        durchschnittspreis: einzelpreis,
+                        lieferanten: [lieferantName],
+                        preisHistorie: [{
+                            preis: einzelpreis,
+                            datum: currentDate,
+                            werkstatt: werkstattId,
+                            lieferant: lieferantName
+                        }],
+                        verwendungen: [{
+                            werkstattId: werkstattId,
+                            anzahlBestellungen: 1,
+                            letzteVerwendung: currentDate
+                        }]
+                    });
+
+                    console.log(`✅ [ZENTRALE DB] Neues Ersatzteil '${etn}' erstellt`);
+                }
+
+            } catch (error) {
+                console.error('❌ [ZENTRALE DB] Fehler beim Update:', error);
+                // Fehler nicht werfen, damit Hauptprozess weiterläuft
+                // Zentrale DB ist nice-to-have, nicht kritisch
             }
         }
 
@@ -4148,6 +4312,15 @@
 
                 // ❗ WICHTIG: Speichere in materialRequests statt bestellungen
                 await window.getCollection('materialRequests').doc(requestId).set(requestData);
+
+                // ✨ NEU: Update zentrale Ersatzteile-Datenbank
+                await updateZentraleErsatzteileDatenbank({
+                    etn: etn,
+                    benennung: benennung,
+                    einzelpreis: einzelpreis,
+                    lieferant: { name: lieferantName },
+                    werkstattId: werkstattId
+                });
 
                 console.log('✅ [MANUAL MATERIAL-ANFRAGE] Material-Anfrage erfolgreich erstellt:', requestId);
 
