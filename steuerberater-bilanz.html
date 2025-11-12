@@ -451,10 +451,20 @@
 
         <!-- Header -->
         <div class="header">
-            <h1>
-                <i data-feather="bar-chart-3" style="color: var(--color-success);"></i>
-                Bilanz-Übersicht
-            </h1>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <h1>
+                    <i data-feather="bar-chart-3" style="color: var(--color-success);"></i>
+                    Bilanz-Übersicht
+                </h1>
+                <!-- Offene Posten Badge (NEU 2025-11-12) -->
+                <div id="offenePostenBadge" style="display: none; cursor: pointer;" onclick="openOffenePostenModal()">
+                    <div style="padding: 8px 16px; background: rgba(251, 146, 60, 0.15); border: 1px solid rgba(251, 146, 60, 0.3); border-radius: 20px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                        <i data-feather="alert-circle" style="width: 16px; height: 16px; color: #fb923c;"></i>
+                        <span id="offenePostenCount" style="font-size: 14px; font-weight: 600; color: #fb923c;">0</span>
+                        <span style="font-size: 14px; color: #fb923c;">offene Bestellungen</span>
+                    </div>
+                </div>
+            </div>
             <div class="header-actions">
                 <div class="period-selector">
                     <button class="period-btn" data-period="month">Monat</button>
@@ -576,6 +586,64 @@
                         <!-- Wird via JavaScript gefüllt -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Offene Posten Modal (NEU 2025-11-12) -->
+        <div id="offenePostenModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000; padding: 40px; overflow-y: auto;" onclick="closeOffenePostenModal()">
+            <div style="max-width: 900px; margin: 0 auto; background: var(--color-surface); border-radius: 16px; padding: 32px; box-shadow: var(--shadow-xl);" onclick="event.stopPropagation()">
+                <!-- Modal Header -->
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 24px;">
+                    <div>
+                        <h2 style="font-size: 24px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 8px;">
+                            <i data-feather="alert-circle" style="width: 24px; height: 24px; color: #fb923c; vertical-align: middle;"></i>
+                            Offene Bestellungen
+                        </h2>
+                        <p style="font-size: 14px; color: var(--color-text-secondary);">
+                            Fahrzeuge mit abgeschlossenen Aufträgen, aber noch ausstehenden Materialbestellungen
+                        </p>
+                    </div>
+                    <button onclick="closeOffenePostenModal()" style="background: none; border: none; cursor: pointer; padding: 8px; color: var(--color-text-secondary);">
+                        <i data-feather="x" style="width: 24px; height: 24px;"></i>
+                    </button>
+                </div>
+
+                <!-- Warning Banner -->
+                <div style="padding: 16px; background: rgba(251, 146, 60, 0.1); border-left: 4px solid #fb923c; border-radius: 8px; margin-bottom: 24px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #fb923c; margin-bottom: 4px;">
+                        ⚠️ Diese Kosten sind noch nicht in der Bilanz erfasst!
+                    </div>
+                    <div style="font-size: 13px; color: var(--color-text-secondary);">
+                        Sobald die Bestellungen als "angeliefert" markiert werden, fließen die Kosten in die nächste Bilanz ein.
+                    </div>
+                </div>
+
+                <!-- Tabelle -->
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--color-border-glass);">
+                                <th style="padding: 12px; text-align: left; font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Kennzeichen</th>
+                                <th style="padding: 12px; text-align: left; font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Status</th>
+                                <th style="padding: 12px; text-align: center; font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Anzahl Bestellungen</th>
+                                <th style="padding: 12px; text-align: right; font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Gesamtwert</th>
+                                <th style="padding: 12px; text-align: center; font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Alter</th>
+                                <th style="padding: 12px; text-align: center; font-size: 13px; font-weight: 600; color: var(--color-text-secondary);">Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="offenePostenTableBody">
+                            <!-- Wird via JavaScript gefüllt -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Footer -->
+                <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--color-border-glass); text-align: center;">
+                    <a href="material.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--color-primary); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.2s;">
+                        <i data-feather="package" style="width: 16px; height: 16px;"></i>
+                        Zur Material-Verwaltung
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -903,6 +971,148 @@
                 `;
                 tbody.innerHTML += row;
             });
+        }
+
+        // ============================================
+        // OFFENE POSTEN DASHBOARD (NEU 2025-11-12)
+        // ============================================
+
+        /**
+         * Prüft offene Bestellungen für abgeschlossene Fahrzeuge
+         */
+        async function checkOffenePosten() {
+            if (!window.db) return;
+
+            try {
+                const werkstattId = window.werkstattId || 'mosbach';
+
+                // 1. Lade alle abgeschlossenen Fahrzeuge
+                const fahrzeugeSnapshot = await window.db.collection(`fahrzeuge_${werkstattId}`)
+                    .where('status', '==', 'abgeschlossen')
+                    .get();
+
+                // 2. Sammle Fahrzeug-IDs
+                const fahrzeugIds = [];
+                const fahrzeugMap = {};
+                fahrzeugeSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    fahrzeugIds.push(data.id);
+                    fahrzeugMap[data.id] = data;
+                });
+
+                if (fahrzeugIds.length === 0) {
+                    return; // Keine abgeschlossenen Fahrzeuge
+                }
+
+                // 3. Lade alle Bestellungen mit status='bestellt' für diese Fahrzeuge
+                const bestellungenSnapshot = await window.db.collection(`bestellungen_${werkstattId}`)
+                    .where('status', '==', 'bestellt')
+                    .get();
+
+                // 4. Gruppiere Bestellungen nach Fahrzeug
+                const offenePostenMap = {};
+                bestellungenSnapshot.forEach(doc => {
+                    const bestellung = doc.data();
+                    if (fahrzeugIds.includes(bestellung.fahrzeugId)) {
+                        if (!offenePostenMap[bestellung.fahrzeugId]) {
+                            offenePostenMap[bestellung.fahrzeugId] = [];
+                        }
+                        offenePostenMap[bestellung.fahrzeugId].push(bestellung);
+                    }
+                });
+
+                const offenePostenCount = Object.keys(offenePostenMap).length;
+
+                // 5. Zeige Badge falls offene Posten existieren
+                if (offenePostenCount > 0) {
+                    document.getElementById('offenePostenBadge').style.display = 'block';
+                    document.getElementById('offenePostenCount').textContent = offenePostenCount;
+
+                    // Speichere Daten für Modal
+                    window.offenePostenData = { offenePostenMap, fahrzeugMap };
+                }
+
+                console.log(`📊 [OFFENE POSTEN] ${offenePostenCount} Fahrzeuge mit offenen Bestellungen`);
+
+            } catch (error) {
+                console.error('❌ [OFFENE POSTEN] Fehler:', error);
+            }
+        }
+
+        /**
+         * Öffnet Modal mit offenen Posten
+         */
+        function openOffenePostenModal() {
+            const modal = document.getElementById('offenePostenModal');
+            const tbody = document.getElementById('offenePostenTableBody');
+
+            modal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+
+            if (!window.offenePostenData) {
+                tbody.innerHTML = '<tr><td colspan="6" style="padding: 24px; text-align: center; color: var(--color-text-secondary);">Keine Daten verfügbar</td></tr>';
+                return;
+            }
+
+            const { offenePostenMap, fahrzeugMap } = window.offenePostenData;
+
+            // Tabelle füllen
+            tbody.innerHTML = '';
+            Object.keys(offenePostenMap).forEach(fahrzeugId => {
+                const bestellungen = offenePostenMap[fahrzeugId];
+                const fahrzeug = fahrzeugMap[fahrzeugId];
+
+                const anzahl = bestellungen.length;
+                const gesamtwert = bestellungen.reduce((sum, b) => sum + (b.gesamtpreis || 0), 0);
+
+                // Älteste Bestellung finden
+                const aelteste = bestellungen.reduce((oldest, b) => {
+                    const date = new Date(b.bestelltAm);
+                    return !oldest || date < new Date(oldest.bestelltAm) ? b : oldest;
+                }, null);
+
+                const alter = Math.floor((Date.now() - new Date(aelteste.bestelltAm)) / (1000 * 60 * 60 * 24));
+
+                // Farb-Codierung
+                let alterColor = '#6b7280'; // Grau
+                if (alter > 14) alterColor = '#ef4444'; // Rot
+                else if (alter > 7) alterColor = '#fb923c'; // Orange
+
+                const row = `
+                    <tr style="border-bottom: 1px solid var(--color-border-glass);">
+                        <td style="padding: 12px; font-weight: 600;">${fahrzeug.kennzeichen || fahrzeugId}</td>
+                        <td style="padding: 12px;">
+                            <span style="padding: 4px 8px; background: rgba(251, 146, 60, 0.15); color: #fb923c; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                Bestellt
+                            </span>
+                        </td>
+                        <td style="padding: 12px; text-align: center; font-weight: 600;">${anzahl}</td>
+                        <td style="padding: 12px; text-align: right; font-weight: 600;">${formatCurrency(gesamtwert)}</td>
+                        <td style="padding: 12px; text-align: center;">
+                            <span style="padding: 4px 8px; background: rgba(${alterColor === '#ef4444' ? '239, 68, 68' : alterColor === '#fb923c' ? '251, 146, 60' : '107, 114, 128'}, 0.15); color: ${alterColor}; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                ${alter} Tage
+                            </span>
+                        </td>
+                        <td style="padding: 12px; text-align: center;">
+                            <a href="material.html?fahrzeug=${fahrzeugId}" style="color: var(--color-primary); text-decoration: none; font-weight: 600; font-size: 13px;">
+                                Details →
+                            </a>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+
+            // Feather Icons aktualisieren
+            feather.replace();
+        }
+
+        /**
+         * Schließt Modal
+         */
+        function closeOffenePostenModal() {
+            document.getElementById('offenePostenModal').style.display = 'none';
+            document.body.style.overflow = '';
         }
 
         // ============================================

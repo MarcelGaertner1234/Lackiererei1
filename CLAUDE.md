@@ -4,6 +4,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 🚀 TL;DR - START HERE (5 Wichtigste Dinge)
+
+**Wenn du das erste Mal mit dieser Codebase arbeitest, lies dies ZUERST:**
+
+### 1. ⚡ VOR JEDER SESSION: TESTS AUSFÜHREN!
+```bash
+npm run test:all  # 23 Hybrid Tests (Integration + Smoke), ~46s
+```
+**100% Pass-Rate = App funktioniert. Failures = Etwas ist kaputt!**
+
+### 2. 🏗️ Multi-Tenant Architecture (KRITISCH!)
+```javascript
+// ✅ RICHTIG - IMMER window.getCollection() nutzen!
+const fahrzeuge = window.getCollection('fahrzeuge');  // → fahrzeuge_mosbach
+
+// ❌ FALSCH - NIEMALS direkt db.collection()!
+const fahrzeuge = db.collection('fahrzeuge');  // → Global leak!
+```
+**Regel:** Jede Collection bekommt automatisch `_mosbach` Suffix (außer: users, settings, partnerAutoLoginTokens)
+
+### 3. 🔥 Firebase Initialization Pattern (KRITISCH!)
+```javascript
+// IMMER auf firebaseInitialized warten!
+await window.firebaseInitialized;
+const werkstattId = window.werkstattId;  // Pre-initialized from localStorage
+```
+**Ohne Await = Race Conditions!** Dokumentation: Lines 3015-3335
+
+### 4. 🧪 Testing Philosophy (Nov 2025)
+- **Hybrid Approach:** Integration Tests (Firestore) + Smoke Tests (UI)
+- **23 Tests:** 10 Integration + 13 Smoke
+- **100% Success:** Chromium, Mobile Chrome, Tablet iPad
+- **Fast:** <2s per test (15x faster than old UI E2E)
+- **Test Coverage Gaps:** 15+ Features ohne Tests (siehe unten)
+
+### 5. 📝 Common Errors & Quick Fixes
+| Error | Solution | Doc Line |
+|-------|----------|----------|
+| `firebase.storage is not a function` | Add `firebase-storage-compat.js` to HTML | 3535 |
+| `Fahrzeug nicht gefunden` | Use `String(id)` comparison | 3540 |
+| `Permission denied` | Check Query-Rule alignment | 3545 |
+| `n.indexOf is not a function` | Don't wrap CollectionReference | Pattern 17 |
+
+**📖 Vollständige Dokumentation:** Scroll down für 18 Error Patterns, 12 Best Practices, Architecture Details
+
+---
+
 ## 🆕 NEUESTES FEATURE: STEUERBERATER-DASHBOARD MIT CHART.JS (2025-11-11)
 
 **Status:** ✅ **PRODUKTIONSREIF** - Vollständiges Dashboard für Finanz-Reporting
@@ -2347,6 +2394,58 @@ curl -I https://marcelgaertner1234.github.io/Lackiererei1/
 
 ---
 
+## ✅ Development Workflow Checklist
+
+### EVERY Development Session (PFLICHT!):
+
+**1. Before Making Changes:**
+```bash
+cd "Marketing/06_Digitale_Tools/Fahrzeugannahme_App"
+npm run test:all  # ✅ MUST pass 23/23 tests
+```
+❌ **If tests fail:** Fix the app BEFORE making new changes!
+
+**2. While Coding:**
+- [ ] Use `window.getCollection()` for ALL Firestore operations
+- [ ] Always `await window.firebaseInitialized` before Firebase calls
+- [ ] Use `String(id)` for ALL ID comparisons
+- [ ] Check Security Rules alignment for new queries
+- [ ] Test locally (localhost:8000 OR file://)
+
+**3. Adding New Features:**
+- [ ] Document in CLAUDE.md (add to "NEUESTES FEATURE" section)
+- [ ] Add Firestore Security Rules if new collection
+- [ ] Add Storage Rules if file uploads involved
+- [ ] Consider Integration Test (if business logic)
+- [ ] Consider Smoke Test (if new UI page)
+
+**4. Before Committing:**
+```bash
+npm run test:all  # ✅ MUST still pass 23/23 tests
+git add .
+git commit -m "type: description
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+git push origin main
+```
+
+**5. After Deployment (2-3 min):**
+- [ ] Hard-refresh browser (Cmd+Shift+R / Ctrl+Shift+F5)
+- [ ] Verify feature works on live URL
+- [ ] Check browser console for errors
+
+### Common Mistakes to Avoid:
+- ❌ Pushing without running tests first
+- ❌ Using `db.collection()` instead of `window.getCollection()`
+- ❌ Wrapping CollectionReference in `db.collection()` again
+- ❌ Nested Transactions (prepare data BEFORE transaction!)
+- ❌ Adding new collections without Security Rules
+- ❌ Testing only in Emulator (production behaves differently!)
+
+---
+
 ## 📚 Documentation Status
 
 **⚠️ IMPORTANT: Use CLAUDE.md, NOT README.md**
@@ -3486,6 +3585,44 @@ npm run test:all
 - Firebase Initialization
 
 **Note:** Smoke Tests haben einige Timeouts (ähnlich wie alte UI E2E Tests), aber sind optional da Integration Tests alle Geschäftslogik abdecken.
+
+---
+
+### 📊 Test Coverage Status (Nov 2025)
+
+**✅ GETESTET (23 Tests - 100% Pass Rate):**
+- Vehicle Creation & Customer Registration
+- Status Updates (Kanban Drag & Drop)
+- Multi-Tenant Isolation
+- Service-Specific Data Capture
+- Partner-Werkstatt Status Sync
+- UI Accessibility (5 pages)
+- Dark Mode Toggle
+- Firebase Initialization
+
+**🔴 KRITISCHE GAPS (Neue Features ohne Tests):**
+
+| Feature | Implementiert | Tests | Priority |
+|---------|---------------|-------|----------|
+| Steuerberater-Dashboard | ✅ Nov 11 | ❌ None | 🔴 HIGH |
+| Material Photo-Upload | ✅ Nov 12 | ❌ None | 🔴 HIGH |
+| Ersatzteil-Bestellen Modal | ✅ Nov 12 | ❌ None | 🔴 HIGH |
+| Rechnungs-System | ✅ Nov 11 | ❌ None | 🔴 CRITICAL |
+| Zeiterfassungs-System | ✅ Nov 7-8 | ❌ None | 🔴 CRITICAL |
+| PDF-Upload Auto-Fill | ✅ Nov 11 | ❌ None | 🟡 MEDIUM |
+| Preis-Berechtigung | ✅ Nov 11 | ❌ None | 🟡 MEDIUM |
+| Bonus-System | ✅ Nov 5 | ❌ None | 🟡 MEDIUM |
+| Wissensdatenbank | ✅ Oct 2025 | ❌ None | 🟢 LOW |
+| Logo Branding System | ✅ Nov 10 | ❌ None | 🟢 LOW |
+
+**Empfohlene Neue Tests:**
+1. **Integration Test:** Rechnung Auto-Creation (bei Status → "Fertig")
+2. **Integration Test:** Zeit-Tracking SOLL/IST Berechnung
+3. **Integration Test:** Material Photo Upload & Firestore Association
+4. **Smoke Test:** Steuerberater Dashboard Page Loading
+5. **Smoke Test:** Ersatzteil Modal Visibility & Fields
+
+**Total Test Coverage:** ~40% (23 Tests für ~15 Core Features, 15+ Features ohne Tests)
 
 ---
 
