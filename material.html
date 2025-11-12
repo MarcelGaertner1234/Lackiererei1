@@ -8,38 +8,82 @@
     </script>
 
     <!--
-    ⚠️ WICHTIG: FIRESTORE SECURITY RULES UPDATE ERFORDERLICH ⚠️
+    ⚠️⚠️⚠️ WICHTIG: FIREBASE SECURITY RULES UPDATE ERFORDERLICH ⚠️⚠️⚠️
 
     Die folgenden Features wurden hinzugefügt:
     1. Firebase Storage für Fotos (statt Base64 in Firestore)
     2. Auto-Population zentrale Ersatzteile-Datenbank
 
-    Erforderliche Security Rules in firestore.rules:
+    ===============================================================================
+    SCHRITT 1: FIRESTORE RULES UPDATE (Firestore Database)
+    ===============================================================================
 
-    // Zentrale Ersatzteile-Datenbank (READ & WRITE für authentifizierte User)
+    Firebase Console → Firestore Database → Rules Tab
+
+    Fügen Sie folgende Rule HINZU (zu Ihren bestehenden Rules):
+
     match /ersatzteile/{partId} {
       // Jeder authentifizierte User kann lesen
       allow read: if request.auth != null;
 
       // Nur Werkstatt-Rollen können schreiben (für Auto-Population)
       allow write: if request.auth != null &&
-                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['meister', 'admin', 'werkstatt', 'lager'];
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        in ['meister', 'admin', 'werkstatt', 'lager'];
     }
 
-    // Firebase Storage Rules (storage.rules):
+    ⚠️ WICHTIG: NUR die `match /ersatzteile/{partId}` Block hinzufügen!
+    Nicht die komplette Datei ersetzen! Ihre bestehenden Rules bleiben.
+
+    ===============================================================================
+    SCHRITT 2: FIREBASE STORAGE RULES UPDATE (Firebase Storage - SEPARATE DATEI!)
+    ===============================================================================
+
+    Firebase Console → Storage → Rules Tab
+
+    Ersetzen Sie die KOMPLETTE storage.rules Datei mit:
+
+    rules_version = '2';
     service firebase.storage {
       match /b/{bucket}/o {
+        // Material Photos (für Photo Upload Feature)
         match /material_photos/{photoId} {
-          // Nur authentifizierte User können Photos hochladen
           allow read: if request.auth != null;
           allow write: if request.auth != null;
+        }
+
+        // Default: Deny all other paths
+        match /{allPaths=**} {
+          allow read, write: if false;
         }
       }
     }
 
-    Deployment:
-    1. Firebase Console → Firestore Database → Rules → Update
-    2. Firebase Console → Storage → Rules → Update
+    ⚠️ WICHTIG: Dies ist eine SEPARATE Datei (storage.rules), NICHT firestore.rules!
+    Die Syntax `service firebase.storage` gehört NUR in storage.rules!
+
+    ===============================================================================
+    WARUM DER FEHLER "Unexpected 'service'" AUFTRITT
+    ===============================================================================
+
+    ❌ FALSCH: Storage Rules Syntax in Firestore Rules Datei einfügen
+    ✅ RICHTIG: Zwei separate Dateien mit unterschiedlicher Syntax
+
+    | Datei             | Firebase Console Ort            | Syntax                        |
+    |-------------------|----------------------------------|-------------------------------|
+    | firestore.rules   | Firestore Database → Rules      | match /collection/{docId}     |
+    | storage.rules     | Storage → Rules                 | service firebase.storage {...}|
+
+    ===============================================================================
+    DEPLOYMENT CHECKLIST
+    ===============================================================================
+
+    ✅ 1. Firestore Rules: `match /ersatzteile/{partId}` Block hinzugefügt
+    ✅ 2. Storage Rules: Komplette Datei mit `service firebase.storage` ersetzt
+    ✅ 3. Beide Rules "Veröffentlichen" geklickt
+    ✅ 4. Photo Upload testen (material.html)
+    ✅ 5. Zentrale DB testen (ersatzteile Collection)
+
     -->
 
     <meta charset="UTF-8">
