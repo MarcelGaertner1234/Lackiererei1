@@ -4,15 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🚀 TL;DR - START HERE (5 Wichtigste Dinge)
+## ⚠️ PARADIGM SHIFT: Manual Testing is OBSOLETE!
+
+**KRITISCHE ÄNDERUNG (Nov 2025):** Manual testing wurde **VOLLSTÄNDIG ERSETZT** durch Hybrid Testing Approach.
+- ❌ **NICHT mehr:** Browser öffnen + manuell klicken + Console-Logs kopieren
+- ✅ **STATTDESSEN:** `npm run test:all` (23 automatisierte Tests, 100% Success Rate)
+- 🎉 **Resultat:** 15x schneller (30s → 2s per test), 100% zuverlässig
+
+**Siehe:** [Testing Philosophy](#-testing-philosophy) für vollständige Dokumentation.
+
+---
+
+## 🚀 TL;DR - START HERE (Die 5 wichtigsten Dinge)
 
 **Wenn du das erste Mal mit dieser Codebase arbeitest, lies dies ZUERST:**
 
-### 1. ⚡ VOR JEDER SESSION: TESTS AUSFÜHREN!
+### 1. 🧪 TESTING FIRST - VOR JEDER SESSION!
 ```bash
 npm run test:all  # 23 Hybrid Tests (Integration + Smoke), ~46s
 ```
-**100% Pass-Rate = App funktioniert. Failures = Etwas ist kaputt!**
+**✅ 100% Pass-Rate = App funktioniert einwandfrei**
+**❌ Failures = Etwas ist kaputt - FIX BEFORE coding!**
+
+**Warum kritisch?**
+- Stellt sicher, dass App funktionstüchtig ist BEVOR du Änderungen machst
+- Verhindert "was ist kaputt gegangen?" Debug-Sessions
+- 100% Success = Grünes Licht für Development
 
 ### 2. 🏗️ Multi-Tenant Architecture (KRITISCH!)
 ```javascript
@@ -22,7 +39,8 @@ const fahrzeuge = window.getCollection('fahrzeuge');  // → fahrzeuge_mosbach
 // ❌ FALSCH - NIEMALS direkt db.collection()!
 const fahrzeuge = db.collection('fahrzeuge');  // → Global leak!
 ```
-**Regel:** Jede Collection bekommt automatisch `_mosbach` Suffix (außer: users, settings, partnerAutoLoginTokens)
+**Regel:** Jede Collection bekommt automatisch `_mosbach` Suffix
+**Ausnahmen:** users, settings, partnerAutoLoginTokens (kein Suffix)
 
 ### 3. 🔥 Firebase Initialization Pattern (KRITISCH!)
 ```javascript
@@ -30,24 +48,621 @@ const fahrzeuge = db.collection('fahrzeuge');  // → Global leak!
 await window.firebaseInitialized;
 const werkstattId = window.werkstattId;  // Pre-initialized from localStorage
 ```
-**Ohne Await = Race Conditions!** Dokumentation: Lines 3015-3335
+**⚠️ Ohne Await = Race Conditions!** Siehe: [Firebase Init Pattern](#firebase-initialization)
 
-### 4. 🧪 Testing Philosophy (Nov 2025)
-- **Hybrid Approach:** Integration Tests (Firestore) + Smoke Tests (UI)
-- **23 Tests:** 10 Integration + 13 Smoke
-- **100% Success:** Chromium, Mobile Chrome, Tablet iPad
-- **Fast:** <2s per test (15x faster than old UI E2E)
-- **Test Coverage Gaps:** 15+ Features ohne Tests (siehe unten)
+### 4. 🐛 18 Critical Error Patterns (Must-Know!)
+Dokumentierte Fehler-Patterns mit Lösungen (basierend auf 8 Debugging-Sessions):
+- Pattern 1-5: Multi-Tenant, Firebase Init, ID Type Mismatch, Listener Registry, PDF Pagination
+- Pattern 6-10: Security Rules Order, Field Inconsistency, Duplicates, Service Worker, Firestore Indexes
+- Pattern 11-15: Nested Transactions, Counter Rules, Mobile Breakpoints, Dark Mode Contrast, Storage Rules
+- Pattern 16-18: Path Matching, CollectionReference Type, Function Verification
 
-### 5. 📝 Common Errors & Quick Fixes
-| Error | Solution | Doc Line |
-|-------|----------|----------|
-| `firebase.storage is not a function` | Add `firebase-storage-compat.js` to HTML | 3535 |
-| `Fahrzeug nicht gefunden` | Use `String(id)` comparison | 3540 |
-| `Permission denied` | Check Query-Rule alignment | 3545 |
-| `n.indexOf is not a function` | Don't wrap CollectionReference | Pattern 17 |
+**Siehe:** [18 Critical Error Patterns](#-18-critical-error-patterns) für vollständige Solutions
 
-**📖 Vollständige Dokumentation:** Scroll down für 18 Error Patterns, 12 Best Practices, Architecture Details
+### 5. 📚 Dokumentations-Struktur
+| Dokument | Zweck | Wann verwenden? |
+|----------|-------|-----------------|
+| **CLAUDE.md** (dieses File) | Architecture, Testing, Error Patterns, Best Practices | Tägliche Development, Debugging |
+| **FEATURES_CHANGELOG.md** | Feature Implementation Details (Lines 54-3647 extrahiert) | Feature Deep-Dive, Implementation-Recherche |
+| **TESTING_AGENT_PROMPT.md** | QA Testing Strategy & 18 Error Patterns | Testing-Role, Pattern-Referenz |
+| **CLAUDE_SESSIONS_ARCHIVE.md** | Session-Historie | Bug-Kontext, Historical Reference |
+
+**⚡ Quick-Links:**
+- [Testing Guide](#-testing-guide) - Hybrid Testing Approach
+- [18 Error Patterns](#-18-critical-error-patterns) - Mit Solutions & Code Examples
+- [12 Best Practices](#-12-best-practices--lessons-learned) - Production Debugging Lessons
+- [Decision Trees](#-decision-trees) - Quick Reference für common decisions
+- [Architecture](#-core-architecture) - Multi-Tenant, Firebase, Security
+
+---
+
+## 🐛 18 Critical Error Patterns (with Solutions)
+
+**Basierend auf 8 Production-Debugging Sessions (Nov 2025)** - Jedes Pattern dokumentiert Symptom → Root Cause → Fix → Code Example
+
+### Pattern 1: Multi-Tenant Violation
+
+**Symptom:**
+```javascript
+// Console Output:
+"🏢 getCollectionName [window]: fahrzeuge → fahrzeuge_mosbach"
+```
+
+**Root Cause:** Direct `db.collection('fahrzeuge')` usage without suffix → Global collection leak!
+
+**Fix:**
+```javascript
+// ❌ FALSCH - Direct access
+const fahrzeuge = db.collection('fahrzeuge');  // → Global leak!
+
+// ✅ RICHTIG - Use helper
+const fahrzeuge = window.getCollection('fahrzeuge');  // → fahrzeuge_mosbach
+```
+
+**Lesson:** ALWAYS use `window.getCollection()` for tenant-scoped collections
+
+---
+
+### Pattern 2: Firebase Initialization Timeout
+
+**Symptom:**
+```javascript
+"Firebase initialization timeout"
+```
+
+**Root Cause:** Firebase SDK not loaded OR werkstattId not set before Firebase init
+
+**Fix:**
+```javascript
+// ✅ ALWAYS await firebaseInitialized
+await window.firebaseInitialized;
+const werkstattId = window.werkstattId;  // Pre-initialized from localStorage
+```
+
+**Lesson:** Check `<script>` tag order, ensure werkstattId is pre-initialized from localStorage
+
+---
+
+### Pattern 3: ID Type Mismatch
+
+**Symptom:**
+```javascript
+"Fahrzeug nicht gefunden" // Even though ID is correct!
+```
+
+**Root Cause:** String vs Number comparison (e.g., `"123" !== 123`)
+
+**Fix:**
+```javascript
+// ❌ FALSCH
+const vehicle = vehicles.find(v => v.id === vehicleId);
+
+// ✅ RICHTIG - Type-safe comparison
+const vehicle = vehicles.find(v => String(v.id) === String(vehicleId));
+```
+
+**Lesson:** ALWAYS use `String()` for ID comparisons in Firebase (auto-generated IDs are strings)
+
+---
+
+### Pattern 4: Listener Registry Missing
+
+**Symptom:**
+```javascript
+"Cannot read properties of undefined (reading 'registerDOM')"
+```
+
+**Root Cause:** `listener-registry.js` not loaded or loaded too late
+
+**Fix:**
+```html
+<!-- ✅ Load in <head>, NOT at end of body -->
+<head>
+    <script src="listener-registry.js"></script>
+</head>
+```
+
+**Lesson:** Core utilities must load BEFORE page content scripts
+
+---
+
+### Pattern 5: PDF Pagination Overflow
+
+**Symptom:**
+```javascript
+"✅ PDF erstellt erfolgreich"
+// BUT: First page is cut off!
+```
+
+**Root Cause:** Page-break check too late (y > 250) → Content exceeds page before break
+
+**Fix:**
+```javascript
+// ❌ FALSCH - Check too late
+if (y > 250) { pdf.addPage(); y = 20; }
+
+// ✅ RICHTIG - Earlier checks
+if (y > 230) { pdf.addPage(); y = 20; }
+if (y > 220) { pdf.addPage(); y = 20; }  // Even safer
+if (y > 200) { pdf.addPage(); y = 20; }  // Conservative
+```
+
+**Lesson:** Page-break checks need buffer (20-50px from page bottom)
+
+---
+
+### Pattern 6: Firestore Security Rules Pattern Collision (CRITICAL!)
+
+**Symptom:**
+```javascript
+"❌ Permission denied: Missing or insufficient permissions"
+```
+
+**Root Cause:** Wildcard patterns match BEFORE specific patterns → Specific rules never reached
+
+**Bug Example (4h debugging!):**
+```javascript
+// ❌ FALSCH - Wildcard at TOP blocks everything
+match /{chatCollection}/{id} { ... }         // Line 295 - MATCHES FIRST
+match /bonusAuszahlungen_mosbach/{id} { ... } // Line 547 - NEVER REACHED!
+
+// ✅ RICHTIG - Specific rules BEFORE wildcards
+match /bonusAuszahlungen_mosbach/{id} { ... } // Line 63 - FIRST
+match /{bonusCollection}/{id} { ... }         // Line 72 - SECOND
+match /{chatCollection}/{id} { ... }          // Line 295 - LAST
+```
+
+**Lesson:** Pattern order is CRITICAL! Order: specific → general → wildcard (top to bottom)
+
+---
+
+### Pattern 7: Field Name Inconsistency (Status Sync Bug)
+
+**Symptom:**
+```javascript
+"✅ Fahrzeug created successfully"
+// BUT: Status updates don't sync to Partner Portal!
+```
+
+**Root Cause:** Different field names in creation paths
+- Partner path: `anfrageId`
+- Admin path: `partnerAnfrageId`
+→ Status sync broken!
+
+**Fix:**
+```javascript
+// ✅ STANDARDIZE field names across ALL paths
+const fahrzeugData = {
+    partnerAnfrageId: anfrageId,  // ✅ Same name everywhere
+    // ...
+};
+```
+
+**Lesson:** Field name consistency is CRITICAL for multi-path flows! Use migration scripts for existing data.
+
+---
+
+### Pattern 8: Duplicate Vehicle Creation (Race Condition)
+
+**Symptom:**
+```javascript
+"✅ Fahrzeug created" (x2 in different tabs)
+// Result: Double Kanban entries!
+```
+
+**Root Cause:** No duplicate prevention in Admin creation path
+
+**Fix (3-Layer Check):**
+```javascript
+// Layer 1: Check anfrage.fahrzeugAngelegt flag
+if (anfrage.fahrzeugAngelegt) {
+    console.warn('Fahrzeug bereits angelegt');
+    return;
+}
+
+// Layer 2: Query by partnerAnfrageId
+const existingByAnfrage = await db.collection('fahrzeuge_mosbach')
+    .where('partnerAnfrageId', '==', anfrageId)
+    .get();
+if (!existingByAnfrage.empty) return;
+
+// Layer 3: Query by kennzeichen (natural key)
+const existingByKennzeichen = await db.collection('fahrzeuge_mosbach')
+    .where('kennzeichen', '==', kennzeichen.toUpperCase())
+    .get();
+if (!existingByKennzeichen.empty) return;
+```
+
+**Lesson:** ALWAYS implement duplicate prevention at ALL entry points! Race conditions WILL happen in production.
+
+---
+
+### Pattern 9: Service Worker Response Errors
+
+**Symptom:**
+```javascript
+"❌ Failed to convert value to 'Response'"
+"❌ Background update failed: https://www.google.com/images/cleardot.gif"
+```
+
+**Root Cause:** `staleWhileRevalidate` catch block returned `undefined`
+
+**Fix:**
+```javascript
+// ❌ FALSCH - Returns undefined
+catch (error) {
+    console.error('Fetch failed:', error);
+}
+
+// ✅ RICHTIG - Return valid Response
+catch (error) {
+    return new Response('Network error', {
+        status: 408,
+        statusText: 'Request Timeout',
+        headers: { 'Content-Type': 'text/plain' }
+    });
+}
+```
+
+**Lesson:** Service Worker error handling MUST return valid Response object!
+
+---
+
+### Pattern 10: Firestore Composite Index Missing
+
+**Symptom:**
+```javascript
+"❌ Fehler beim Erstellen der PDF: The query requires an index.
+You can create it here: [Firebase Console link]"
+```
+
+**Root Cause:** Multiple `where()` clauses on different fields require composite index
+
+**Example:**
+```javascript
+// Query with multiple where clauses:
+.where('mitarbeiterId', '==', X)
+.where('datum', '>=', Y)
+.where('datum', '<=', Z)
+.where('status', '==', 'completed')
+// → Requires Index: mitarbeiterId (ASC), status (ASC), datum (ASC)
+```
+
+**Fix:** Create composite index in Firebase Console OR `firestore.indexes.json`
+
+**Lesson:** Document index requirements UPFRONT in feature spec! Production will fail without indexes.
+
+---
+
+### Pattern 11: Nested Transaction Problem (CRITICAL!)
+
+**Symptom:**
+```javascript
+"✅ Rechnung erstellt: RE-2025-11-0042"
+// BUT: Sometimes transaction fails or creates duplicates!
+```
+
+**Root Cause:** Calling function that starts transaction INSIDE another transaction → NESTED!
+
+**Bug Example (2h debugging!):**
+```javascript
+// ❌ FALSCH - Nested transaction
+await db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(fahrzeugRef);
+
+    // This function starts its OWN transaction!
+    if (newStatus === 'fertig') {
+        const rechnungData = await autoCreateRechnung(fahrzeugId, fahrzeugData);
+    }
+
+    transaction.update(fahrzeugRef, updateData);
+});
+```
+
+**Fix:**
+```javascript
+// ✅ RICHTIG - Execute helper BEFORE main transaction
+let rechnungData = null;
+if (newStatus === 'fertig') {
+    rechnungData = await autoCreateRechnung(fahrzeugId, fahrzeugData);  // Runs its transaction FIRST
+    if (rechnungData) {
+        updateData.rechnung = rechnungData;  // Add to prepared data
+    }
+}
+
+// THEN start main transaction with prepared data
+await db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(fahrzeugRef);
+    transaction.update(fahrzeugRef, updateData);  // Already contains rechnung
+});
+```
+
+**Lesson:** NEVER call functions that start transactions INSIDE a transaction! Prepare data BEFORE transaction.
+
+---
+
+### Pattern 12: Counter Security Rules Missing (CRITICAL!)
+
+**Symptom:**
+```javascript
+"❌ Permission denied (counter update)"
+"❌ Fehler beim Erstellen der Rechnung"
+```
+
+**Root Cause:** Firestore collection `counters_{werkstattId}` had NO Security Rules!
+
+**Fix:**
+```javascript
+// Add Counter Security Rules in firestore.rules
+match /{countersCollection}/{counterId} {
+    // Admin/Werkstatt: Full read access
+    allow read: if countersCollection.matches('counters_.*')
+                && isAdmin();
+
+    // Mitarbeiter (Active): Read-only access
+    allow read: if countersCollection.matches('counters_.*')
+                && isMitarbeiter()
+                && isActive();
+
+    // Admin/Werkstatt: Full write access
+    allow create, update: if countersCollection.matches('counters_.*')
+                          && isAdmin();
+}
+```
+
+**Lesson:** When adding new collections, ALWAYS add Security Rules IMMEDIATELY! Don't assume "it will work".
+
+---
+
+### Pattern 13: Mobile Media Query Breakpoint Gap
+
+**Symptom:**
+```javascript
+// No console errors!
+// BUT: User reports "Buttons sind abgeschnitten" on 465px device
+```
+
+**Root Cause:** Media query only triggers at ≤400px, but user's device is 465px → Falls in gap!
+
+**Bug Example:**
+```css
+/* ❌ FALSCH - Gap between 400px and 768px */
+@media (max-width: 400px) {
+    .header-actions { display: grid; }
+}
+/* User's device: 465px → NO MATCH → Desktop styles applied! */
+```
+
+**Fix:**
+```css
+/* ✅ RICHTIG - Cover gap */
+@media (max-width: 520px) {
+    .header-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+    .btn {
+        flex: none;  /* ✅ CRITICAL: Reset flex:1 from 768px query */
+        font-size: 10px;
+        padding: 6px 8px;
+    }
+}
+```
+
+**Lesson:** Test BETWEEN breakpoints (450px, 500px, 600px)! Media queries cascade - reset inherited properties!
+
+---
+
+### Pattern 14: Dark Mode Opacity Too Low
+
+**Symptom:**
+```javascript
+// No console errors!
+// BUT: User reports "im darkmode sind die schriften schwerlesbar"
+```
+
+**Root Cause:** Text opacity too low on dark background → WCAG contrast fail!
+
+**Bug Example:**
+```css
+/* ❌ FALSCH - WCAG FAIL! */
+:root {
+    --text-secondary: rgba(255,255,255,0.6);  /* 3.5:1 contrast - WCAG FAIL! */
+}
+```
+
+**WCAG Standards:**
+- AA: 4.5:1 minimum
+- AAA: 7:1 minimum (target 10:1+ for comfort)
+
+**Fix:**
+```css
+/* ✅ RICHTIG - WCAG AAA */
+[data-theme="dark"] {
+    --text-primary: rgba(255,255,255,0.95);   /* 13.5:1 - AAA ✅ */
+    --text-secondary: rgba(255,255,255,0.75); /* 10.2:1 - AAA ✅ */
+}
+```
+
+**Lesson:** ALWAYS test Dark Mode with WCAG contrast checker! Opacity 0.6 or lower is NEVER acceptable!
+
+---
+
+### Pattern 15: Storage Rules Missing (403 Forbidden)
+
+**Symptom:**
+```javascript
+"❌ POST .../material_photos/req_123.jpg 403 (Forbidden)"
+"❌ Firebase Storage: User does not have permission"
+```
+
+**Root Cause:** `storage.rules` file has NO match block for upload path
+
+**⚠️ CRITICAL:** Storage Rules ≠ Firestore Rules (separate files, separate deployment!)
+
+**Fix:**
+```javascript
+// storage.rules
+match /material_photos/{requestId}/{fileName} {
+  allow read: if true;  // Public read
+  allow write: if request.auth != null
+               && request.resource.size < 10 * 1024 * 1024  // Max 10 MB
+               && (request.auth.token.role == 'admin'
+                   || request.auth.token.role == 'werkstatt');
+}
+```
+
+**Deployment:**
+```bash
+firebase deploy --only storage  # ✅ Correct
+firebase deploy --only firestore  # ❌ Won't deploy storage.rules!
+```
+
+**Lesson:** Storage Rules ≠ Firestore Rules! Separate deployment commands!
+
+---
+
+### Pattern 16: Path Structure Must Match Security Rules
+
+**Symptom:**
+```javascript
+"❌ 403 Forbidden" // Still 403 AFTER deploying Storage Rules!
+```
+
+**Root Cause:** Upload path structure doesn't match Security Rules pattern
+
+**Bug Example:**
+```javascript
+// Upload code: 1-level path
+const fileName = `material_photos/${requestId}_${timestamp}.jpg`;
+// → material_photos/req_123_1699876543.jpg (1 level)
+
+// Security Rule: 2-level path
+match /material_photos/{requestId}/{fileName} { ... }
+// → material_photos/{requestId}/{fileName} (2 levels)
+
+// Result: Path doesn't match → Rule doesn't apply → 403!
+```
+
+**Fix:**
+```javascript
+// ✅ RICHTIG - Match 2-level rule structure
+const fileName = `material_photos/${requestId}/${timestamp}.jpg`;
+// → material_photos/req_123/1699876543.jpg (2 levels - MATCHES!)
+```
+
+**Lesson:** Path structure MUST EXACTLY match Security Rules patterns! 1-level vs 2-level are different!
+
+---
+
+### Pattern 17: CollectionReference vs String Type Error
+
+**Symptom:**
+```javascript
+"❌ TypeError: n.indexOf is not a function"
+// Very cryptic Firebase SDK error!
+```
+
+**Root Cause:** `window.getCollection()` returns `CollectionReference` object, NOT string
+
+**Bug Example:**
+```javascript
+// ❌ FALSCH - Double-wrapping
+const materialCollection = window.getCollection('materialRequests');
+const docRef = db.collection(materialCollection).doc(requestId);
+// → db.collection() expects STRING, got CollectionReference → TypeError!
+```
+
+**Fix:**
+```javascript
+// ✅ RICHTIG - Direct usage
+const docRef = window.getCollection('materialRequests').doc(requestId);
+// window.getCollection() already returns CollectionReference - use directly!
+```
+
+**Lesson:** `window.getCollection()` returns `CollectionReference`, NOT string! NEVER wrap it again!
+
+---
+
+### Pattern 18: Function Existence Verification (ReferenceError)
+
+**Symptom:**
+```javascript
+"❌ ReferenceError: loadMaterialRequests is not defined"
+```
+
+**Root Cause:** Function call to non-existent function
+
+**Debug Process:**
+```bash
+# Method 1: Search for function definition
+grep -r "function loadMaterialRequests" .
+grep -r "const loadMaterialRequests" .
+# → No results = Function doesn't exist!
+
+# Method 2: Find similar/correct function
+grep -r "MaterialRequests" material.html
+# → Found: setupMaterialRequestsListener() at line 2204
+```
+
+**Fix:**
+```javascript
+// ❌ FALSCH
+await loadMaterialRequests();  // Function doesn't exist!
+
+// ✅ RICHTIG
+setupMaterialRequestsListener();  // Real-time listener, no await needed
+```
+
+**Lesson:** ALWAYS verify function existence with grep before calling! Real-time listeners don't need await!
+
+---
+
+## 📋 Error Pattern Quick Reference Table
+
+| Pattern | Symptom | Root Cause | Fix | Debug Time |
+|---------|---------|------------|-----|------------|
+| 1 | Multi-Tenant Violation | Direct `db.collection()` | Use `window.getCollection()` | 10min |
+| 2 | Firebase Init Timeout | SDK load order | `await firebaseInitialized` | 15min |
+| 3 | ID Type Mismatch | String vs Number | Use `String(id)` | 5min |
+| 4 | Listener Registry Missing | Load order | Load in `<head>` | 10min |
+| 5 | PDF Pagination Overflow | Page-break too late | Earlier checks (y > 220) | 30min |
+| 6 | Security Rules Collision | Pattern order | Specific → General → Wildcard | 4h |
+| 7 | Field Inconsistency | Different field names | Standardize across paths | 2-3h |
+| 8 | Duplicate Creation | No prevention | 3-Layer check | 1h |
+| 9 | Service Worker Error | Return undefined | Return valid Response | 30min |
+| 10 | Index Missing | Multiple where clauses | Create composite index | 15min |
+| 11 | Nested Transactions | Transaction in transaction | Prepare data BEFORE | 2h |
+| 12 | Counter Rules Missing | No security rules | Add counter rules | 1-2h |
+| 13 | Breakpoint Gap | Media query gap | Cover gaps (520px) | 1h |
+| 14 | Dark Mode Contrast | Opacity too low | WCAG AAA (0.75+) | 1h |
+| 15 | Storage Rules Missing | No upload rules | Add storage.rules | 1-2h |
+| 16 | Path Mismatch | 1-level vs 2-level | Match rule structure | 30min |
+| 17 | Type Error (indexOf) | Double-wrapping | Direct usage | 1h |
+| 18 | ReferenceError | Function doesn't exist | grep for correct name | 5-10min |
+
+**Total Debug Time Saved:** ~20-25h by knowing these patterns!
+
+---
+
+## 🆕 FEATURES - Siehe FEATURES_CHANGELOG.md
+
+**Alle Feature-Details wurden nach FEATURES_CHANGELOG.md ausgelagert** für bessere Übersichtlichkeit.
+
+**Neueste Features (2025-11-11 - 2025-11-12):**
+- ✅ Steuerberater-Dashboard mit Chart.js (4 Phasen, 4 Charts, CSV-Export)
+- ✅ Material Photo-Upload System (4 Bug-Fixes, Storage Rules)
+- ✅ Ersatzteil Bestellen Feature (11 Felder, Filter-System)
+- ✅ Multi-Service Booking System (Backward Compatible)
+- ✅ Logo Branding System (34 Seiten, Auto-Init)
+- ✅ Rechnungs-System (Auto-Creation, Counter-Based)
+- ✅ PDF-Upload mit Auto-Befüllung (DAT-PDF Integration)
+
+**Siehe:** [FEATURES_CHANGELOG.md](./FEATURES_CHANGELOG.md) für vollständige Feature-Dokumentation mit:
+- Phase-by-Phase Implementation
+- Code-Beispiele
+- Security Rules Changes
+- Commit-Historie
 
 ---
 
@@ -3723,8 +4338,334 @@ npx playwright test -g "should create vehicle intake"
 # Deploy specific components
 firebase deploy --only functions          # Cloud Functions
 firebase deploy --only firestore:rules    # Security Rules
+firebase deploy --only storage            # Storage Rules
 firebase deploy --only hosting            # Hosting config
 ```
+
+---
+
+## ☁️ Cloud Functions Development & Deployment
+
+**Firebase Cloud Functions** - Serverless backend functions für automated tasks, scheduled jobs, and HTTP endpoints
+
+### Functions Overview
+
+**Active Functions (functions/index.js - 3200+ lines):**
+1. **ensurePartnerAccount** - Creates Firebase Auth account for partner
+2. **createPartnerAutoLoginToken** - Generates QR code token for partner PDF
+3. **validatePartnerAutoLoginToken** - Validates QR token + creates custom Firebase token
+4. **monthlyBonusReset** - Scheduled: 1st of month (Resets partner bonus counters)
+5. **testMonthlyBonusReset** - HTTP: Manual bonus reset for testing
+
+**Region:** europe-west3 (Frankfurt, Germany)
+**Runtime:** Node.js 20
+
+---
+
+### Local Development
+
+**1. Navigate to functions directory:**
+```bash
+cd functions/
+```
+
+**2. Install dependencies (if package.json changed):**
+```bash
+npm install
+```
+
+**3. Test locally with emulators:**
+```bash
+# From project root
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+firebase emulators:start --only functions
+
+# Functions emulator runs on: http://localhost:5001
+```
+
+**4. Test HTTP functions with curl:**
+```bash
+# Test bonus reset
+curl -X POST http://localhost:5001/auto-lackierzentrum-mosbach/europe-west3/testMonthlyBonusReset
+
+# Test partner token validation
+curl -X POST http://localhost:5001/auto-lackierzentrum-mosbach/europe-west3/validatePartnerAutoLoginToken \
+  -H "Content-Type: application/json" \
+  -d '{"token": "test_token_123"}'
+```
+
+---
+
+### Deployment
+
+**Deploy all functions:**
+```bash
+cd functions/
+firebase deploy --only functions
+```
+
+**Deploy specific function:**
+```bash
+firebase deploy --only functions:ensurePartnerAccount
+```
+
+**Auto-Deployment via GitHub Actions:**
+- Trigger: Push to `main` + changes in `functions/**`
+- Workflow: `.github/workflows/deploy-functions.yml`
+- Time: ~2-3 minutes
+- Logs: GitHub Actions tab
+
+---
+
+### Viewing Logs
+
+**Real-time logs (all functions):**
+```bash
+firebase functions:log
+```
+
+**Filter by function name:**
+```bash
+firebase functions:log --only ensurePartnerAccount
+```
+
+**Last 50 log entries:**
+```bash
+firebase functions:log --limit 50
+```
+
+**Logs in Firebase Console:**
+```
+https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/functions/logs
+```
+
+---
+
+### Secrets Management
+
+**Setting secrets (API keys, passwords, etc.):**
+```bash
+# Set a secret
+firebase functions:secrets:set API_KEY
+# Enter secret value when prompted
+
+# Set from file
+firebase functions:secrets:set API_KEY < api_key.txt
+```
+
+**Using secrets in code:**
+```javascript
+const { defineSecret } = require('firebase-functions/params');
+const apiKey = defineSecret('API_KEY');
+
+exports.myFunction = onRequest(
+  { secrets: [apiKey] },
+  async (req, res) => {
+    const key = apiKey.value();  // Access secret value
+    // Use key...
+  }
+);
+```
+
+**List all secrets:**
+```bash
+firebase functions:secrets:access
+```
+
+---
+
+### Troubleshooting
+
+**Problem: Function timeout**
+```javascript
+// Symptom: Function times out after 60s
+// Solution: Increase timeout in function config
+
+exports.myFunction = onRequest(
+  { timeoutSeconds: 300 },  // 5 minutes max
+  async (req, res) => {
+    // Long-running task...
+  }
+);
+```
+
+**Problem: Function cold start is slow**
+```javascript
+// Symptom: First request takes 5-10s
+// Solution: Keep functions warm with scheduled pings
+
+exports.keepWarm = onSchedule('every 5 minutes', async () => {
+  // Minimal work to keep function warm
+  console.log('Keep-warm ping');
+});
+```
+
+**Problem: CORS errors in HTTP functions**
+```javascript
+// Solution: Enable CORS middleware
+
+const cors = require('cors')({ origin: true });
+
+exports.myFunction = onRequest((req, res) => {
+  cors(req, res, async () => {
+    // Your function logic...
+  });
+});
+```
+
+**Problem: Permission denied in Firestore access**
+```javascript
+// Solution: Use Admin SDK (bypasses security rules)
+
+const admin = require('firebase-admin');
+admin.initializeApp();
+const db = admin.firestore();
+
+// Admin SDK has full access (no security rules applied)
+const snapshot = await db.collection('users').get();
+```
+
+---
+
+### Best Practices
+
+**1. Use Admin SDK for backend operations**
+```javascript
+// ✅ RICHTIG - Admin SDK (full access)
+const admin = require('firebase-admin');
+const db = admin.firestore();
+
+// ❌ FALSCH - Client SDK (subject to security rules)
+const firebase = require('firebase/app');
+```
+
+**2. Handle errors gracefully**
+```javascript
+exports.myFunction = onRequest(async (req, res) => {
+  try {
+    const result = await someOperation();
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+```
+
+**3. Validate input parameters**
+```javascript
+exports.myFunction = onRequest(async (req, res) => {
+  const { userId, action } = req.body;
+
+  // Validate required parameters
+  if (!userId || !action) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required parameters: userId, action'
+    });
+  }
+
+  // Continue with validated input...
+});
+```
+
+**4. Use structured logging**
+```javascript
+const { logger } = require('firebase-functions');
+
+exports.myFunction = onRequest(async (req, res) => {
+  logger.info('Function started', { userId: req.body.userId });
+
+  try {
+    // Function logic...
+    logger.info('Function completed successfully');
+  } catch (error) {
+    logger.error('Function failed', { error: error.message });
+  }
+});
+```
+
+**5. Schedule functions for background tasks**
+```javascript
+// Run every day at 2:00 AM
+exports.dailyCleanup = onSchedule('0 2 * * *', async () => {
+  logger.info('Daily cleanup started');
+  // Cleanup logic...
+});
+
+// Run on 1st of every month at 00:00
+exports.monthlyReset = onSchedule('0 0 1 * *', async () => {
+  logger.info('Monthly reset started');
+  // Reset logic...
+});
+```
+
+---
+
+### Testing Scheduled Functions
+
+**Problem:** Scheduled functions only run at specified times
+**Solution:** Create HTTP test endpoint
+
+```javascript
+// Production scheduled function
+exports.monthlyBonusReset = onSchedule('0 0 1 * *', async () => {
+  await resetBonusCounters();
+});
+
+// Test endpoint (HTTP trigger)
+exports.testMonthlyBonusReset = onRequest(async (req, res) => {
+  logger.info('🧪 Manual bonus reset triggered');
+  await resetBonusCounters();
+  res.status(200).json({ success: true, message: 'Bonus reset completed' });
+});
+
+// Shared logic
+async function resetBonusCounters() {
+  // Reset logic here...
+}
+```
+
+**Test command:**
+```bash
+curl -X POST https://europe-west3-auto-lackierzentrum-mosbach.cloudfunctions.net/testMonthlyBonusReset
+```
+
+---
+
+### Performance Optimization
+
+**1. Use Cloud Firestore batch writes (faster than individual writes):**
+```javascript
+const batch = db.batch();
+
+users.forEach(user => {
+  const ref = db.collection('users').doc(user.id);
+  batch.update(ref, { lastReset: admin.firestore.FieldValue.serverTimestamp() });
+});
+
+await batch.commit();  // Atomic, fast
+```
+
+**2. Limit concurrent operations:**
+```javascript
+// ❌ FALSCH - All at once (may timeout)
+const promises = users.map(user => updateUser(user));
+await Promise.all(promises);
+
+// ✅ RICHTIG - Batches of 10
+const BATCH_SIZE = 10;
+for (let i = 0; i < users.length; i += BATCH_SIZE) {
+  const batch = users.slice(i, i + BATCH_SIZE);
+  await Promise.all(batch.map(user => updateUser(user)));
+}
+```
+
+**3. Use Cloud Functions for CPU-intensive tasks only:**
+- ✅ Good: Image processing, PDF generation, data aggregation
+- ❌ Bad: Simple CRUD operations (use client SDK instead)
+
+---
 
 ### Git Deployment (Auto-Deploy)
 ```bash
@@ -3802,6 +4743,276 @@ git push origin main
 - [ ] Verify feature works on live URL
 - [ ] Check browser console for errors
 
+---
+
+## 🎓 12 Best Practices & Lessons Learned
+
+**Basierend auf 8 Production-Debugging Sessions (Nov 2025)** - Jede Lesson hat 2-4h Debugging-Zeit gespart!
+
+### 1. Firestore Security Rules Pattern Order is CRITICAL ⚠️
+
+**Lesson (4h debugging!):**
+- Firestore Rules prüfen patterns von TOP nach BOTTOM
+- Wildcard patterns an der SPITZE blockieren ALLES darunter
+- Order: Specific → General → Wildcard (IMMER!)
+
+**Beispiel:**
+```javascript
+// ❌ FALSCH - Wildcard blockiert alles
+match /{chatCollection}/{id} { ... }         // Line 10 - MATCHES FIRST!
+match /bonusAuszahlungen_mosbach/{id} { ... } // Line 200 - NEVER REACHED!
+
+// ✅ RICHTIG - Specific zuerst
+match /bonusAuszahlungen_mosbach/{id} { ... } // Line 10 - FIRST
+match /{bonusCollection}/{id} { ... }         // Line 20 - SECOND
+match /{chatCollection}/{id} { ... }          // Line 200 - LAST
+```
+
+**Debug-Tipp:** Firebase Rules Playground zeigt, welche Rule matched!
+
+---
+
+### 2. Field Name Standardization is CRITICAL ⚠️
+
+**Lesson (2-3h debugging pro Bug!):**
+- Use SAME field names across ALL creation paths
+- Beispiel: `partnerAnfrageId` ÜBERALL (nicht `anfrageId` in einem Pfad!)
+- Status sync bricht OHNE field consistency
+
+**Fix-Strategie:**
+1. Grep nach allen field assignments: `grep -r "anfrageId:" .`
+2. Standardize auf EIN name (z.B., `partnerAnfrageId`)
+3. Migration script für existing data
+4. Test ALLE creation paths (Partner + Admin + Werkstatt)
+
+---
+
+### 3. Duplicate Prevention Required at ALL Entry Points ⚠️
+
+**Lesson:**
+- Implement 3-Layer Check an ALLEN Entry Points
+- Race conditions WERDEN in Production passieren
+- Don't assume "user won't do that"
+
+**3-Layer Check Pattern:**
+```javascript
+// Layer 1: Check flag in source document
+if (anfrage.fahrzeugAngelegt) return;
+
+// Layer 2: Query by unique reference ID
+const existingByRef = await db.collection('fahrzeuge')
+    .where('partnerAnfrageId', '==', anfrageId)
+    .get();
+if (!existingByRef.empty) return;
+
+// Layer 3: Query by natural key
+const existingByKey = await db.collection('fahrzeuge')
+    .where('kennzeichen', '==', kennzeichen.toUpperCase())
+    .get();
+if (!existingByKey.empty) return;
+```
+
+---
+
+### 4. Firestore Composite Indexes MUST be Documented UPFRONT ⚠️
+
+**Lesson:**
+- Document index requirements IN feature spec (BEFORE coding!)
+- Provide Firebase Console link in error message
+- Test queries in Emulator (indexes NOT required there!) → Production WILL fail!
+
+**Index Documentation Template:**
+```javascript
+/**
+ * Firestore Query: zeiterfassung PDF export
+ *
+ * Required Composite Index:
+ * - Collection: zeiterfassung_{werkstattId}
+ * - Fields: mitarbeiterId (ASC), status (ASC), datum (ASC)
+ *
+ * Create Index: https://console.firebase.google.com/project/YOUR_PROJECT/firestore/indexes
+ */
+```
+
+---
+
+### 5. Service Worker Error Handling MUST Return Valid Response ⚠️
+
+**Lesson:**
+- NEVER return `undefined` in catch blocks
+- Return `new Response('error', {status: 408})` for errors
+- Filter external resources (Google analytics, tracking pixels)
+
+**Pattern:**
+```javascript
+// ❌ FALSCH
+catch (error) {
+    console.error('Fetch failed:', error);
+    // Returns undefined → "Failed to convert value to 'Response'" error!
+}
+
+// ✅ RICHTIG
+catch (error) {
+    return new Response('Network error', {
+        status: 408,
+        statusText: 'Request Timeout',
+        headers: { 'Content-Type': 'text/plain' }
+    });
+}
+```
+
+---
+
+### 6. Nested Transactions Are NEVER Allowed ⚠️
+
+**Lesson (2h debugging!):**
+- NEVER call functions that start transactions INSIDE another transaction
+- Always prepare data BEFORE transaction, then pass prepared data
+- Example: Invoice creation in kanban.html status update
+
+**Pattern:**
+```javascript
+// ❌ FALSCH - Nested transaction
+await db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(ref);
+
+    // This starts its OWN transaction!
+    const result = await helperFunction();  // ❌ NESTED!
+
+    transaction.update(ref, { result });
+});
+
+// ✅ RICHTIG - Prepare data FIRST
+const result = await helperFunction();  // Execute BEFORE transaction
+
+await db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(ref);
+    transaction.update(ref, { result });  // Use prepared data
+});
+```
+
+---
+
+### 7. Security Rules for ALL Collections IMMEDIATELY ⚠️
+
+**Lesson (1-2h debugging pro missing rule!):**
+- When adding new Firestore collections, add Security Rules IMMEDIATELY
+- Don't wait until "later" - you WILL forget
+- Example: `counters_{werkstattId}` had NO rules → All invoices failed
+- Test with actual Firebase (Emulator ignores rules!)
+
+**Checklist:**
+- [ ] New collection added to Firestore?
+- [ ] Security Rules added to firestore.rules?
+- [ ] Deployed with `firebase deploy --only firestore`?
+- [ ] Tested in production (NOT just emulator)?
+
+---
+
+### 8. Mobile Responsive Testing: Test BETWEEN Breakpoints ⚠️
+
+**Lesson (1h debugging!):**
+- Don't just test AT breakpoints (393px, 768px)
+- Test BETWEEN breakpoints: 450px, 500px, 600px
+- Media query gaps cause bugs (e.g., 465px device, but query at ≤400px)
+- CSS cascade: Always reset inherited properties (flex:1 → flex:none)
+
+**Test Matrix:**
+| Device Width | Test Result | Issue |
+|--------------|-------------|-------|
+| 393px | ✅ Works | Mobile query applies |
+| 450px | ❌ Broken | **FALLS IN GAP!** |
+| 465px | ❌ Broken | **FALLS IN GAP!** |
+| 520px | ❌ Broken | **FALLS IN GAP!** |
+| 768px | ✅ Works | Desktop query applies |
+
+**Fix:** Increase breakpoint to cover gap (e.g., 520px instead of 400px)
+
+---
+
+### 9. Dark Mode Accessibility: WCAG AAA Standard (7:1+) ⚠️
+
+**Lesson (1h debugging!):**
+- Opacity 0.6 or lower is NEVER acceptable on dark backgrounds
+- ALWAYS use WCAG contrast checker
+- AAA Standard: 7:1 minimum (target 10:1+ for comfort)
+- User screenshots reveal accessibility problems
+
+**Standards:**
+| Contrast Ratio | WCAG Level | Use Case |
+|----------------|------------|----------|
+| 3:1 | FAIL | ❌ Unacceptable |
+| 4.5:1 | AA | ⚠️ Minimum (normal text) |
+| 7:1 | AAA | ✅ Recommended (normal text) |
+| 10:1+ | AAA+ | ✅ Best (comfortable reading) |
+
+**Pattern:**
+```css
+[data-theme="dark"] {
+    --text-primary: rgba(255,255,255,0.95);   /* 13.5:1 - AAA ✅ */
+    --text-secondary: rgba(255,255,255,0.75); /* 10.2:1 - AAA ✅ */
+}
+```
+
+---
+
+### 10. Large Feature Commits vs Incremental Bug Fixes
+
+**Lesson:**
+- **Bug Fixes:** 1 bug = 1 commit (incremental, easy to track)
+- **Feature Overhauls:** Large commit OK if feature is cohesive
+- **Reasoning:** Bug fixes are independent (revert one without affecting others)
+- **Reasoning:** Feature expansions are interdependent (all work together)
+
+**Pattern:**
+- User says "fix this error" → Incremental commit
+- User says "add these 6 fields to modal" → Large commit
+
+**Benefit:** Git history is readable, bugs are bisectable
+
+---
+
+### 11. Systematic Multi-Phase Debugging Approach
+
+**Lesson (4 phases × 15min = 1h total vs 3-4h random guessing!):**
+- When facing multiple related errors, debug in phases
+- DON'T try to fix everything at once
+- Each phase reveals the NEXT layer of bugs
+
+**Example (Photo Upload Debugging):**
+```
+Phase 1: Deploy Storage Rules → Test → Still 403
+Phase 2: Fix path structure → Test → New error (TypeError)
+Phase 3: Fix double-wrapping → Test → New error (ReferenceError)
+Phase 4: Fix function reference → Test → SUCCESS! ✅
+```
+
+**Pattern:** Fix → Deploy → Test → User Feedback → Next Fix
+
+---
+
+### 12. Storage Rules vs Firestore Rules Separation ⚠️
+
+**Lesson (1-2h debugging!):**
+- **Storage Rules (storage.rules):** Control file upload/download permissions
+- **Firestore Rules (firestore.rules):** Control database read/write permissions
+- These are SEPARATE systems with SEPARATE deployment commands!
+
+**Deployment:**
+```bash
+firebase deploy --only storage    # ✅ Deploys storage.rules
+firebase deploy --only firestore  # ✅ Deploys firestore.rules
+```
+
+**Common Mistakes:**
+- ❌ Adding Storage Rules to firestore.rules file (won't work!)
+- ❌ Using `firebase deploy --only firestore` for Storage Rules (won't deploy!)
+- ❌ Path matching: Storage Rules paths MUST EXACTLY match upload paths
+
+**Testing:** Firebase Emulator behaves differently than production for Storage → Always test uploads in production!
+
+---
+
 ### Common Mistakes to Avoid:
 - ❌ Pushing without running tests first
 - ❌ Using `db.collection()` instead of `window.getCollection()`
@@ -3809,6 +5020,12 @@ git push origin main
 - ❌ Nested Transactions (prepare data BEFORE transaction!)
 - ❌ Adding new collections without Security Rules
 - ❌ Testing only in Emulator (production behaves differently!)
+- ❌ **NEW:** Pattern Order in Security Rules (specific → general → wildcard)
+- ❌ **NEW:** Field Name inconsistency across creation paths
+- ❌ **NEW:** Missing duplicate prevention at ALL entry points
+- ❌ **NEW:** Opacity < 0.75 in Dark Mode (WCAG fail!)
+- ❌ **NEW:** Testing only AT breakpoints (test BETWEEN them!)
+- ❌ **NEW:** Storage Rules in firestore.rules file (separate files!)
 
 ---
 
@@ -5095,6 +6312,216 @@ npm run test:all
   - **Authentication:** https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/authentication
   - **Storage:** https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/storage
   - **Cloud Functions:** https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/functions
+
+---
+
+## 🌳 Decision Trees
+
+**Quick decision-making guide für häufige Entwicklungs-Situationen**
+
+### Which Collection Helper to Use?
+
+```
+Need to access Firestore collection?
+├─ Is it a standard tenant collection?
+│  ├─ fahrzeuge, kunden, mitarbeiter, partnerAnfragen, etc.
+│  └─ ✅ Use: window.getCollection('collectionName')
+│     → Auto-appends werkstattId suffix
+│     → Example: window.getCollection('fahrzeuge') → 'fahrzeuge_mosbach'
+│
+└─ Is it a global collection?
+   ├─ users, settings, partnerAutoLoginTokens
+   └─ ✅ Use: db.collection('collectionName')
+      → NO suffix appended
+      → Example: db.collection('users') → 'users'
+```
+
+**Code Pattern:**
+```javascript
+// ✅ TENANT-SCOPED (95% of cases)
+const vehicles = await window.getCollection('fahrzeuge').get();
+
+// ✅ GLOBAL (5% of cases)
+const users = await db.collection('users').get();
+```
+
+---
+
+### When to Write Tests?
+
+```
+Adding new feature or fixing bug?
+├─ New business logic (calculations, data transformations)?
+│  └─ ✅ Write Integration Test (tests/integration/)
+│     - Direct Firestore testing bypassing UI
+│     - Fast (<2s per test)
+│     - Example: vehicle creation, status updates, calculations
+│
+├─ New UI page or component?
+│  └─ ✅ Write Smoke Test (tests/smoke/)
+│     - UI accessibility validation
+│     - Checks elements visible, editable, clickable
+│     - Example: form fields, buttons, navigation
+│
+├─ Bug fix (critical)?
+│  └─ ✅ Add regression test
+│     - Prevents bug from reoccurring
+│     - Type: Integration or Smoke (depending on bug location)
+│
+└─ Refactoring (no new functionality)?
+   └─ ⚠️ Run existing tests
+      - npm run test:all BEFORE refactoring
+      - npm run test:all AFTER refactoring
+      - NO new tests needed
+```
+
+---
+
+### Which Firestore Query Method?
+
+```
+Need to fetch data from Firestore?
+├─ Single document by ID?
+│  └─ ✅ Use: .doc(id).get()
+│     → Fast, direct access
+│     → Example: const doc = await collection.doc('123').get()
+│
+├─ Filter by single field?
+│  └─ ✅ Use: .where('field', '==', value).get()
+│     → No index required
+│     → Example: .where('kennzeichen', '==', 'AB-CD-123')
+│
+├─ Filter by multiple fields?
+│  └─ ⚠️ Use: .where().where().get() + CREATE INDEX!
+│     → Composite index REQUIRED
+│     → Example: .where('status', '==', 'active').where('datum', '>', X)
+│     → See: Pattern 10 (Firestore Composite Index Missing)
+│
+└─ Real-time updates needed?
+   └─ ✅ Use: .onSnapshot()
+      → Listens for changes
+      → Example: .onSnapshot(snapshot => { update UI })
+      → CRITICAL: Detach listener in cleanup!
+```
+
+---
+
+### How to Debug Permission Denied Errors?
+
+```
+Got "Permission denied" error?
+├─ Check 1: Is user authenticated?
+│  ├─ No → Check firebase-config.js initialization
+│  │  └─ await window.firebaseInitialized
+│  └─ Yes → Continue
+│
+├─ Check 2: Does query filter by werkstattId?
+│  ├─ No → Add .where('werkstattId', '==', window.werkstattId)
+│  └─ Yes → Continue
+│
+├─ Check 3: Does query match Security Rule conditions?
+│  ├─ Open firestore.rules for the collection
+│  ├─ Ensure ALL query filters match rule requirements
+│  └─ Example: If rule checks `status == 'active'`, query MUST filter by status
+│
+└─ Check 4: Is selected role allowed?
+   ├─ Partner role CANNOT access werkstatt collections
+   └─ See: firestore.rules helper functions (isAdmin, isMitarbeiter, etc.)
+```
+
+**Debug Commands:**
+```javascript
+// Check auth status
+console.log('User:', await window.firebaseInitialized);
+console.log('Role:', currentUser?.role);
+console.log('WerkstattId:', window.werkstattId);
+
+// Test query in Firebase Console
+// Firestore → Query → Add filters → Run
+```
+
+---
+
+### Storage vs Firestore Rules: Which to Edit?
+
+```
+Need to add/modify security rules?
+├─ File uploads/downloads?
+│  └─ ✅ Edit: storage.rules
+│     - Controls Firebase Storage (images, PDFs, etc.)
+│     - Deployment: firebase deploy --only storage
+│     - Example: match /material_photos/{id}/{file}
+│
+└─ Database read/write?
+   └─ ✅ Edit: firestore.rules
+      - Controls Firestore Database
+      - Deployment: firebase deploy --only firestore
+      - Example: match /fahrzeuge_{werkstattId}/{id}
+```
+
+**⚠️ CRITICAL:** These are SEPARATE systems with SEPARATE deployment commands!
+
+**Common Mistake:**
+- ❌ Adding Storage Rules to firestore.rules (won't work!)
+- ❌ Using `firebase deploy --only firestore` for Storage Rules (won't deploy!)
+
+---
+
+### Firebase Emulator vs Production: Which to Test?
+
+```
+Which environment should I test in?
+├─ Local development (rapid iteration)?
+│  └─ ✅ Firebase Emulator
+│     - Fast, no network latency
+│     - Command: firebase emulators:start
+│     - Ports: Firestore 8080, Storage 9199, Auth 9099
+│
+├─ Security Rules testing?
+│  └─ ⚠️ BOTH Emulator AND Production!
+│     - Emulator: Rules syntax validation
+│     - Production: Rules actually enforced
+│     - Example: Counter rules bug (Pattern 12) only visible in production
+│
+├─ Composite Index testing?
+│  └─ ❌ Production ONLY!
+│     - Emulator doesn't require indexes
+│     - Production WILL fail without indexes
+│     - See: Pattern 10 (Index Missing)
+│
+└─ Final feature verification?
+   └─ ✅ Production (GitHub Pages)
+      - Real-world environment
+      - Cache behavior, CDN, etc.
+      - Always hard-refresh (Cmd+Shift+R)
+```
+
+---
+
+### Commit Strategy: One Commit or Multiple?
+
+```
+Making code changes?
+├─ Fixing multiple independent bugs?
+│  └─ ✅ Multiple commits (1 bug = 1 commit)
+│     - Easy to revert individual fixes
+│     - Git history is bisectable
+│     - Example: 4 photo upload bugs → 4 commits
+│
+├─ Adding cohesive feature?
+│  └─ ✅ Single commit
+│     - All changes work together
+│     - Example: Modal expansion (11 fields) → 1 commit
+│
+└─ Refactoring?
+   └─ ✅ Single commit
+      - No functional changes
+      - Example: Code cleanup, rename variables
+```
+
+**Pattern:**
+- User says "fix this error" → Incremental commit
+- User says "add these 6 fields" → Large commit
 
 ---
 
