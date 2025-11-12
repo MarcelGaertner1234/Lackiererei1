@@ -509,6 +509,79 @@
         let isDrawing = false;
         let hasDrawn = false;
 
+        // ============================================
+        // NACHBESTELLUNGEN ÜBERTRAGEN (NEU 2025-11-12)
+        // ============================================
+        /**
+         * Überträgt angelieferte Bestellungen beim Fahrzeug-Abschluss
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @returns {Promise<{angeliefert: number, offen: number}>} Statistik
+         */
+        async function transferNachbestellungenBeimAbschluss(fahrzeugId) {
+            if (!window.firebaseInitialized || !window.db) {
+                console.warn('⚠️ [NACHBESTELLUNGEN] Firebase nicht initialisiert');
+                return { angeliefert: 0, offen: 0 };
+            }
+
+            try {
+                // 1. Lade alle Bestellungen für dieses Fahrzeug
+                const bestellungenSnapshot = await window.getCollection('bestellungen')
+                    .where('fahrzeugId', '==', fahrzeugId)
+                    .get();
+
+                console.log(`📦 [NACHBESTELLUNGEN] ${bestellungenSnapshot.size} Bestellungen gefunden für Fahrzeug ${fahrzeugId}`);
+
+                if (bestellungenSnapshot.empty) {
+                    return { angeliefert: 0, offen: 0 };
+                }
+
+                const angelieferteBestellungen = [];
+                const offeneBestellungen = [];
+
+                bestellungenSnapshot.forEach(doc => {
+                    const bestellung = doc.data();
+                    if (bestellung.status === 'angeliefert') {
+                        angelieferteBestellungen.push(bestellung);
+                    } else if (bestellung.status === 'bestellt') {
+                        offeneBestellungen.push(bestellung);
+                    }
+                });
+
+                console.log(`📊 [NACHBESTELLUNGEN] Angeliefert: ${angelieferteBestellungen.length}, Offen: ${offeneBestellungen.length}`);
+
+                // 2. Übertrage angelieferte Bestellungen ins Fahrzeug
+                if (angelieferteBestellungen.length > 0) {
+                    const nachbestellungen = angelieferteBestellungen.map(b => ({
+                        bestellungId: b.id,
+                        etn: b.etn,
+                        benennung: b.benennung,
+                        menge: b.menge,
+                        einzelpreis: b.einzelpreis,
+                        preisTatsaechlich: b.preisTatsaechlich || b.einzelpreis,
+                        gesamtpreis: b.menge * (b.preisTatsaechlich || b.einzelpreis),
+                        angeliefertAm: b.angeliefertAm,
+                        lieferant: b.lieferant || null
+                    }));
+
+                    // Update Fahrzeug mit nachbestellungen
+                    await window.getCollection('fahrzeuge').doc(fahrzeugId).update({
+                        nachbestellungen: nachbestellungen
+                    });
+
+                    console.log(`✅ [NACHBESTELLUNGEN] ${nachbestellungen.length} Bestellungen in Fahrzeug übertragen`);
+                }
+
+                return {
+                    angeliefert: angelieferteBestellungen.length,
+                    offen: offeneBestellungen.length
+                };
+
+            } catch (error) {
+                console.error('❌ [NACHBESTELLUNGEN] Fehler:', error);
+                throw error;
+            }
+        }
+
         window.addEventListener('load', async function() {
             // Feather Icons initialisieren
             if (typeof feather !== 'undefined') {
@@ -1125,6 +1198,25 @@
 
                     await localFirebaseApp.updateFahrzeug(currentVehicle.id, dataForFirestore);
                     console.log('✅ Status in Firestore aktualisiert');
+
+                    // ============================================
+                    // NACHBESTELLUNGEN ÜBERTRAGEN (NEU 2025-11-12)
+                    // ============================================
+                    // Beim Fahrzeug-Abschluss: Angelieferte Bestellungen in fahrzeug.nachbestellungen übertragen
+                    console.log('📦 [ABSCHLUSS] Prüfe Nachbestellungen für Fahrzeug:', currentVehicle.id);
+                    try {
+                        const nachbestellungen = await transferNachbestellungenBeimAbschluss(currentVehicle.id);
+                        console.log(`✅ [ABSCHLUSS] ${nachbestellungen.angeliefert} Nachbestellungen übertragen, ${nachbestellungen.offen} noch offen`);
+
+                        // Warnung falls noch offene Bestellungen existieren
+                        if (nachbestellungen.offen > 0) {
+                            console.warn(`⚠️ [ABSCHLUSS] ${nachbestellungen.offen} Bestellungen noch nicht angeliefert!`);
+                            // Optional: Dialog anzeigen (für Phase 4)
+                        }
+                    } catch (error) {
+                        console.error('❌ [ABSCHLUSS] Fehler beim Übertragen der Nachbestellungen:', error);
+                        // Nicht blockieren - Fahrzeug wird trotzdem abgeschlossen
+                    }
 
                     // FIREBASE INIT GUARD: Sicherstellen dass Firebase bereit ist für Storage-Zugriff
                     if (!window.firebaseInitialized || !window.firebaseApp) {
