@@ -361,7 +361,7 @@ window.firebaseApp = {
         // Update with new data if provided
         if (typeof kundeData === 'object') {
           if (kundeData.email && !existingData.email) {
-            updates.email = kundeData.email;
+            updates.email = kundeData.email.toLowerCase();
             // BUGFIX 2025-11-04: Auto-generate partnerCode from email
             if (!existingData.partnerCode) {
               updates.partnerCode = kundeData.email.split('@')[0].toLowerCase();
@@ -387,7 +387,7 @@ window.firebaseApp = {
           id: 'kunde_' + Date.now(),
           name: kundenname,
           telefon: typeof kundeData === 'object' ? (kundeData.telefon || '') : '',
-          email: email,
+          email: email.toLowerCase(),
           // BUGFIX 2025-11-04: Use partnerCode (not partnerId) - auto-generate from email
           partnerCode: email ? email.split('@')[0].toLowerCase() : '',
           notizen: typeof kundeData === 'object' ? (kundeData.notizen || '') : '',
