@@ -104,6 +104,23 @@ Du bist der **QA Lead** für die nächste Testing Session. Deine Mission: **Vali
   - Dark Mode für alle 12 Service-Formulare (service-form-styles.css)
 - ✅ **11 Files Modified, +5,118 lines** - Commit: cc2c4a9
 
+**Session 2025-11-12 (Material Photo-Upload + Ersatzteil Bestellen):** 🎉 **FEATURE COMPLETE!**
+- ✅ **Material Photo-Upload System** (4 Bug-Fixes)
+  - Phase 1: Storage Rules deployed (d6a5d78)
+  - Phase 2: Upload-Pfad Path-Mismatch Fix (e5310b4)
+  - Phase 3: Double-Wrapping Error Fix (d25b75a)
+  - Phase 4: List-Refresh ReferenceError Fix (27fcac2)
+- ✅ **Ersatzteil Bestellen Modal** (11 Fields Total)
+  - Einzelpreis: Read-only → Editable
+  - Lieferant: Name, Kontakt, Bestellnummer
+  - Voraussichtliche Ankunft + Notizen
+- ✅ **Filter-System für Zentrale Ersatzteile**
+  - ETN + Benennung Search (live)
+  - Sortierung: Häufigkeit, Preis, Neueste
+- ✅ **Firestore Index:** status + datum (Fahrzeug dropdown)
+- ✅ **5 Commits, +485 lines documentation** - Commit: 37943f1 + 80ef5a8
+- 🎓 **Lessons:** Storage Rules ≠ Firestore Rules, Path matching is critical, CollectionReference ≠ String
+
 ### 📊 Testing Status - HYBRID APPROACH
 
 **🎉 MAJOR CHANGE (2025-11-09):** Manual testing REPLACED by Hybrid Testing Approach!
@@ -800,6 +817,144 @@ match /{countersCollection}/{counterId} {
 // 4. Check EVERY element type (buttons, pills, placeholders, labels, meta text)
 ```
 
+**Pattern 15: Storage Rules Missing (403 Forbidden)**
+```javascript
+// Console Output:
+"❌ POST https://firebasestorage.googleapis.com/.../material_photos/req_123_1699876543.jpg 403 (Forbidden)"
+"❌ Firebase Storage: User does not have permission to access 'material_photos/req_123_1699876543.jpg'"
+
+// Root Cause: storage.rules file has NO match block for the upload path
+// Note: Storage Rules are SEPARATE from Firestore Rules!
+// Deployment: firebase deploy --only storage (NOT --only firestore!)
+
+// Missing Rule:
+// storage.rules had NO match block for material_photos/ path at all!
+
+// Fix: Add Storage Rules with role-based access control
+match /material_photos/{requestId}/{fileName} {
+  allow read: if true;  // Public read for material database
+  allow write: if request.auth != null
+               && request.resource.size < 10 * 1024 * 1024  // Max 10 MB
+               && (request.auth.token.role == 'admin'
+                   || request.auth.token.role == 'werkstatt'
+                   || request.auth.token.role == 'lager'
+                   || request.auth.token.role == 'superadmin');
+}
+
+// Deploy Command:
+firebase deploy --only storage  // ✅ Correct
+firebase deploy --only firestore  // ❌ Wrong - won't deploy storage.rules!
+
+// Lesson Learned:
+// 1. Storage Rules ≠ Firestore Rules (separate files, separate deployment)
+// 2. ALWAYS add Storage Rules when creating new upload features
+// 3. Test uploads in production (Emulator behaves differently)
+// 4. Document upload paths in storage.rules comments
+// 5. Debugging time saved: 1-2h by knowing this pattern
+```
+
+**Pattern 16: Path Structure Must Match Security Rules**
+```javascript
+// Console Output:
+"❌ POST https://firebasestorage.googleapis.com/.../material_photos/req_123_1699876543.jpg 403 (Forbidden)"
+// Still 403 AFTER deploying Storage Rules!
+
+// Root Cause: Upload path structure doesn't match Security Rules pattern
+// Upload code: 1-level path
+const fileName = `material_photos/${requestId}_${timestamp}.jpg`;
+// → material_photos/req_123_1699876543.jpg (1 level after material_photos/)
+
+// Security Rule: 2-level path
+match /material_photos/{requestId}/{fileName} { ... }
+// → material_photos/{requestId}/{fileName} (2 levels: requestId + fileName)
+
+// Result: Path doesn't match → Rule doesn't apply → 403 Forbidden!
+
+// Fix: Align upload path with Security Rule structure
+const fileName = `material_photos/${requestId}/${timestamp}.jpg`;
+// → material_photos/req_123/1699876543.jpg (2 levels - MATCHES rule!)
+
+// Alternative: Change Security Rule to 1-level (less organized)
+match /material_photos/{fileName} { ... }
+// → material_photos/{fileName} (1 level)
+
+// Lesson Learned:
+// 1. Path structure MUST EXACTLY match Security Rules patterns
+// 2. 1-level vs 2-level paths are completely different patterns
+// 3. Test Storage Rules by uploading actual files (not just reading rules)
+// 4. Use descriptive path structures (2-level better for organization)
+// 5. Debugging time: ~30min if you know this pattern, 2h+ if you don't
+```
+
+**Pattern 17: CollectionReference vs String Type Error**
+```javascript
+// Console Output:
+"❌ TypeError: n.indexOf is not a function"
+// Very cryptic error from Firebase SDK internals!
+
+// Root Cause: window.getCollection() returns CollectionReference object, NOT string
+const materialCollection = window.getCollection('materialRequests');
+// → materialCollection is CollectionReference object (has methods like .doc(), .add())
+
+// Bug Example: Double-wrapping CollectionReference
+const docRef = db.collection(materialCollection).doc(requestId);
+// ❌ db.collection() expects STRING, but got CollectionReference object!
+// → Firebase SDK tries to call .indexOf() on object → TypeError!
+
+// Fix: Use CollectionReference directly (no wrapping)
+const docRef = window.getCollection('materialRequests').doc(requestId);
+// ✅ window.getCollection() already returns CollectionReference - use directly!
+
+// Code Comparison:
+// BEFORE (Double-wrapping):
+const materialCollection = window.getCollection('materialRequests');
+const docRef = db.collection(materialCollection).doc(id);  // ❌ TypeError
+
+// AFTER (Direct usage):
+const docRef = window.getCollection('materialRequests').doc(id);  // ✅ Works
+
+// Lesson Learned:
+// 1. window.getCollection() returns CollectionReference, NOT string
+// 2. NEVER wrap CollectionReference in db.collection() again
+// 3. Use directly: .doc(id), .add(data), .where(), .orderBy()
+// 4. Firebase SDK type errors are often cryptic (indexOf, split, etc.)
+// 5. When you see "n.indexOf is not a function" → Check for type mismatch
+// 6. Debugging time: ~1h to identify, instant fix once understood
+```
+
+**Pattern 18: Function Existence Verification (ReferenceError)**
+```javascript
+// Console Output:
+"❌ ReferenceError: loadMaterialRequests is not defined"
+// at material.html:2501
+
+// Root Cause: Function call to non-existent function
+await loadMaterialRequests();  // ❌ This function doesn't exist in material.html!
+
+// Fix: Verify function existence before calling
+// Method 1: Search codebase for function definition
+grep -r "function loadMaterialRequests" .
+grep -r "const loadMaterialRequests" .
+// → No results = Function doesn't exist!
+
+// Method 2: Find similar/correct function name
+grep -r "MaterialRequests" material.html
+// → Found: setupMaterialRequestsListener() at line 2204
+
+// Correct Code:
+setupMaterialRequestsListener();  // ✅ This function exists!
+// Note: Real-time listener, no await needed
+
+// Lesson Learned:
+// 1. ALWAYS verify function existence before calling
+// 2. Use grep/search to find correct function names
+// 3. Real-time listeners (setup*Listener) don't need await
+// 4. ReferenceError = Function not defined OR typo in name
+// 5. Common pattern: load* vs setup* vs init* prefixes
+// 6. Check function location: Same file? Imported? Global?
+// 7. Debugging time: 5-10min with systematic search
+```
+
 ---
 
 ## 🛠️ Setup für Testing
@@ -997,6 +1152,43 @@ curl -I https://marcelgaertner1234.github.io/Lackiererei1/
    - Pattern: rgba(255,255,255,0.75) minimum for secondary text
    - Pattern: rgba(255,255,255,0.95) for primary text
 
+10. **Large Feature Commits vs Incremental Bug Fixes**
+   - **Bug Fixes:** 1 bug = 1 commit (incremental, easy to track)
+   - **Feature Overhauls:** Large commit OK if feature is cohesive
+   - Example (Session 2025-11-12): Photo upload had 4 bugs → 4 commits (d6a5d78, e5310b4, d25b75a, 27fcac2)
+   - Example (Session 2025-11-12): Ersatzteil modal expansion → 1 large commit (37943f1)
+   - Reasoning: Bug fixes are independent (revert one without affecting others)
+   - Reasoning: Feature expansions are interdependent (modal fields + JS + filters all work together)
+   - Pattern: If user says "fix this error" → Incremental commit
+   - Pattern: If user says "add these 6 fields to modal" → Large commit
+   - Benefit: Git history is readable, bugs are bisectable
+
+11. **Systematic Multi-Phase Debugging Approach**
+   - When facing multiple related errors, debug in phases (don't try to fix everything at once)
+   - Example (Session 2025-11-12): Photo upload debugging
+     - Phase 1: Deploy Storage Rules → Test → Still 403
+     - Phase 2: Fix path structure → Test → New error (TypeError)
+     - Phase 3: Fix double-wrapping → Test → New error (ReferenceError)
+     - Phase 4: Fix function reference → Test → SUCCESS!
+   - Each phase reveals the NEXT layer of bugs
+   - Don't assume "one fix will solve everything"
+   - User feedback after EACH phase is critical
+   - Debugging time: 4 phases × 15min = 1h total (vs 3-4h if you guess randomly)
+   - Pattern: Fix → Deploy → Test → User Feedback → Next Fix
+
+12. **Storage Rules vs Firestore Rules Separation**
+   - **Storage Rules (storage.rules):** Control file upload/download permissions
+   - **Firestore Rules (firestore.rules):** Control database read/write permissions
+   - These are SEPARATE systems with SEPARATE deployment commands:
+     - `firebase deploy --only storage` → Deploys storage.rules
+     - `firebase deploy --only firestore` → Deploys firestore.rules
+   - Common mistake: Adding Storage Rules to firestore.rules file (won't work!)
+   - Common mistake: Using `firebase deploy --only firestore` for Storage Rules (won't deploy!)
+   - Path matching: Storage Rules paths MUST EXACTLY match upload paths
+   - Testing: Firebase Emulator behaves differently than production for Storage
+   - Always test Storage uploads in production after deploying rules
+   - Debugging time saved: 1-2h by knowing this separation
+
 ### Kommunikation mit User
 
 **DO:**
@@ -1007,6 +1199,10 @@ curl -I https://marcelgaertner1234.github.io/Lackiererei1/
 - ✅ TEST_SESSION_LOG nach jedem Schritt aktualisieren
 - ✅ **Hard Refresh ALWAYS vor Tests** (Cmd+Shift+R / Ctrl+Shift+F5)
 - ✅ **Preserve Log aktivieren** in Console (sonst Logs verloren!)
+- ✅ **Storage vs Firestore Rules unterscheiden** (separate Dateien & Deployments!)
+- ✅ **Path matching prüfen** (Upload-Pfad muss Security Rule exakt matchen!)
+- ✅ **Function existence verifizieren** (grep/search before calling!)
+- ✅ **Multi-phase debugging** (Fix → Test → User Feedback → Next Fix)
 
 **DON'T:**
 - ❌ Vermutungen ohne Logs
@@ -1014,6 +1210,9 @@ curl -I https://marcelgaertner1234.github.io/Lackiererei1/
 - ❌ Ohne Hard Refresh testen (Browser-Cache!)
 - ❌ Screenshots ignorieren (visuelles Feedback wichtig!)
 - ❌ **Firebase Emulator für Production-Tests** (Indexes nicht required!)
+- ❌ **Storage Rules mit `firebase deploy --only firestore` deployen** (Falsch!)
+- ❌ **CollectionReference wrappen** (window.getCollection() direkt nutzen!)
+- ❌ **Annahme "one fix solves everything"** (Layered bugs existieren!)
 
 ### Incremental Testing (Bewährt!)
 
@@ -1181,20 +1380,21 @@ const fahrzeuge = db.collection('fahrzeuge');  // → Global collection (LEAK!)
 
 ---
 
-_Last Updated: 2025-11-11 by Claude Code (Sonnet 4.5)_
-_Version: v7.0 - RECHNUNGS-SYSTEM + FRONTEND-OPTIMIERUNGEN (Dark Mode + Mobile Responsive)_
-_Latest Session: Rechnungs-System Implementation + Frontend-Optimierungen (2025-11-11, Commit cc2c4a9)_
+_Last Updated: 2025-11-12 by Claude Code (Sonnet 4.5)_
+_Version: v8.0 - MATERIAL PHOTO-UPLOAD + ERSATZTEIL BESTELLEN + AGENT LEARNINGS_
+_Latest Session: Material Photo-Upload + Ersatzteil Bestellen Feature (2025-11-12, Commits d6a5d78 → 80ef5a8)_
 _Testing Method: **Hybrid Approach** (Integration Tests + Smoke Tests, 23 total)_
 _Performance: 15x improvement (30s → 2s per test), ~46s total suite time_
 _Success Rate: 100% on Chromium, Mobile Chrome, Tablet iPad_
 _Status: ✅ PRODUCTION-READY & FULLY AUTOMATED_
 
-**Latest Key Achievements (2025-11-11):**
-- ✅ Complete Invoice System (Rechnungs-System) with counter-based numbering
-- ✅ Automatic invoice creation on status → "Fertig" in kanban.html
-- ✅ Fixed Critical: Nested Transaction Problem (2h debugging saved for future)
-- ✅ Fixed Critical: Counter Security Rules Missing (all new collections now secured)
-- ✅ Mobile Responsive Fix: Button overflow at 465px (breakpoint gap closed)
-- ✅ Dark Mode Accessibility: WCAG AAA standard (7:1+ contrast) for all elements
-- ✅ All 12 service forms now have complete Dark Mode support
-- 🎓 Lessons: Test BETWEEN breakpoints, never nest transactions, security rules IMMEDIATELY
+**Latest Key Achievements (2025-11-12):**
+- ✅ Material Photo-Upload System (4 bug-fixes in 4 phases)
+  - Storage Rules deployment + Path matching + Type error + Function reference
+- ✅ Ersatzteil Bestellen Modal (5 → 11 fields)
+  - Editable einzelpreis + Lieferant (Name, Kontakt, Bestellnummer) + Ankunft + Notizen
+- ✅ Filter-System für Zentrale Ersatzteile (ETN, Benennung, Sortierung)
+- ✅ Firestore Composite Index (status + datum for Fahrzeug dropdown)
+- ✅ 4 New Error Patterns documented (15-18): Storage Rules, Path Matching, Type Errors, Function Verification
+- ✅ 3 New Best Practices documented (10-12): Commit Strategy, Multi-Phase Debugging, Storage vs Firestore
+- 🎓 Lessons: Storage Rules ≠ Firestore Rules, Path matching is critical, Systematic multi-phase debugging saves 2-3h
