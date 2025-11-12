@@ -1143,19 +1143,27 @@ service cloud.firestore {
     }
 
     // ============================================
-    // ERSATZTEILE COLLECTION (Zentrale Datenbank) - 2025-11-11
+    // ERSATZTEILE COLLECTION (Zentrale Datenbank)
+    // Phase 2025-11-12 - Material-Verwaltung Feature
     // ============================================
-    // Werkstattübergreifende Datenbank für häufig bestellte Ersatzteile
-    // Collection: ersatzteile (NICHT multi-tenant!)
-    // Purpose: Historische Datenbasis für Preis-Vorschläge & Bestelloptimierung
+    // Purpose: Zentrale werkstattübergreifende Ersatzteile-Datenbank
+    // - Historische Datenbasis für Preis-Vorschläge & Bestelloptimierung
+    // - Auto-Population via material.html updateZentraleErsatzteileDatenbank()
+    // - Tracking: totalBestellungen, durchschnittspreis, lieferanten, preisHistorie
     //
     // Security Requirements:
-    // - Admin & Mitarbeiter: Full access
-    // - Automatische Befüllung via PDF-Import (annahme.html)
+    // - Read: Alle authentifizierten User (für Preissuche & Suggestions)
+    // - Write: Nur Werkstatt-Rollen (meister, admin, werkstatt, lager)
+    // - Auto-Population: material.html beim Erstellen von Bestellungen
 
     match /ersatzteile/{ersatzteilId} {
-      // Admins & Mitarbeiter: Full access
-      allow read, write: if isAdmin() || (isMitarbeiter() && isActive());
+      // Jeder authentifizierte User kann lesen (für Preissuche)
+      allow read: if request.auth != null;
+
+      // Nur Werkstatt-Rollen können schreiben (für Auto-Population)
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        in ['meister', 'admin', 'werkstatt', 'lager'];
     }
 
     // Einstellungen Collections: einstellungen_mosbach, etc.
