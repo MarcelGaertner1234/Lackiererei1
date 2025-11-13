@@ -2276,7 +2276,10 @@
                         <div id="detail-fahrzeug" style="font-size: 16px; font-weight: 600;">-</div>
                         <div id="detail-baujahr" style="font-size: 13px; color: var(--color-text-secondary); margin-top: 5px;">-</div>
                         <div id="detail-vin" style="font-size: 13px; color: var(--color-text-secondary); margin-top: 5px;">-</div>
-                        <div id="detail-farbcode" style="font-size: 13px; color: var(--color-text-secondary); margin-top: 5px;">-</div>
+                    </div>
+                    <div style="padding: 15px; background: rgba(76, 175, 80, 0.1); border-radius: 8px;">
+                        <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 5px;">Service-Details</div>
+                        <div id="detail-service-specifics" style="font-size: 13px; line-height: 1.8;">-</div>
                     </div>
                     <div style="padding: 15px; background: rgba(255, 193, 7, 0.1); border-radius: 8px;">
                         <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 5px;">Services</div>
@@ -4908,6 +4911,124 @@
             return labels[serviceTyp] || serviceTyp || 'Unbekannter Service';
         }
 
+        // 🆕 Helper: Service Quick Info (Top 1-2 Felder für Übersicht)
+        function getServiceQuickInfo(serviceTyp, serviceDetails, fahrzeugTopLevel) {
+            if (!serviceDetails) serviceDetails = {};
+
+            // Fallback to top-level for backwards compatibility
+            if (Object.keys(serviceDetails).length === 0 && fahrzeugTopLevel) {
+                if (serviceTyp === 'lackier') {
+                    serviceDetails = {
+                        farbname: fahrzeugTopLevel.farbname,
+                        farbnummer: fahrzeugTopLevel.farbnummer
+                    };
+                }
+            }
+
+            let info = [];
+
+            switch(serviceTyp) {
+                case 'lackier':
+                    if (serviceDetails.farbnummer || serviceDetails.farbname) {
+                        info.push(`🎨 ${serviceDetails.farbnummer || ''} ${serviceDetails.farbname || ''}`.trim());
+                    }
+                    if (serviceDetails.lackart) {
+                        info.push(`🖌️ ${serviceDetails.lackart}`);
+                    }
+                    break;
+
+                case 'reifen':
+                    if (serviceDetails.reifengroesse) {
+                        info.push(`📏 ${serviceDetails.reifengroesse}`);
+                    }
+                    if (serviceDetails.reifentyp) {
+                        info.push(`❄️ ${serviceDetails.reifentyp}`);
+                    }
+                    if (serviceDetails.reifenanzahl) {
+                        info.push(`🔢 ${serviceDetails.reifenanzahl} Reifen`);
+                    }
+                    break;
+
+                case 'glas':
+                    if (serviceDetails.scheibentyp) {
+                        info.push(`🪟 ${serviceDetails.scheibentyp}`);
+                    }
+                    if (serviceDetails.glasposition) {
+                        info.push(`📍 ${serviceDetails.glasposition}`);
+                    }
+                    break;
+
+                case 'klima':
+                    if (serviceDetails.klimaservice) {
+                        info.push(`🔧 ${serviceDetails.klimaservice}`);
+                    }
+                    break;
+
+                case 'tuev':
+                    if (serviceDetails.tuevart) {
+                        info.push(`📋 ${serviceDetails.tuevart}`);
+                    }
+                    break;
+
+                case 'folierung':
+                    if (serviceDetails.folierungsart) {
+                        info.push(`📏 ${serviceDetails.folierungsart}`);
+                    }
+                    if (serviceDetails.farbauswahl) {
+                        info.push(`🎨 ${serviceDetails.farbauswahl}`);
+                    }
+                    break;
+
+                case 'smartrepair':
+                    if (serviceDetails.schadensart) {
+                        info.push(`🔨 ${serviceDetails.schadensart}`);
+                    }
+                    if (serviceDetails.position) {
+                        info.push(`📍 ${serviceDetails.position}`);
+                    }
+                    break;
+
+                case 'dellen':
+                    if (serviceDetails.anzahlDellen) {
+                        info.push(`🔢 ${serviceDetails.anzahlDellen} Dellen`);
+                    }
+                    if (serviceDetails.groesse) {
+                        info.push(`📏 ${serviceDetails.groesse}`);
+                    }
+                    break;
+
+                case 'politur':
+                    if (serviceDetails.politurart) {
+                        info.push(`✨ ${serviceDetails.politurart}`);
+                    }
+                    break;
+
+                case 'unterboden':
+                    if (serviceDetails.material) {
+                        info.push(`🛡️ ${serviceDetails.material}`);
+                    }
+                    break;
+
+                case 'abholung':
+                    if (serviceDetails.abholadresse) {
+                        info.push(`📍 ${serviceDetails.abholadresse}`);
+                    }
+                    if (serviceDetails.abholdatum) {
+                        info.push(`📅 ${new Date(serviceDetails.abholdatum).toLocaleDateString('de-DE')}`);
+                    }
+                    break;
+
+                case 'sonstiges':
+                    if (serviceDetails.beschreibung) {
+                        const short = serviceDetails.beschreibung.substring(0, 100);
+                        info.push(`📝 ${short}${serviceDetails.beschreibung.length > 100 ? '...' : ''}`);
+                    }
+                    break;
+            }
+
+            return info.length > 0 ? info.join('<br>') : '-';
+        }
+
         // Helper: Einzelnes Feld formatieren
         function formatField(label, value) {
             if (!value || value === '') return '';
@@ -5456,16 +5577,28 @@
             // 🆕 VIN/FIN-Nummer
             document.getElementById('detail-vin').textContent = `🔢 VIN: ${fahrzeug.vin || '-'}`;
 
-            // 🆕 Farbcode (nur bei Lackierung)
-            const hasLackierung = fahrzeug.serviceTyp === 'lackier' ||
-                (fahrzeug.additionalServices && fahrzeug.additionalServices.some(s => s.serviceTyp === 'lackier'));
-            const farbcodeElement = document.getElementById('detail-farbcode');
-            if (hasLackierung && (fahrzeug.farbnummer || fahrzeug.farbname)) {
-                farbcodeElement.textContent = `🎨 ${fahrzeug.farbnummer || '-'} - ${fahrzeug.farbname || '-'}`;
-                farbcodeElement.style.display = 'block';
-            } else {
-                farbcodeElement.style.display = 'none';
+            // 🆕 Service-Details (Quick Info für Primary + Additional Services)
+            let serviceDetailsHTML = '';
+
+            // Primary Service
+            serviceDetailsHTML += `<div style="margin-bottom: 10px;">`;
+            serviceDetailsHTML += `<div style="font-weight: 600; margin-bottom: 5px;">${getServiceLabelWithIcon(fahrzeug.serviceTyp)}</div>`;
+            serviceDetailsHTML += `<div style="padding-left: 10px; font-size: 12px; color: var(--color-text-secondary);">`;
+            serviceDetailsHTML += getServiceQuickInfo(fahrzeug.serviceTyp, fahrzeug.serviceDetails, fahrzeug);
+            serviceDetailsHTML += `</div></div>`;
+
+            // Additional Services
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices) && fahrzeug.additionalServices.length > 0) {
+                fahrzeug.additionalServices.forEach(addService => {
+                    serviceDetailsHTML += `<div style="margin-bottom: 10px;">`;
+                    serviceDetailsHTML += `<div style="font-weight: 600; margin-bottom: 5px;">${getServiceLabelWithIcon(addService.serviceTyp)}</div>`;
+                    serviceDetailsHTML += `<div style="padding-left: 10px; font-size: 12px; color: var(--color-text-secondary);">`;
+                    serviceDetailsHTML += getServiceQuickInfo(addService.serviceTyp, addService.serviceDetails || addService.serviceData, fahrzeug);
+                    serviceDetailsHTML += `</div></div>`;
+                });
             }
+
+            document.getElementById('detail-service-specifics').innerHTML = serviceDetailsHTML;
 
             document.getElementById('detail-status').textContent = fahrzeug.prozessStatus || '-';
             document.getElementById('detail-termin').textContent = fahrzeug.geplantesAbnahmeDatum ? `📅 ${new Date(fahrzeug.geplantesAbnahmeDatum).toLocaleDateString('de-DE')}` : 'Kein Termin';
