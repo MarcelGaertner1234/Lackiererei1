@@ -4613,7 +4613,38 @@
         }
 
         // Helper: Service-spezifische Details formatieren
-        function renderServiceDetails(serviceTyp, serviceData) {
+        function renderServiceDetails(serviceTyp, serviceData, fahrzeugTopLevel) {
+            // ✅ FALLBACK: If serviceData is empty, try top-level fields (for backwards compatibility)
+            if ((!serviceData || Object.keys(serviceData).length === 0) && fahrzeugTopLevel) {
+                console.log('🔧 FALLBACK: Checking top-level fields for serviceTyp:', serviceTyp);
+
+                // Map top-level fields based on service type
+                if (serviceTyp === 'lackier') {
+                    serviceData = {
+                        farbname: fahrzeugTopLevel.farbname,
+                        farbnummer: fahrzeugTopLevel.farbnummer,
+                        farbvariante: fahrzeugTopLevel.farbvariante,
+                        lackart: fahrzeugTopLevel.lackart,
+                        schadenBeschreibung: fahrzeugTopLevel.schadenBeschreibung
+                    };
+                    console.log('🔧 FALLBACK: Created serviceData from top-level:', serviceData);
+                } else if (serviceTyp === 'reifen') {
+                    serviceData = {
+                        reifengroesse: fahrzeugTopLevel.reifengroesse || fahrzeugTopLevel.dimension,
+                        reifentyp: fahrzeugTopLevel.reifentyp || fahrzeugTopLevel.typ,
+                        reifenanzahl: fahrzeugTopLevel.reifenanzahl || fahrzeugTopLevel.anzahl
+                    };
+                } else if (serviceTyp === 'glas') {
+                    serviceData = {
+                        scheibentyp: fahrzeugTopLevel.scheibentyp,
+                        schadensgroesse: fahrzeugTopLevel.schadensgroesse,
+                        glasposition: fahrzeugTopLevel.glasposition
+                    };
+                }
+                // Add more service types as needed...
+            }
+
+            // If still no data after fallback, show "Keine Details"
             if (!serviceData || Object.keys(serviceData).length === 0) {
                 return '<p style="color: var(--color-text-secondary); font-style: italic;">Keine Details vorhanden</p>';
             }
@@ -5042,6 +5073,7 @@
                     if (serviceData.farbvariante) html += formatField('Farbvariante', serviceData.farbvariante);
                     if (serviceData.farbnummer) html += formatField('Farbnummer', serviceData.farbnummer);
                     if (serviceData.lackart) html += formatField('Lackart', serviceData.lackart);
+                    if (serviceData.schadenBeschreibung) html += formatField('Schadenbeschreibung', serviceData.schadenBeschreibung);
 
                     // Partner-spezifische Felder (FIX 2025-11-12)
                     if (serviceData.lackierumfang) {
@@ -5140,7 +5172,7 @@
                                 serviceDetailsKeys: fahrzeug.serviceDetails ? Object.keys(fahrzeug.serviceDetails) : [],
                                 fahrzeugKeys: Object.keys(fahrzeug).filter(k => k.includes('farb') || k.includes('lack') || k.includes('schaden'))
                             });
-                            return renderServiceDetails(fahrzeug.serviceTyp, fahrzeug.serviceDetails);
+                            return renderServiceDetails(fahrzeug.serviceTyp, fahrzeug.serviceDetails, fahrzeug);
                         })()}
                     </div>
                 </div>
@@ -5160,7 +5192,7 @@
                     servicesHTML += `
                         <div style="padding: 15px; background: rgba(100, 60, 255, 0.05); border-radius: 8px; border-left: 4px solid rgba(100, 60, 255, 0.6); margin-bottom: ${index < fahrzeug.additionalServices.length - 1 ? '15px' : '0'};">
                             <h4 style="margin: 0 0 10px 0;">${getServiceLabelWithIcon(additionalService.serviceTyp)}</h4>
-                            ${renderServiceDetails(additionalService.serviceTyp, additionalService.serviceData)}
+                            ${renderServiceDetails(additionalService.serviceTyp, additionalService.serviceData, additionalService)}
                         </div>
                     `;
                 });
