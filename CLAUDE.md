@@ -50,14 +50,14 @@ const werkstattId = window.werkstattId;  // Pre-initialized from localStorage
 ```
 **⚠️ Ohne Await = Race Conditions!** Siehe: [Firebase Init Pattern](#firebase-initialization)
 
-### 4. 🐛 18 Critical Error Patterns (Must-Know!)
-Dokumentierte Fehler-Patterns mit Lösungen (basierend auf 8 Debugging-Sessions):
+### 4. 🐛 20 Critical Error Patterns (Must-Know!)
+Dokumentierte Fehler-Patterns mit Lösungen (basierend auf 9 Debugging-Sessions):
 - Pattern 1-5: Multi-Tenant, Firebase Init, ID Type Mismatch, Listener Registry, PDF Pagination
 - Pattern 6-10: Security Rules Order, Field Inconsistency, Duplicates, Service Worker, Firestore Indexes
 - Pattern 11-15: Nested Transactions, Counter Rules, Mobile Breakpoints, Dark Mode Contrast, Storage Rules
-- Pattern 16-18: Path Matching, CollectionReference Type, Function Verification
+- Pattern 16-20: Path Matching, CollectionReference Type, Function Verification, PDF Unicode/Emoji, CORS Blocking
 
-**Siehe:** [18 Critical Error Patterns](#-18-critical-error-patterns) für vollständige Solutions
+**Siehe:** [20 Critical Error Patterns](#-20-critical-error-patterns) für vollständige Solutions
 
 ### 5. 📚 Dokumentations-Struktur
 | Dokument | Zweck | Wann verwenden? |
@@ -69,16 +69,16 @@ Dokumentierte Fehler-Patterns mit Lösungen (basierend auf 8 Debugging-Sessions)
 
 **⚡ Quick-Links:**
 - [Testing Guide](#-testing-guide) - Hybrid Testing Approach
-- [18 Error Patterns](#-18-critical-error-patterns) - Mit Solutions & Code Examples
+- [20 Error Patterns](#-20-critical-error-patterns) - Mit Solutions & Code Examples
 - [12 Best Practices](#-12-best-practices--lessons-learned) - Production Debugging Lessons
 - [Decision Trees](#-decision-trees) - Quick Reference für common decisions
 - [Architecture](#-core-architecture) - Multi-Tenant, Firebase, Security
 
 ---
 
-## 🐛 18 Critical Error Patterns (with Solutions)
+## 🐛 20 Critical Error Patterns (with Solutions)
 
-**Basierend auf 8 Production-Debugging Sessions (Nov 2025)** - Jedes Pattern dokumentiert Symptom → Root Cause → Fix → Code Example
+**Basierend auf 9 Production-Debugging Sessions (Nov 2025)** - Jedes Pattern dokumentiert Symptom → Root Cause → Fix → Code Example
 
 ### Pattern 1: Multi-Tenant Violation
 
@@ -618,6 +618,167 @@ setupMaterialRequestsListener();  // Real-time listener, no await needed
 
 ---
 
+### Pattern 19: PDF Unicode/Emoji Rendering
+
+**Symptom:**
+```
+User feedback: "die schriften sind verbuggt !! Ø=Þ— Ø<ß¨"
+Emojis (🎨, 🚗, 🪟) display as garbled text in generated PDFs
+```
+
+**Root Cause:** jsPDF's default Helvetica font doesn't support Unicode emoji characters
+
+**Debug Process:**
+```javascript
+// Check PDF generation code
+doc.text('🎨 LACKIERUNG', x, y);  // ❌ Renders as "Ø=Þ—"
+
+// Issue: Helvetica font lacks emoji support
+// jsPDF default fonts: Helvetica, Times, Courier (no Unicode)
+```
+
+**Fix:**
+```javascript
+// ❌ FALSCH - Emojis in PDF text
+const serviceIcons = {
+    'lackierung': '🎨',
+    'reifen': '🚗',
+    'glas': '🪟'
+};
+
+// ✅ RICHTIG - ASCII text labels in brackets
+const serviceIcons = {
+    'lackierung': '[LACK]',
+    'reifen': '[REIF]',
+    'glas': '[GLAS]'
+};
+
+// Usage in PDF
+doc.text(`${serviceIcons[service]} ${serviceName.toUpperCase()}`, x, y);
+// Result: "[LACK] LACKIERUNG" (always renders correctly)
+```
+
+**Alternative Solution (not implemented):**
+```javascript
+// Load custom font with Unicode support (requires font files)
+doc.addFont('NotoColorEmoji.ttf', 'Noto', 'normal');
+doc.setFont('Noto');
+doc.text('🎨 LACKIERUNG', x, y);  // Now works
+```
+
+**Lesson:** Avoid Unicode characters in jsPDF unless using custom fonts! ASCII text labels are more reliable!
+
+---
+
+### Pattern 20: Firebase Storage CORS Blocking
+
+**Symptom:**
+```
+Access to image at 'https://firebasestorage.googleapis.com/...logo.jpg'
+from origin 'https://marcelgaertner1234.github.io' has been blocked by CORS policy:
+No 'Access-Control-Allow-Origin' header is present on the requested resource.
+```
+
+**Root Cause:** Firebase Storage doesn't allow cross-origin requests from GitHub Pages by default
+
+**Debug Process:**
+```javascript
+// Image loading fails silently in PDF generation
+const img = new Image();
+img.crossOrigin = 'Anonymous';  // Required but not sufficient
+img.src = logoUrl;  // ❌ CORS error in console
+
+// Check Firebase Storage CORS configuration
+// → No CORS rules configured for GitHub Pages origin
+```
+
+**Fix A: Enhanced Error Handling** (annahme.html:5751-5792):
+```javascript
+let logoLoaded = false;
+if (logoUrl) {
+    try {
+        const logoBase64 = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+
+            // Timeout protection (5 seconds)
+            const timeout = setTimeout(() => {
+                reject(new Error('Logo loading timeout'));
+            }, 5000);
+
+            img.onload = () => {
+                clearTimeout(timeout);
+                // Convert to base64
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            };
+
+            img.onerror = (error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+
+            img.src = logoUrl;
+        });
+
+        doc.addImage(logoBase64, 'PNG', 15, 12, 30, 20);
+        logoLoaded = true;
+        console.log('✅ Logo successfully loaded for PDF');
+    } catch (error) {
+        console.warn('⚠️ Logo konnte nicht geladen werden (CORS-Fehler)');
+        console.warn('   → PDF wird ohne Logo erstellt');
+        // PDF continues without logo (graceful degradation)
+    }
+}
+
+// Adaptive layout based on logo presence
+doc.text('Header', logoLoaded ? 115 : 105, 20, { align: logoLoaded ? 'left' : 'center' });
+```
+
+**Fix B: Configure Firebase Storage CORS** (cors.json):
+```json
+[
+  {
+    "origin": ["https://marcelgaertner1234.github.io"],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
+
+**Deploy CORS Configuration:**
+```bash
+# Install Google Cloud SDK
+brew install --cask google-cloud-sdk
+
+# Authenticate
+gcloud auth login
+
+# Set project
+gcloud config set project auto-lackierzentrum-mosbach
+
+# Deploy CORS
+gsutil cors set cors.json gs://auto-lackierzentrum-mosbach.firebasestorage.app
+
+# Verify
+gsutil cors get gs://auto-lackierzentrum-mosbach.firebasestorage.app
+```
+
+**Automated Deployment:** Use `deploy-cors.sh` script
+
+**Lesson:**
+- ALWAYS add timeout + graceful degradation for external resources
+- Configure CORS for all public storage buckets
+- Wait 5 minutes after CORS deployment for propagation
+- Hard-refresh browser (Cmd+Shift+R) to clear cache
+
+---
+
 ## 📋 Error Pattern Quick Reference Table
 
 | Pattern | Symptom | Root Cause | Fix | Debug Time |
@@ -640,8 +801,10 @@ setupMaterialRequestsListener();  // Real-time listener, no await needed
 | 16 | Path Mismatch | 1-level vs 2-level | Match rule structure | 30min |
 | 17 | Type Error (indexOf) | Double-wrapping | Direct usage | 1h |
 | 18 | ReferenceError | Function doesn't exist | grep for correct name | 5-10min |
+| 19 | PDF Unicode/Emoji | Helvetica lacks emoji | ASCII text labels | 30min |
+| 20 | Firebase Storage CORS | Origin not allowed | Configure CORS + timeout | 1-2h |
 
-**Total Debug Time Saved:** ~20-25h by knowing these patterns!
+**Total Debug Time Saved:** ~22-29h by knowing these patterns!
 
 ---
 
@@ -5157,6 +5320,250 @@ async loadSettings() {
 
 ---
 
+### **PDF LAYOUT REDESIGN + CORS CONFIGURATION (2025-11-13)** 📄
+
+**Status**: ✅ **PRODUCTION-READY** - Professional PDF layout + Firebase Storage CORS configured
+
+**Commits**:
+- `1aa790f` - "feat: Professional PDF Layout mit Logo, Fahrzeugdaten oben, Rounded Badges"
+- `7fb03d5` - "fix: PDF Emoji-Encoding → ASCII Text Labels (jsPDF Unicode-Fix)"
+- `0f49496` - "feat: Firebase Storage CORS + Enhanced Logo Error Handling"
+
+**Implementation: 4 files changed (+451 lines), 3 new files created (+359 lines)**
+
+---
+
+#### **1. 🎨 PDF LAYOUT REDESIGN**
+
+**Problem**: User feedback: "leider ist es immer noch nicht schön und teilweise die schriften sind verbuggt !! Ø=Þ— Ø<ß"
+
+**Changes in annahme.html** (Commit `1aa790f`):
+
+1. **Professional Header with Dynamic Logo** (Lines 5740-5789):
+   ```javascript
+   // Load werkstatt settings for dynamic branding
+   const settings = window.settingsManager ? await window.settingsManager.loadSettings() : null;
+   const werkstattName = settings?.profil?.name || 'Auto-Lackierzentrum Mosbach';
+   const logoUrl = settings?.profil?.logoUrl;
+
+   let logoLoaded = false;
+   if (logoUrl) {
+       try {
+           const logoBase64 = await new Promise((resolve, reject) => {
+               const img = new Image();
+               img.crossOrigin = 'Anonymous';
+               img.onload = () => {
+                   const canvas = document.createElement('canvas');
+                   canvas.width = img.width;
+                   canvas.height = img.height;
+                   const ctx = canvas.getContext('2d');
+                   ctx.drawImage(img, 0, 0);
+                   resolve(canvas.toDataURL('image/png'));
+               };
+               img.onerror = reject;
+               img.src = logoUrl;
+           });
+           doc.addImage(logoBase64, 'PNG', 15, 12, 30, 20);
+           logoLoaded = true;
+       } catch (error) {
+           console.warn('Could not load logo for PDF:', error);
+       }
+   }
+
+   // Header text adapts based on logo presence
+   doc.text('Fahrzeug-Annahmeprotokoll', logoLoaded ? 115 : 105, 20, { align: logoLoaded ? 'left' : 'center' });
+   ```
+
+2. **Logical Section Reordering** (Lines 5820-5876):
+   - **Fahrzeugdaten moved to top** for better information hierarchy
+   - Section order now: Fahrzeugdaten → Requested Services → Status → Details
+   - Rounded badge design for all service sections:
+     ```javascript
+     doc.setFillColor(102, 126, 234);  // Blue
+     doc.roundedRect(15, y - 5, 180, 10, 3, 3, 'F');
+     doc.setTextColor(255, 255, 255);
+     doc.setFont(undefined, 'bold');
+     doc.setFontSize(12);
+     doc.text('[AUTO]  FAHRZEUGDATEN', 20, y + 1);
+     ```
+
+3. **Page Break Optimization** (Line 7408):
+   ```javascript
+   // 🆕 PAGE BREAK CHECK (2025-11-13): Prevent page 1 cutoff
+   if (y > 215) {
+       doc.addPage();
+       y = 20;
+   }
+   ```
+   - **Reason**: Earlier page break prevents first page content cutoff
+   - **Previous threshold**: `y > 230` → **New threshold**: `y > 215`
+
+---
+
+#### **2. 🐛 FIX: PDF EMOJI ENCODING ISSUE**
+
+**Problem**: Emojis (🎨, 🚗, 🪟) rendered as garbled text: "Ø=Þ—", "Ø<ß¨"
+
+**Root Cause**: jsPDF's default Helvetica font doesn't support Unicode emoji characters
+
+**Solution** (Commit `7fb03d5`, Lines 5881-5896):
+```javascript
+// PDF-safe text labels (emojis don't render in jsPDF)
+const serviceIcons = {
+    'lackierung': '[LACK]',
+    'lackier': '[LACK]',
+    'reifen': '[REIF]',
+    'glas': '[GLAS]',
+    'klima': '[KLIM]',
+    'dellen': '[DELL]',
+    'mechanik': '[MECH]',
+    'versicherung': '[VERS]',
+    'pflege': '[PFLG]',
+    'tuev': '[TÜV]',
+    'folierung': '[FOLI]',
+    'steinschutz': '[STEIN]',
+    'werbebeklebung': '[WERB]',
+    'alle': '[ALL]'
+};
+```
+
+**Result**: All service badges display correctly with ASCII text labels in brackets
+
+---
+
+#### **3. 🔐 FIREBASE STORAGE CORS CONFIGURATION**
+
+**Problem**: Console error when loading werkstatt logo for PDFs:
+```
+Access to image at 'https://firebasestorage.googleapis.com/...logo.jpg'
+from origin 'https://marcelgaertner1234.github.io' has been blocked by CORS policy:
+No 'Access-Control-Allow-Origin' header is present on the requested resource.
+```
+
+**Root Cause**: Firebase Storage doesn't allow cross-origin requests from GitHub Pages by default
+
+**Solution A: Enhanced Error Handling** (Commit `0f49496`, Lines 5751-5792):
+```javascript
+let logoLoaded = false;
+if (logoUrl) {
+    try {
+        const logoBase64 = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+
+            // Set timeout for logo loading (5 seconds)
+            const timeout = setTimeout(() => {
+                reject(new Error('Logo loading timeout'));
+            }, 5000);
+
+            img.onload = () => {
+                clearTimeout(timeout);
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            };
+
+            img.onerror = (error) => {
+                clearTimeout(timeout);
+                reject(error);
+            };
+
+            img.src = logoUrl;
+        });
+
+        doc.addImage(logoBase64, 'PNG', 15, 12, 30, 20);
+        logoLoaded = true;
+        console.log('✅ Logo successfully loaded for PDF');
+    } catch (error) {
+        console.warn('⚠️ Logo konnte nicht geladen werden (CORS-Fehler oder Netzwerkproblem)');
+        console.warn('   → PDF wird ohne Logo erstellt');
+        console.warn('   → Lösung: Firebase Storage CORS konfigurieren');
+    }
+}
+```
+
+**Key Features**:
+- **Timeout Protection**: 5 seconds to prevent indefinite hangs
+- **Graceful Degradation**: PDF generates successfully without logo if loading fails
+- **Clear Console Messages**: Informs developers about CORS issues
+- **Adaptive Layout**: Header text centers if no logo, aligns left if logo present
+
+**Solution B: CORS Configuration Files** (NEW - 3 files created):
+
+1. **cors.json** (NEW, 9 lines):
+   ```json
+   [
+     {
+       "origin": ["https://marcelgaertner1234.github.io"],
+       "method": ["GET", "HEAD"],
+       "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],
+       "maxAgeSeconds": 3600
+     }
+   ]
+   ```
+   - **Allows**: GitHub Pages origin to access Firebase Storage images
+   - **Methods**: GET and HEAD (read-only)
+   - **Cache**: 1 hour (3600 seconds) for preflight requests
+
+2. **deploy-cors.sh** (NEW, 96 lines):
+   - **Automated CORS deployment script** with:
+     - Google Cloud SDK installation check
+     - Automatic authentication flow (gcloud auth login)
+     - Firebase project configuration
+     - File existence validation
+     - CORS deployment with gsutil
+     - Success/error handling with clear messages
+   - **Critical Fix**: Changes to app directory before deployment (Line 57):
+     ```bash
+     cd "/Users/marcelgaertner/Desktop/Chritstopher Gàrtner /Marketing/06_Digitale_Tools/Fahrzeugannahme_App"
+     ```
+   - **Why**: First deployment attempt failed with "OSError: No such file or directory" because script wasn't in correct directory
+
+3. **CORS_DEPLOYMENT_INSTRUCTIONS.md** (NEW, 227 lines):
+   - **Complete manual deployment guide** with:
+     - Prerequisites (Google Cloud SDK installation for macOS/Windows/Linux)
+     - Step-by-step authentication instructions
+     - CORS deployment commands
+     - Verification steps (`gsutil cors get`)
+     - Troubleshooting section (5 common errors)
+     - Alternative testing method (Chrome with --disable-web-security for testing only)
+     - Revert instructions
+
+**Deployment Result**:
+```
+═══════════════════════════════════════════════════════════
+  ✅ CORS ERFOLGREICH DEPLOYED!
+═══════════════════════════════════════════════════════════
+```
+
+**User Workflow**:
+1. Run: `./deploy-cors.sh`
+2. Authenticate with Google Cloud (browser login)
+3. Wait 5 minutes for CORS propagation
+4. Hard-refresh browser (Cmd+Shift+R)
+5. Logo now loads in PDFs ✅
+
+---
+
+#### **4. 📊 ERROR PATTERNS DOCUMENTED**
+
+**Error Pattern 19: PDF Unicode/Emoji Rendering** (NEW):
+- **Symptom**: Emojis display as garbled text in generated PDFs
+- **Root Cause**: jsPDF's default Helvetica font lacks Unicode emoji support
+- **Solution**: Replace emojis with ASCII text labels in brackets
+- **Prevention**: Use PDF-safe fonts or avoid Unicode characters in PDF generation
+
+**Error Pattern 20: Firebase Storage CORS Blocking** (NEW):
+- **Symptom**: `Access to image has been blocked by CORS policy`
+- **Root Cause**: Firebase Storage default policy blocks cross-origin requests
+- **Solution**: Configure CORS with gsutil, add timeout + graceful degradation
+- **Prevention**: Configure CORS for all public storage buckets, use error handling
+
+---
+
 #### **1. 🧾 RECHNUNGS-SYSTEM (KOMPLETT)**
 
 **Automatische Rechnung bei Auftragsabschluss:**
@@ -6796,7 +7203,7 @@ git push origin main
 
 ---
 
-_Last Updated: 2025-11-12 (Partner-Daten Pipeline Fixes + Multi-Service Booking + Nachbestellungen) by Claude Code (Sonnet 4.5)_
-_Version: v2025.11.12.3 | File Size: ~5375 lines (comprehensive + up-to-date)_
-_Recent Sessions: Nov 12 (Partner-Daten Pipeline Fixes, Multi-Service Booking, Nachbestellungen-Transfer), Nov 5-12 (Material Photo-Upload, Ersatzteil bestellen, Logo Branding, Dark Mode) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
+_Last Updated: 2025-11-13 (PDF Layout Redesign + CORS Configuration) by Claude Code (Sonnet 4.5)_
+_Version: v2025.11.13.1 | File Size: ~7260 lines (comprehensive + up-to-date)_
+_Recent Sessions: Nov 13 (PDF Layout Redesign, Emoji Unicode Fix, Firebase Storage CORS), Nov 12 (Partner-Daten Pipeline Fixes, Multi-Service Booking, Nachbestellungen-Transfer), Nov 5-12 (Material Photo-Upload, Ersatzteil bestellen, Logo Branding, Dark Mode) | Full Archive: CLAUDE_SESSIONS_ARCHIVE.md_
 _Note: README.md is outdated (v1.0/2.0) and has deprecation notice - Always use CLAUDE.md for development guidance_

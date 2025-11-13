@@ -1304,6 +1304,58 @@
             text-shadow: 0 1px 3px rgba(0,0,0,0.7);
         }
 
+        /* 🆕 MULTI-SERVICE (2025-11-13): Multi-Service Badge Styles */
+        .card-service-badge-multi {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 8px;
+            border-radius: 5px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: white;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+            transition: all 0.2s ease;
+        }
+
+        .card-service-badge-multi.primary {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .card-service-badge-multi.additional {
+            opacity: 0.9;
+            border-left: 3px solid rgba(255, 255, 255, 0.4);
+        }
+
+        .card-service-badge-multi .status-pill {
+            font-size: 9px;
+            background: rgba(255, 255, 255, 0.25);
+            padding: 2px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .card-service-badge-multi:hover {
+            transform: translateX(2px);
+            opacity: 1;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .card-service-badge-multi {
+                font-size: 9px;
+                padding: 4px 6px;
+                gap: 6px;
+            }
+
+            .card-service-badge-multi .status-pill {
+                font-size: 8px;
+                padding: 1px 4px;
+            }
+        }
+
         .card-header {
             display: flex;
             justify-content: space-between;
@@ -4026,7 +4078,8 @@
 
         // Dropdown Counts aktualisieren
         /**
-         * Intelligente Status-Bestimmung: Werkstatt-Status hat Priorität über Partner-Status
+         * 🆕 MULTI-SERVICE (2025-11-13): Intelligente Status-Bestimmung mit Multi-Service Support
+         * Werkstatt-Status hat Priorität über Partner-Status
          * Mappt Werkstatt-Produktionsstatus auf Partner-Kanban-Spalten
          * @param {Object} anfrage - Die Anfrage mit optionalem verknüpften Fahrzeug
          * @returns {string} Status für Kanban-Spalte ('neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'abholung', 'in_arbeit', 'fertig', 'storniert')
@@ -4038,56 +4091,129 @@
                 return 'storniert';
             }
 
-            // 1. PRIORITÄT: Wenn Fahrzeug verknüpft ist, Werkstatt-Status bevorzugen
+            // Werkstatt-Status → Partner-Kanban-Spalte Mapping (shared by single-service AND multi-service)
+            const statusMapping = {
+                // ========== SHARED STAGES (alle 6 Services) ==========
+                'neu': 'beauftragt',               // Neu eingegangen → Beauftragt
+                'terminiert': 'beauftragt',        // Terminiert → Beauftragt
+                'fertig': 'abholung',              // Fertig → Auto anliefern (Partner soll abholen!)
+                'abgeschlossen': 'fertig',         // Abgeschlossen (abgeholt) → Fertig
+
+                // ========== LACKIERUNG ==========
+                'angenommen': 'beauftragt',        // Neu angenommen → Beauftragt
+                'vorbereitung': 'in_arbeit',       // Vorbereitung → In Arbeit
+                'lackierung': 'in_arbeit',         // Lackierung → In Arbeit
+                'trocknung': 'in_arbeit',          // Trocknung → In Arbeit
+                'qualitaetskontrolle': 'in_arbeit', // QK → In Arbeit
+                'bereit': 'abholung',              // Bereit → Auto anliefern
+
+                // ========== REIFEN ==========
+                'bestellung': 'in_arbeit',         // Bestellung → In Arbeit
+                'angekommen': 'in_arbeit',         // Angekommen → In Arbeit
+                'montage': 'in_arbeit',            // Montage → In Arbeit
+                'wuchten': 'in_arbeit',            // Wuchten → In Arbeit
+
+                // ========== MECHANIK ==========
+                'diagnose': 'in_arbeit',           // Diagnose → In Arbeit
+                'angebot': 'warte_kva',            // Angebot erstellt → Warte auf KVA
+                'beauftragt': 'beauftragt',        // Beauftragt → Beauftragt
+                'reparatur': 'in_arbeit',          // Reparatur → In Arbeit
+                'test': 'in_arbeit',               // Test → In Arbeit
+
+                // ========== PFLEGE ==========
+                'termin': 'beauftragt',            // Termin → Beauftragt
+                'aufbereitung': 'in_arbeit',       // Aufbereitung → In Arbeit
+                'qualitaet': 'in_arbeit',          // Qualität → In Arbeit
+
+                // ========== TÜV ==========
+                'termin_gebucht': 'beauftragt',    // Termin gebucht → Beauftragt
+                'pruefung': 'in_arbeit',           // Prüfung → In Arbeit
+                'abholbereit': 'abholung',         // Abholbereit → Auto anliefern (CRITICAL FIX!)
+
+                // ========== VERSICHERUNG ==========
+                'gutachten': 'warte_kva',          // Gutachten → Warte auf KVA
+                'freigabe': 'beauftragt',          // Freigabe → Beauftragt
+                'in_reparatur': 'in_arbeit'        // In Reparatur → In Arbeit
+            };
+
+            // 🆕 MULTI-SERVICE: Prüfe ob mehrere Services vorhanden sind
+            const hasMultipleServices = anfrage.fahrzeug?.additionalServices &&
+                                       Array.isArray(anfrage.fahrzeug.additionalServices) &&
+                                       anfrage.fahrzeug.additionalServices.length > 0;
+
+            if (hasMultipleServices && anfrage.fahrzeug?.serviceStatuses) {
+                console.log(`🆕 Multi-Service-Status: ${anfrage.kennzeichen || anfrage.id}`);
+
+                // Sammle alle Service-Status
+                const allServiceStatuses = [];
+                const primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
+
+                // 1. Primary Service Status
+                if (anfrage.fahrzeug.serviceStatuses[primaryServiceTyp]) {
+                    const primaryStatus = anfrage.fahrzeug.serviceStatuses[primaryServiceTyp].status;
+                    const mappedPrimary = statusMapping[primaryStatus] || 'beauftragt';
+                    allServiceStatuses.push({
+                        serviceTyp: primaryServiceTyp,
+                        werkstattStatus: primaryStatus,
+                        partnerStatus: mappedPrimary
+                    });
+                    console.log(`   Primary: ${primaryServiceTyp} → ${primaryStatus} → ${mappedPrimary}`);
+                }
+
+                // 2. Additional Services Status
+                anfrage.fahrzeug.additionalServices.forEach(additionalService => {
+                    const serviceTyp = additionalService.serviceTyp;
+                    if (anfrage.fahrzeug.serviceStatuses[serviceTyp]) {
+                        const serviceStatus = anfrage.fahrzeug.serviceStatuses[serviceTyp].status;
+                        const mappedService = statusMapping[serviceStatus] || 'beauftragt';
+                        allServiceStatuses.push({
+                            serviceTyp: serviceTyp,
+                            werkstattStatus: serviceStatus,
+                            partnerStatus: mappedService
+                        });
+                        console.log(`   Additional: ${serviceTyp} → ${serviceStatus} → ${mappedService}`);
+                    }
+                });
+
+                // 3. Aggregation Logic (PRIORITÄT: abholung > in_arbeit > beauftragt > warte_kva)
+                const statusPriority = {
+                    'fertig': 5,        // Alle fertig
+                    'abholung': 4,      // Mind. 1 Service abholbereit
+                    'in_arbeit': 3,     // Mind. 1 Service in Arbeit
+                    'beauftragt': 2,    // Mind. 1 Service beauftragt
+                    'warte_kva': 1,     // Mind. 1 Service wartet auf KVA
+                    'neu': 0            // Alle neu
+                };
+
+                // Finde höchsten Status
+                let highestStatus = 'neu';
+                let highestPriority = -1;
+
+                allServiceStatuses.forEach(service => {
+                    const priority = statusPriority[service.partnerStatus] || 0;
+                    if (priority > highestPriority) {
+                        highestPriority = priority;
+                        highestStatus = service.partnerStatus;
+                    }
+                });
+
+                // SPEZIAL: Wenn ALLE Services "fertig/abholung" sind → return 'abholung'
+                const allFinished = allServiceStatuses.every(s =>
+                    ['abholung', 'fertig'].includes(s.partnerStatus)
+                );
+                if (allFinished && allServiceStatuses.length > 0) {
+                    console.log(`   ✅ Aggregierter Status: abholung (alle Services fertig)`);
+                    return 'abholung';
+                }
+
+                console.log(`   ✅ Aggregierter Status: ${highestStatus}`);
+                return highestStatus;
+            }
+
+            // 1. PRIORITÄT: Single-Service ODER Backwards Compatibility (prozessStatus)
             if (anfrage.fahrzeug?.prozessStatus) {
                 const werkstattStatus = anfrage.fahrzeug.prozessStatus;
-
                 console.log(`🔍 getDynamicStatus: ${anfrage.kennzeichen || anfrage.id} - Werkstatt: ${werkstattStatus}`);
-
-                // Werkstatt-Status → Partner-Kanban-Spalte Mapping
-                const statusMapping = {
-                    // ========== SHARED STAGES (alle 6 Services) ==========
-                    'neu': 'beauftragt',               // Neu eingegangen → Beauftragt
-                    'terminiert': 'beauftragt',        // Terminiert → Beauftragt
-                    'fertig': 'abholung',              // Fertig → Auto anliefern (Partner soll abholen!)
-                    'abgeschlossen': 'fertig',         // Abgeschlossen (abgeholt) → Fertig
-
-                    // ========== LACKIERUNG ==========
-                    'angenommen': 'beauftragt',        // Neu angenommen → Beauftragt
-                    'vorbereitung': 'in_arbeit',       // Vorbereitung → In Arbeit
-                    'lackierung': 'in_arbeit',         // Lackierung → In Arbeit
-                    'trocknung': 'in_arbeit',          // Trocknung → In Arbeit
-                    'qualitaetskontrolle': 'in_arbeit', // QK → In Arbeit
-                    'bereit': 'abholung',              // Bereit → Auto anliefern
-
-                    // ========== REIFEN ==========
-                    'bestellung': 'in_arbeit',         // Bestellung → In Arbeit
-                    'angekommen': 'in_arbeit',         // Angekommen → In Arbeit
-                    'montage': 'in_arbeit',            // Montage → In Arbeit
-                    'wuchten': 'in_arbeit',            // Wuchten → In Arbeit
-
-                    // ========== MECHANIK ==========
-                    'diagnose': 'in_arbeit',           // Diagnose → In Arbeit
-                    'angebot': 'warte_kva',            // Angebot erstellt → Warte auf KVA
-                    'beauftragt': 'beauftragt',        // Beauftragt → Beauftragt
-                    'reparatur': 'in_arbeit',          // Reparatur → In Arbeit
-                    'test': 'in_arbeit',               // Test → In Arbeit
-
-                    // ========== PFLEGE ==========
-                    'termin': 'beauftragt',            // Termin → Beauftragt
-                    'aufbereitung': 'in_arbeit',       // Aufbereitung → In Arbeit
-                    'qualitaet': 'in_arbeit',          // Qualität → In Arbeit
-
-                    // ========== TÜV ==========
-                    'termin_gebucht': 'beauftragt',    // Termin gebucht → Beauftragt
-                    'pruefung': 'in_arbeit',           // Prüfung → In Arbeit
-                    'abholbereit': 'abholung',         // Abholbereit → Auto anliefern (CRITICAL FIX!)
-
-                    // ========== VERSICHERUNG ==========
-                    'gutachten': 'warte_kva',          // Gutachten → Warte auf KVA
-                    'freigabe': 'beauftragt',          // Freigabe → Beauftragt
-                    'in_reparatur': 'in_arbeit'        // In Reparatur → In Arbeit
-                };
 
                 const mappedStatus = statusMapping[werkstattStatus] || 'beauftragt';
                 console.log(`   → Gemappter Status: ${mappedStatus}`);
@@ -4747,12 +4873,8 @@
 
             const unreadCount = unreadCounts[anfrage.id] || 0;
 
-            // Single-Service Badge only (Multi-Service Feature removed)
-            const serviceBadgeHTML = `
-                <div class="card-service-badge" style="background: ${serviceData.bg}; color: white;">
-                    ${serviceData.icon} ${getServiceLabel(anfrage.serviceTyp)}
-                </div>
-            `;
+            // 🆕 MULTI-SERVICE (2025-11-13): Service-Status-Breakdown (zeigt alle Services + Status)
+            const serviceBadgeHTML = buildServiceStatusBreakdown(anfrage);
 
             // FIX: KVA-Termine priorisieren (start-ende) statt Kundenwunsch
             let terminAnzeige = '';
@@ -4925,6 +5047,9 @@
 
             const unreadCount = unreadCounts[anfrage.id] || 0;
 
+            // 🔧 FIX (2025-11-13): Multi-Service Badges integrieren
+            const serviceBadgeHTML = buildServiceStatusBreakdown(anfrage);
+
             const row = document.createElement('div');
             row.className = 'liste-row';
             row.onclick = (event) => {
@@ -4935,10 +5060,7 @@
 
             row.innerHTML = `
                 <div class="liste-service">
-                    <div class="liste-service-badge" style="background: ${serviceData.bg}">
-                        ${serviceData.icon}
-                    </div>
-                    <span>${serviceData.label}</span>
+                    ${serviceBadgeHTML}
                 </div>
                 <div class="liste-kennzeichen">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
                 <div class="liste-fotos">${fotosHTML}</div>
@@ -5026,6 +5148,9 @@
 
             const unreadCount = unreadCounts[anfrage.id] || 0;
 
+            // 🔧 FIX (2025-11-13): Multi-Service Badges integrieren
+            const serviceBadgeHTML = buildServiceStatusBreakdown(anfrage);
+
             const card = document.createElement('div');
             card.className = 'kompakt-card';
             card.style.borderLeftColor = serviceData.bg;
@@ -5037,9 +5162,7 @@
 
             card.innerHTML = `
                 <div class="kompakt-header">
-                    <div class="kompakt-service-badge" style="background: ${serviceData.bg}">
-                        ${serviceData.icon} ${serviceData.label}
-                    </div>
+                    ${serviceBadgeHTML}
                     <div class="kompakt-kennzeichen">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
                 </div>
                 <div class="kompakt-fotos">${fotosHTML}</div>
@@ -5063,6 +5186,157 @@
             return card;
         }
 
+        /**
+         * 🆕 MULTI-SERVICE (2025-11-13): Build service status breakdown for Partner-Portal cards
+         * Shows all services (primary + additional) with their individual statuses
+         * @param {Object} anfrage - Die Anfrage mit optionalem verknüpften Fahrzeug
+         * @returns {string} HTML für Service-Status-Badges
+         */
+        function buildServiceStatusBreakdown(anfrage) {
+            const serviceIcons = {
+                lackier: { icon: '🎨', bg: 'var(--color-primary)', label: 'Lackier' },
+                reifen: { icon: '🚗', bg: '#42a5f5', label: 'Reifen' },
+                pflege: { icon: '✨', bg: '#7b1fa2', label: 'Pflege' },
+                mechanik: { icon: '🔧', bg: '#d32f2f', label: 'Mechanik' },
+                tuev: { icon: '✅', bg: '#388e3c', label: 'TÜV/AU' },
+                versicherung: { icon: '🛡️', bg: '#f57c00', label: 'Versicherung' },
+                glas: { icon: '🔍', bg: '#0288d1', label: 'Glas' },
+                klima: { icon: '❄️', bg: '#00bcd4', label: 'Klima' },
+                dellen: { icon: '🔨', bg: '#757575', label: 'Dellen' },
+                folierung: { icon: '🌈', bg: '#9c27b0', label: 'Folierung' },
+                steinschutz: { icon: '🛡️', bg: '#607d8b', label: 'Steinschutz' },
+                werbebeklebung: { icon: '📢', bg: '#ff5722', label: 'Werbebeklebung' }
+            };
+
+            const statusLabels = {
+                'neu': 'Neu',
+                'angenommen': 'Angenommen',
+                'terminiert': 'Terminiert',
+                'vorbereitung': 'Vorbereitung',
+                'lackierung': 'Lackierung',
+                'trocknung': 'Trocknung',
+                'montage': 'Montage',
+                'qualitaetskontrolle': 'Qualität',
+                'bereit': 'Bereit',
+                'fertig': 'Fertig',
+                'abholbereit': 'Abholbereit',
+                'in_arbeit': 'In Arbeit',
+                'wuchten': 'Wuchten',
+                'reparatur': 'Reparatur',
+                'aufbereitung': 'Aufbereitung',
+                'pruefung': 'Prüfung',
+                'diagnose': 'Diagnose',
+                'bestellung': 'Bestellung',
+                'angekommen': 'Angekommen',
+                'termin': 'Termin',
+                'termin_gebucht': 'Termin gebucht',
+                'gutachten': 'Gutachten',
+                'freigabe': 'Freigabe',
+                'angebot': 'Angebot',
+                'beauftragt': 'Beauftragt',
+                'test': 'Test',
+                'qualitaet': 'Qualität'
+            };
+
+            // Prüfe ob Multi-Service
+            const hasMultipleServices = anfrage.fahrzeug?.additionalServices &&
+                                       Array.isArray(anfrage.fahrzeug.additionalServices) &&
+                                       anfrage.fahrzeug.additionalServices.length > 0;
+
+            if (!hasMultipleServices) {
+                // Single-Service: Original Badge
+                const primaryServiceTyp = anfrage.serviceTyp || 'lackier';
+                const serviceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+                return `
+                    <div class="card-service-badge" style="background: ${serviceData.bg}; color: white;">
+                        ${serviceData.icon} ${getServiceLabel(primaryServiceTyp)}
+                    </div>
+                `;
+            }
+
+            // Multi-Service: Badges mit Status
+            let badgesHTML = '';
+            const primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
+            const serviceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+
+            // 1️⃣ Primary Service
+            // 🔧 FIX (2025-11-13): Nutze getServiceStatus() Helper für Fallback-Logik
+            const primaryStatus = getServiceStatus(anfrage, primaryServiceTyp);
+            const statusLabel = statusLabels[primaryStatus] || primaryStatus;
+
+            if (primaryStatus && primaryStatus !== 'neu') {
+                badgesHTML += `
+                    <div class="card-service-badge-multi primary" style="background: ${serviceData.bg}; color: white;">
+                        <span>${serviceData.icon} ${getServiceLabel(primaryServiceTyp)}</span>
+                        <span class="status-pill">→ ${statusLabel}</span>
+                    </div>
+                `;
+            } else {
+                // Fallback: Kein Status vorhanden (oder Status = 'neu')
+                badgesHTML += `
+                    <div class="card-service-badge" style="background: ${serviceData.bg}; color: white;">
+                        ${serviceData.icon} ${getServiceLabel(primaryServiceTyp)}
+                    </div>
+                `;
+            }
+
+            // 2️⃣ Additional Services
+            anfrage.fahrzeug.additionalServices.forEach(additionalService => {
+                const addServiceTyp = additionalService.serviceTyp;
+                const addServiceData = serviceIcons[addServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+
+                // 🔧 FIX (2025-11-13): Nutze getServiceStatus() Helper für Fallback-Logik
+                const addStatus = getServiceStatus(anfrage, addServiceTyp);
+                const addStatusLabel = statusLabels[addStatus] || addStatus;
+
+                if (addStatus && addStatus !== 'neu') {
+                    badgesHTML += `
+                        <div class="card-service-badge-multi additional" style="background: ${addServiceData.bg}; color: white;">
+                            <span>+ ${addServiceData.icon} ${getServiceLabel(addServiceTyp)}</span>
+                            <span class="status-pill">→ ${addStatusLabel}</span>
+                        </div>
+                    `;
+                } else {
+                    // Fallback: Kein Status vorhanden (oder Status = 'neu')
+                    badgesHTML += `
+                        <div class="card-service-badge" style="background: ${addServiceData.bg}; color: white; opacity: 0.8;">
+                            + ${addServiceData.icon} ${getServiceLabel(addServiceTyp)}
+                        </div>
+                    `;
+                }
+            });
+
+            return badgesHTML;
+        }
+
+        /**
+         * 🆕 MULTI-SERVICE (2025-11-13): Helper - Get status for specific service
+         * Partner-Portal Version (reads from anfrage.fahrzeug.serviceStatuses)
+         * @param {Object} anfrage - Die Anfrage
+         * @param {string} serviceTyp - Service-Type (lackier, tuev, etc.)
+         * @returns {string} Status (z.B. 'angenommen', 'vorbereitung', etc.)
+         */
+        function getServiceStatus(anfrage, serviceTyp) {
+            if (!anfrage || !serviceTyp) return 'neu';
+
+            // 1. Priorität: serviceStatuses Object (Multi-Service)
+            if (anfrage.fahrzeug?.serviceStatuses && anfrage.fahrzeug.serviceStatuses[serviceTyp]) {
+                return anfrage.fahrzeug.serviceStatuses[serviceTyp].status;
+            }
+
+            // 2. Fallback: prozessStatus (Single-Service / Backwards Compatibility)
+            if (anfrage.fahrzeug?.prozessStatus && anfrage.fahrzeug.serviceTyp === serviceTyp) {
+                return anfrage.fahrzeug.prozessStatus;
+            }
+
+            // 3. Fallback: Partner-Status
+            if (anfrage.status && !anfrage.fahrzeug) {
+                return anfrage.status;
+            }
+
+            return 'neu';
+        }
+
         function getServiceLabel(serviceTyp) {
             const labels = {
                 lackier: 'Lackier',
@@ -5070,7 +5344,13 @@
                 pflege: 'Pflege',
                 mechanik: 'Mechanik',
                 tuev: 'TÜV/AU',
-                versicherung: 'Versicherung'
+                versicherung: 'Versicherung',
+                glas: 'Glas',
+                klima: 'Klima',
+                dellen: 'Dellen',
+                folierung: 'Folierung',
+                steinschutz: 'Steinschutz',
+                werbebeklebung: 'Werbebeklebung'
             };
             return labels[serviceTyp] || 'Service';
         }

@@ -2499,6 +2499,115 @@
             }
         };
 
+        // 🆕 HELPER FUNCTIONS - Multi-Service Status-Tracking (2025-11-13)
+        // ================================================================
+
+        /**
+         * Gibt aktuellen Service zurück (aus currentProcess Variable)
+         * @returns {string|null} Service-Typ (z.B. "lackier", "tuev") oder null
+         */
+        function getCurrentService() {
+            // currentProcess ist globale Variable (Zeile 2338)
+            if (!currentProcess || currentProcess === 'alle') {
+                console.warn('⚠️ getCurrentService: Kein spezifischer Service aktiv (currentProcess:', currentProcess, ')');
+                return null;
+            }
+            return currentProcess;
+        }
+
+        /**
+         * Prüft ob Fahrzeug einen Service hat (Primary ODER Additional)
+         * @param {Object} fahrzeug - Fahrzeug-Dokument
+         * @param {string} serviceTyp - Service-Typ zu prüfen
+         * @returns {boolean} true wenn Fahrzeug den Service hat
+         */
+        function hasService(fahrzeug, serviceTyp) {
+            if (!fahrzeug || !serviceTyp) return false;
+
+            // Check Primary Service
+            if (fahrzeug.serviceTyp === serviceTyp) {
+                return true;
+            }
+
+            // Check Additional Services
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                return fahrzeug.additionalServices.some(s => s.serviceTyp === serviceTyp);
+            }
+
+            return false;
+        }
+
+        /**
+         * Gibt Status für spezifischen Service mit Lazy Migration
+         * @param {Object} fahrzeug - Fahrzeug-Dokument
+         * @param {string} serviceTyp - Service-Typ
+         * @returns {string} Status (z.B. "vorbereitung", "neu")
+         */
+        function getServiceStatus(fahrzeug, serviceTyp) {
+            if (!fahrzeug || !serviceTyp) return 'neu';
+
+            // 1. Priorität: serviceStatuses Object (NEU)
+            if (fahrzeug.serviceStatuses && fahrzeug.serviceStatuses[serviceTyp]) {
+                return fahrzeug.serviceStatuses[serviceTyp].status;
+            }
+
+            // 2. Fallback: prozessStatus (Backwards Compatibility)
+            if (fahrzeug.serviceTyp === serviceTyp && fahrzeug.prozessStatus) {
+                // 🆕 Lazy Migration: Erstelle serviceStatuses on-the-fly
+                if (!fahrzeug.serviceStatuses) {
+                    console.log('🔄 Lazy Migration: Erstelle serviceStatuses für Fahrzeug', fahrzeug.kennzeichen);
+
+                    fahrzeug.serviceStatuses = {
+                        [serviceTyp]: {
+                            status: fahrzeug.prozessStatus,
+                            timestamp: fahrzeug.lastModified || Date.now(),
+                            statusHistory: fahrzeug.statusHistory || []
+                        }
+                    };
+
+                    // Async Update in Firestore (Fire-and-Forget)
+                    window.getCollection('fahrzeuge').doc(fahrzeug.id).update({
+                        serviceStatuses: fahrzeug.serviceStatuses
+                    }).catch(err => {
+                        console.warn('⚠️ Lazy Migration Update fehlgeschlagen:', err);
+                    });
+                }
+
+                return fahrzeug.prozessStatus;
+            }
+
+            // 3. Check ob Service in additionalServices existiert (aber noch kein Status)
+            const hasAdditionalService = fahrzeug.additionalServices?.some(s => s.serviceTyp === serviceTyp);
+            if (hasAdditionalService) {
+                // Auto-Initialize serviceStatus mit 'neu'
+                console.log('🔄 Auto-Init: Erstelle serviceStatus für Additional Service', serviceTyp);
+
+                if (!fahrzeug.serviceStatuses) fahrzeug.serviceStatuses = {};
+
+                fahrzeug.serviceStatuses[serviceTyp] = {
+                    status: 'neu',
+                    timestamp: Date.now(),
+                    statusHistory: [{
+                        status: 'neu',
+                        timestamp: Date.now(),
+                        note: 'Auto-initialisiert'
+                    }]
+                };
+
+                // Async Update
+                window.getCollection('fahrzeuge').doc(fahrzeug.id).update({
+                    [`serviceStatuses.${serviceTyp}`]: fahrzeug.serviceStatuses[serviceTyp]
+                }).catch(err => {
+                    console.warn('⚠️ Service-Status Init fehlgeschlagen:', err);
+                });
+
+                return 'neu';
+            }
+
+            // 4. Default
+            return 'neu';
+        }
+
         // Firebase initialisieren
         // ✅ BUG FIX: Firebase Initialisierung Check korrigiert
         // Problem: initFirebase() gibt nichts zurück → success ist undefined → FALSE
@@ -2895,14 +3004,22 @@
                 if (!container || !countEl) return;
 
                 // Fahrzeuge für diese Spalte filtern
-                // Nach serviceTyp UND prozessStatus filtern
+                // 🆕 MULTI-SERVICE (2025-11-13): Nach hasService() UND getServiceStatus() filtern
                 let fahrzeuge = allFahrzeuge.filter(f => {
-                    const fahrzeugServiceTyp = f.serviceTyp || 'lackier'; // Default: lackier
-                    const fahrzeugStatus = f.prozessStatus || 'angenommen';
+                    // 🆕 MULTI-SERVICE: Prüfe ob Fahrzeug den aktuellen Service hat (Primary ODER Additional)
+                    // Falls currentProcess === 'alle', zeige alle Fahrzeuge
+                    const fahrzeugHasService = (currentProcess === 'alle') || hasService(f, currentProcess);
+                    if (!fahrzeugHasService) {
+                        return false;  // Fahrzeug hat diesen Service nicht
+                    }
 
-                    // 🆕 NEBENWIRKUNG FIX #1+4: Map serviceTyp to process key for comparison
-                    // Problem: serviceTyp kann 'lackierung' ODER 'lackier' sein (Backward-Compatibility)
-                    // Lösung: Normalisiere zu process key für Vergleich
+                    // 🆕 MULTI-SERVICE: Hole Status für den aktuellen Service (nicht nur prozessStatus!)
+                    const fahrzeugStatus = (currentProcess === 'alle')
+                        ? (f.prozessStatus || 'angenommen')  // Bei 'alle': nutze Primary Service Status
+                        : getServiceStatus(f, currentProcess);  // Bei spezifischem Service: nutze Service-spezifischen Status
+
+                    // ✅ Backwards Compatibility: Weiterhin serviceTyp-Mapping für 'alle' View
+                    const fahrzeugServiceTyp = f.serviceTyp || 'lackier'; // Default: lackier
                     const serviceTypToProcessKey = {
                         'lackierung': 'lackier',   // Legacy Support
                         'lackier': 'lackier',      // New Standard
@@ -3282,29 +3399,114 @@
                 return label;
             }
 
-            // 🆕 MULTI-SERVICE: Build service badges (primary + additional)
-            const primaryServiceTyp = fahrzeug.serviceTyp || 'lackier';
-            const primaryServiceLabel = buildServiceLabel(primaryServiceTyp, fahrzeug.serviceDetails);
+            /**
+             * 🆕 MULTI-SERVICE STATUS-TRACKING (2025-11-13): Build service badges WITH STATUS
+             * Zeigt Primary + Additional Services mit ihren jeweiligen Status-Werten
+             */
+            function buildServiceBadgeWithStatus(fahrzeug) {
+                const primaryServiceTyp = fahrzeug.serviceTyp || 'lackier';
 
-            let serviceTypBadge = `
-                <div class="dringlichkeit-badge" style="background: rgba(0, 122, 255, 0.7); backdrop-filter: blur(8px); margin-bottom: 8px; font-size: 10px; padding: 4px 8px;">
-                    ${primaryServiceLabel}
-                </div>
-            `;
+                // Status Label Mapping (Deutsch)
+                const statusLabels = {
+                    'neu': 'Neu',
+                    'angenommen': 'Angenommen',
+                    'terminiert': 'Terminiert',
+                    'vorbereitung': 'Vorbereitung',
+                    'lackierung': 'Lackierung',
+                    'trocknung': 'Trocknung',
+                    'montage': 'Montage',
+                    'qualitaetskontrolle': 'Qualität',
+                    'bereit': 'Bereit',
+                    'fertig': 'Fertig',
+                    'abholbereit': 'Abholbereit',
+                    'in_arbeit': 'In Arbeit',
+                    'wuchten': 'Wuchten',
+                    'reparatur': 'Reparatur',
+                    'aufbereitung': 'Aufbereitung',
+                    'pruefung': 'Prüfung',
+                    'diagnose': 'Diagnose',
+                    'bestellung': 'Bestellung',
+                    'angekommen': 'Angekommen',
+                    'termin': 'Termin',
+                    'termin_gebucht': 'Termin gebucht',
+                    'gutachten': 'Gutachten',
+                    'freigabe': 'Freigabe',
+                    'angebot': 'Angebot',
+                    'beauftragt': 'Beauftragt',
+                    'test': 'Test',
+                    'qualitaet': 'Qualität'
+                };
 
-            // 🆕 MULTI-SERVICE: Add additional services badges
-            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices) && fahrzeug.additionalServices.length > 0) {
-                console.log(`🆕 Multi-Service Card: ${fahrzeug.kennzeichen} has ${fahrzeug.additionalServices.length} additional services`);
+                // Status Colors (für visuelles Feedback)
+                const statusColors = {
+                    'neu': 'rgba(158, 158, 158, 0.7)',              // Grau
+                    'angenommen': 'rgba(0, 122, 255, 0.7)',         // Blau
+                    'terminiert': 'rgba(0, 122, 255, 0.7)',         // Blau
+                    'vorbereitung': 'rgba(255, 152, 0, 0.7)',       // Orange
+                    'in_arbeit': 'rgba(255, 193, 7, 0.7)',          // Gelb
+                    'lackierung': 'rgba(255, 193, 7, 0.7)',         // Gelb
+                    'trocknung': 'rgba(255, 193, 7, 0.7)',          // Gelb
+                    'montage': 'rgba(255, 193, 7, 0.7)',            // Gelb
+                    'wuchten': 'rgba(255, 193, 7, 0.7)',            // Gelb
+                    'reparatur': 'rgba(255, 193, 7, 0.7)',          // Gelb
+                    'aufbereitung': 'rgba(255, 193, 7, 0.7)',       // Gelb
+                    'pruefung': 'rgba(255, 193, 7, 0.7)',           // Gelb
+                    'diagnose': 'rgba(255, 193, 7, 0.7)',           // Gelb
+                    'bestellung': 'rgba(255, 152, 0, 0.7)',         // Orange
+                    'angekommen': 'rgba(255, 193, 7, 0.7)',         // Gelb
+                    'termin': 'rgba(0, 122, 255, 0.7)',             // Blau
+                    'termin_gebucht': 'rgba(0, 122, 255, 0.7)',     // Blau
+                    'gutachten': 'rgba(255, 193, 7, 0.7)',          // Gelb
+                    'freigabe': 'rgba(255, 193, 7, 0.7)',           // Gelb
+                    'angebot': 'rgba(255, 152, 0, 0.7)',            // Orange
+                    'beauftragt': 'rgba(0, 122, 255, 0.7)',         // Blau
+                    'test': 'rgba(255, 193, 7, 0.7)',               // Gelb
+                    'qualitaetskontrolle': 'rgba(156, 39, 176, 0.7)', // Lila
+                    'qualitaet': 'rgba(156, 39, 176, 0.7)',         // Lila
+                    'bereit': 'rgba(76, 175, 80, 0.7)',             // Grün
+                    'fertig': 'rgba(76, 175, 80, 0.7)',             // Grün
+                    'abholbereit': 'rgba(76, 175, 80, 0.7)'         // Grün
+                };
 
-                fahrzeug.additionalServices.forEach(additionalService => {
-                    const additionalLabel = buildServiceLabel(additionalService.serviceTyp, additionalService.serviceData);
-                    serviceTypBadge += `
-                        <div class="dringlichkeit-badge" style="background: rgba(100, 60, 255, 0.6); backdrop-filter: blur(8px); margin-bottom: 8px; font-size: 10px; padding: 4px 8px; border-left: 3px solid rgba(255, 255, 255, 0.5);">
-                            + ${additionalLabel}
-                        </div>
-                    `;
-                });
+                let badges = '';
+
+                // 1️⃣ PRIMARY SERVICE Badge mit Status
+                const primaryServiceLabel = buildServiceLabel(primaryServiceTyp, fahrzeug.serviceDetails);
+                const primaryStatus = getServiceStatus(fahrzeug, primaryServiceTyp);
+                const primaryStatusLabel = statusLabels[primaryStatus] || primaryStatus;
+                const primaryStatusColor = statusColors[primaryStatus] || 'rgba(0, 122, 255, 0.7)';
+
+                badges += `
+                    <div class="service-status-badge primary" style="background: ${primaryStatusColor}; backdrop-filter: blur(8px); margin-bottom: 6px; font-size: 10px; padding: 5px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                        <span style="font-weight: 600;">${primaryServiceLabel}</span>
+                        <span style="opacity: 0.9; font-size: 9px; background: rgba(255, 255, 255, 0.2); padding: 2px 6px; border-radius: 4px;">→ ${primaryStatusLabel}</span>
+                    </div>
+                `;
+
+                // 2️⃣ ADDITIONAL SERVICES Badges mit Status
+                if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices) && fahrzeug.additionalServices.length > 0) {
+                    console.log(`🆕 Multi-Service Card: ${fahrzeug.kennzeichen} has ${fahrzeug.additionalServices.length} additional services`);
+
+                    fahrzeug.additionalServices.forEach(additionalService => {
+                        const additionalLabel = buildServiceLabel(additionalService.serviceTyp, additionalService.serviceData);
+                        const additionalStatus = getServiceStatus(fahrzeug, additionalService.serviceTyp);
+                        const additionalStatusLabel = statusLabels[additionalStatus] || additionalStatus;
+                        const additionalStatusColor = statusColors[additionalStatus] || 'rgba(100, 60, 255, 0.6)';
+
+                        badges += `
+                            <div class="service-status-badge additional" style="background: ${additionalStatusColor}; backdrop-filter: blur(8px); margin-bottom: 6px; font-size: 10px; padding: 5px 8px; border-radius: 6px; border-left: 3px solid rgba(255, 255, 255, 0.5); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                                <span style="font-weight: 600;">+ ${additionalLabel}</span>
+                                <span style="opacity: 0.9; font-size: 9px; background: rgba(255, 255, 255, 0.2); padding: 2px 6px; border-radius: 4px;">→ ${additionalStatusLabel}</span>
+                            </div>
+                        `;
+                    });
+                }
+
+                return badges;
             }
+
+            // 🆕 MULTI-SERVICE STATUS-TRACKING (2025-11-13): Use new badge function
+            const serviceTypBadge = buildServiceBadgeWithStatus(fahrzeug);
 
             // ABHOLUNGS-BADGE - FÜR ALLE PHASEN (außer "bereit" = bereits abholbereit)
             // Zeigt Abholung in ALLEN Spalten, damit Werkstatt frühzeitig planen kann
@@ -3842,14 +4044,82 @@
         // Global exportieren für ai-agent-tools.js Delegation
         window.updateFahrzeugStatusKanban = updateFahrzeugStatus;
 
+        /**
+         * 🆕 MULTI-SERVICE (2025-11-13): Sync Service-Status zu Partner-Anfrage
+         * @param {Object} transaction - Firestore Transaction
+         * @param {string} anfrageId - Partner-Anfrage ID
+         * @param {string} serviceTyp - Service-Typ (z.B. "lackier", "tuev")
+         * @param {string} newStatus - Neuer Prozess-Status
+         * @param {Object} fahrzeugData - Fahrzeug-Daten
+         * @param {number} timestamp - Timestamp
+         */
+        async function syncServiceStatusToPartner(transaction, anfrageId, serviceTyp, newStatus, fahrzeugData, timestamp) {
+            try {
+                const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
+
+                // Prüfe ob Anfrage existiert
+                const anfrageDoc = await transaction.get(anfrageRef);
+                if (!anfrageDoc.exists) {
+                    console.warn('⚠️ Partner-Anfrage nicht gefunden - Sync übersprungen:', anfrageId);
+                    return;  // Nicht blockieren - Fahrzeug-Update trotzdem durchführen
+                }
+
+                // Mapping: Werkstatt-Status → Partner-Kanban-Status
+                const mappedStatus = mapProzessToStatus(newStatus);
+
+                const updateData = {
+                    // ✅ Backwards Compatibility: Nur Primary Service updatet status/prozessStatus
+                    ...(serviceTyp === fahrzeugData.serviceTyp && {
+                        status: mappedStatus,
+                        prozessStatus: newStatus
+                    }),
+
+                    // 🆕 MULTI-SERVICE: Update spezifischen Service-Status
+                    [`serviceStatuses.${serviceTyp}.status`]: mappedStatus,
+                    [`serviceStatuses.${serviceTyp}.prozessStatus`]: newStatus,
+                    [`serviceStatuses.${serviceTyp}.timestamp`]: timestamp,
+                    // 🔧 FIX (2025-11-13): Add statusHistory for Partner-Portal Timeline
+                    [`serviceStatuses.${serviceTyp}.statusHistory`]: firebase.firestore.FieldValue.arrayUnion({
+                        status: mappedStatus,
+                        prozessStatus: newStatus,
+                        timestamp: timestamp,
+                        user: 'werkstatt-sync',
+                        note: `Von Werkstatt synchronisiert (${newStatus} → ${mappedStatus})`
+                    }),
+
+                    lastModified: timestamp
+                };
+
+                transaction.update(anfrageRef, updateData);
+                console.log(`   🔄 Partner-Sync: ${serviceTyp} → ${newStatus} (anfrage: ${anfrageId})`);
+
+            } catch (error) {
+                console.error('❌ Partner-Sync fehlgeschlagen:', error);
+                // NICHT werfen - Fahrzeug-Update soll erfolgreich sein
+                // Partner-Sync wird beim nächsten Update automatisch korrigiert
+            }
+        }
+
         // Direktes Status-Update (ohne Foto)
         async function directStatusUpdate(fahrzeugId, newStatus) {
             try {
                 const fahrzeug = allFahrzeuge.find(f => window.compareIds(f.id, fahrzeugId));
                 if (!fahrzeug) return;
 
-                // Status aktualisieren
-                fahrzeug.prozessStatus = newStatus;
+                // 🆕 MULTI-SERVICE (2025-11-13): Ermittle aktuellen Service
+                const currentService = getCurrentService();
+                if (!currentService) {
+                    console.error('❌ Kein Service aktiv - Update abgebrochen');
+                    showToast('Fehler: Kein Service ausgewählt!', 'error');
+                    return;
+                }
+                console.log(`🔧 Service-Status Update: ${currentService} → ${newStatus}`);
+
+                // Status aktualisieren (Backwards Compatibility)
+                // Nur Primary Service: Update prozessStatus
+                if (currentService === fahrzeug.serviceTyp) {
+                    fahrzeug.prozessStatus = newStatus;
+                }
 
                 // Timestamp für Prozessübergang speichern
                 const timestamp = Date.now();
@@ -3910,11 +4180,54 @@
                 // 🔧 FIX BUG #1: status UND prozessStatus synchron halten
                 // Mapping prozessStatus → status für Liste-Kompatibilität
                 const mappedStatus = mapProzessToStatus(newStatus);
-                fahrzeug.status = mappedStatus;
+
+                // Backwards Compatibility: Nur Primary Service updatet fahrzeug.status
+                if (currentService === fahrzeug.serviceTyp) {
+                    fahrzeug.status = mappedStatus;
+                }
+
+                // 🆕 MULTI-SERVICE (2025-11-13): Update serviceStatuses Object
+                if (!fahrzeug.serviceStatuses) {
+                    fahrzeug.serviceStatuses = {};
+                }
+                if (!fahrzeug.serviceStatuses[currentService]) {
+                    fahrzeug.serviceStatuses[currentService] = {
+                        status: 'neu',
+                        timestamp: timestamp,
+                        statusHistory: []
+                    };
+                }
+
+                // Update Status für aktuellen Service
+                fahrzeug.serviceStatuses[currentService].status = newStatus;
+                fahrzeug.serviceStatuses[currentService].timestamp = timestamp;
+                fahrzeug.serviceStatuses[currentService].statusHistory.push({
+                    status: newStatus,
+                    timestamp: timestamp,
+                    user: window.currentUser?.email || 'system',
+                    foto: null,
+                    notiz: null
+                });
 
                 const updateData = {
-                    prozessStatus: newStatus,
-                    status: mappedStatus,  // ✅ CRITICAL FIX: Auch status aktualisieren!
+                    // ✅ Backwards Compatibility: Nur Primary Service updatet prozessStatus
+                    ...(currentService === fahrzeug.serviceTyp && {
+                        prozessStatus: newStatus,
+                        status: mappedStatus
+                    }),
+
+                    // 🆕 MULTI-SERVICE: Update spezifischen Service-Status
+                    [`serviceStatuses.${currentService}.status`]: newStatus,
+                    [`serviceStatuses.${currentService}.timestamp`]: timestamp,
+                    [`serviceStatuses.${currentService}.statusHistory`]: firebase.firestore.FieldValue.arrayUnion({
+                        status: newStatus,
+                        timestamp: timestamp,
+                        user: window.currentUser?.email || 'system',
+                        foto: null,
+                        notiz: null
+                    }),
+
+                    // ✅ Bestehende Fields
                     prozessTimestamps: fahrzeug.prozessTimestamps,
                     statusHistory: fahrzeug.statusHistory,
                     bearbeitungsHistory: fahrzeug.bearbeitungsHistory,  // 🆕 Phase 1.3: Audit-Trail
@@ -3968,26 +4281,18 @@
                         transaction.update(fahrzeugRef, updateData);
                         console.log('   🔒 Transaction: Status + Timestamps atomic update');
 
-                        // 🆕 BUGFIX 2025-11-06: Sync zu partnerAnfragen wenn Anfrage verknüpft ist
-                        // ✅ FIX 2025-11-07: Check partnerAnfrageId FIRST (standardized field), then fallbacks
+                        // 🆕 MULTI-SERVICE (2025-11-13): Sync zu partnerAnfragen wenn Anfrage verknüpft ist
+                        // ✅ Nutzt neue syncServiceStatusToPartner() Funktion für Multi-Service Support
                         const partnerAnfrageId = fahrzeugData.partnerAnfrageId || fahrzeugData.anfrageId || fahrzeugData.fahrzeugAnfrageId;
                         if (partnerAnfrageId) {
-                            const anfrageRef = window.getCollection('partnerAnfragen')
-                                .doc(partnerAnfrageId);
-                            transaction.update(anfrageRef, {
-                                status: mappedStatus,
-                                prozessStatus: newStatus,
-                                lastModified: timestamp,
-                                statusHistory: firebase.firestore.FieldValue.arrayUnion({
-                                    status: mappedStatus,
-                                    prozessStatus: newStatus,
-                                    timestamp: new Date(timestamp).toISOString(),
-                                    user: firebaseApp.auth.currentUser?.email || 'system',
-                                    foto: null,  // 🔧 NEU: Konsistente Datenstruktur (kein Foto bei direktem Update)
-                                    notiz: null  // 🔧 NEU: Konsistente Datenstruktur
-                                })
-                            });
-                            console.log('   🔄 Synced status to partnerAnfragen:', partnerAnfrageId);
+                            await syncServiceStatusToPartner(
+                                transaction,
+                                partnerAnfrageId,
+                                currentService,  // Nur aktuellen Service syncen!
+                                newStatus,
+                                fahrzeugData,
+                                timestamp
+                            );
                         }
                     });
 

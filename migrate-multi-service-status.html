@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔄 Multi-Service Status Migration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #856404;
+        }
+
+        .warning strong {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-right: 10px;
+        }
+
+        .button:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .button.danger {
+            background: #dc3545;
+        }
+
+        .button.danger:hover:not(:disabled) {
+            background: #c82333;
+        }
+
+        .progress {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .progress.active {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-success {
+            color: #4caf50;
+        }
+
+        .log-error {
+            color: #f44336;
+        }
+
+        .log-warning {
+            color: #ff9800;
+        }
+
+        .log-info {
+            color: #2196f3;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Multi-Service Status Migration</h1>
+        <p class="subtitle">Migriert existierende Fahrzeuge zum neuen serviceStatuses Format</p>
+
+        <div class="warning">
+            <strong>⚠️ Wichtige Hinweise:</strong>
+            <ul style="margin-left: 20px; margin-top: 8px;">
+                <li>Backup der Firestore-Datenbank wird empfohlen (Firebase Console → Export)</li>
+                <li>Migration ist idempotent (kann mehrmals ausgeführt werden)</li>
+                <li>Existierende Daten werden nicht überschrieben, nur erweitert</li>
+                <li>Lazy Migration ist bereits in getServiceStatus() implementiert</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <button id="dryRunBtn" class="button">🔍 Dry Run (Test)</button>
+            <button id="migrateBtn" class="button danger" disabled>▶️ Migration starten</button>
+        </div>
+
+        <div id="progress" class="progress">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill" style="width: 0%">0%</div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div id="statTotal" class="stat-value">0</div>
+                    <div class="stat-label">Gesamt</div>
+                </div>
+                <div class="stat-card">
+                    <div id="statProcessed" class="stat-value">0</div>
+                    <div class="stat-label">Verarbeitet</div>
+                </div>
+                <div class="stat-card">
+                    <div id="statMigrated" class="stat-value">0</div>
+                    <div class="stat-label">Migriert</div>
+                </div>
+                <div class="stat-card">
+                    <div id="statSkipped" class="stat-value">0</div>
+                    <div class="stat-label">Übersprungen</div>
+                </div>
+                <div class="stat-card">
+                    <div id="statErrors" class="stat-value">0</div>
+                    <div class="stat-label">Fehler</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <strong>Console Log:</strong>
+                <div id="log" class="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+
+    <script>
+        // Stats
+        let stats = {
+            total: 0,
+            processed: 0,
+            migrated: 0,
+            skipped: 0,
+            errors: 0
+        };
+
+        // UI Elements
+        const dryRunBtn = document.getElementById('dryRunBtn');
+        const migrateBtn = document.getElementById('migrateBtn');
+        const progressDiv = document.getElementById('progress');
+        const progressFill = document.getElementById('progressFill');
+        const logDiv = document.getElementById('log');
+
+        // Logging
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString('de-DE');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function updateStats() {
+            document.getElementById('statTotal').textContent = stats.total;
+            document.getElementById('statProcessed').textContent = stats.processed;
+            document.getElementById('statMigrated').textContent = stats.migrated;
+            document.getElementById('statSkipped').textContent = stats.skipped;
+            document.getElementById('statErrors').textContent = stats.errors;
+
+            const progress = stats.total > 0 ? Math.round((stats.processed / stats.total) * 100) : 0;
+            progressFill.style.width = `${progress}%`;
+            progressFill.textContent = `${progress}%`;
+        }
+
+        /**
+         * Erstellt serviceStatuses Object für ein Fahrzeug
+         */
+        function createServiceStatuses(fahrzeug) {
+            const serviceStatuses = {};
+            const timestamp = fahrzeug.lastModified || Date.now();
+            const primaryServiceTyp = fahrzeug.serviceTyp || 'lackier';
+            const primaryStatus = fahrzeug.prozessStatus || 'angenommen';
+
+            // 1. Primary Service
+            serviceStatuses[primaryServiceTyp] = {
+                status: primaryStatus,
+                timestamp: timestamp,
+                statusHistory: fahrzeug.statusHistory || [{
+                    status: primaryStatus,
+                    timestamp: timestamp,
+                    user: 'system',
+                    note: 'Migration: Initialer Status'
+                }]
+            };
+
+            // 2. Additional Services
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                fahrzeug.additionalServices.forEach(service => {
+                    serviceStatuses[service.serviceTyp] = {
+                        status: 'neu',
+                        timestamp: timestamp,
+                        statusHistory: [{
+                            status: 'neu',
+                            timestamp: timestamp,
+                            user: 'system',
+                            note: 'Migration: Zusatzservice wartend'
+                        }]
+                    };
+                });
+            }
+
+            return serviceStatuses;
+        }
+
+        /**
+         * Dry Run: Analysiert Fahrzeuge ohne Migration
+         */
+        async function dryRun() {
+            log('🔍 Starte Dry Run...', 'info');
+            progressDiv.classList.add('active');
+            dryRunBtn.disabled = true;
+
+            try {
+                const db = firebase.firestore();
+                const fahrzeugeRef = db.collection('fahrzeuge_mosbach');
+                const snapshot = await fahrzeugeRef.get();
+
+                stats.total = snapshot.size;
+                log(`📊 Gefunden: ${stats.total} Fahrzeuge`, 'info');
+
+                let needsMigration = 0;
+                let hasMultiService = 0;
+                let alreadyMigrated = 0;
+
+                snapshot.forEach(doc => {
+                    const fahrzeug = doc.data();
+                    stats.processed++;
+
+                    if (fahrzeug.serviceStatuses) {
+                        alreadyMigrated++;
+                    } else {
+                        needsMigration++;
+                    }
+
+                    if (fahrzeug.additionalServices && fahrzeug.additionalServices.length > 0) {
+                        hasMultiService++;
+                    }
+
+                    updateStats();
+                });
+
+                log(`✅ Analyse abgeschlossen:`, 'success');
+                log(`   • ${needsMigration} Fahrzeuge benötigen Migration`, 'warning');
+                log(`   • ${alreadyMigrated} Fahrzeuge bereits migriert`, 'success');
+                log(`   • ${hasMultiService} Fahrzeuge mit Multi-Service`, 'info');
+
+                if (needsMigration > 0) {
+                    migrateBtn.disabled = false;
+                    log('💡 Du kannst jetzt die Migration starten', 'info');
+                }
+
+            } catch (error) {
+                log(`❌ Fehler: ${error.message}`, 'error');
+                stats.errors++;
+                updateStats();
+            }
+
+            dryRunBtn.disabled = false;
+        }
+
+        /**
+         * Migration: Fügt serviceStatuses zu allen Fahrzeugen hinzu
+         */
+        async function migrate() {
+            if (!confirm('⚠️ Migration starten? Backup empfohlen!')) {
+                return;
+            }
+
+            log('▶️ Starte Migration...', 'info');
+            progressDiv.classList.add('active');
+            migrateBtn.disabled = true;
+            dryRunBtn.disabled = true;
+
+            // Reset stats
+            stats = { total: 0, processed: 0, migrated: 0, skipped: 0, errors: 0 };
+
+            try {
+                const db = firebase.firestore();
+                const fahrzeugeRef = db.collection('fahrzeuge_mosbach');
+                const snapshot = await fahrzeugeRef.get();
+
+                stats.total = snapshot.size;
+                log(`📊 Starte Migration für ${stats.total} Fahrzeuge`, 'info');
+                updateStats();
+
+                // Batch Processing (max 500 per batch)
+                const batchSize = 500;
+                let batch = db.batch();
+                let operationsInBatch = 0;
+
+                for (const doc of snapshot.docs) {
+                    const fahrzeug = doc.data();
+                    stats.processed++;
+
+                    // Skip if already migrated
+                    if (fahrzeug.serviceStatuses) {
+                        stats.skipped++;
+                        log(`⏭️  Übersprungen: ${fahrzeug.kennzeichen || doc.id} (bereits migriert)`, 'info');
+                        updateStats();
+                        continue;
+                    }
+
+                    try {
+                        // Create serviceStatuses
+                        const serviceStatuses = createServiceStatuses(fahrzeug);
+
+                        // Add to batch
+                        batch.update(doc.ref, { serviceStatuses });
+                        operationsInBatch++;
+                        stats.migrated++;
+
+                        log(`✅ Migriert: ${fahrzeug.kennzeichen || doc.id}`, 'success');
+
+                        // Commit batch if full
+                        if (operationsInBatch >= batchSize) {
+                            await batch.commit();
+                            log(`💾 Batch committed (${operationsInBatch} Operationen)`, 'success');
+                            batch = db.batch();
+                            operationsInBatch = 0;
+                        }
+
+                    } catch (error) {
+                        log(`❌ Fehler bei ${fahrzeug.kennzeichen || doc.id}: ${error.message}`, 'error');
+                        stats.errors++;
+                    }
+
+                    updateStats();
+                }
+
+                // Commit remaining operations
+                if (operationsInBatch > 0) {
+                    await batch.commit();
+                    log(`💾 Final Batch committed (${operationsInBatch} Operationen)`, 'success');
+                }
+
+                log(`🎉 Migration abgeschlossen!`, 'success');
+                log(`   • ${stats.migrated} Fahrzeuge migriert`, 'success');
+                log(`   • ${stats.skipped} übersprungen`, 'info');
+                log(`   • ${stats.errors} Fehler`, stats.errors > 0 ? 'error' : 'info');
+
+            } catch (error) {
+                log(`❌ Fataler Fehler: ${error.message}`, 'error');
+                stats.errors++;
+                updateStats();
+            }
+
+            migrateBtn.disabled = false;
+            dryRunBtn.disabled = false;
+        }
+
+        // Event Listeners
+        dryRunBtn.addEventListener('click', dryRun);
+        migrateBtn.addEventListener('click', migrate);
+
+        // Initialize
+        log('✅ Migration Tool bereit', 'success');
+        log('💡 Starte mit "Dry Run" zur Analyse', 'info');
+    </script>
+</body>
+</html>
