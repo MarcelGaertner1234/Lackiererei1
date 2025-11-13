@@ -5737,14 +5737,56 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            // Header
-            doc.setFillColor(0, 51, 102);
-            doc.rect(0, 0, 210, 40, 'F');
+            // 🆕 PROFESSIONAL HEADER WITH BRANDING (2025-11-13)
+            // Load werkstatt settings for dynamic branding
+            const settings = window.settingsManager ? await window.settingsManager.loadSettings() : null;
+            const werkstattName = settings?.profil?.name || 'Auto-Lackierzentrum Mosbach';
+            const logoUrl = settings?.profil?.logoUrl;
+
+            // Header background - Modern gradient-style
+            doc.setFillColor(0, 51, 102);  // Dark blue
+            doc.rect(0, 0, 210, 45, 'F');
+
+            // Add logo if available
+            if (logoUrl) {
+                try {
+                    // Convert logo to base64 for PDF embedding
+                    const logoBase64 = await new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.crossOrigin = 'Anonymous';
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/png'));
+                        };
+                        img.onerror = reject;
+                        img.src = logoUrl;
+                    });
+
+                    // Add logo to PDF (left side, centered vertically)
+                    doc.addImage(logoBase64, 'PNG', 15, 12, 30, 20);  // x, y, width, height
+                } catch (error) {
+                    console.warn('Could not load logo for PDF:', error);
+                }
+            }
+
+            // Header text (right side or centered if no logo)
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(24);
-            doc.text('Fahrzeug-Annahmeprotokoll', 105, 20, { align: 'center' });
+            doc.setFontSize(22);
+            doc.setFont(undefined, 'bold');
+            doc.text('Fahrzeug-Annahmeprotokoll', logoUrl ? 115 : 105, 20, { align: logoUrl ? 'left' : 'center' });
+
             doc.setFontSize(12);
-            doc.text('Auto-Lackierzentrum Mosbach', 105, 30, { align: 'center' });
+            doc.setFont(undefined, 'normal');
+            doc.text(werkstattName, logoUrl ? 115 : 105, 30, { align: logoUrl ? 'left' : 'center' });
+
+            // Add subtle separator line
+            doc.setDrawColor(255, 255, 255);
+            doc.setLineWidth(0.5);
+            doc.line(15, 42, 195, 42);
 
             // Daten
             doc.setTextColor(0, 0, 0);
@@ -5775,23 +5817,82 @@
             doc.setFont(undefined, 'normal');
             doc.text(data.kundenEmail || 'Nicht angegeben', 50, y);
 
-            // SERVICE-TYP (farbig & prominent)
+            // 🆕 FAHRZEUGDATEN (Moved to top for logical flow - 2025-11-13)
+            y += 15;
+            doc.setFillColor(102, 126, 234);  // Blue
+            doc.roundedRect(15, y - 5, 180, 10, 3, 3, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(12);
+            doc.text('🚗  FAHRZEUGDATEN', 20, y + 1);
+
+            y += 10;
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.text('Marke:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.marke, 50, y);
+            doc.setFont(undefined, 'bold');
+            doc.text('Modell:', 110, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.modell, 140, y);
+
+            const baujahrVon = data.baujahrVon || data.baujahr;
+            const baujahrBis = data.baujahrBis || data.baujahr;
+
+            // Baujahr + KM-Stand
+            y += 7;
+            doc.setFont(undefined, 'bold');
+            doc.text('Baujahr:', 20, y);
+            doc.setFont(undefined, 'normal');
+
+            let baujahrText = '';
+            if (baujahrVon && baujahrBis) {
+                if (baujahrVon === baujahrBis) {
+                    baujahrText = baujahrVon;
+                } else {
+                    baujahrText = baujahrVon + ' - ' + baujahrBis;
+                }
+            } else if (baujahrVon) {
+                baujahrText = 'ab ' + baujahrVon;
+            } else if (baujahrBis) {
+                baujahrText = 'bis ' + baujahrBis;
+            } else {
+                baujahrText = 'Nicht angegeben';
+            }
+            doc.text(baujahrText, 50, y);
+
+            doc.setFont(undefined, 'bold');
+            doc.text('KM-Stand:', 110, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.kmstand ? (data.kmstand + ' km') : 'Nicht angegeben', 140, y);
+
+            // VIN
+            y += 7;
+            doc.setFont(undefined, 'bold');
+            doc.text('VIN/FIN:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.text(data.vin || 'Nicht angegeben', 50, y);
+
+            // 🆕 SERVICE-TYP BADGES (Redesigned 2025-11-13)
             y += 12;
+            // Modern emoji icons instead of [LACK] tags
             const serviceIcons = {
-                'lackierung': '[LACK]',
-                'lackier': '[LACK]',
-                'reifen': '[REIF]',
-                'glas': '[GLAS]',
-                'klima': '[KLIM]',
-                'dellen': '[DELL]',
-                'mechanik': '[MECH]',
-                'versicherung': '[VERS]',
-                'pflege': '[PFLG]',
-                'tuev': '[TUEV]',
-                'folierung': '[FOLI]',
-                'steinschutz': '[STEIN]',
-                'werbebeklebung': '[WERB]',
-                'alle': '[ALL]'
+                'lackierung': '🎨',
+                'lackier': '🎨',
+                'reifen': '🚗',
+                'glas': '🪟',
+                'klima': '❄️',
+                'dellen': '🔨',
+                'mechanik': '🔧',
+                'versicherung': '📋',
+                'pflege': '✨',
+                'tuev': '✅',
+                'folierung': '🎬',
+                'steinschutz': '🛡️',
+                'werbebeklebung': '📣',
+                'alle': '🔧'
             };
             const serviceColors = {
                 'lackierung': [220, 53, 69],
@@ -5831,12 +5932,13 @@
             const icon = serviceIcons[serviceTyp] || '🔧';
             const label = serviceLabels[serviceTyp] || 'SERVICE';
 
+            // Modern rounded badge instead of plain rectangle
             doc.setFillColor(color[0], color[1], color[2]);
-            doc.rect(15, y - 5, 140, 10, 'F');
+            doc.roundedRect(15, y - 5, 180, 12, 3, 3, 'F');  // Rounded corners (radius: 3mm)
             doc.setTextColor(255, 255, 255);
             doc.setFont(undefined, 'bold');
             doc.setFontSize(14);
-            doc.text(icon + ' SERVICE: ' + label, 20, y + 1);
+            doc.text(icon + '  ' + label, 20, y + 2);
 
             y += 12;
             doc.setTextColor(0, 0, 0);
@@ -6449,11 +6551,11 @@
             if (data.fahrzeugAbholung === 'ja') {
                 y += 12;
                 doc.setFillColor(255, 152, 0); // Orange für Abholung
-                doc.rect(15, y - 5, 140, 8, 'F');
+                doc.roundedRect(15, y - 5, 180, 10, 3, 3, 'F');
                 doc.setTextColor(255, 255, 255);
                 doc.setFont(undefined, 'bold');
-                doc.setFontSize(13);
-                doc.text('[ABHOL] FAHRZEUG-ABHOLUNG', 20, y);
+                doc.setFontSize(12);
+                doc.text('🚚  FAHRZEUG-ABHOLUNG', 20, y + 1);
 
                 y += 10;
                 doc.setTextColor(0, 0, 0);
@@ -6499,10 +6601,10 @@
             if (data.serviceTyp && data.serviceTyp !== 'lackierung' && data.serviceDetails) {
                 y += 12;
                 doc.setFillColor(156, 39, 176); // Lila für Service-Details
-                doc.rect(15, y - 5, 140, 8, 'F');
+                doc.roundedRect(15, y - 5, 180, 10, 3, 3, 'F');
                 doc.setTextColor(255, 255, 255);
                 doc.setFont(undefined, 'bold');
-                doc.setFontSize(13);
+                doc.setFontSize(12);
 
                 // Service-Name Header
                 const serviceNames = {
@@ -7251,73 +7353,16 @@
                 y += 5; // Extra spacing after service details
             }
 
-            // Fahrzeugdaten
-            y += 12;
-            doc.setFillColor(102, 126, 234);
-            doc.rect(15, y - 5, 140, 8, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFont(undefined, 'bold');
-            doc.text('FAHRZEUGDATEN', 20, y);
-
-            y += 10;
-            doc.setTextColor(0, 0, 0);
-            doc.setFont(undefined, 'bold');
-            doc.text('Marke:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.marke, 50, y);
-            doc.setFont(undefined, 'bold');
-            doc.text('Modell:', 110, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.modell, 140, y);
-
-            const baujahrVon = data.baujahrVon || data.baujahr;
-            const baujahrBis = data.baujahrBis || data.baujahr;
-
-            // Baujahr + KM-Stand immer anzeigen
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('Baujahr:', 20, y);
-            doc.setFont(undefined, 'normal');
-
-            let baujahrText = '';
-            if (baujahrVon && baujahrBis) {
-                if (baujahrVon === baujahrBis) {
-                    baujahrText = baujahrVon;
-                } else {
-                    baujahrText = baujahrVon + ' - ' + baujahrBis;
-                }
-            } else if (baujahrVon) {
-                baujahrText = 'ab ' + baujahrVon;
-            } else if (baujahrBis) {
-                baujahrText = 'bis ' + baujahrBis;
-            } else {
-                baujahrText = 'Nicht angegeben';
-            }
-            doc.text(baujahrText, 50, y);
-
-            // KM-Stand immer anzeigen
-            doc.setFont(undefined, 'bold');
-            doc.text('KM-Stand:', 110, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kmstand ? (data.kmstand + ' km') : 'Nicht angegeben', 140, y);
-
-            // VIN immer anzeigen
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('VIN/FIN:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.vin || 'Nicht angegeben', 50, y);
-
-            // LACKIER-INFO (NUR für Lackierung & Alle Services ODER wenn Lack-Felder ausgefüllt)
+            // 🆕 LACKIER-INFO (Moved from after Fahrzeugdaten - now appears with Service Details)
             const hasPaintData = data.farbnummer || data.farbname || data.farbvariante;
             if (data.serviceTyp === 'lackier' || data.serviceTyp === 'lackier' || data.serviceTyp === 'alle' || hasPaintData) {
                 y += 12;
-                doc.setFillColor(245, 87, 108);
-                doc.rect(15, y - 5, 140, 8, 'F');
+                doc.setFillColor(245, 87, 108);  // Red
+                doc.roundedRect(15, y - 5, 180, 10, 3, 3, 'F');
                 doc.setTextColor(255, 255, 255);
                 doc.setFont(undefined, 'bold');
-                doc.setFontSize(13);
-                doc.text('[!] LACKIER-INFORMATIONEN (FUER FARBKABINE)', 20, y);
+                doc.setFontSize(12);
+                doc.text('🎨  LACKIER-INFORMATIONEN (FUER FARBKABINE)', 20, y + 1);
 
                 y += 10;
                 doc.setTextColor(0, 0, 0);
@@ -7356,6 +7401,13 @@
                 doc.text(data.lackart || 'Standard', 55, y);
 
                 y += 7; // Extra spacing after Lackier-Info
+            }
+
+            // 🆕 PAGE BREAK CHECK (2025-11-13): Prevent page 1 cutoff
+            // After Fahrzeugdaten + Service Badge + Lackier-Info, check if we need new page
+            if (y > 215) {
+                doc.addPage();
+                y = 20;
             }
 
             // PREIS-KALKULATION (Partner-Anfrage mit KVA ODER einfacher Preis)
