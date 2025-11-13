@@ -2700,6 +2700,58 @@
             return 'neu';
         }
 
+        /**
+         * 🆕 Multi-Service Helper: Check if ALL services are complete
+         *
+         * Used to prevent premature invoice creation when only ONE service is finished.
+         *
+         * @param {Object} fahrzeug - Vehicle document from Firestore
+         * @param {string} currentService - Service that just finished (for logging)
+         * @returns {boolean} true if ALL services have completed status
+         *
+         * Completed statuses: 'fertig', 'bereit', 'abholbereit', 'abgeschlossen'
+         *
+         * Example:
+         *   Vehicle with Lackierung + TÜV:
+         *   - Lackierung: 'fertig' ✅
+         *   - TÜV: 'in_arbeit' ❌
+         *   → Returns false (TÜV not finished yet)
+         *
+         * @since 2025-11-13 (Multi-Service Invoice Fix)
+         */
+        function allServicesComplete(fahrzeug, currentService) {
+            // Collect all services (primary + additional)
+            const services = [fahrzeug.serviceTyp];
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                fahrzeug.additionalServices.forEach(s => {
+                    if (s && s.serviceTyp) {
+                        services.push(s.serviceTyp);
+                    }
+                });
+            }
+
+            console.log(`🔍 allServicesComplete() CHECK für ${fahrzeug.kennzeichen}:`);
+            console.log(`   Services gesamt: ${services.length} → ${services.join(', ')}`);
+            console.log(`   Trigger: ${currentService} wurde auf 'fertig' gesetzt`);
+
+            // Check if ALL services have completed status
+            const completedStatuses = ['fertig', 'bereit', 'abholbereit', 'abgeschlossen'];
+            const allComplete = services.every(serviceTyp => {
+                const status = getServiceStatus(fahrzeug, serviceTyp);
+                const isComplete = completedStatuses.includes(status);
+                console.log(`   - ${serviceTyp}: ${status} ${isComplete ? '✅' : '❌'}`);
+                return isComplete;
+            });
+
+            if (allComplete) {
+                console.log(`   ✅ ALLE Services fertig → Rechnung kann erstellt werden`);
+            } else {
+                console.log(`   ⏳ Noch nicht alle Services fertig → Warte auf Fertigstellung`);
+            }
+
+            return allComplete;
+        }
+
         // Firebase initialisieren
         // ✅ BUG FIX: Firebase Initialisierung Check korrigiert
         // Problem: initFirebase() gibt nichts zurück → success ist undefined → FALSE
@@ -4356,6 +4408,7 @@
                 };
 
                 // 🆕 2025-11-11: AUTOMATISCHE RECHNUNGS-ERSTELLUNG bei Status "Fertig"
+                // ✅ CRITICAL FIX (2025-11-13): Nur wenn ALLE Services fertig sind (Multi-Service Support)
                 // ✅ CRITICAL FIX: Rechnung VOR Transaction erstellen (verhindert Nested Transaction)
                 let rechnungData = null;
                 if (firebaseInitialized && firebaseApp && newStatus === 'fertig') {
@@ -4365,8 +4418,11 @@
                     if (fahrzeugDoc.exists) {
                         const fahrzeugData = fahrzeugDoc.data();
 
-                        if (!fahrzeugData.rechnung) {
-                            console.log('🧾 Status → Fertig erkannt - prüfe Rechnung...');
+                        // 🆕 MULTI-SERVICE FIX (2025-11-13): Prüfe ob ALLE Services fertig sind
+                        const allComplete = allServicesComplete(fahrzeugData, currentService);
+
+                        if (!fahrzeugData.rechnung && allComplete) {
+                            console.log('🧾 Status → Fertig erkannt UND alle Services fertig - erstelle Rechnung...');
                             try {
                                 // autoCreateRechnung macht eigene Transaction für Counter → OK wenn VOR Haupt-Transaction
                                 rechnungData = await autoCreateRechnung(fahrzeugId, fahrzeugData);
@@ -4379,6 +4435,9 @@
                                 console.error('❌ Fehler bei automatischer Rechnungserstellung (wird übersprungen):', error);
                                 // Rechnung kann später manuell erstellt werden
                             }
+                        } else if (!fahrzeugData.rechnung && !allComplete) {
+                            console.log('⏳ Status → Fertig für einen Service, aber NICHT alle Services fertig - keine Rechnung erstellt');
+                            console.log('   Rechnung wird automatisch erstellt sobald ALLE Services fertig sind');
                         }
                     }
                 }
