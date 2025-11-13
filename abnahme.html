@@ -1146,6 +1146,64 @@
         }
 
         // Form absenden
+        // 🆕 Helper: Service Status abrufen (Multi-Service Support)
+        function getServiceStatus(fahrzeug, serviceTyp) {
+            if (!fahrzeug || !serviceTyp) return 'neu';
+
+            // 1. Priorität: serviceStatuses Object (Multi-Service)
+            if (fahrzeug.serviceStatuses && fahrzeug.serviceStatuses[serviceTyp]) {
+                return fahrzeug.serviceStatuses[serviceTyp].status;
+            }
+
+            // 2. Fallback: prozessStatus (Single-Service / Backwards Compatibility)
+            if (fahrzeug.prozessStatus && fahrzeug.serviceTyp === serviceTyp) {
+                return fahrzeug.prozessStatus;
+            }
+
+            return 'neu';
+        }
+
+        // 🆕 Validation: Kann Abnahme durchgeführt werden? (alle Services müssen fertig sein)
+        function canCompleteAbnahme(fahrzeug) {
+            const serviceLabels = {
+                lackier: 'Lackierung',
+                reifen: 'Reifen',
+                glas: 'Glas',
+                klima: 'Klima',
+                tuev: 'TÜV/AU',
+                folierung: 'Folierung',
+                smartrepair: 'Smart-Repair',
+                dellen: 'Dellenentfernung',
+                politur: 'Politur',
+                unterboden: 'Unterbodenschutz',
+                abholung: 'Abholung',
+                sonstiges: 'Sonstiges'
+            };
+
+            const openServices = [];
+
+            // Check Primary Service
+            const primaryStatus = getServiceStatus(fahrzeug, fahrzeug.serviceTyp);
+            if (primaryStatus !== 'fertig' && primaryStatus !== 'abholbereit' && primaryStatus !== 'abgeschlossen') {
+                openServices.push(serviceLabels[fahrzeug.serviceTyp] || fahrzeug.serviceTyp);
+            }
+
+            // Check Additional Services
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                fahrzeug.additionalServices.forEach(as => {
+                    const status = getServiceStatus(fahrzeug, as.serviceTyp);
+                    if (status !== 'fertig' && status !== 'abholbereit' && status !== 'abgeschlossen') {
+                        openServices.push(serviceLabels[as.serviceTyp] || as.serviceTyp);
+                    }
+                });
+            }
+
+            return {
+                canComplete: openServices.length === 0,
+                openServices: openServices
+            };
+        }
+
         async function submitAbnahme() {
             console.log('🔄 Submit gestartet');
 
@@ -1161,6 +1219,14 @@
 
             if (!hasDrawn) {
                 showError('Bitte Unterschrift des Kunden einholen!');
+                return;
+            }
+
+            // 🆕 VALIDATION: Multi-Service Check (alle Services müssen fertig sein)
+            const validation = canCompleteAbnahme(currentVehicle);
+            if (!validation.canComplete) {
+                const serviceList = validation.openServices.join(', ');
+                showError(`❌ ABNAHME BLOCKIERT!\n\nFolgende Services sind noch nicht abgeschlossen:\n• ${validation.openServices.join('\n• ')}\n\nBitte schließen Sie alle Services ab, bevor Sie die Abnahme durchführen.`);
                 return;
             }
 
