@@ -5748,13 +5748,21 @@
             doc.rect(0, 0, 210, 45, 'F');
 
             // Add logo if available
+            let logoLoaded = false;
             if (logoUrl) {
                 try {
                     // Convert logo to base64 for PDF embedding
                     const logoBase64 = await new Promise((resolve, reject) => {
                         const img = new Image();
                         img.crossOrigin = 'Anonymous';
+
+                        // Set timeout for logo loading (5 seconds)
+                        const timeout = setTimeout(() => {
+                            reject(new Error('Logo loading timeout'));
+                        }, 5000);
+
                         img.onload = () => {
+                            clearTimeout(timeout);
                             const canvas = document.createElement('canvas');
                             canvas.width = img.width;
                             canvas.height = img.height;
@@ -5762,26 +5770,36 @@
                             ctx.drawImage(img, 0, 0);
                             resolve(canvas.toDataURL('image/png'));
                         };
-                        img.onerror = reject;
+
+                        img.onerror = (error) => {
+                            clearTimeout(timeout);
+                            reject(error);
+                        };
+
                         img.src = logoUrl;
                     });
 
                     // Add logo to PDF (left side, centered vertically)
                     doc.addImage(logoBase64, 'PNG', 15, 12, 30, 20);  // x, y, width, height
+                    logoLoaded = true;
+                    console.log('✅ Logo successfully loaded for PDF');
                 } catch (error) {
-                    console.warn('Could not load logo for PDF:', error);
+                    console.warn('⚠️ Logo konnte nicht geladen werden (CORS-Fehler oder Netzwerkproblem)');
+                    console.warn('   → PDF wird ohne Logo erstellt');
+                    console.warn('   → Lösung: Firebase Storage CORS konfigurieren');
+                    // PDF continues without logo (graceful degradation)
                 }
             }
 
-            // Header text (right side or centered if no logo)
+            // Header text (right side or centered based on whether logo loaded)
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
             doc.setFont(undefined, 'bold');
-            doc.text('Fahrzeug-Annahmeprotokoll', logoUrl ? 115 : 105, 20, { align: logoUrl ? 'left' : 'center' });
+            doc.text('Fahrzeug-Annahmeprotokoll', logoLoaded ? 115 : 105, 20, { align: logoLoaded ? 'left' : 'center' });
 
             doc.setFontSize(12);
             doc.setFont(undefined, 'normal');
-            doc.text(werkstattName, logoUrl ? 115 : 105, 30, { align: logoUrl ? 'left' : 'center' });
+            doc.text(werkstattName, logoLoaded ? 115 : 105, 30, { align: logoLoaded ? 'left' : 'center' });
 
             // Add subtle separator line
             doc.setDrawColor(255, 255, 255);
