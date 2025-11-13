@@ -4409,38 +4409,21 @@
 
                 // 🆕 2025-11-11: AUTOMATISCHE RECHNUNGS-ERSTELLUNG bei Status "Fertig"
                 // ✅ CRITICAL FIX (2025-11-13): Nur wenn ALLE Services fertig sind (Multi-Service Support)
-                // ✅ CRITICAL FIX: Rechnung VOR Transaction erstellen (verhindert Nested Transaction)
-                let rechnungData = null;
-                if (firebaseInitialized && firebaseApp && newStatus === 'fertig') {
-                    const fahrzeugRef = window.getCollection('fahrzeuge').doc(String(fahrzeugId));
-                    const fahrzeugDoc = await fahrzeugRef.get();
-
-                    if (fahrzeugDoc.exists) {
-                        const fahrzeugData = fahrzeugDoc.data();
-
-                        // 🆕 MULTI-SERVICE FIX (2025-11-13): Prüfe ob ALLE Services fertig sind
-                        const allComplete = allServicesComplete(fahrzeugData, currentService);
-
-                        if (!fahrzeugData.rechnung && allComplete) {
-                            console.log('🧾 Status → Fertig erkannt UND alle Services fertig - erstelle Rechnung...');
-                            try {
-                                // autoCreateRechnung macht eigene Transaction für Counter → OK wenn VOR Haupt-Transaction
-                                rechnungData = await autoCreateRechnung(fahrzeugId, fahrzeugData);
-                                if (rechnungData) {
-                                    updateData.rechnung = rechnungData;
-                                    console.log('✅ Rechnung automatisch erstellt:', rechnungData.rechnungsnummer);
-                                }
-                            } catch (error) {
-                                // Fehler loggen, aber Status-Update NICHT abbrechen
-                                console.error('❌ Fehler bei automatischer Rechnungserstellung (wird übersprungen):', error);
-                                // Rechnung kann später manuell erstellt werden
-                            }
-                        } else if (!fahrzeugData.rechnung && !allComplete) {
-                            console.log('⏳ Status → Fertig für einen Service, aber NICHT alle Services fertig - keine Rechnung erstellt');
-                            console.log('   Rechnung wird automatisch erstellt sobald ALLE Services fertig sind');
-                        }
-                    }
-                }
+                // 🔒 RACE CONDITION FIX (2025-11-13): Check INNERHALB Transaction, Invoice NACH Transaction
+                //
+                // Problem (alt): Invoice Check AUSSERHALB Transaction → Race Condition bei Multi-User
+                // Lösung (neu): Check INNERHALB Transaction → Atomic, nur EIN User erstellt Invoice
+                //
+                // Architektur:
+                // 1. Transaction: Status Update + Invoice Check (atomic)
+                // 2. Nach Transaction: Invoice erstellen (wenn Flag gesetzt)
+                // 3. Zweites Update: Invoice ins Document schreiben
+                //
+                // Warum nicht Invoice IN Transaction?
+                // → autoCreateRechnung() macht eigene Transaction für Counter
+                // → Nested Transactions nicht erlaubt in Firestore
+                let shouldCreateInvoice = false;
+                let invoiceVehicleData = null;
 
                 // In Firebase/LocalStorage speichern
                 if (firebaseInitialized && firebaseApp) {
@@ -4457,7 +4440,21 @@
 
                         const fahrzeugData = doc.data();
 
-                        // Atomic Update (updateData enthält bereits rechnung falls erstellt)
+                        // 🔒 RACE CONDITION FIX: Invoice Check INNERHALB Transaction (atomic)
+                        if (newStatus === 'fertig' && !fahrzeugData.rechnung) {
+                            const allComplete = allServicesComplete(fahrzeugData, currentService);
+                            if (allComplete) {
+                                console.log('🧾 [TRANSACTION] Status → Fertig UND alle Services fertig');
+                                console.log('   → Flag gesetzt: Invoice wird NACH Transaction erstellt');
+                                shouldCreateInvoice = true;
+                                invoiceVehicleData = { ...fahrzeugData, ...updateData };  // Merged data
+                            } else {
+                                console.log('⏳ [TRANSACTION] Status → Fertig für einen Service, aber NICHT alle fertig');
+                                console.log('   → Rechnung wird erstellt sobald ALLE Services fertig sind');
+                            }
+                        }
+
+                        // Atomic Update
                         transaction.update(fahrzeugRef, updateData);
                         console.log('   🔒 Transaction: Status + Timestamps atomic update');
 
@@ -4477,6 +4474,28 @@
                     });
 
                     console.log('✅ Status + Timestamps in Firebase aktualisiert (via Transaction)');
+
+                    // 🔒 NACH Transaction: Invoice erstellen (verhindert Nested Transaction Problem)
+                    if (shouldCreateInvoice) {
+                        console.log('🧾 Transaction committed - starte Invoice Creation...');
+                        try {
+                            const rechnungData = await autoCreateRechnung(fahrzeugId, invoiceVehicleData);
+                            if (rechnungData) {
+                                // Zweites Update um Invoice zu speichern
+                                await fahrzeugRef.update({
+                                    rechnung: rechnungData,
+                                    lastModified: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                                console.log('✅ Rechnung automatisch erstellt:', rechnungData.rechnungsnummer);
+                                console.log('✅ Rechnung ins Document gespeichert (zweites Update)');
+                            }
+                        } catch (error) {
+                            // Fehler loggen, aber Status-Update ist bereits committed
+                            console.error('❌ Fehler bei automatischer Rechnungserstellung (Status bereits gespeichert):', error);
+                            console.error('   → Rechnung kann später manuell erstellt werden');
+                            // Status-Update ist NICHT beeinträchtigt (bereits committed)
+                        }
+                    }
                 } else {
                     // LocalStorage: Alle Fahrzeuge aktualisieren
                     let allStoredFahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
