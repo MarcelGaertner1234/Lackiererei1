@@ -2988,8 +2988,32 @@
                         }
 
                         console.log('   f) Erstelle PDF...');
-                        await createPDF(annahmeData);
+                        const pdfBlob = await createPDF(annahmeData);  // FIX 2025-11-13: Capture pdfBlob for upload
                         console.log('   ✅ PDF erstellt');
+
+                        // Upload PDF zu Firebase Storage (FIX 2025-11-13: Moved here from localStorage path)
+                        if (pdfBlob && window.storage) {
+                            try {
+                                console.log('   → Lade PDF zu Firebase Storage hoch...');
+                                const pdfFileName = `Annahme_${annahmeData.kennzeichen.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toLocaleDateString('de-DE').replace(/\./g, '')}.pdf`;
+                                const pdfRef = window.storage.ref(`pdfs/${annahmeData.id}/${pdfFileName}`);
+                                const uploadTask = await pdfRef.put(pdfBlob);
+                                const pdfUrl = await uploadTask.ref.getDownloadURL();
+                                console.log('   ✅ PDF hochgeladen:', pdfUrl);
+
+                                // Update Firestore mit PDF URL
+                                await window.getCollection('fahrzeuge').doc(annahmeData.id).update({
+                                    pdfUrl: pdfUrl,
+                                    pdfUploadedAt: new Date().toISOString()
+                                });
+                                console.log('   ✅ PDF URL in Firestore gespeichert');
+                            } catch (uploadError) {
+                                console.error('   ⚠️ PDF-Upload fehlgeschlagen:', uploadError);
+                                // PDF-Upload ist optional, Fahrzeug ist bereits gespeichert
+                            }
+                        } else {
+                            console.warn('   ⚠️ PDF-Upload übersprungen (pdfBlob oder Storage nicht verfügbar)');
+                        }
                     } else {
                         console.log('💾 LocalStorage-Modus (Firebase nicht verfügbar oder offline)');
                         console.log('   navigator.onLine:', navigator.onLine);
@@ -4624,7 +4648,7 @@
                         bestelltAm: new Date().toISOString(),
                         werkstattId: werkstattId,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                        fahrzeugId: fahrzeugId,
+                        fahrzeugId: String(fahrzeugId),  // FIX 2025-11-13: Force String for Firestore query consistency
                         kennzeichen: kennzeichen,
                         source: 'pdf-auto',  // Markierung für automatische Erstellung
                         sourceRequestId: null,  // Keine Material-Request (direkt aus PDF)
@@ -5625,7 +5649,7 @@
                 }));
 
             return {
-                id: timestamp,
+                id: String(timestamp),  // FIX 2025-11-13: Force String for Firestore query consistency
                 datum: heute.toLocaleDateString('de-DE'),
                 zeit: heute.toLocaleTimeString('de-DE'),
                 kennzeichen: document.getElementById('kennzeichen').value.trim().toUpperCase(),
