@@ -2954,6 +2954,53 @@
                                 f.baujahrBis = f.baujahr;
                             }
                         }
+
+                        // 🛡️ PHASE 3: DATA RESCUE - Auto-Heal Corrupted Multi-Service Data (2025-11-14)
+                        // ⚠️ CRITICAL BUG FIX: Existing vehicles may have corrupted additionalServices
+                        // Root Causes:
+                        //   1. additionalServices stored as Object instead of Array → hasService() fails
+                        //   2. Primary service duplicated in additionalServices → Logical corruption
+                        let needsFirestoreUpdate = false;
+
+                        // Fix #1: Convert Object → Array
+                        if (f.additionalServices && !Array.isArray(f.additionalServices)) {
+                            console.warn(`🔧 DATA RESCUE [${f.kennzeichen}]: additionalServices ist Object → Converting to Array`);
+                            console.warn(`   → BEFORE:`, typeof f.additionalServices, f.additionalServices);
+                            f.additionalServices = Object.values(f.additionalServices);
+                            console.warn(`   → AFTER:`, Array.isArray(f.additionalServices), f.additionalServices);
+                            needsFirestoreUpdate = true;
+                        }
+
+                        // Fix #2: Remove primary service from additionalServices (duplicate prevention)
+                        if (Array.isArray(f.additionalServices) && f.additionalServices.length > 0) {
+                            const beforeLength = f.additionalServices.length;
+                            f.additionalServices = f.additionalServices.filter(service => {
+                                // Remove if service matches primary service
+                                const isDuplicate = service.serviceTyp === f.serviceTyp;
+                                if (isDuplicate) {
+                                    console.warn(`🔧 DATA RESCUE [${f.kennzeichen}]: Removing duplicate primary service "${f.serviceTyp}" from additionalServices`);
+                                }
+                                return !isDuplicate;
+                            });
+
+                            if (f.additionalServices.length < beforeLength) {
+                                console.warn(`   → Removed ${beforeLength - f.additionalServices.length} duplicate service(s)`);
+                                needsFirestoreUpdate = true;
+                            }
+                        }
+
+                        // Auto-fix in Firestore (async, non-blocking)
+                        if (needsFirestoreUpdate && firebaseInitialized) {
+                            console.log(`💾 DATA RESCUE [${f.kennzeichen}]: Auto-saving fix to Firestore...`);
+                            window.getCollection('fahrzeuge').doc(f.id).update({
+                                additionalServices: f.additionalServices || []
+                            }).then(() => {
+                                console.log(`   ✅ DATA RESCUE [${f.kennzeichen}]: Auto-fix saved successfully`);
+                            }).catch(err => {
+                                console.error(`   ❌ DATA RESCUE [${f.kennzeichen}]: Auto-fix failed:`, err);
+                            });
+                        }
+
                         return f;
                     });
 
@@ -4286,12 +4333,58 @@
                 if (!fahrzeug) return;
 
                 // 🆕 MULTI-SERVICE (2025-11-13): Ermittle aktuellen Service
-                const currentService = getCurrentService();
+                let currentService = getCurrentService();
+
+                // 🛡️ PHASE 5: FIX "Alle Prozesse" Tab Edge Case (2025-11-14)
+                // ⚠️ BUG: getCurrentService() returns null in "Alle Prozesse" tab → Update fails silently
+                // FIX: Fallback to primary service (fahrzeug.serviceTyp) when no specific service selected
                 if (!currentService) {
-                    console.error('❌ Kein Service aktiv - Update abgebrochen');
-                    showToast('Fehler: Kein Service ausgewählt!', 'error');
-                    return;
+                    console.warn('⚠️ getCurrentService() returned null (likely "Alle Prozesse" tab)');
+                    console.warn('   → Fallback: Using primary service (fahrzeug.serviceTyp)');
+                    currentService = fahrzeug.serviceTyp;
+
+                    if (!currentService) {
+                        console.error('❌ CRITICAL: Both getCurrentService() AND fahrzeug.serviceTyp are null/undefined!');
+                        console.error('   → Cannot determine which service to update - Aborting');
+                        showToast('Fehler: Kein Service verfügbar!', 'error');
+                        return;
+                    }
+
+                    console.log(`   ✅ Fallback successful: Using "${currentService}" as current service`);
                 }
+
+                // 🐛 PHASE 4: DEBUG LOGGING - Comprehensive Pre-Update State (2025-11-14)
+                // ⚠️ CRITICAL: Helps diagnose Multi-Service bugs (vehicles disappearing, data loss)
+                console.group('🔧 directStatusUpdate - BEFORE UPDATE');
+                console.log('📋 Basic Info:');
+                console.log('  Kennzeichen:', fahrzeug.kennzeichen);
+                console.log('  Fahrzeug ID:', fahrzeug.id);
+                console.log('  Current Service:', currentService);
+                console.log('  New Status:', newStatus);
+                console.log('');
+                console.log('🎯 Service Configuration:');
+                console.log('  serviceTyp (Primary):', fahrzeug.serviceTyp);
+                console.log('  additionalServices:', fahrzeug.additionalServices);
+                console.log('    → Type:', typeof fahrzeug.additionalServices);
+                console.log('    → isArray:', Array.isArray(fahrzeug.additionalServices));
+                console.log('    → Length:', fahrzeug.additionalServices?.length || 0);
+                if (Array.isArray(fahrzeug.additionalServices)) {
+                    console.log('    → Services:', fahrzeug.additionalServices.map(s => s.serviceTyp).join(', '));
+                }
+                console.log('');
+                console.log('📊 Service Statuses:');
+                console.log('  serviceStatuses:', fahrzeug.serviceStatuses);
+                if (fahrzeug.serviceStatuses) {
+                    Object.entries(fahrzeug.serviceStatuses).forEach(([service, data]) => {
+                        console.log(`    → ${service}:`, data.status);
+                    });
+                }
+                console.log('');
+                console.log('⚠️ Backwards Compatibility:');
+                console.log('  prozessStatus:', fahrzeug.prozessStatus);
+                console.log('  status:', fahrzeug.status);
+                console.groupEnd();
+
                 console.log(`🔧 Service-Status Update: ${currentService} → ${newStatus}`);
 
                 // Status aktualisieren (Backwards Compatibility)
@@ -4388,6 +4481,26 @@
                     notiz: null
                 });
 
+                // 🛡️ PHASE 1: DEFENSIVE VALIDATION - Ensure additionalServices is Array
+                // ⚠️ CRITICAL BUG FIX (2025-11-14): Missing additionalServices in updateData caused vehicles to disappear
+                // Root Cause: Firestore update() only modifies specified fields → if additionalServices corrupted, never restored
+                if (!Array.isArray(fahrzeug.additionalServices)) {
+                    console.error('❌ CRITICAL: additionalServices ist kein Array!', {
+                        kennzeichen: fahrzeug.kennzeichen,
+                        type: typeof fahrzeug.additionalServices,
+                        value: fahrzeug.additionalServices
+                    });
+
+                    // DATA RESCUE: Convert Object → Array
+                    if (fahrzeug.additionalServices && typeof fahrzeug.additionalServices === 'object') {
+                        console.warn('🔧 DATA RESCUE: Converting Object → Array');
+                        fahrzeug.additionalServices = Object.values(fahrzeug.additionalServices);
+                    } else {
+                        console.warn('🔧 DATA RESCUE: Initializing empty array');
+                        fahrzeug.additionalServices = [];
+                    }
+                }
+
                 const updateData = {
                     // ✅ Backwards Compatibility: Nur Primary Service updatet prozessStatus
                     ...(currentService === fahrzeug.serviceTyp && {
@@ -4410,8 +4523,38 @@
                     prozessTimestamps: fahrzeug.prozessTimestamps,
                     statusHistory: fahrzeug.statusHistory,
                     bearbeitungsHistory: fahrzeug.bearbeitungsHistory,  // 🆕 Phase 1.3: Audit-Trail
-                    lastModified: timestamp
+                    lastModified: timestamp,
+
+                    // 🛡️ PHASE 1: CRITICAL FIX - Preserve Multi-Service Data (2025-11-14)
+                    // WHY: Without these fields, Multi-Service vehicles lose service associations after drag & drop
+                    // IMPACT: Vehicles disappear from filtered views (hasService check fails)
+                    additionalServices: fahrzeug.additionalServices || [],  // ⚡ CRITICAL: Preserve additional services
+                    serviceTyp: fahrzeug.serviceTyp,                        // 🛡️ Defense in depth: Preserve primary service
+                    kennzeichen: fahrzeug.kennzeichen                       // 🛡️ Defense in depth: Preserve vehicle ID
                 };
+
+                // 🐛 PHASE 4: DEBUG LOGGING - Firestore Update Payload (2025-11-14)
+                console.group('🔥 Firestore Update Payload');
+                console.log('updateData:', updateData);
+                console.log('');
+                console.log('🎯 Critical Multi-Service Fields:');
+                console.log('  additionalServices:', updateData.additionalServices);
+                console.log('    → Type:', typeof updateData.additionalServices);
+                console.log('    → isArray:', Array.isArray(updateData.additionalServices));
+                console.log('    → Length:', updateData.additionalServices?.length || 0);
+                console.log('  serviceTyp:', updateData.serviceTyp);
+                console.log('  kennzeichen:', updateData.kennzeichen);
+                console.log('');
+                console.log('📊 Service Status Update:');
+                console.log(`  serviceStatuses.${currentService}.status:`, updateData[`serviceStatuses.${currentService}.status`]);
+                console.log(`  serviceStatuses.${currentService}.timestamp:`, updateData[`serviceStatuses.${currentService}.timestamp`]);
+                if (currentService === fahrzeug.serviceTyp) {
+                    console.log('  ✅ Primary Service → Also updating prozessStatus:', updateData.prozessStatus);
+                    console.log('  ✅ Primary Service → Also updating status:', updateData.status);
+                } else {
+                    console.log('  ℹ️ Additional Service → NOT updating prozessStatus (only serviceStatuses)');
+                }
+                console.groupEnd();
 
                 // 🆕 2025-11-11: AUTOMATISCHE RECHNUNGS-ERSTELLUNG bei Status "Fertig"
                 // ✅ CRITICAL FIX (2025-11-13): Nur wenn ALLE Services fertig sind (Multi-Service Support)
@@ -4448,12 +4591,42 @@
 
                         // 🔒 RACE CONDITION FIX: Invoice Check INNERHALB Transaction (atomic)
                         if (newStatus === 'fertig' && !fahrzeugData.rechnung) {
-                            const allComplete = allServicesComplete(fahrzeugData, currentService);
+                            // 🛡️ PHASE 6: FIX Multi-Service Invoice Timing (2025-11-14)
+                            // ⚠️ BUG: allServicesComplete() checks OLD data (before update) → Incorrect invoice timing
+                            // FIX: Merge old data + new updateData → Check FUTURE state (after update will be applied)
+                            //
+                            // Example scenario:
+                            // - Vehicle has Lackierung (status: fertig) + Steinschutz (status: in_arbeit)
+                            // - User moves Steinschutz → "fertig"
+                            // - OLD check: fahrzeugData still shows Steinschutz = "in_arbeit" → allComplete = FALSE ❌
+                            // - NEW check: mergedData shows Steinschutz = "fertig" → allComplete = TRUE ✅
+                            const mergedData = {
+                                ...fahrzeugData,
+                                // Apply current update (simulate post-transaction state)
+                                serviceStatuses: {
+                                    ...fahrzeugData.serviceStatuses,
+                                    [currentService]: {
+                                        ...fahrzeugData.serviceStatuses?.[currentService],
+                                        status: newStatus,  // ← Apply NEW status!
+                                        timestamp: timestamp
+                                    }
+                                },
+                                // Update backwards compatibility fields if primary service
+                                ...(currentService === fahrzeugData.serviceTyp && {
+                                    prozessStatus: newStatus,
+                                    status: updateData.status  // mappedStatus
+                                })
+                            };
+
+                            console.log('🔍 [INVOICE CHECK] Checking if all services complete...');
+                            console.log(`   → Current Service: ${currentService} → ${newStatus}`);
+                            const allComplete = allServicesComplete(mergedData, currentService);
+
                             if (allComplete) {
                                 console.log('🧾 [TRANSACTION] Status → Fertig UND alle Services fertig');
                                 console.log('   → Flag gesetzt: Invoice wird NACH Transaction erstellt');
                                 shouldCreateInvoice = true;
-                                invoiceVehicleData = { ...fahrzeugData, ...updateData };  // Merged data
+                                invoiceVehicleData = mergedData;  // Use merged data for invoice
                             } else {
                                 console.log('⏳ [TRANSACTION] Status → Fertig für einen Service, aber NICHT alle fertig');
                                 console.log('   → Rechnung wird erstellt sobald ALLE Services fertig sind');
@@ -4480,6 +4653,45 @@
                     });
 
                     console.log('✅ Status + Timestamps in Firebase aktualisiert (via Transaction)');
+
+                    // 🐛 PHASE 4: DEBUG LOGGING - Post-Transaction Verification (2025-11-14)
+                    console.group('✅ directStatusUpdate - AFTER TRANSACTION');
+                    console.log('Transaction committed successfully');
+                    console.log('');
+                    console.log('🔍 Verifying Firestore State...');
+                    try {
+                        const verificationDoc = await fahrzeugRef.get();
+                        if (verificationDoc.exists) {
+                            const updatedData = verificationDoc.data();
+                            console.log('');
+                            console.log('🎯 Multi-Service Fields in Firestore:');
+                            console.log('  additionalServices:', updatedData.additionalServices);
+                            console.log('    → Type:', typeof updatedData.additionalServices);
+                            console.log('    → isArray:', Array.isArray(updatedData.additionalServices));
+                            console.log('    → Length:', updatedData.additionalServices?.length || 0);
+                            if (Array.isArray(updatedData.additionalServices)) {
+                                console.log('    → Services:', updatedData.additionalServices.map(s => s.serviceTyp).join(', '));
+                            }
+                            console.log('  serviceTyp:', updatedData.serviceTyp);
+                            console.log('  kennzeichen:', updatedData.kennzeichen);
+                            console.log('');
+                            console.log('📊 Service Statuses in Firestore:');
+                            if (updatedData.serviceStatuses) {
+                                Object.entries(updatedData.serviceStatuses).forEach(([service, data]) => {
+                                    console.log(`    → ${service}:`, data.status);
+                                });
+                            }
+                            console.log('');
+                            console.log('⚠️ Backwards Compatibility Fields:');
+                            console.log('  prozessStatus:', updatedData.prozessStatus);
+                            console.log('  status:', updatedData.status);
+                        } else {
+                            console.error('❌ CRITICAL: Vehicle document not found after transaction!');
+                        }
+                    } catch (verifyError) {
+                        console.error('❌ Verification read failed:', verifyError);
+                    }
+                    console.groupEnd();
 
                     // 🔒 NACH Transaction: Invoice erstellen (verhindert Nested Transaction Problem)
                     if (shouldCreateInvoice) {
