@@ -1198,32 +1198,51 @@
 
         // NEU: Fahrzeug per Kennzeichen laden
         // 🆕 BUGFIX 2025-11-05 (FIX #54): Query-Rule Compliance für Partner-Zugriff
-        // Security Rules prüfen partnerEmail/kundenEmail → Query MUSS auch danach filtern
+        // 🆕 BUGFIX 2025-11-14 (FIX #56): Werkstatt-Admin darf alle Fahrzeuge sehen
+        // Security Rules prüfen partnerEmail/kundenEmail → Query MUSS auch danach filtern (NUR für Partner!)
         async function loadFahrzeugByKennzeichen(kennzeichen) {
             try {
                 // Get current user email (lowercase for case-insensitive comparison)
                 const currentUserEmail = firebase.auth().currentUser.email.toLowerCase();
 
+                // Check if user is Werkstatt-Admin (has full access to all vehicles)
+                const isWerkstattAdmin = currentUserEmail.includes('werkstatt');
+
                 console.log('🔍 DEBUG: Lade Fahrzeug mit Query-Rule Compliance:', {
                     kennzeichen: kennzeichen.toUpperCase(),
-                    userEmail: currentUserEmail
+                    userEmail: currentUserEmail,
+                    isWerkstattAdmin: isWerkstattAdmin
                 });
 
-                // Query 1: Als partnerEmail (Partner hat Anfrage erstellt)
-                let snapshot = await window.getCollection('fahrzeuge')
-                    .where('partnerEmail', '==', currentUserEmail)
-                    .where('kennzeichen', '==', kennzeichen.toUpperCase())
-                    .limit(1)
-                    .get();
+                let snapshot;
 
-                // Query 2: Als kundenEmail (Fallback - Partner ist gleichzeitig Kunde)
-                if (snapshot.empty) {
-                    console.log('ℹ️ Nicht als partnerEmail gefunden, versuche kundenEmail...');
+                // Werkstatt-Admin: NO email filter (can see ALL vehicles)
+                if (isWerkstattAdmin) {
+                    console.log('✅ Werkstatt-Admin erkannt - lade ALLE Fahrzeuge mit Kennzeichen:', kennzeichen.toUpperCase());
                     snapshot = await window.getCollection('fahrzeuge')
-                        .where('kundenEmail', '==', currentUserEmail)
                         .where('kennzeichen', '==', kennzeichen.toUpperCase())
                         .limit(1)
                         .get();
+                } else {
+                    // Partner: Query with email filter (only own vehicles)
+                    console.log('ℹ️ Partner-User - filtere nach partnerEmail/kundenEmail');
+
+                    // Query 1: Als partnerEmail (Partner hat Anfrage erstellt)
+                    snapshot = await window.getCollection('fahrzeuge')
+                        .where('partnerEmail', '==', currentUserEmail)
+                        .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                        .limit(1)
+                        .get();
+
+                    // Query 2: Als kundenEmail (Fallback - Partner ist gleichzeitig Kunde)
+                    if (snapshot.empty) {
+                        console.log('ℹ️ Nicht als partnerEmail gefunden, versuche kundenEmail...');
+                        snapshot = await window.getCollection('fahrzeuge')
+                            .where('kundenEmail', '==', currentUserEmail)
+                            .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                            .limit(1)
+                            .get();
+                    }
                 }
 
                 // DEBUG: Verify Firestore query
@@ -1349,6 +1368,7 @@
 
         // NEU: Live-Updates für Fahrzeug (Real-Time Produktionsfortschritt)
         // 🆕 BUGFIX 2025-11-05 (FIX #54b): Query-Rule Compliance für Partner-Zugriff
+        // 🆕 BUGFIX 2025-11-14 (FIX #56b): Werkstatt-Admin darf alle Fahrzeuge sehen
         function setupLiveFahrzeugUpdates(kennzeichen) {
             console.log('🔍 DEBUG: setupLiveFahrzeugUpdates() gestartet für kennzeichen:', kennzeichen);
 
@@ -1358,15 +1378,30 @@
             // Get current user email (lowercase for case-insensitive comparison)
             const currentUserEmail = firebase.auth().currentUser.email.toLowerCase();
 
-            // Versuch 1: Query mit partnerEmail (Query-Rule Compliance)
-            let queryRef = window.getCollection('fahrzeuge')
-                .where('partnerEmail', '==', currentUserEmail)
-                .where('kennzeichen', '==', kennzeichen.toUpperCase())
-                .limit(1);
+            // Check if user is Werkstatt-Admin (has full access to all vehicles)
+            const isWerkstattAdmin = currentUserEmail.includes('werkstatt');
 
-            console.log('🔍 DEBUG: Live-Updates Query (partnerEmail):', {
+            let queryRef;
+
+            // Werkstatt-Admin: NO email filter (can see ALL vehicles)
+            if (isWerkstattAdmin) {
+                console.log('✅ Werkstatt-Admin erkannt - Live-Updates für ALLE Fahrzeuge mit Kennzeichen:', kennzeichen.toUpperCase());
+                queryRef = window.getCollection('fahrzeuge')
+                    .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                    .limit(1);
+            } else {
+                // Partner: Query with email filter (only own vehicles)
+                console.log('ℹ️ Partner-User - Live-Updates mit partnerEmail Filter');
+                queryRef = window.getCollection('fahrzeuge')
+                    .where('partnerEmail', '==', currentUserEmail)
+                    .where('kennzeichen', '==', kennzeichen.toUpperCase())
+                    .limit(1);
+            }
+
+            console.log('🔍 DEBUG: Live-Updates Query:', {
                 userEmail: currentUserEmail,
-                kennzeichen: kennzeichen.toUpperCase()
+                kennzeichen: kennzeichen.toUpperCase(),
+                isWerkstattAdmin: isWerkstattAdmin
             });
 
             // Track if we tried fallback to avoid infinite loop
@@ -1406,8 +1441,8 @@
                         anfrage.fahrzeug = newData;
                         renderAnfrage(true);  // true = Live-Update
                     } else {
-                        // Fallback: Versuch mit kundenEmail
-                        if (!hasTriedKundenEmailFallback) {
+                        // Fallback: Versuch mit kundenEmail (NUR für Partner, nicht für Werkstatt-Admin!)
+                        if (!hasTriedKundenEmailFallback && !isWerkstattAdmin) {
                             hasTriedKundenEmailFallback = true;
                             console.log('ℹ️ Nicht als partnerEmail gefunden, versuche kundenEmail für Live-Updates...');
 
