@@ -1970,66 +1970,29 @@
                     allAnfragen.push({ id: doc.id, ...doc.data() });
                 });
 
-                // ============================================
-                // 🆕 OPTION B: Load fahrzeug data to show ALL services
-                // ============================================
-                // Load fahrzeuge for anfragen that have been accepted
-                const acceptedAnfrageIds = allAnfragen
-                    .filter(a => a.fahrzeugAngelegt && a.fahrzeugId)
-                    .map(a => a.id);
+                // 🔗 JOIN: Lade verknüpfte Fahrzeug-Daten für akzeptierte Anfragen
+                // Damit normalizeAnfrageData() Zugriff auf fahrzeug.additionalServices hat
+                console.log('🔗 [ADMIN-ANFRAGEN] Loading linked fahrzeuge for accepted anfragen...');
+                const fahrzeugPromises = allAnfragen
+                    .filter(anfrage => anfrage.fahrzeugId && anfrage.status !== 'neu')
+                    .map(async anfrage => {
+                        try {
+                            const fahrzeugDoc = await window.getCollection('fahrzeuge')
+                                .doc(anfrage.fahrzeugId).get();
 
-                if (acceptedAnfrageIds.length > 0) {
-                    console.log(`📦 Loading fahrzeuge for ${acceptedAnfrageIds.length} accepted anfragen...`);
-
-                    try {
-                        // Firestore 'in' queries support max 10 values - batch if needed
-                        const batchSize = 10;
-                        const batches = [];
-
-                        for (let i = 0; i < acceptedAnfrageIds.length; i += batchSize) {
-                            const batch = acceptedAnfrageIds.slice(i, i + batchSize);
-                            const fahrzeugeSnapshot = await window.getCollection('fahrzeuge')
-                                .where('partnerAnfrageId', 'in', batch)
-                                .get();
-
-                            batches.push(fahrzeugeSnapshot);
-                        }
-
-                        // Create map: anfrageId -> fahrzeug data
-                        const fahrzeugMap = {};
-                        batches.forEach(snapshot => {
-                            snapshot.forEach(doc => {
-                                const fahrzeug = { id: doc.id, ...doc.data() };
-                                if (fahrzeug.partnerAnfrageId) {
-                                    fahrzeugMap[fahrzeug.partnerAnfrageId] = fahrzeug;
-                                }
-                            });
-                        });
-
-                        // Merge fahrzeug data into anfragen
-                        let mergedCount = 0;
-                        allAnfragen.forEach(anfrage => {
-                            const fahrzeug = fahrzeugMap[anfrage.id];
-                            if (fahrzeug) {
-                                anfrage.fahrzeug = fahrzeug;  // Attach full fahrzeug object
-
-                                // Build complete serviceLabels array
-                                if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices) && fahrzeug.additionalServices.length > 0) {
-                                    const primaryService = fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
-                                    anfrage.serviceLabels = [primaryService, ...fahrzeug.additionalServices];
-                                    console.log(`✅ [${anfrage.id}] Merged services:`, anfrage.serviceLabels);
-                                    mergedCount++;
-                                }
+                            if (fahrzeugDoc.exists) {
+                                anfrage.fahrzeug = fahrzeugDoc.data();
+                                console.log(`✅ [JOIN] Loaded fahrzeug for anfrage ${anfrage.id}: ${anfrage.fahrzeugId}`);
+                            } else {
+                                console.warn(`⚠️ [JOIN] Fahrzeug ${anfrage.fahrzeugId} not found for anfrage ${anfrage.id}`);
                             }
-                        });
+                        } catch (error) {
+                            console.error(`❌ [JOIN] Failed to load fahrzeug for anfrage ${anfrage.id}:`, error);
+                        }
+                    });
 
-                        console.log(`✅ Successfully merged ${mergedCount} anfragen with fahrzeug data`);
-
-                    } catch (error) {
-                        console.error('❌ Error loading fahrzeuge:', error);
-                        // Non-critical error - continue without fahrzeug data
-                    }
-                }
+                await Promise.all(fahrzeugPromises);
+                console.log('✅ [ADMIN-ANFRAGEN] Fahrzeug JOIN complete');
 
                 // Unique Partner extrahieren für Filter
                 allPartner = [...new Set(allAnfragen.map(a => a.partnerName))].sort();
@@ -2241,7 +2204,13 @@
                 // PHASE 3: Try to build from fahrzeug.additionalServices (accepted anfragen)
                 else if (anfrage.fahrzeug?.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices) && anfrage.fahrzeug.additionalServices.length > 0) {
                     const primaryService = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
-                    anfrage.serviceLabels = [primaryService, ...anfrage.fahrzeug.additionalServices];
+                    // additionalServices is array of objects: [{serviceTyp: 'steinschutz', serviceDetails: {...}}]
+                    // Extract serviceTyp from each object
+                    const additionalServiceTypes = anfrage.fahrzeug.additionalServices.map(as => {
+                        if (typeof as === 'string') return as;  // legacy format
+                        return as.serviceTyp;  // current format
+                    }).filter(Boolean);  // remove undefined/null
+                    anfrage.serviceLabels = [primaryService, ...additionalServiceTypes];
                     console.log(`✅ [${anfrage.id}] Built serviceLabels from fahrzeug.additionalServices:`, anfrage.serviceLabels);
                 }
                 // PHASE 4: Fallback to single service from serviceTyp
