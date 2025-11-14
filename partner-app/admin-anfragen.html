@@ -1970,6 +1970,67 @@
                     allAnfragen.push({ id: doc.id, ...doc.data() });
                 });
 
+                // ============================================
+                // 🆕 OPTION B: Load fahrzeug data to show ALL services
+                // ============================================
+                // Load fahrzeuge for anfragen that have been accepted
+                const acceptedAnfrageIds = allAnfragen
+                    .filter(a => a.fahrzeugAngelegt && a.fahrzeugId)
+                    .map(a => a.id);
+
+                if (acceptedAnfrageIds.length > 0) {
+                    console.log(`📦 Loading fahrzeuge for ${acceptedAnfrageIds.length} accepted anfragen...`);
+
+                    try {
+                        // Firestore 'in' queries support max 10 values - batch if needed
+                        const batchSize = 10;
+                        const batches = [];
+
+                        for (let i = 0; i < acceptedAnfrageIds.length; i += batchSize) {
+                            const batch = acceptedAnfrageIds.slice(i, i + batchSize);
+                            const fahrzeugeSnapshot = await window.getCollection('fahrzeuge')
+                                .where('partnerAnfrageId', 'in', batch)
+                                .get();
+
+                            batches.push(fahrzeugeSnapshot);
+                        }
+
+                        // Create map: anfrageId -> fahrzeug data
+                        const fahrzeugMap = {};
+                        batches.forEach(snapshot => {
+                            snapshot.forEach(doc => {
+                                const fahrzeug = { id: doc.id, ...doc.data() };
+                                if (fahrzeug.partnerAnfrageId) {
+                                    fahrzeugMap[fahrzeug.partnerAnfrageId] = fahrzeug;
+                                }
+                            });
+                        });
+
+                        // Merge fahrzeug data into anfragen
+                        let mergedCount = 0;
+                        allAnfragen.forEach(anfrage => {
+                            const fahrzeug = fahrzeugMap[anfrage.id];
+                            if (fahrzeug) {
+                                anfrage.fahrzeug = fahrzeug;  // Attach full fahrzeug object
+
+                                // Build complete serviceLabels array
+                                if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices) && fahrzeug.additionalServices.length > 0) {
+                                    const primaryService = fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
+                                    anfrage.serviceLabels = [primaryService, ...fahrzeug.additionalServices];
+                                    console.log(`✅ [${anfrage.id}] Merged services:`, anfrage.serviceLabels);
+                                    mergedCount++;
+                                }
+                            }
+                        });
+
+                        console.log(`✅ Successfully merged ${mergedCount} anfragen with fahrzeug data`);
+
+                    } catch (error) {
+                        console.error('❌ Error loading fahrzeuge:', error);
+                        // Non-critical error - continue without fahrzeug data
+                    }
+                }
+
                 // Unique Partner extrahieren für Filter
                 allPartner = [...new Set(allAnfragen.map(a => a.partnerName))].sort();
                 updatePartnerFilter();
