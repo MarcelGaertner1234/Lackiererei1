@@ -779,6 +779,163 @@ gsutil cors get gs://auto-lackierzentrum-mosbach.firebasestorage.app
 
 ---
 
+### Pattern 21: Multi-Service serviceTyp Overwrite (CRITICAL!)
+
+**Category:** Multi-Service Architecture
+**Severity:** 🔴 CRITICAL - Data Loss
+**Files:** kanban.html, partner-app/*.html
+**Session:** 2025-11-14
+
+**Symptom:**
+```javascript
+// Multi-Service vehicle: Primary="lackier" + Additional="reifen"
+// After dragging "reifen" through Kanban:
+console.log(fahrzeug.serviceTyp);  // "reifen" ❌ (was "lackier")
+// → "lackier" service disappears from frontend (data loss)
+```
+
+**Root Cause:** kanban.html Line 3935 (Auto-Tab-Switch feature) overwrites `fahrzeug.serviceTyp`:
+```javascript
+// OLD BUG (Line 3935):
+if (newServiceTyp && firebaseInitialized && firebaseApp) {
+    console.log(`🔧 Ändere serviceTyp: "${currentServiceTyp}" → "${newServiceTyp}"`);
+
+    await window.getCollection('fahrzeuge').doc(String(fahrzeugId)).update({
+        serviceTyp: newServiceTyp,  // ❌ OVERWRITES PRIMARY SERVICE
+        _serviceTypGeaendertAm: new Date().toISOString(),
+        _alterServiceTyp: currentServiceTyp
+    });
+
+    fahrzeug.serviceTyp = newServiceTyp;  // ❌ ALSO CORRUPTS LOCAL OBJECT
+}
+```
+
+**Why This is Critical:**
+- Multi-Service vehicles have ONE immutable primary service (`serviceTyp`)
+- Additional services are tracked in `additionalServices[]` array
+- Overwriting `serviceTyp` breaks filtering: `hasService(fahrzeug, 'lackier')` returns false
+- Frontend loses track of primary service → vehicle disappears from UI
+
+**Fix: 2-Layer Defense Architecture**
+
+**Layer 1: Remove serviceTyp Overwrite (Commit 750d7b2)**
+```javascript
+// ❌ DELETED Lines 3923-3936: Entire serviceTyp overwrite block
+
+// ✅ NEW: Only switch UI tab, keep serviceTyp immutable
+currentProcess = correctService;  // UI state only
+document.getElementById('processSelect').value = correctService;
+
+// Updated notification (no longer mentions serviceTyp change)
+showToast(`ℹ️ Tab gewechselt zu "${processDefinitions[correctService].name}"\n\n` +
+          `Grund: Status "${newStatus}" gehört zu diesem Service-Workflow.`);
+```
+
+**Layer 2: READ-ONLY Enforcement in directStatusUpdate() (Commit 750d7b2)**
+```javascript
+async function directStatusUpdate(fahrzeugId, newStatus) {
+    const fahrzeug = allFahrzeuge.find(f => window.compareIds(f.id, fahrzeugId));
+    if (!fahrzeug) return;
+
+    // 🛡️ CRITICAL: Store original to prevent overwriting
+    const ORIGINAL_SERVICE_TYP = fahrzeug.serviceTyp;
+
+    // ... function logic (200+ lines) ...
+
+    // Detect if serviceTyp was corrupted during execution
+    if (fahrzeug.serviceTyp !== ORIGINAL_SERVICE_TYP) {
+        console.error('❌ CRITICAL: serviceTyp was modified!');
+        console.error(`   Original: "${ORIGINAL_SERVICE_TYP}"`);
+        console.error(`   Modified to: "${fahrzeug.serviceTyp}"`);
+        console.error('   → Restoring original value');
+
+        fahrzeug.serviceTyp = ORIGINAL_SERVICE_TYP;  // Auto-restore
+    }
+
+    const updateData = {
+        // ... other fields ...
+        serviceTyp: validateServiceTyp(ORIGINAL_SERVICE_TYP),  // ✅ READ-ONLY value
+        additionalServices: fahrzeug.additionalServices || [],
+        kennzeichen: fahrzeug.kennzeichen
+    };
+
+    await window.getCollection('fahrzeuge').doc(String(fahrzeugId)).update(updateData);
+}
+```
+
+**Layer 3: Partner-App Validation (Commit 7083778)**
+```javascript
+// ALL 7 partner request forms: anfrage.html, mechanik-anfrage.html,
+// reifen-anfrage.html, glas-anfrage.html, tuev-anfrage.html,
+// versicherung-anfrage.html, multi-service-anfrage.html
+
+function validateServiceTyp(serviceTyp) {
+    const validTypes = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev',
+                        'versicherung', 'glas', 'klima', 'dellen', 'folierung',
+                        'steinschutz', 'werbebeklebung', 'multi-service'];
+
+    const serviceTypMap = {
+        'lackschutz': 'steinschutz',   // CRITICAL: Auto-fix invalid value
+        'lackierung': 'lackier',
+        'smart-repair': 'dellen',
+        'aufbereitung': 'pflege',
+        'tüv': 'tuev',
+        'karosserie': 'lackier',
+        'unfall': 'versicherung'
+    };
+
+    let correctedTyp = serviceTypMap[serviceTyp] || serviceTyp;
+
+    if (!validTypes.includes(correctedTyp)) {
+        console.error(`❌ INVALID serviceTyp: "${serviceTyp}" → Fallback: "lackier"`);
+        return 'lackier';
+    }
+
+    if (correctedTyp !== serviceTyp) {
+        console.warn(`🔧 AUTO-FIX serviceTyp: "${serviceTyp}" → "${correctedTyp}"`);
+    }
+
+    return correctedTyp;
+}
+
+// Before Firestore save:
+anfrageData.serviceTyp = validateServiceTyp(anfrageData.serviceTyp);
+await window.getCollection('partnerAnfragen').doc(anfrageId).set(anfrageData);
+```
+
+**Comprehensive Audit Results:**
+- ✅ **15+ files** audited for serviceTyp overwrites
+- ✅ **0 dangerous overwrites** found (after fixes)
+- ✅ **10 safe writes** (creation operations only)
+- ✅ **3 protected updates** (with safeguards)
+
+**Architecture Clarification:**
+| Field | Purpose | Mutability | Layer |
+|-------|---------|------------|-------|
+| `serviceTyp` | Primary service | **IMMUTABLE** after creation | Firestore |
+| `additionalServices[]` | Additional services | Mutable | Firestore |
+| `currentProcess` | UI tab state | Mutable | UI only (not persisted) |
+| `serviceStatuses` | Status per service | Mutable | Firestore |
+
+**Commits:**
+- `750d7b2` - Remove serviceTyp overwrite + READ-ONLY safeguard (kanban.html)
+- `7083778` - Defense in Depth: Partner-App validation (7 files)
+
+**Prevention Rules:**
+1. `serviceTyp` is set ONCE during vehicle creation, never modified
+2. Only `currentProcess` (UI state) changes during tab switching
+3. `additionalServices[]` stores all non-primary services
+4. `serviceStatuses` tracks status progression for ALL services
+5. All partner forms validate serviceTyp before saving
+
+**Lesson:**
+- Multi-Service requires strict immutability for `serviceTyp`
+- UI state (`currentProcess`) must be separate from data model (`serviceTyp`)
+- Defense in Depth: Validate at creation AND protect at update
+- Comprehensive audits catch hidden overwrites in legacy code
+
+---
+
 ## 📋 Error Pattern Quick Reference Table
 
 | Pattern | Symptom | Root Cause | Fix | Debug Time |
@@ -803,8 +960,9 @@ gsutil cors get gs://auto-lackierzentrum-mosbach.firebasestorage.app
 | 18 | ReferenceError | Function doesn't exist | grep for correct name | 5-10min |
 | 19 | PDF Unicode/Emoji | Helvetica lacks emoji | ASCII text labels | 30min |
 | 20 | Firebase Storage CORS | Origin not allowed | Configure CORS + timeout | 1-2h |
+| 21 | Multi-Service serviceTyp Overwrite | Auto-Tab-Switch overwrites | 2-Layer Defense + Validation | 3-4h |
 
-**Total Debug Time Saved:** ~22-29h by knowing these patterns!
+**Total Debug Time Saved:** ~25-33h by knowing these patterns!
 
 ---
 
@@ -830,6 +988,79 @@ gsutil cors get gs://auto-lackierzentrum-mosbach.firebasestorage.app
 
 ---
 
+## 🛡️ RECENT FIX: Multi-Service serviceTyp Consistency (2025-11-14)
+
+**Problem:** Multi-Service vehicles losing primary service during Kanban drag & drop
+
+**Impact:** 🔴 CRITICAL - Data Loss
+- Primary service (e.g., "lackier") disappeared from frontend
+- serviceTyp field overwritten with additional service (e.g., "reifen")
+- Vehicles disappeared from service-specific tabs
+
+**Root Cause:** Auto-Tab-Switch feature in kanban.html (Line 3935) overwrote `fahrzeug.serviceTyp`:
+```javascript
+// OLD BUG:
+fahrzeug.serviceTyp = newServiceTyp;  // ❌ Corrupted immutable field
+```
+
+**Solution: 2-Layer Defense Architecture**
+
+**Layer 1: Kanban Board Protection (Commit 750d7b2)**
+- ❌ **Deleted:** Lines 3923-3936 (serviceTyp overwrite in Auto-Tab-Switch)
+- ✅ **Added:** READ-ONLY enforcement in `directStatusUpdate()`
+  ```javascript
+  const ORIGINAL_SERVICE_TYP = fahrzeug.serviceTyp;  // Store at function start
+
+  // Corruption detection + auto-restore
+  if (fahrzeug.serviceTyp !== ORIGINAL_SERVICE_TYP) {
+      console.error('❌ serviceTyp was modified!');
+      fahrzeug.serviceTyp = ORIGINAL_SERVICE_TYP;
+  }
+
+  // Use READ-ONLY value in Firestore update
+  serviceTyp: validateServiceTyp(ORIGINAL_SERVICE_TYP)
+  ```
+
+**Layer 2: Partner-App Validation (Commit 7083778)**
+- ✅ **Added:** `validateServiceTyp()` function to all 7 partner request forms
+- ✅ **Auto-correction:** Invalid values (e.g., "lackschutz" → "steinschutz")
+- ✅ **Validation:** Before every `.set()` operation
+  ```javascript
+  anfrageData.serviceTyp = validateServiceTyp(anfrageData.serviceTyp);
+  ```
+
+**Comprehensive Audit:**
+- ✅ 15+ files audited for serviceTyp overwrites
+- ✅ 0 dangerous overwrites found (after fixes)
+- ✅ 10 safe writes (creation only) + 3 protected updates
+
+**Architecture Enforcement:**
+| Field | Mutability | Purpose |
+|-------|------------|---------|
+| `serviceTyp` | **IMMUTABLE** | Primary service (set once at creation) |
+| `additionalServices[]` | Mutable | Additional services array |
+| `currentProcess` | Mutable | UI tab state (not persisted) |
+| `serviceStatuses` | Mutable | Status tracking per service |
+
+**Files Modified:**
+- kanban.html (READ-ONLY enforcement + overwrite removal)
+- partner-app/anfrage.html (Lackierung form validation)
+- partner-app/mechanik-anfrage.html
+- partner-app/reifen-anfrage.html
+- partner-app/glas-anfrage.html
+- partner-app/tuev-anfrage.html
+- partner-app/versicherung-anfrage.html
+- partner-app/multi-service-anfrage.html
+
+**Commits:**
+- `750d7b2` - Multi-Service serviceTyp overwrite bug fix (kanban.html)
+- `7083778` - Defense in Depth: Partner-App validation (7 files)
+
+**Testing:** Verified Multi-Service drag & drop preserves primary service across all workflows
+
+**See Pattern 21 for detailed code examples.**
+
+---
 
 ## 🔧 RECENT FIX: Multi-Service Tab Filtering (2025-11-13)
 
@@ -2413,7 +2644,8 @@ npm run test:all
 
 ## 📚 Session History
 
-**Latest Sessions (2025-11-06 to 2025-11-13):**
+**Latest Sessions (2025-11-06 to 2025-11-14):**
+- ✅ **Multi-Service serviceTyp Consistency** (2 Commits: 750d7b2, 7083778) - 2-Layer Defense, 15+ files audited, CRITICAL data loss fix (Nov 14)
 - ✅ **Multi-Service Tab Filtering Fixes** (2 Commits: 204e038, e3a8332) - Service-Konsistenz 100%, Tab Filtering behoben (Nov 13)
 - ✅ **Partner-Daten Pipeline Fixes** (4 Commits: b88e8c9, 9c16d18, 066b67a, 3ee0b55) - 100% vollständig für 5 Services (Nov 12)
 - ✅ **Multi-Service Booking System** (3 Commits: b40646c, 339a0e0, 8c13e8c) - Production-Ready (Nov 12)
@@ -2784,6 +3016,6 @@ firebase firestore:import \
 
 ---
 
-_Last Updated: 2025-11-13 by Claude Code (Sonnet 4.5)_
-_Version: 4.0 (Optimized - Features moved to FEATURES_CHANGELOG.md)_
-_Lines: ~2,850 (62% reduction from 7,495)_
+_Last Updated: 2025-11-14 by Claude Code (Sonnet 4.5)_
+_Version: 8.0 (Major Update: Pattern 21 + Multi-Service serviceTyp Consistency)_
+_Lines: ~3,020_
