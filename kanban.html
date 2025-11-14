@@ -4326,6 +4326,63 @@
             }
         }
 
+        // 🛡️ FIX 2: VALIDATE serviceTyp - Prevent invalid service types from being saved (2025-11-14)
+        // ⚠️ ROOT CAUSE: Partner-app had 'lackschutz' in validation, but werkstatt-app doesn't support it
+        // → Partner-app could accidentally save vehicles with serviceTyp: "lackschutz"
+        // → Werkstatt-app then preserves this invalid value (defense in depth)
+        // FIX: Auto-correct invalid serviceTyp values before saving to Firestore
+        function validateServiceTyp(serviceTyp) {
+            // Valid service types in werkstatt-app
+            const validTypes = [
+                'lackier',        // Lackierung
+                'reifen',         // Reifen/Felgen
+                'mechanik',       // Mechanische Arbeiten
+                'pflege',         // Aufbereitung/Pflege
+                'tuev',           // TÜV/HU
+                'versicherung',   // Versicherungsschaden
+                'glas',           // Glasreparatur
+                'klima',          // Klimaanlagen-Service
+                'dellen',         // Dellenentfernung/PDR
+                'folierung',      // Folierung
+                'steinschutz',    // Steinschutzfolie
+                'werbebeklebung'  // Werbebeklebung
+            ];
+
+            // Auto-fix mapping for common mistakes & legacy values
+            const serviceTypMap = {
+                'lackschutz': 'steinschutz',   // ⚡ CRITICAL: lackschutz is INVALID → Auto-correct to steinschutz
+                'lackierung': 'lackier',       // Legacy name
+                'smart-repair': 'dellen',      // Alias
+                'smartrepair': 'dellen',       // Alias
+                'pdr': 'dellen',               // Alias
+                'aufbereitung': 'pflege',      // Alias
+                'tüv': 'tuev',                 // Umlaut variant
+                'tauv': 'tuev',                // Typo variant
+                'karosserie': 'lackier',       // Category → Service mapping
+                'unfall': 'versicherung'       // Category → Service mapping
+            };
+
+            // Apply auto-fix if mapping exists
+            let correctedTyp = serviceTypMap[serviceTyp] || serviceTyp;
+
+            // Validate corrected type
+            if (!validTypes.includes(correctedTyp)) {
+                console.error(`❌ INVALID serviceTyp detected: "${serviceTyp}" → Fallback: "lackier"`, {
+                    original: serviceTyp,
+                    corrected: correctedTyp,
+                    validTypes: validTypes
+                });
+                return 'lackier';  // Safe fallback (default service)
+            }
+
+            // Log if auto-correction was applied
+            if (correctedTyp !== serviceTyp) {
+                console.warn(`🔧 AUTO-FIX serviceTyp: "${serviceTyp}" → "${correctedTyp}"`);
+            }
+
+            return correctedTyp;
+        }
+
         // Direktes Status-Update (ohne Foto)
         async function directStatusUpdate(fahrzeugId, newStatus) {
             try {
@@ -4528,9 +4585,9 @@
                     // 🛡️ PHASE 1: CRITICAL FIX - Preserve Multi-Service Data (2025-11-14)
                     // WHY: Without these fields, Multi-Service vehicles lose service associations after drag & drop
                     // IMPACT: Vehicles disappear from filtered views (hasService check fails)
-                    additionalServices: fahrzeug.additionalServices || [],  // ⚡ CRITICAL: Preserve additional services
-                    serviceTyp: fahrzeug.serviceTyp,                        // 🛡️ Defense in depth: Preserve primary service
-                    kennzeichen: fahrzeug.kennzeichen                       // 🛡️ Defense in depth: Preserve vehicle ID
+                    additionalServices: fahrzeug.additionalServices || [],     // ⚡ CRITICAL: Preserve additional services
+                    serviceTyp: validateServiceTyp(fahrzeug.serviceTyp),       // 🛡️ FIX 2: Validate & auto-correct invalid serviceTyp (lackschutz → steinschutz)
+                    kennzeichen: fahrzeug.kennzeichen                          // 🛡️ Defense in depth: Preserve vehicle ID
                 };
 
                 // 🐛 PHASE 4: DEBUG LOGGING - Firestore Update Payload (2025-11-14)
