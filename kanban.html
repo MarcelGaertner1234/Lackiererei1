@@ -3918,31 +3918,18 @@
                                     'steinschutz': 'steinschutz',
                                     'werbebeklebung': 'werbebeklebung'
                                 };
-                                const newServiceTyp = serviceTypMap[correctService];
+                                // 🛡️ MULTI-SERVICE FIX (2025-11-14): NEVER change serviceTyp after creation
+                                // OLD BUG: Lines 3923-3936 changed serviceTyp in Firestore + local object
+                                // IMPACT: Multi-Service vehicles lost primary service → data loss in frontend
+                                // FIX: Only switch UI tab (currentProcess), keep serviceTyp immutable
 
-                                if (newServiceTyp && firebaseInitialized && firebaseApp) {
-                                    console.log(`🔧 Ändere serviceTyp: "${currentServiceTyp}" → "${newServiceTyp}"`);
-
-                                    // Update serviceTyp in Firestore (zusammen mit Status!)
-                                    const db = firebase.firestore();
-                                    await window.getCollection('fahrzeuge').doc(String(fahrzeugId)).update({
-                                        serviceTyp: newServiceTyp,
-                                        _serviceTypGeaendertAm: new Date().toISOString(),
-                                        _alterServiceTyp: currentServiceTyp
-                                    });
-
-                                    // Update lokales Objekt
-                                    fahrzeug.serviceTyp = newServiceTyp;
-                                }
-
-                                // Tab wechseln
+                                // Tab wechseln (UI-only state - doesn't affect Firestore)
                                 currentProcess = correctService;
                                 document.getElementById('processSelect').value = correctService;
 
-                                // Notification anzeigen
+                                // Notification anzeigen (UPDATED: No longer mentions serviceTyp change)
                                 showToast(`ℹ️ Tab gewechselt zu "${processDefinitions[correctService].name}"\n\n` +
-                                      `Grund: Status "${newStatus}" gehört zu diesem Service-Workflow.\n` +
-                                      `Service-Typ wurde automatisch geändert: ${currentServiceTyp} → ${newServiceTyp}`);
+                                      `Grund: Status "${newStatus}" gehört zu diesem Service-Workflow.`);
 
                                 // Board neu rendern (zeigt jetzt richtigen Service-Tab)
                                 renderKanbanBoard();
@@ -4389,6 +4376,11 @@
                 const fahrzeug = allFahrzeuge.find(f => window.compareIds(f.id, fahrzeugId));
                 if (!fahrzeug) return;
 
+                // 🛡️ MULTI-SERVICE FIX (2025-11-14): READ-ONLY serviceTyp safeguard
+                // CRITICAL: Store original serviceTyp to prevent overwriting by any code in this function
+                // WHY: Bug at Line 3935 was overwriting serviceTyp → Multi-Service data loss
+                const ORIGINAL_SERVICE_TYP = fahrzeug.serviceTyp;
+
                 // 🆕 MULTI-SERVICE (2025-11-13): Ermittle aktuellen Service
                 let currentService = getCurrentService();
 
@@ -4586,9 +4578,20 @@
                     // WHY: Without these fields, Multi-Service vehicles lose service associations after drag & drop
                     // IMPACT: Vehicles disappear from filtered views (hasService check fails)
                     additionalServices: fahrzeug.additionalServices || [],     // ⚡ CRITICAL: Preserve additional services
-                    serviceTyp: validateServiceTyp(fahrzeug.serviceTyp),       // 🛡️ FIX 2: Validate & auto-correct invalid serviceTyp (lackschutz → steinschutz)
+                    serviceTyp: validateServiceTyp(ORIGINAL_SERVICE_TYP),      // 🛡️ FIX 3.2: Use READ-ONLY original value (prevents overwrite)
                     kennzeichen: fahrzeug.kennzeichen                          // 🛡️ Defense in depth: Preserve vehicle ID
                 };
+
+                // 🛡️ FIX 3.2: Detect if serviceTyp was corrupted during function execution
+                if (fahrzeug.serviceTyp !== ORIGINAL_SERVICE_TYP) {
+                    console.error('❌ CRITICAL: serviceTyp was modified during directStatusUpdate()!');
+                    console.error(`   Original: "${ORIGINAL_SERVICE_TYP}"`);
+                    console.error(`   Modified to: "${fahrzeug.serviceTyp}"`);
+                    console.error('   → Restoring original value (READ-ONLY enforcement)');
+
+                    // Restore original value in local object
+                    fahrzeug.serviceTyp = ORIGINAL_SERVICE_TYP;
+                }
 
                 // 🐛 PHASE 4: DEBUG LOGGING - Firestore Update Payload (2025-11-14)
                 console.group('🔥 Firestore Update Payload');
