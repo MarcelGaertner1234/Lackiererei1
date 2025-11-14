@@ -2227,11 +2227,58 @@
             return anfrage;
         }
 
+        /**
+         * Normalize Service Data - Maps different field name conventions to unified structure
+         * Handles 3 sources: Partner Anfragen (umfang), Fahrzeug Additional Services (steinschutzUmfang), Render Functions (schutzart)
+         */
+        function normalizeServiceData(serviceTyp, rawData) {
+            if (!rawData) return {};
+
+            const normalized = {};
+
+            switch(serviceTyp) {
+                case 'steinschutz':
+                case 'lackschutz':
+                    // Partner: umfang, bereiche, material
+                    // Fahrzeug: steinschutzUmfang, steinschutzMaterial, steinschutzBereiche
+                    // Render expects: schutzart, bereiche, material
+                    normalized.schutzart = rawData.schutzart || rawData.umfang || rawData.steinschutzUmfang || rawData.lackschutzUmfang || '';
+                    normalized.bereiche = rawData.bereiche || rawData.steinschutzBereiche || rawData.lackschutzBereiche || '';
+                    normalized.material = rawData.material || rawData.steinschutzMaterial || rawData.lackschutzMaterial || '';
+                    normalized.finish = rawData.finish || rawData.steinschutzFinish || '';
+                    normalized.info = rawData.info || rawData.steinschutzInfo || '';
+                    break;
+
+                case 'folierung':
+                    // Fahrzeug: folierungArt, folierungMaterial, folierungFarbe, folierungBereiche
+                    // Render expects: art, material, farbe, bereiche, design
+                    normalized.art = rawData.art || rawData.folierungArt || '';
+                    normalized.material = rawData.material || rawData.folierungMaterial || '';
+                    normalized.farbe = rawData.farbe || rawData.folierungFarbe || '';
+                    normalized.bereiche = rawData.bereiche || rawData.folierungBereiche || [];
+                    normalized.design = rawData.design || rawData.folierungDesign || '';
+                    break;
+
+                case 'werbebeklebung':
+                    normalized.umfang = rawData.umfang || rawData.werbebeklebungUmfang || '';
+                    normalized.komplexitaet = rawData.komplexitaet || rawData.werbebeklebungKomplexitaet || '';
+                    normalized.text = rawData.text || rawData.werbebeklebungText || '';
+                    normalized.farbanzahl = rawData.farbanzahl || rawData.werbebeklebungFarbanzahl || '';
+                    break;
+
+                default:
+                    // For other services: copy all fields as-is (no mapping needed)
+                    return rawData;
+            }
+
+            return normalized;
+        }
+
         function renderServiceDetails(anfrage) {
             // Normalize data first (ensure serviceLabels exists)
             anfrage = normalizeAnfrageData(anfrage);
 
-            if (!anfrage.serviceData && !anfrage.serviceDetails) {
+            if (!anfrage.serviceData && !anfrage.serviceDetails && !anfrage.fahrzeug?.additionalServices) {
                 return '';  // No service-specific data
             }
 
@@ -2241,48 +2288,79 @@
             let html = '';
 
             servicesToRender.forEach(serviceTyp => {
+                // 🔍 CRITICAL: Extract the correct data for THIS specific service
+                let serviceData = null;
+
+                // Is this the PRIMARY service?
+                if (serviceTyp === anfrage.serviceTyp) {
+                    serviceData = anfrage.serviceData || anfrage.serviceDetails;
+                }
+                // Or is it an ADDITIONAL service?
+                else if (anfrage.fahrzeug?.additionalServices) {
+                    const additionalService = anfrage.fahrzeug.additionalServices.find(
+                        as => as.serviceTyp === serviceTyp
+                    );
+                    serviceData = additionalService?.serviceDetails;
+                }
+
+                // If no data found, skip this service
+                if (!serviceData) {
+                    console.warn(`⚠️ [RENDER] No data found for service: ${serviceTyp}`);
+                    return;
+                }
+
+                // 🔄 NORMALIZE: Map field names to unified structure
+                const normalizedData = normalizeServiceData(serviceTyp, serviceData);
+
+                // Create temporary anfrage object with normalized data for render functions
+                const anfrageWithNormalizedData = {
+                    ...anfrage,
+                    serviceData: normalizedData,
+                    serviceTyp: serviceTyp
+                };
+
                 switch(serviceTyp) {
                     case 'lackierung':
                     case 'lackier':
-                        html += renderLackierungDetails(anfrage);
+                        html += renderLackierungDetails(anfrageWithNormalizedData);
                         break;
                     case 'folierung':
-                        html += renderFolierungDetails(anfrage);
+                        html += renderFolierungDetails(anfrageWithNormalizedData);
                         break;
                     case 'pdr':
-                        html += renderPDRDetails(anfrage);
+                        html += renderPDRDetails(anfrageWithNormalizedData);
                         break;
                     case 'smartrepair':
-                        html += renderSmartRepairDetails(anfrage);
+                        html += renderSmartRepairDetails(anfrageWithNormalizedData);
                         break;
                     case 'glasschaden':
                     case 'glas':
-                        html += renderGlasDetails(anfrage);
+                        html += renderGlasDetails(anfrageWithNormalizedData);
                         break;
                     case 'dellenentfernung':
                     case 'dellen':
-                        html += renderDellenDetails(anfrage);
+                        html += renderDellenDetails(anfrageWithNormalizedData);
                         break;
                     case 'scheibentoenung':
-                        html += renderScheibentoenunsDetails(anfrage);
+                        html += renderScheibentoenunsDetails(anfrageWithNormalizedData);
                         break;
                     case 'felgen':
-                        html += renderFelgenDetails(anfrage);
+                        html += renderFelgenDetails(anfrageWithNormalizedData);
                         break;
                     case 'lackschutz':
                     case 'steinschutz':
-                        html += renderLackschutzDetails(anfrage);
+                        html += renderLackschutzDetails(anfrageWithNormalizedData);
                         break;
                     case 'aufbereitung':
                     case 'pflege':
-                        html += renderAufbereitungDetails(anfrage);
+                        html += renderAufbereitungDetails(anfrageWithNormalizedData);
                         break;
                     case 'kva':
                     case 'versicherung':
-                        html += renderKVADetails(anfrage);
+                        html += renderKVADetails(anfrageWithNormalizedData);
                         break;
                     case 'sonstiges':
-                        html += renderSonstigesDetails(anfrage);
+                        html += renderSonstigesDetails(anfrageWithNormalizedData);
                         break;
                 }
             });
