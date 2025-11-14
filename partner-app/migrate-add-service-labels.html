@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migration: Add serviceLabels to Anfragen</title>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+
+        .warning strong {
+            color: #856404;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            margin: 30px 0;
+            display: none;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .log-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 30px;
+        }
+
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px 0;
+        }
+
+        .log-entry.info { color: #4fc3f7; }
+        .log-entry.success { color: #81c784; }
+        .log-entry.warning { color: #ffb74d; }
+        .log-entry.error { color: #e57373; }
+
+        .timestamp {
+            color: #888;
+            font-size: 11px;
+        }
+
+        .summary {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            border-radius: 4px;
+            margin-top: 30px;
+            display: none;
+        }
+
+        .summary.active {
+            display: block;
+        }
+
+        .summary h3 {
+            color: #2e7d32;
+            margin-bottom: 15px;
+        }
+
+        .summary-item {
+            margin: 8px 0;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Migration Script</h1>
+        <p class="subtitle">Add serviceLabels to existing Partner Anfragen</p>
+
+        <div class="warning">
+            <strong>⚠️ WICHTIG:</strong> Dieses Script migriert bestehende Anfragen und fügt das fehlende <code>serviceLabels</code> Array hinzu.
+            Verwende "Dry Run" zum Testen ohne Daten zu ändern.
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="dryRunCheckbox" checked>
+                    Dry Run (keine Änderungen schreiben)
+                </label>
+            </div>
+            <div class="control-group">
+                <button id="startBtn" class="btn-primary">Start Migration</button>
+                <button id="stopBtn" class="btn-secondary" style="display:none;">Stop</button>
+            </div>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar-bg">
+                <div class="progress-bar" id="progressBar">0%</div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalCount">0</div>
+                <div class="stat-label">Total Anfragen</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="migratedCount">0</div>
+                <div class="stat-label">Migriert</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="skippedCount">0</div>
+                <div class="stat-label">Übersprungen</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="errorCount">0</div>
+                <div class="stat-label">Fehler</div>
+            </div>
+        </div>
+
+        <div class="log-container" id="logContainer">
+            <div class="log-entry info">Bereit zum Start...</div>
+        </div>
+
+        <div class="summary" id="summary">
+            <h3>✅ Migration abgeschlossen!</h3>
+            <div id="summaryContent"></div>
+        </div>
+    </div>
+
+    <script src="../firebase-config.js"></script>
+    <script>
+        let stopRequested = false;
+        let stats = {
+            total: 0,
+            migrated: 0,
+            skipped: 0,
+            errors: 0
+        };
+
+        // Log Helper
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString('de-DE');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type.toUpperCase()}]`, message);
+        }
+
+        // Update Stats
+        function updateStats() {
+            document.getElementById('totalCount').textContent = stats.total;
+            document.getElementById('migratedCount').textContent = stats.migrated;
+            document.getElementById('skippedCount').textContent = stats.skipped;
+            document.getElementById('errorCount').textContent = stats.errors;
+        }
+
+        // Update Progress
+        function updateProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = `${percent}%`;
+            progressBar.textContent = `${percent}% (${current}/${total})`;
+        }
+
+        // Migration Logic
+        async function migrateAnfrage(anfrage, dryRun) {
+            try {
+                // Check if serviceLabels already exists
+                if (anfrage.serviceLabels && anfrage.serviceLabels.length > 0) {
+                    log(`Übersprungen: ${anfrage.id} (serviceLabels bereits vorhanden: ${JSON.stringify(anfrage.serviceLabels)})`, 'info');
+                    stats.skipped++;
+                    return;
+                }
+
+                // Check if serviceTyp exists
+                if (!anfrage.serviceTyp) {
+                    log(`⚠️ Warning: ${anfrage.id} hat kein serviceTyp, verwende 'lackier' als Default`, 'warning');
+                    anfrage.serviceTyp = 'lackier';
+                }
+
+                // Create serviceLabels array
+                const serviceLabels = [anfrage.serviceTyp];
+
+                if (dryRun) {
+                    log(`[DRY RUN] Würde migrieren: ${anfrage.id} → serviceLabels: ${JSON.stringify(serviceLabels)}`, 'warning');
+                    stats.migrated++;
+                } else {
+                    // Write to Firestore
+                    await window.getCollection('partnerAnfragen').doc(anfrage.id).update({
+                        serviceLabels: serviceLabels
+                    });
+                    log(`✅ Migriert: ${anfrage.id} → serviceLabels: ${JSON.stringify(serviceLabels)}`, 'success');
+                    stats.migrated++;
+                }
+            } catch (error) {
+                log(`❌ Fehler bei ${anfrage.id}: ${error.message}`, 'error');
+                stats.errors++;
+            }
+        }
+
+        // Start Migration
+        async function startMigration() {
+            try {
+                const dryRun = document.getElementById('dryRunCheckbox').checked;
+                stopRequested = false;
+                stats = { total: 0, migrated: 0, skipped: 0, errors: 0 };
+
+                // UI Updates
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'inline-block';
+                document.getElementById('progressContainer').classList.add('active');
+                document.getElementById('summary').classList.remove('active');
+                document.getElementById('logContainer').innerHTML = '';
+
+                log(`🚀 Migration gestartet (${dryRun ? 'DRY RUN' : 'LIVE MODE'})`, 'info');
+
+                // Wait for Firebase
+                await window.firebaseInitialized;
+                log('✅ Firebase initialisiert', 'success');
+
+                // Get all anfragen
+                const snapshot = await window.getCollection('partnerAnfragen').get();
+                stats.total = snapshot.size;
+
+                log(`📊 ${stats.total} Anfragen gefunden`, 'info');
+                updateStats();
+
+                // Process each anfrage
+                let processed = 0;
+                for (const doc of snapshot.docs) {
+                    if (stopRequested) {
+                        log('⏸️ Migration gestoppt von User', 'warning');
+                        break;
+                    }
+
+                    const anfrage = { id: doc.id, ...doc.data() };
+                    await migrateAnfrage(anfrage, dryRun);
+
+                    processed++;
+                    updateProgress(processed, stats.total);
+                    updateStats();
+                }
+
+                // Show Summary
+                showSummary(dryRun);
+
+            } catch (error) {
+                log(`❌ FEHLER: ${error.message}`, 'error');
+                console.error(error);
+            } finally {
+                document.getElementById('startBtn').style.display = 'inline-block';
+                document.getElementById('stopBtn').style.display = 'none';
+            }
+        }
+
+        // Show Summary
+        function showSummary(dryRun) {
+            const summaryDiv = document.getElementById('summary');
+            const contentDiv = document.getElementById('summaryContent');
+
+            contentDiv.innerHTML = `
+                <div class="summary-item"><strong>Modus:</strong> ${dryRun ? 'DRY RUN (keine Änderungen geschrieben)' : 'LIVE MODE (Daten wurden migriert)'}</div>
+                <div class="summary-item"><strong>Total Anfragen:</strong> ${stats.total}</div>
+                <div class="summary-item"><strong>Migriert:</strong> ${stats.migrated}</div>
+                <div class="summary-item"><strong>Übersprungen:</strong> ${stats.skipped} (hatten bereits serviceLabels)</div>
+                <div class="summary-item"><strong>Fehler:</strong> ${stats.errors}</div>
+                <div class="summary-item" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ccc;">
+                    ${dryRun ? '💡 Tipp: Deaktiviere "Dry Run" um die Änderungen zu schreiben.' : '✅ Migration abgeschlossen! Anfragen haben jetzt serviceLabels.'}
+                </div>
+            `;
+
+            summaryDiv.classList.add('active');
+            log('✅ Migration abgeschlossen!', 'success');
+        }
+
+        // Event Listeners
+        document.getElementById('startBtn').addEventListener('click', startMigration);
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            stopRequested = true;
+            log('⏸️ Stop angefordert...', 'warning');
+        });
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            log('✅ Script geladen', 'success');
+            log('ℹ️ Bitte "Start Migration" klicken um zu beginnen', 'info');
+        });
+    </script>
+</body>
+</html>
