@@ -959,9 +959,27 @@
 
         // 🆕 PHASE 1.2: Normalisiere Anfrage-Daten (Fallback für serviceLabels)
         // Stellt sicher, dass anfrage.serviceLabels immer ein Array ist (für Single-Service Anfragen)
+        // CRITICAL: Validates existing serviceLabels to prevent field names (farbvariante, farbname) from being used as service types
         function normalizeAnfrageData(anfrage) {
-            // PHASE 1: Check if serviceLabels exists and is valid
-            if (!anfrage.serviceLabels || anfrage.serviceLabels.length === 0) {
+            // Liste gültiger Service-Typen (alle 12 Services + legacy names)
+            const validServiceTypes = ['lackier', 'lackierung', 'folierung', 'pdr', 'smartrepair', 'smart-repair',
+                'glas', 'glasschaden', 'scheibentoenung', 'scheiben', 'keramik', 'keramikversiegelung',
+                'unfall', 'unfallinstandsetzung', 'aufbereitung', 'werkstatt', 'tüv', 'tuev', 'tauv',
+                'karosserie', 'karosseriebau', 'oldtimer', 'oldtimer-restaurierung',
+                'steinschutz', 'lackschutz', 'felgen', 'reifen', 'dellen', 'dellenentfernung',
+                'pflege', 'kva', 'versicherung', 'sonstiges', 'multi-service'];
+
+            // PHASE 1: Validiere serviceLabels - prüfe ob es leer ist ODER ungültige Werte enthält
+            const hasInvalidLabels = !anfrage.serviceLabels ||
+                anfrage.serviceLabels.length === 0 ||
+                anfrage.serviceLabels.some(label => !validServiceTypes.includes(label));
+
+            if (hasInvalidLabels) {
+                // Log wenn ungültige Labels gefunden wurden (nicht nur leer)
+                if (anfrage.serviceLabels && anfrage.serviceLabels.length > 0) {
+                    console.warn(`⚠️ [${anfrage.id}] Invalid serviceLabels detected:`, anfrage.serviceLabels, '- Re-normalizing...');
+                }
+
                 // PHASE 2: Multi-Service anfragen (WICHTIG: serviceTyp === 'multi-service' check FIRST!)
                 if (anfrage.serviceTyp === 'multi-service' && anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
                     anfrage.serviceLabels = Object.keys(anfrage.serviceData);
@@ -1558,11 +1576,16 @@
                 }
             }
 
-            const serviceTyp = anfrage.serviceTyp || 'lackier';
-            const badge = getServiceBadge(serviceTyp);
+            // 🐛 FIX: Use serviceLabels (multi-service support) instead of single serviceTyp
+            anfrage = normalizeAnfrageData(anfrage); // Ensure serviceLabels is set
+            const serviceLabels = anfrage.serviceLabels || [anfrage.serviceTyp || 'lackier'];
+            const badges = serviceLabels.map(service => getServiceBadge(service)).join(' ');
             const status = getStatusBadge(anfrage.status || 'offen');
 
-            document.getElementById('title').innerHTML = `${anfrage.kennzeichen || anfrage.auftragsnummer || 'Anfrage'} ${badge}`;
+            // 🐛 DEBUG: Log what badges will be rendered
+            console.log(`[BADGE-RENDER-DETAIL] ${anfrage.id}: serviceLabels =`, serviceLabels, '| serviceTyp =', anfrage.serviceTyp);
+
+            document.getElementById('title').innerHTML = `${anfrage.kennzeichen || anfrage.auftragsnummer || 'Anfrage'} ${badges}`;
             document.getElementById('subtitle').innerHTML = `${anfrage.partnerName || 'Kunde'} • ${status}`;
 
             // Button-Visibility: Nur bei Status 'kva_gesendet' anzeigen

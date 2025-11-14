@@ -2148,12 +2148,30 @@
         // ============================================
 
         /**
-         * Normalize Anfrage Data - Ensure serviceLabels exists
+         * Normalize Anfrage Data - Ensure serviceLabels exists and contains valid service types
          * Fallback for single-service anfragen created before Multi-Service implementation
+         * CRITICAL: Validates existing serviceLabels to prevent field names (farbvariante, farbname) from being used as service types
          */
         function normalizeAnfrageData(anfrage) {
-            // PHASE 1: Check if serviceLabels exists and is valid
-            if (!anfrage.serviceLabels || anfrage.serviceLabels.length === 0) {
+            // Liste gültiger Service-Typen (alle 12 Services + legacy names)
+            const validServiceTypes = ['lackier', 'lackierung', 'folierung', 'pdr', 'smartrepair', 'smart-repair',
+                'glas', 'glasschaden', 'scheibentoenung', 'scheiben', 'keramik', 'keramikversiegelung',
+                'unfall', 'unfallinstandsetzung', 'aufbereitung', 'werkstatt', 'tüv', 'tuev', 'tauv',
+                'karosserie', 'karosseriebau', 'oldtimer', 'oldtimer-restaurierung',
+                'steinschutz', 'lackschutz', 'felgen', 'reifen', 'dellen', 'dellenentfernung',
+                'pflege', 'kva', 'versicherung', 'sonstiges', 'multi-service'];
+
+            // PHASE 1: Validiere serviceLabels - prüfe ob es leer ist ODER ungültige Werte enthält
+            const hasInvalidLabels = !anfrage.serviceLabels ||
+                anfrage.serviceLabels.length === 0 ||
+                anfrage.serviceLabels.some(label => !validServiceTypes.includes(label));
+
+            if (hasInvalidLabels) {
+                // Log wenn ungültige Labels gefunden wurden (nicht nur leer)
+                if (anfrage.serviceLabels && anfrage.serviceLabels.length > 0) {
+                    console.warn(`⚠️ [${anfrage.id}] Invalid serviceLabels detected:`, anfrage.serviceLabels, '- Re-normalizing...');
+                }
+
                 // PHASE 2: Multi-Service anfragen (WICHTIG: serviceTyp === 'multi-service' check FIRST!)
                 if (anfrage.serviceTyp === 'multi-service' && anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
                     anfrage.serviceLabels = Object.keys(anfrage.serviceData);
@@ -2514,6 +2532,9 @@
         function createAnfrageCard(anfrage) {
             // Normalize anfrage data (ensure serviceLabels exists)
             anfrage = normalizeAnfrageData(anfrage);
+
+            // 🐛 DEBUG: Log what badges will be rendered
+            console.log(`[BADGE-RENDER] ${anfrage.id}: serviceLabels =`, anfrage.serviceLabels, '| serviceTyp =', anfrage.serviceTyp);
 
             const card = document.createElement('div');
             card.className = 'anfrage-card ' + anfrage.status;
