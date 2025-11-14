@@ -2152,12 +2152,28 @@
          * Fallback for single-service anfragen created before Multi-Service implementation
          */
         function normalizeAnfrageData(anfrage) {
+            // PHASE 1: Check if serviceLabels exists and is valid
             if (!anfrage.serviceLabels || anfrage.serviceLabels.length === 0) {
-                if (anfrage.serviceTyp) {
+                // PHASE 2: Try to build from serviceData keys (Multi-Service anfragen from partner)
+                if (anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
+                    anfrage.serviceLabels = Object.keys(anfrage.serviceData);
+                    console.log(`✅ [${anfrage.id}] Built serviceLabels from serviceData keys:`, anfrage.serviceLabels);
+                }
+                // PHASE 3: Try to build from fahrzeug.additionalServices (accepted anfragen)
+                else if (anfrage.fahrzeug?.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices) && anfrage.fahrzeug.additionalServices.length > 0) {
+                    const primaryService = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
+                    anfrage.serviceLabels = [primaryService, ...anfrage.fahrzeug.additionalServices];
+                    console.log(`✅ [${anfrage.id}] Built serviceLabels from fahrzeug.additionalServices:`, anfrage.serviceLabels);
+                }
+                // PHASE 4: Fallback to single service from serviceTyp
+                else if (anfrage.serviceTyp) {
                     anfrage.serviceLabels = [anfrage.serviceTyp];
-                } else {
-                    console.warn(`⚠️ Anfrage ${anfrage.id}: No serviceTyp found, using default 'lackier'`);
-                    anfrage.serviceLabels = ['lackier']; // Ultimate fallback
+                    console.log(`ℹ️ [${anfrage.id}] Single service from serviceTyp:`, anfrage.serviceTyp);
+                }
+                // PHASE 5: Ultimate fallback
+                else {
+                    console.warn(`⚠️ Anfrage ${anfrage.id}: No service data found, using default 'lackier'`);
+                    anfrage.serviceLabels = ['lackier'];
                 }
             }
             return anfrage;

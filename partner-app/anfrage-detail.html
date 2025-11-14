@@ -960,11 +960,27 @@
         // 🆕 PHASE 1.2: Normalisiere Anfrage-Daten (Fallback für serviceLabels)
         // Stellt sicher, dass anfrage.serviceLabels immer ein Array ist (für Single-Service Anfragen)
         function normalizeAnfrageData(anfrage) {
+            // PHASE 1: Check if serviceLabels exists and is valid
             if (!anfrage.serviceLabels || anfrage.serviceLabels.length === 0) {
-                if (anfrage.serviceTyp) {
+                // PHASE 2: Try to build from serviceData keys (Multi-Service anfragen from partner)
+                if (anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
+                    anfrage.serviceLabels = Object.keys(anfrage.serviceData);
+                    console.log(`✅ [${anfrage.id}] Built serviceLabels from serviceData keys:`, anfrage.serviceLabels);
+                }
+                // PHASE 3: Try to build from fahrzeug.additionalServices (accepted anfragen)
+                else if (anfrage.fahrzeug?.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices) && anfrage.fahrzeug.additionalServices.length > 0) {
+                    const primaryService = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
+                    anfrage.serviceLabels = [primaryService, ...anfrage.fahrzeug.additionalServices];
+                    console.log(`✅ [${anfrage.id}] Built serviceLabels from fahrzeug.additionalServices:`, anfrage.serviceLabels);
+                }
+                // PHASE 4: Fallback to single service from serviceTyp
+                else if (anfrage.serviceTyp) {
                     anfrage.serviceLabels = [anfrage.serviceTyp];
-                } else {
-                    console.warn(`⚠️ Anfrage ${anfrage.id}: No serviceTyp found, using default 'lackier'`);
+                    console.log(`ℹ️ [${anfrage.id}] Single service from serviceTyp:`, anfrage.serviceTyp);
+                }
+                // PHASE 5: Ultimate fallback
+                else {
+                    console.warn(`⚠️ Anfrage ${anfrage.id}: No service data found, using default 'lackier'`);
                     anfrage.serviceLabels = ['lackier'];
                 }
             }
@@ -1693,36 +1709,77 @@
             console.log('🔍 anfrage.serviceDetails:', anfrage.serviceDetails);
             console.log('🔍 Full anfrage object:', anfrage);
 
-            // Service-spezifische Details
-            switch(serviceTyp) {
-                case 'reifen':
-                    html += renderReifenDetails();
-                    break;
-                case 'pflege':
-                    html += renderPflegeDetails();
-                    break;
-                case 'mechanik':
-                    html += renderMechanikDetails();
-                    break;
-                case 'tuev':
-                    html += renderTuevDetails();
-                    break;
-                case 'versicherung':
-                    html += renderVersicherungDetails();
-                    break;
-                case 'folierung':
-                    html += renderFolierungDetails();
-                    break;
-                case 'steinschutz':
-                    html += renderSteinschutzDetails();
-                    break;
-                case 'werbebeklebung':
-                    html += renderWerbebeklebungDetails();
-                    break;
-                case 'lackier':
-                default:
-                    html += renderLackierDetails();
-                    break;
+            // 🆕 MULTI-SERVICE: Render ALL service details (loop through serviceLabels)
+            if (anfrage.serviceLabels && anfrage.serviceLabels.length > 1) {
+                console.log('🔍 MULTI-SERVICE detected, rendering details for:', anfrage.serviceLabels);
+                anfrage.serviceLabels.forEach(service => {
+                    switch(service) {
+                        case 'reifen':
+                            html += renderReifenDetails();
+                            break;
+                        case 'pflege':
+                            html += renderPflegeDetails();
+                            break;
+                        case 'mechanik':
+                            html += renderMechanikDetails();
+                            break;
+                        case 'tuev':
+                            html += renderTuevDetails();
+                            break;
+                        case 'versicherung':
+                            html += renderVersicherungDetails();
+                            break;
+                        case 'folierung':
+                            html += renderFolierungDetails();
+                            break;
+                        case 'steinschutz':
+                            html += renderSteinschutzDetails();
+                            break;
+                        case 'werbebeklebung':
+                            html += renderWerbebeklebungDetails();
+                            break;
+                        case 'lackier':
+                        case 'lackierung':
+                            html += renderLackierDetails();
+                            break;
+                        default:
+                            console.warn(`⚠️ Unknown service type: ${service}`);
+                            break;
+                    }
+                });
+            } else {
+                // SINGLE-SERVICE: Original behavior (backward compatibility)
+                console.log('🔍 SINGLE-SERVICE detected, rendering details for:', serviceTyp);
+                switch(serviceTyp) {
+                    case 'reifen':
+                        html += renderReifenDetails();
+                        break;
+                    case 'pflege':
+                        html += renderPflegeDetails();
+                        break;
+                    case 'mechanik':
+                        html += renderMechanikDetails();
+                        break;
+                    case 'tuev':
+                        html += renderTuevDetails();
+                        break;
+                    case 'versicherung':
+                        html += renderVersicherungDetails();
+                        break;
+                    case 'folierung':
+                        html += renderFolierungDetails();
+                        break;
+                    case 'steinschutz':
+                        html += renderSteinschutzDetails();
+                        break;
+                    case 'werbebeklebung':
+                        html += renderWerbebeklebungDetails();
+                        break;
+                    case 'lackier':
+                    default:
+                        html += renderLackierDetails();
+                        break;
+                }
             }
 
             // KVA-Daten (Kostenvoranschlag) - NEU!
@@ -1864,18 +1921,135 @@
         }
 
         /**
+         * 🆕 MULTI-SERVICE PREVIEW (2025-11-14): Zeigt Multi-Service Liste BEVOR Auftrag angenommen wurde
+         * Wird aufgerufen wenn serviceLabels existiert aber kein fahrzeug object (unaccepted anfrage)
+         * @returns {string} HTML für Multi-Service Preview
+         */
+        function renderMultiServicePreview() {
+            if (!anfrage.serviceLabels || anfrage.serviceLabels.length <= 1) {
+                return '';
+            }
+
+            const serviceIcons = {
+                lackier: { icon: '🎨', label: 'Lackierung', color: '#003366' },
+                lackierung: { icon: '🎨', label: 'Lackierung', color: '#003366' },
+                reifen: { icon: '🚗', label: 'Reifen', color: '#42a5f5' },
+                pflege: { icon: '✨', label: 'Pflege', color: '#7b1fa2' },
+                mechanik: { icon: '🔧', label: 'Mechanik', color: '#d32f2f' },
+                tuev: { icon: '✅', label: 'TÜV/AU', color: '#388e3c' },
+                versicherung: { icon: '🛡️', label: 'Versicherung', color: '#f57c00' },
+                glas: { icon: '🔍', label: 'Glas', color: '#0288d1' },
+                klima: { icon: '❄️', label: 'Klima', color: '#00bcd4' },
+                dellen: { icon: '🔨', label: 'Dellen', color: '#757575' },
+                pdr: { icon: '🔨', label: 'PDR', color: '#757575' },
+                folierung: { icon: '🌈', label: 'Folierung', color: '#9c27b0' },
+                steinschutz: { icon: '🛡️', label: 'Steinschutz', color: '#607d8b' },
+                werbebeklebung: { icon: '📢', label: 'Werbebeklebung', color: '#ff5722' },
+                'smart-repair': { icon: '🔧', label: 'Smart Repair', color: '#ff9800' },
+                scheiben: { icon: '🪟', label: 'Scheibentönung', color: '#3f51b5' },
+                keramik: { icon: '💎', label: 'Keramikversiegelung', color: '#673ab7' },
+                unfall: { icon: '🚨', label: 'Unfallinstandsetzung', color: '#f44336' },
+                karosserie: { icon: '🏗️', label: 'Karosseriebau', color: '#795548' },
+                oldtimer: { icon: '🚙', label: 'Oldtimer-Restaurierung', color: '#8d6e63' }
+            };
+
+            let html = `
+                <div class="detail-section">
+                    <h2>📦 Multi-Service-Paket</h2>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 16px;">
+                        Dieser Auftrag beinhaltet <strong>${anfrage.serviceLabels.length} Services</strong>.
+                        Detailliertes Status-Tracking wird verfügbar, sobald der Auftrag angenommen wurde.
+                    </p>
+                    <div style="display: grid; gap: 12px;">
+            `;
+
+            anfrage.serviceLabels.forEach(serviceKey => {
+                const serviceInfo = serviceIcons[serviceKey] || { icon: '📋', label: serviceKey, color: '#666' };
+                const serviceData = anfrage.serviceData?.[serviceKey] || {};
+
+                html += `
+                    <div style="background: #fff; border-left: 4px solid ${serviceInfo.color}; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                            <span style="font-size: 24px; margin-right: 10px;">${serviceInfo.icon}</span>
+                            <strong style="font-size: 16px; color: ${serviceInfo.color};">${serviceInfo.label}</strong>
+                        </div>
+                        <div style="font-size: 13px; color: #666; margin-top: 8px;">
+                            ${getServicePreviewText(serviceKey, serviceData)}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                    <div style="margin-top: 16px; padding: 12px; background: #e3f2fd; border-radius: 8px;">
+                        <strong style="color: #1976d2;">ℹ️ Hinweis:</strong>
+                        <span style="color: #666; font-size: 13px;">
+                            Nach Annahme des Auftrags werden für jeden Service separate Status-Balken mit detailliertem Fortschritt angezeigt.
+                        </span>
+                    </div>
+                </div>
+            `;
+
+            return html;
+        }
+
+        /**
+         * Helper: Get preview text for each service type
+         */
+        function getServicePreviewText(serviceKey, serviceData) {
+            // Return basic info from serviceData if available
+            if (!serviceData || Object.keys(serviceData).length === 0) {
+                return '<em>Details werden nach Annahme verfügbar sein</em>';
+            }
+
+            // Extract first 2-3 fields from serviceData
+            const fields = Object.entries(serviceData)
+                .filter(([key, value]) => value && key !== 'photos' && key !== 'timestamp')
+                .slice(0, 3)
+                .map(([key, value]) => {
+                    // Format field name (remove service prefix, capitalize)
+                    const fieldName = key.replace(serviceKey + '_', '').replace(/_/g, ' ');
+                    const displayName = fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
+
+                    // Format value (truncate if too long)
+                    let displayValue = String(value);
+                    if (displayValue.length > 50) {
+                        displayValue = displayValue.substring(0, 50) + '...';
+                    }
+
+                    return `<strong>${displayName}:</strong> ${displayValue}`;
+                })
+                .join('<br>');
+
+            return fields || '<em>Details werden nach Annahme verfügbar sein</em>';
+        }
+
+        /**
          * 🆕 MULTI-SERVICE (2025-11-13): Rendert Service-Status-Timeline für Multi-Service Aufträge
          * Zeigt für jeden Service (Primary + Additional) die Status-Historie mit Zeitstempeln
          * @returns {string} HTML für Service-Status-Timeline
          */
         function renderServiceStatusTimeline() {
-            // Prüfe ob Multi-Service
-            const hasMultipleServices = anfrage.fahrzeug?.additionalServices &&
-                                       Array.isArray(anfrage.fahrzeug.additionalServices) &&
-                                       anfrage.fahrzeug.additionalServices.length > 0;
+            // 🆕 PHASE 1: Check anfrage.serviceLabels (works BEFORE fahrzeug is created)
+            const hasMultipleServicesFromLabels = anfrage.serviceLabels &&
+                                                 Array.isArray(anfrage.serviceLabels) &&
+                                                 anfrage.serviceLabels.length > 1;
 
-            if (!hasMultipleServices || !anfrage.fahrzeug?.serviceStatuses) {
-                return ''; // Keine Timeline für Single-Service (nutzt renderKanbanBoard)
+            // 🆕 PHASE 2: Check fahrzeug.additionalServices (works AFTER acceptance)
+            const hasMultipleServicesFromFahrzeug = anfrage.fahrzeug?.additionalServices &&
+                                                   Array.isArray(anfrage.fahrzeug.additionalServices) &&
+                                                   anfrage.fahrzeug.additionalServices.length > 0;
+
+            const hasMultipleServices = hasMultipleServicesFromLabels || hasMultipleServicesFromFahrzeug;
+
+            if (!hasMultipleServices) {
+                return ''; // Single-Service → use renderKanbanBoard()
+            }
+
+            // 🆕 PHASE 3: If no fahrzeug yet, show Multi-Service preview (no status tracking)
+            if (!anfrage.fahrzeug?.serviceStatuses) {
+                return renderMultiServicePreview(); // New function for unaccepted multi-service
             }
 
             const serviceIcons = {
