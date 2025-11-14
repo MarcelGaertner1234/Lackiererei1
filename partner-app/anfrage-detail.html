@@ -1011,6 +1011,53 @@
             return anfrage;
         }
 
+        /**
+         * Normalize Service Data - Maps field name conventions to unified structure
+         * Handles: Partner Anfragen (umfang), Fahrzeug Additional Services (steinschutzUmfang), Render Functions (schutzart)
+         */
+        function normalizeServiceData(serviceTyp, rawData) {
+            if (!rawData) return {};
+
+            const normalized = {};
+
+            switch(serviceTyp) {
+                case 'steinschutz':
+                case 'lackschutz':
+                    // Partner: umfang, bereiche, material
+                    // Fahrzeug: steinschutzUmfang, steinschutzMaterial, steinschutzBereiche
+                    // Render expects: schutzart, bereiche, material
+                    normalized.schutzart = rawData.schutzart || rawData.umfang || rawData.steinschutzUmfang || rawData.lackschutzUmfang || '';
+                    normalized.bereiche = rawData.bereiche || rawData.steinschutzBereiche || rawData.lackschutzBereiche || '';
+                    normalized.material = rawData.material || rawData.steinschutzMaterial || rawData.lackschutzMaterial || '';
+                    normalized.finish = rawData.finish || rawData.steinschutzFinish || '';
+                    normalized.info = rawData.info || rawData.steinschutzInfo || '';
+                    break;
+
+                case 'folierung':
+                    // Fahrzeug: folierungArt, folierungMaterial, folierungFarbe, folierungBereiche
+                    // Render expects: art, material, farbe, bereiche, design
+                    normalized.art = rawData.art || rawData.folierungArt || '';
+                    normalized.material = rawData.material || rawData.folierungMaterial || '';
+                    normalized.farbe = rawData.farbe || rawData.folierungFarbe || '';
+                    normalized.bereiche = rawData.bereiche || rawData.folierungBereiche || [];
+                    normalized.design = rawData.design || rawData.folierungDesign || '';
+                    break;
+
+                case 'werbebeklebung':
+                    normalized.umfang = rawData.umfang || rawData.werbebeklebungUmfang || '';
+                    normalized.komplexitaet = rawData.komplexitaet || rawData.werbebeklebungKomplexitaet || '';
+                    normalized.text = rawData.text || rawData.werbebeklebungText || '';
+                    normalized.farbanzahl = rawData.farbanzahl || rawData.werbebeklebungFarbanzahl || '';
+                    break;
+
+                default:
+                    // For other services: copy all fields as-is (no mapping needed)
+                    return rawData;
+            }
+
+            return normalized;
+        }
+
         async function loadAnfrage() {
             const urlParams = new URLSearchParams(window.location.search);
             const anfrageId = urlParams.get('id');
@@ -1741,48 +1788,50 @@
             console.log('🔍 anfrage.serviceDetails:', anfrage.serviceDetails);
             console.log('🔍 Full anfrage object:', anfrage);
 
-            // 🆕 MULTI-SERVICE: Render ALL service details (loop through serviceLabels)
-            if (anfrage.serviceLabels && anfrage.serviceLabels.length > 1) {
-                console.log('🔍 MULTI-SERVICE detected, rendering details for:', anfrage.serviceLabels);
-                anfrage.serviceLabels.forEach(service => {
-                    switch(service) {
-                        case 'reifen':
-                            html += renderReifenDetails();
-                            break;
-                        case 'pflege':
-                            html += renderPflegeDetails();
-                            break;
-                        case 'mechanik':
-                            html += renderMechanikDetails();
-                            break;
-                        case 'tuev':
-                            html += renderTuevDetails();
-                            break;
-                        case 'versicherung':
-                            html += renderVersicherungDetails();
-                            break;
-                        case 'folierung':
-                            html += renderFolierungDetails();
-                            break;
-                        case 'steinschutz':
-                            html += renderSteinschutzDetails();
-                            break;
-                        case 'werbebeklebung':
-                            html += renderWerbebeklebungDetails();
-                            break;
-                        case 'lackier':
-                        case 'lackierung':
-                            html += renderLackierDetails();
-                            break;
-                        default:
-                            console.warn(`⚠️ Unknown service type: ${service}`);
-                            break;
-                    }
-                });
-            } else {
-                // SINGLE-SERVICE: Original behavior (backward compatibility)
-                console.log('🔍 SINGLE-SERVICE detected, rendering details for:', serviceTyp);
-                switch(serviceTyp) {
+            // 🆕 MULTI-SERVICE DATA EXTRACTION & NORMALIZATION (2025-11-14)
+            // Extract correct data for each service (primary vs additional) and normalize field names
+            const servicesToRender = anfrage.serviceLabels || [serviceTyp];
+            console.log('🔍 Services to render:', servicesToRender);
+
+            // Save original serviceData (will be temporarily overwritten per service)
+            const originalServiceData = anfrage.serviceData;
+
+            servicesToRender.forEach(currentServiceTyp => {
+                console.log(`🔍 Processing service: ${currentServiceTyp}`);
+
+                // 🔍 CRITICAL: Extract the correct data for THIS specific service
+                let serviceData = null;
+
+                // Is this the PRIMARY service?
+                if (currentServiceTyp === anfrage.serviceTyp) {
+                    serviceData = anfrage.serviceData || anfrage.serviceDetails;
+                    console.log(`✅ Primary service data found for ${currentServiceTyp}:`, serviceData);
+                }
+                // Or is it an ADDITIONAL service?
+                else if (anfrage.fahrzeug?.additionalServices) {
+                    const additionalService = anfrage.fahrzeug.additionalServices.find(
+                        as => as.serviceTyp === currentServiceTyp
+                    );
+                    serviceData = additionalService?.serviceDetails;
+                    console.log(`${serviceData ? '✅' : '⚠️'} Additional service data for ${currentServiceTyp}:`, serviceData);
+                }
+
+                // If no data found, skip this service
+                if (!serviceData) {
+                    console.warn(`⚠️ [RENDER] No data found for service: ${currentServiceTyp}`);
+                    return;
+                }
+
+                // 🔄 NORMALIZE: Map field names to unified structure
+                const normalizedData = normalizeServiceData(currentServiceTyp, serviceData);
+                console.log(`🔄 Normalized data for ${currentServiceTyp}:`, normalizedData);
+
+                // ⚡ TEMPORARY: Set anfrage.serviceData for render functions (they expect it there)
+                // Render functions don't take parameters, they read from global anfrage
+                anfrage.serviceData = normalizedData;
+
+                // Render service details
+                switch(currentServiceTyp) {
                     case 'reifen':
                         html += renderReifenDetails();
                         break;
@@ -1808,11 +1857,17 @@
                         html += renderWerbebeklebungDetails();
                         break;
                     case 'lackier':
-                    default:
+                    case 'lackierung':
                         html += renderLackierDetails();
                         break;
+                    default:
+                        console.warn(`⚠️ Unknown service type: ${currentServiceTyp}`);
+                        break;
                 }
-            }
+            });
+
+            // 🔄 RESTORE original serviceData
+            anfrage.serviceData = originalServiceData;
 
             // KVA-Daten (Kostenvoranschlag) - NEU!
             // ⚠️ QUICKVIEW: Preise & Kosten sind SENSITIV - nicht anzeigen!
