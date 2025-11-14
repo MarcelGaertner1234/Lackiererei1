@@ -1853,7 +1853,7 @@
 
                     try {
                         // Check role (admin oder werkstatt)
-                        const userDoc = await window.db.collection('users').doc(user.uid).get();
+                        const userDoc = await db.collection('users').doc(user.uid).get();
                         if (!userDoc.exists) {
                             showToast('❌ User-Daten nicht gefunden!\n\nBitte kontaktieren Sie den Administrator.', 'error');
                             window.safeNavigate('../index.html');
@@ -1946,13 +1946,12 @@
         }, 250);
 
         async function loadAnfragen() {
-            console.log('📥 [ADMIN-ANFRAGEN] Lade Partner-Anfragen...');
             const loading = document.getElementById('loading');
             const liste = document.getElementById('anfrageNListe');
             const emptyState = document.getElementById('emptyState');
 
             try {
-                if (!window.db) throw new Error('Firebase nicht verfügbar');
+                if (!db) throw new Error('Firebase nicht verfügbar');
 
                 // Alle Partner-Anfragen laden
                 const snapshot = await window.getCollection('partnerAnfragen')
@@ -2089,127 +2088,6 @@
         }
 
         // ========================================
-        // SERVICE DETAILS RENDERING (FIX #1)
-        // ========================================
-
-        function renderServiceDetails(anfrage) {
-            if (!anfrage.serviceData) return '';
-
-            let html = '<div style="background: rgba(0, 122, 255, 0.05); padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #007aff;">';
-            html += '<div style="font-weight: 600; color: #007aff; margin-bottom: 10px;">🔧 Service-Details</div>';
-            html += '<div style="font-size: 13px; color: #333; line-height: 1.8;">';
-
-            const serviceData = anfrage.serviceData;
-
-            switch(anfrage.serviceTyp) {
-                case 'reifen':
-                    if (serviceData.dimension) html += `<p style="margin: 4px 0;">🛞 <strong>Reifengröße:</strong> ${serviceData.dimension}</p>`;
-                    if (serviceData.typ) {
-                        const typLabels = { sommer: 'Sommerreifen', winter: 'Winterreifen', ganzjahr: 'Ganzjahresreifen' };
-                        html += `<p style="margin: 4px 0;">📅 <strong>Typ:</strong> ${typLabels[serviceData.typ] || serviceData.typ}</p>`;
-                    }
-                    if (serviceData.anzahl) html += `<p style="margin: 4px 0;">🔢 <strong>Anzahl:</strong> ${serviceData.anzahl}x</p>`;
-                    if (serviceData.art) html += `<p style="margin: 4px 0;">🔧 <strong>Art:</strong> ${serviceData.art}</p>`;
-                    if (serviceData.marke) html += `<p style="margin: 4px 0;">🏷️ <strong>Marke:</strong> ${serviceData.marke}</p>`;
-                    break;
-
-                case 'glas':
-                    if (serviceData.typ) html += `<p style="margin: 4px 0;">🪟 <strong>Scheibe:</strong> ${serviceData.typ}</p>`;
-                    if (serviceData.art) html += `<p style="margin: 4px 0;">💥 <strong>Art:</strong> ${serviceData.art}</p>`;
-                    if (serviceData.schadensgroesse) html += `<p style="margin: 4px 0;">📏 <strong>Schaden:</strong> ${serviceData.schadensgroesse}</p>`;
-                    if (serviceData.position) html += `<p style="margin: 4px 0;">📍 <strong>Position:</strong> ${serviceData.position}</p>`;
-                    if (serviceData.sensor) html += `<p style="margin: 4px 0;">📡 <strong>Sensor:</strong> ${serviceData.sensor ? 'Ja' : 'Nein'}</p>`;
-                    break;
-
-                case 'klima':
-                    if (serviceData.klimaservice) html += `<p style="margin: 4px 0;">❄️ <strong>Service-Art:</strong> ${serviceData.klimaservice}</p>`;
-                    if (serviceData.kaeltemittel) html += `<p style="margin: 4px 0;">💨 <strong>Kältemittel:</strong> ${serviceData.kaeltemittel}</p>`;
-                    if (serviceData.problem) html += `<p style="margin: 4px 0;">📝 <strong>Problem:</strong> ${serviceData.problem}</p>`;
-                    break;
-
-                case 'dellen':
-                    if (serviceData.dellenanzahl) html += `<p style="margin: 4px 0;">🔨 <strong>Anzahl Dellen:</strong> ${serviceData.dellenanzahl}x</p>`;
-                    if (serviceData.dellengroesse) {
-                        const groesseLabels = { klein: 'Klein (< 5cm)', mittel: 'Mittel (5-10cm)', gross: 'Groß (> 10cm)' };
-                        html += `<p style="margin: 4px 0;">📏 <strong>Größe:</strong> ${groesseLabels[serviceData.dellengroesse] || serviceData.dellengroesse}</p>`;
-                    }
-                    if (serviceData.lackschaden) {
-                        const lackschadenLabel = serviceData.lackschaden === 'ja' ? '⚠️ Ja (Lackierung nötig)' : '✅ Nein (nur Delle)';
-                        html += `<p style="margin: 4px 0;">🎨 <strong>Lackschaden:</strong> ${lackschadenLabel}</p>`;
-                    }
-                    if (serviceData.dellenpositionen) html += `<p style="margin: 4px 0;">📍 <strong>Positionen:</strong> ${serviceData.dellenpositionen}</p>`;
-                    break;
-
-                case 'mechanik':
-                    if (serviceData.problem || serviceData.beschreibung) html += `<p style="margin: 4px 0;">🔧 <strong>Problem:</strong> ${serviceData.problem || serviceData.beschreibung}</p>`;
-                    if (serviceData.symptome) html += `<p style="margin: 4px 0;">📝 <strong>Symptome:</strong> ${serviceData.symptome}</p>`;
-                    if (serviceData.kategorie) html += `<p style="margin: 4px 0;">📂 <strong>Kategorie:</strong> ${serviceData.kategorie}</p>`;
-                    break;
-
-                case 'pflege':
-                    if (serviceData.paket) html += `<p style="margin: 4px 0;">📦 <strong>Paket:</strong> ${serviceData.paket}</p>`;
-                    if (serviceData.pflegeart) html += `<p style="margin: 4px 0;">✨ <strong>Art:</strong> ${serviceData.pflegeart}</p>`;
-                    if (serviceData.zusatzleistungen) html += `<p style="margin: 4px 0;">➕ <strong>Zusatzleistungen:</strong> ${serviceData.zusatzleistungen}</p>`;
-                    break;
-
-                case 'tuev':
-                    if (serviceData.pruefart) html += `<p style="margin: 4px 0;">🔍 <strong>Prüfart:</strong> ${serviceData.pruefart}</p>`;
-                    if (serviceData.faelligkeit) html += `<p style="margin: 4px 0;">📅 <strong>Fälligkeit:</strong> ${serviceData.faelligkeit}</p>`;
-                    if (serviceData.bekannteMaengel) html += `<p style="margin: 4px 0;">⚠️ <strong>Mängel:</strong> ${serviceData.bekannteMaengel}</p>`;
-                    break;
-
-                case 'versicherung':
-                    if (serviceData.schadensnummer) html += `<p style="margin: 4px 0;">📋 <strong>Schadensnummer:</strong> ${serviceData.schadensnummer}</p>`;
-                    if (serviceData.versicherung) html += `<p style="margin: 4px 0;">🛡️ <strong>Versicherung:</strong> ${serviceData.versicherung}</p>`;
-                    if (serviceData.schadendatum) html += `<p style="margin: 4px 0;">📅 <strong>Schadendatum:</strong> ${serviceData.schadendatum}</p>`;
-                    if (serviceData.unfallhergang) html += `<p style="margin: 4px 0;">📝 <strong>Hergang:</strong> ${serviceData.unfallhergang}</p>`;
-                    break;
-
-                case 'folierung':
-                    if (serviceData.folierungArt) html += `<p style="margin: 4px 0;">🎬 <strong>Art:</strong> ${serviceData.folierungArt}</p>`;
-                    if (serviceData.folierungMaterial) html += `<p style="margin: 4px 0;">📦 <strong>Material:</strong> ${serviceData.folierungMaterial}</p>`;
-                    if (serviceData.folierungFarbe) html += `<p style="margin: 4px 0;">🎨 <strong>Farbe:</strong> ${serviceData.folierungFarbe}</p>`;
-                    if (serviceData.folierungBereiche && serviceData.folierungBereiche.length > 0) {
-                        html += `<p style="margin: 4px 0;">📍 <strong>Bereiche:</strong> ${serviceData.folierungBereiche.join(', ')}</p>`;
-                    }
-                    break;
-
-                case 'steinschutz':
-                    if (serviceData.steinschutzArt) html += `<p style="margin: 4px 0;">🛡️ <strong>Art:</strong> ${serviceData.steinschutzArt}</p>`;
-                    if (serviceData.steinschutzBereiche && serviceData.steinschutzBereiche.length > 0) {
-                        html += `<p style="margin: 4px 0;">📍 <strong>Bereiche:</strong> ${serviceData.steinschutzBereiche.join(', ')}</p>`;
-                    }
-                    break;
-
-                case 'werbebeklebung':
-                    if (serviceData.werbebeklebungArt) html += `<p style="margin: 4px 0;">📢 <strong>Art:</strong> ${serviceData.werbebeklebungArt}</p>`;
-                    if (serviceData.werbebeklebungGroesse) html += `<p style="margin: 4px 0;">📏 <strong>Größe:</strong> ${serviceData.werbebeklebungGroesse}</p>`;
-                    if (serviceData.werbebeklebungMotiv) html += `<p style="margin: 4px 0;">🎨 <strong>Motiv:</strong> ${serviceData.werbebeklebungMotiv}</p>`;
-                    break;
-
-                case 'lackier':
-                    if (serviceData.lackierArt) html += `<p style="margin: 4px 0;">🎨 <strong>Art:</strong> ${serviceData.lackierArt}</p>`;
-                    if (serviceData.lackierBereiche && serviceData.lackierBereiche.length > 0) {
-                        html += `<p style="margin: 4px 0;">📍 <strong>Bereiche:</strong> ${serviceData.lackierBereiche.join(', ')}</p>`;
-                    }
-                    if (serviceData.lackierFarbe) html += `<p style="margin: 4px 0;">🌈 <strong>Farbe:</strong> ${serviceData.lackierFarbe}</p>`;
-                    break;
-
-                default:
-                    // Generic display for unknown services
-                    Object.keys(serviceData).forEach(key => {
-                        if (serviceData[key] && key !== 'timestamp') {
-                            html += `<p style="margin: 4px 0;"><strong>${key}:</strong> ${serviceData[key]}</p>`;
-                        }
-                    });
-                    break;
-            }
-
-            html += '</div></div>';
-            return html;
-        }
-
-        // ========================================
         // COMPACT CARD FUNCTIONS (Stufe 1)
         // ========================================
 
@@ -2263,6 +2141,339 @@
         function truncateText(text, maxLength) {
             if (!text) return '';
             return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+        }
+
+        // ============================================
+        // SERVICE-SPECIFIC DETAILS RENDERING FUNCTIONS
+        // ============================================
+
+        function renderServiceDetails(anfrage) {
+            if (!anfrage.serviceData && !anfrage.serviceDetails) {
+                return '';  // No service-specific data
+            }
+
+            // Determine which services to render
+            const servicesToRender = anfrage.serviceLabels || [anfrage.serviceTyp];
+
+            let html = '';
+
+            servicesToRender.forEach(serviceTyp => {
+                switch(serviceTyp) {
+                    case 'lackierung':
+                    case 'lackier':
+                        html += renderLackierungDetails(anfrage);
+                        break;
+                    case 'folierung':
+                        html += renderFolierungDetails(anfrage);
+                        break;
+                    case 'pdr':
+                        html += renderPDRDetails(anfrage);
+                        break;
+                    case 'smartrepair':
+                        html += renderSmartRepairDetails(anfrage);
+                        break;
+                    case 'glasschaden':
+                    case 'glas':
+                        html += renderGlasDetails(anfrage);
+                        break;
+                    case 'dellenentfernung':
+                    case 'dellen':
+                        html += renderDellenDetails(anfrage);
+                        break;
+                    case 'scheibentoenung':
+                        html += renderScheibentoenunsDetails(anfrage);
+                        break;
+                    case 'felgen':
+                        html += renderFelgenDetails(anfrage);
+                        break;
+                    case 'lackschutz':
+                    case 'steinschutz':
+                        html += renderLackschutzDetails(anfrage);
+                        break;
+                    case 'aufbereitung':
+                    case 'pflege':
+                        html += renderAufbereitungDetails(anfrage);
+                        break;
+                    case 'kva':
+                    case 'versicherung':
+                        html += renderKVADetails(anfrage);
+                        break;
+                    case 'sonstiges':
+                        html += renderSonstigesDetails(anfrage);
+                        break;
+                }
+            });
+
+            return html;
+        }
+
+        function renderLackierungDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+
+            if (!data.farbcode && !data.farbtyp && !data.lackart && !data.bereiche) {
+                return '';  // No lackierung data
+            }
+
+            return `
+                <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #003366;">
+                    <div style="font-weight: 600; color: #003366; margin-bottom: 10px;">🎨 Lackierung-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.farbcode ? `
+                            <div>
+                                <span style="color: #666;">Farbcode:</span>
+                                <strong style="color: #003366;"> ${data.farbcode}</strong>
+                            </div>
+                        ` : ''}
+                        ${data.farbtyp ? `
+                            <div>
+                                <span style="color: #666;">Farbtyp:</span>
+                                <strong style="color: #003366;"> ${data.farbtyp}</strong>
+                            </div>
+                        ` : ''}
+                        ${data.lackart ? `
+                            <div>
+                                <span style="color: #666;">Lackart:</span>
+                                <strong style="color: #003366;"> ${data.lackart}</strong>
+                            </div>
+                        ` : ''}
+                        ${data.bereiche ? `
+                            <div style="grid-column: 1 / -1;">
+                                <span style="color: #666;">Bereiche:</span>
+                                <strong style="color: #003366;"> ${Array.isArray(data.bereiche) ? data.bereiche.join(', ') : data.bereiche}</strong>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFolierungDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+
+            if (!data.folierungArt && !data.art && !data.folierungMaterial && !data.material && !data.folierungFarbe && !data.farbe) {
+                return '';
+            }
+
+            return `
+                <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #9c27b0;">
+                    <div style="font-weight: 600; color: #6a1b9a; margin-bottom: 10px;">🌈 Folierung-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${(data.folierungArt || data.art) ? `
+                            <div>
+                                <span style="color: #666;">Art:</span>
+                                <strong style="color: #6a1b9a;"> ${data.folierungArt || data.art}</strong>
+                            </div>
+                        ` : ''}
+                        ${(data.folierungMaterial || data.material) ? `
+                            <div>
+                                <span style="color: #666;">Material:</span>
+                                <strong style="color: #6a1b9a;"> ${data.folierungMaterial || data.material}</strong>
+                            </div>
+                        ` : ''}
+                        ${(data.folierungSpezialTyp || data.spezialTyp) ? `
+                            <div>
+                                <span style="color: #666;">Spezialfolie:</span>
+                                <strong style="color: #6a1b9a;"> ${data.folierungSpezialTyp || data.spezialTyp}</strong>
+                            </div>
+                        ` : ''}
+                        ${(data.folierungFarbe || data.farbe) ? `
+                            <div>
+                                <span style="color: #666;">Farbe:</span>
+                                <strong style="color: #6a1b9a;"> ${data.folierungFarbe || data.farbe}</strong>
+                            </div>
+                        ` : ''}
+                        ${(data.folierungBereiche || data.bereiche) ? `
+                            <div style="grid-column: 1 / -1;">
+                                <span style="color: #666;">Bereiche:</span>
+                                <strong style="color: #6a1b9a;"> ${Array.isArray(data.folierungBereiche || data.bereiche) ? (data.folierungBereiche || data.bereiche).join(', ') : (data.folierungBereiche || data.bereiche)}</strong>
+                            </div>
+                        ` : ''}
+                        ${(data.folierungDesign || data.design) ? `
+                            <div style="grid-column: 1 / -1;">
+                                <span style="color: #666;">Design:</span>
+                                <strong style="color: #6a1b9a;"> ${data.folierungDesign || data.design}</strong>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPDRDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+
+            if (!data.reparaturmethode && !data.schadensgroesse && !data.anzahlDellen) {
+                return '';
+            }
+
+            return `
+                <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #ff9800;">
+                    <div style="font-weight: 600; color: #e65100; margin-bottom: 10px;">✨ PDR-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.reparaturmethode ? `
+                            <div>
+                                <span style="color: #666;">Methode:</span>
+                                <strong style="color: #e65100;"> ${data.reparaturmethode}</strong>
+                            </div>
+                        ` : ''}
+                        ${data.schadensgroesse ? `
+                            <div>
+                                <span style="color: #666;">Schadensgröße:</span>
+                                <strong style="color: #e65100;"> ${data.schadensgroesse}</strong>
+                            </div>
+                        ` : ''}
+                        ${data.anzahlDellen ? `
+                            <div>
+                                <span style="color: #666;">Anzahl Dellen:</span>
+                                <strong style="color: #e65100;"> ${data.anzahlDellen}</strong>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSmartRepairDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.reparaturart && !data.schadenstyp && !data.schadensumfang) return '';
+
+            return `
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #4caf50;">
+                    <div style="font-weight: 600; color: #2e7d32; margin-bottom: 10px;">🔧 SmartRepair-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.reparaturart ? `<div><span style="color: #666;">Reparaturart:</span> <strong style="color: #2e7d32;"> ${data.reparaturart}</strong></div>` : ''}
+                        ${data.schadenstyp ? `<div><span style="color: #666;">Schadenstyp:</span> <strong style="color: #2e7d32;"> ${data.schadenstyp}</strong></div>` : ''}
+                        ${data.schadensumfang ? `<div><span style="color: #666;">Umfang:</span> <strong style="color: #2e7d32;"> ${data.schadensumfang}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderGlasDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.scheibe && !data.schadenstyp && !data.reparaturmethode) return '';
+
+            return `
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #2196f3;">
+                    <div style="font-weight: 600; color: #1565c0; margin-bottom: 10px;">🪟 Glasschaden-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.scheibe ? `<div><span style="color: #666;">Scheibe:</span> <strong style="color: #1565c0;"> ${data.scheibe}</strong></div>` : ''}
+                        ${data.schadenstyp ? `<div><span style="color: #666;">Schadenstyp:</span> <strong style="color: #1565c0;"> ${data.schadenstyp}</strong></div>` : ''}
+                        ${data.reparaturmethode ? `<div><span style="color: #666;">Reparaturmethode:</span> <strong style="color: #1565c0;"> ${data.reparaturmethode}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderDellenDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.dellenanzahl && !data.dellengroesse && !data.technik) return '';
+
+            return `
+                <div style="background: #fce4ec; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #e91e63;">
+                    <div style="font-weight: 600; color: #c2185b; margin-bottom: 10px;">🔨 Dellenentfernung-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.dellenanzahl ? `<div><span style="color: #666;">Anzahl:</span> <strong style="color: #c2185b;"> ${data.dellenanzahl}</strong></div>` : ''}
+                        ${data.dellengroesse ? `<div><span style="color: #666;">Größe:</span> <strong style="color: #c2185b;"> ${data.dellengroesse}</strong></div>` : ''}
+                        ${data.technik ? `<div><span style="color: #666;">Technik:</span> <strong style="color: #c2185b;"> ${data.technik}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderScheibentoenunsDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.toenungsgrad && !data.scheiben && !data.folientyp) return '';
+
+            return `
+                <div style="background: #f1f8e9; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #689f38;">
+                    <div style="font-weight: 600; color: #558b2f; margin-bottom: 10px;">🌑 Scheibentönung-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.toenungsgrad ? `<div><span style="color: #666;">Tönungsgrad:</span> <strong style="color: #558b2f;"> ${data.toenungsgrad}</strong></div>` : ''}
+                        ${data.scheiben ? `<div><span style="color: #666;">Scheiben:</span> <strong style="color: #558b2f;"> ${data.scheiben}</strong></div>` : ''}
+                        ${data.folientyp ? `<div><span style="color: #666;">Folientyp:</span> <strong style="color: #558b2f;"> ${data.folientyp}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFelgenDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.felgenart && !data.felgengroesse && !data.felgenanzahl) return '';
+
+            return `
+                <div style="background: #fff8e1; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #ffa726;">
+                    <div style="font-weight: 600; color: #f57c00; margin-bottom: 10px;">⚙️ Felgen-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.felgenart ? `<div><span style="color: #666;">Felgenart:</span> <strong style="color: #f57c00;"> ${data.felgenart}</strong></div>` : ''}
+                        ${data.felgengroesse ? `<div><span style="color: #666;">Größe:</span> <strong style="color: #f57c00;"> ${data.felgengroesse}</strong></div>` : ''}
+                        ${data.felgenanzahl ? `<div><span style="color: #666;">Anzahl:</span> <strong style="color: #f57c00;"> ${data.felgenanzahl}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLackschutzDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.schutzart && !data.bereiche && !data.material) return '';
+
+            return `
+                <div style="background: #e0f2f1; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #26a69a;">
+                    <div style="font-weight: 600; color: #00796b; margin-bottom: 10px;">🛡️ Lackschutz-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.schutzart ? `<div><span style="color: #666;">Schutzart:</span> <strong style="color: #00796b;"> ${data.schutzart}</strong></div>` : ''}
+                        ${data.material ? `<div><span style="color: #666;">Material:</span> <strong style="color: #00796b;"> ${data.material}</strong></div>` : ''}
+                        ${data.bereiche ? `<div style="grid-column: 1 / -1;"><span style="color: #666;">Bereiche:</span> <strong style="color: #00796b;"> ${Array.isArray(data.bereiche) ? data.bereiche.join(', ') : data.bereiche}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAufbereitungDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.aufbereitungsart && !data.umfang && !data.zusatzleistungen) return '';
+
+            return `
+                <div style="background: #fafafa; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #757575;">
+                    <div style="font-weight: 600; color: #424242; margin-bottom: 10px;">✨ Aufbereitung-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.aufbereitungsart ? `<div><span style="color: #666;">Art:</span> <strong style="color: #424242;"> ${data.aufbereitungsart}</strong></div>` : ''}
+                        ${data.umfang ? `<div><span style="color: #666;">Umfang:</span> <strong style="color: #424242;"> ${data.umfang}</strong></div>` : ''}
+                        ${data.zusatzleistungen ? `<div style="grid-column: 1 / -1;"><span style="color: #666;">Zusatzleistungen:</span> <strong style="color: #424242;"> ${Array.isArray(data.zusatzleistungen) ? data.zusatzleistungen.join(', ') : data.zusatzleistungen}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderKVADetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.gutachtenart && !data.schadenumfang && !data.versicherung) return '';
+
+            return `
+                <div style="background: #e8eaf6; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #3f51b5;">
+                    <div style="font-weight: 600; color: #283593; margin-bottom: 10px;">📋 KVA-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.gutachtenart ? `<div><span style="color: #666;">Gutachtenart:</span> <strong style="color: #283593;"> ${data.gutachtenart}</strong></div>` : ''}
+                        ${data.schadenumfang ? `<div><span style="color: #666;">Schadenumfang:</span> <strong style="color: #283593;"> ${data.schadenumfang}</strong></div>` : ''}
+                        ${data.versicherung ? `<div><span style="color: #666;">Versicherung:</span> <strong style="color: #283593;"> ${data.versicherung}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSonstigesDetails(anfrage) {
+            const data = anfrage.serviceData || anfrage.serviceDetails || {};
+            if (!data.servicebeschreibung && !data.spezialanforderungen) return '';
+
+            return `
+                <div style="background: #efebe9; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #795548;">
+                    <div style="font-weight: 600; color: #5d4037; margin-bottom: 10px;">📦 Sonstiges-Details</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;">
+                        ${data.servicebeschreibung ? `<div style="grid-column: 1 / -1;"><span style="color: #666;">Servicebeschreibung:</span> <strong style="color: #5d4037;"> ${data.servicebeschreibung}</strong></div>` : ''}
+                        ${data.spezialanforderungen ? `<div style="grid-column: 1 / -1;"><span style="color: #666;">Spezialanforderungen:</span> <strong style="color: #5d4037;"> ${data.spezialanforderungen}</strong></div>` : ''}
+                    </div>
+                </div>
+            `;
         }
 
         function createAnfrageCard(anfrage) {
@@ -2486,7 +2697,7 @@
             card.innerHTML = `
                 <div class="anfrage-header">
                     <div>
-                        <div class="anfrage-title">${anfrage.auftragsnummer || anfrage.kennzeichen || 'Fahrzeug'}${getServiceBadge(anfrage.serviceTyp)}</div>
+                        <div class="anfrage-title">${anfrage.auftragsnummer || anfrage.kennzeichen || 'Fahrzeug'}${anfrage.serviceLabels && anfrage.serviceLabels.length > 0 ? anfrage.serviceLabels.map(service => getServiceBadge(service)).join(' ') : getServiceBadge(anfrage.serviceTyp)}</div>
                         <div class="anfrage-subtitle">
                             ${anfrage.partnerName} • ${datum}
                         </div>
@@ -2531,15 +2742,11 @@
                                 <div class="value">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
                             </div>
                             <div class="detail-item">
-                                <div class="label">Fahrzeug</div>
-                                <div class="value">${anfrage.marke || 'k.A.'} ${anfrage.modell || ''}</div>
+                                <div class="label">Fahrzeugdaten</div>
+                                <div class="value" style="font-size: 12px; color: #666;">
+                                    Aus VIN ermittelt
+                                </div>
                             </div>
-                            ${anfrage.vin ? `
-                            <div class="detail-item">
-                                <div class="label">VIN</div>
-                                <div class="value" style="font-family: monospace; font-size: 12px;">${anfrage.vin}</div>
-                            </div>
-                            ` : ''}
                             <div class="detail-item">
                                 <div class="label">Dringlichkeit</div>
                                 <div class="value">${anfrage.dringlichkeitLabel || (anfrage.dringlichkeit === 'eilig' ? '⚡ Eilig (1-2 Tage)' : '📅 Normal (3-5 Tage)')}</div>
@@ -2591,24 +2798,6 @@
                             <div class="text">${anfrage.schadenBeschreibung}</div>
                         </div>
 
-                        ${renderServiceDetails(anfrage)}
-
-                        ${anfrage.additionalServices && Array.isArray(anfrage.additionalServices) && anfrage.additionalServices.length > 0 ? `
-                            <div style="margin-top: 15px;">
-                                <div style="font-weight: 600; color: #667eea; margin-bottom: 10px;">➕ Zusätzliche Services</div>
-                                ${anfrage.additionalServices.map(as => {
-                                    return `
-                                        <div style="background: rgba(102, 126, 234, 0.05); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid #667eea;">
-                                            <div style="font-weight: 600; color: #667eea; margin-bottom: 8px;">
-                                                ${getServiceBadge(as.serviceTyp)}
-                                            </div>
-                                            ${renderServiceDetails({ serviceTyp: as.serviceTyp, serviceData: as.serviceData || as.serviceDetails })}
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                        ` : ''}
-
                         <!-- Ersatzteil-Präferenz -->
                         ${anfrage.ersatzteilPraeferenz ? `
                             <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #4caf50;">
@@ -2642,6 +2831,8 @@
                         ` : ''}
 
                         ${photosHTML}
+
+                        ${renderServiceDetails(anfrage)}
                     </div>
 
                     <div class="info-section">
