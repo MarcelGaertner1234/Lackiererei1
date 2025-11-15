@@ -2285,8 +2285,9 @@
             // Felder in 3er-Spalten aufteilen (responsive)
             let fieldsHTML = '<div class="form-row">';
             allFields.forEach((field, index) => {
-                // Prefix hinzufügen für Multi-Service (z.B. service0_original_lackkosten)
-                const inputId = prefix ? `${prefix}_${variantType}_${field.id}` : `${variantType}_${field.id}`;
+                // 🔧 FIX: Input-ID Format für Multi-Service (original_serviceTyp_field)
+                // KORREKT: original_reifen_montage (stimmt mit Submit-Logik Zeile 3439 überein)
+                const inputId = prefix ? `${variantType}_${prefix}_${field.id}` : `${variantType}_${field.id}`;
                 const required = field.required ? 'required' : '';
                 const requiredStar = field.required ? ' *' : '';
 
@@ -3343,6 +3344,7 @@
 
         // ============================================
         // SERVICE-SPEZIFISCHE CALCULATION-LOGIK
+        // 🔧 FIX: Multi-Service Support hinzugefügt
         // ============================================
         function berechneVarianten() {
             // 🆕 DYNAMIC: Find all gesamt_ elements instead of hard-coding variant types
@@ -3351,12 +3353,33 @@
 
             console.log('💰 [BERECHNE] Gefundene Varianten:', variants);
 
-            variants.forEach(variantType => {
-                const gesamtElement = document.getElementById(`gesamt_${variantType}`);
+            variants.forEach(fullVariantId => {
+                const gesamtElement = document.getElementById(`gesamt_${fullVariantId}`);
                 if (!gesamtElement) return; // Skip if not rendered
 
-                // Finde alle Input-Felder für diese Variante (z.B. original_lackkosten, original_teilekosten, etc.)
-                const inputs = document.querySelectorAll(`input[id^="${variantType}_"]`);
+                let inputSelector;
+                let displayName;
+
+                // 🔧 FIX: Multi-Service Detection
+                // Multi-Service IDs: gesamt_reifen_original → Inputs: original_reifen_*
+                // Single-Service IDs: gesamt_original → Inputs: original_*
+                if (isMultiService && fullVariantId.includes('_')) {
+                    // Multi-Service Format: "serviceTyp_variantType" (z.B. "reifen_original")
+                    const parts = fullVariantId.split('_');
+                    const serviceTyp = parts[0];  // "reifen"
+                    const variantType = parts[1]; // "original"
+
+                    // Input-IDs sind: original_reifen_montage
+                    inputSelector = `input[id^="${variantType}_${serviceTyp}_"]`;
+                    displayName = `${serviceTyp} ${variantType}`;
+                } else {
+                    // Single-Service Format: "variantType" (z.B. "original")
+                    inputSelector = `input[id^="${fullVariantId}_"]`;
+                    displayName = fullVariantId;
+                }
+
+                // Finde alle Input-Felder für diese Variante
+                const inputs = document.querySelectorAll(inputSelector);
                 let gesamt = 0;
 
                 inputs.forEach(input => {
@@ -3364,7 +3387,7 @@
                     gesamt += value;
                 });
 
-                console.log(`💰 [BERECHNE] ${variantType}: ${gesamt.toFixed(2)} €`);
+                console.log(`💰 [BERECHNE] ${displayName}: ${gesamt.toFixed(2)} € (${inputs.length} Felder)`);
 
                 // Total aktualisieren
                 gesamtElement.textContent = gesamt.toLocaleString('de-DE', {
