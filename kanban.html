@@ -1959,6 +1959,46 @@
             }, 100);
         };
 
+        // ============================================
+        // 🆕 FIX #2: FILE UPLOAD VALIDATION (2025-11-15)
+        // ============================================
+        /**
+         * Validiert Image-Uploads (JPEG, PNG, WebP)
+         * @param {File} file - Die hochzuladende Datei
+         * @returns {{isValid: boolean, sanitizedName: string}} Validierungsergebnis
+         * @throws {Error} Wenn Datei ungültig ist
+         */
+        window.validateImageFile = function(file) {
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+            const maxSize = 10 * 1024 * 1024; // 10 MB
+
+            if (!file) {
+                throw new Error('❌ Keine Datei ausgewählt!');
+            }
+
+            // Check 1: File-Type Validation
+            if (!allowedTypes.includes(file.type)) {
+                throw new Error(`❌ Ungültiger Dateityp!\n\nErlaubt: JPEG, PNG, WebP\nDein Typ: ${file.type || 'unbekannt'}`);
+            }
+
+            // Check 2: Size Validation
+            if (file.size > maxSize) {
+                throw new Error(`❌ Datei zu groß!\n\nMaximum: 10 MB\nDeine Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+            }
+
+            // Check 3: Filename Sanitization (verhindert Path Traversal)
+            const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+            console.log('✅ [validateImageFile] Datei validiert:', {
+                type: file.type,
+                sizeMB: (file.size / 1024 / 1024).toFixed(2),
+                originalName: file.name,
+                sanitizedName: sanitizedName
+            });
+
+            return { isValid: true, sanitizedName };
+        };
+
         /**
          * Setup event listeners for AI Agent actions
          * Note: kanban.html already has Firestore realtime listeners,
@@ -4899,6 +4939,17 @@
 
                 const { fahrzeugId, newStatus, photoFile } = currentPhotoData;
                 const notiz = document.getElementById('photoNotiz').value;
+
+                // 🆕 FIX #2: Validate File BEFORE Upload (Security)
+                try {
+                    window.validateImageFile(photoFile);
+                } catch (validationError) {
+                    console.error('❌ [uploadPhoto] Validation failed:', validationError.message);
+                    showToast(validationError.message, 'error');
+                    document.getElementById('photoLoading').classList.remove('active');
+                    document.getElementById('uploadPhotoBtn').disabled = false;
+                    return;
+                }
 
                 // 🔧 NEUE LÖSUNG: Komprimiertes Foto in Firestore + Vollauflösung in Storage
                 // Grund: CORS-Probleme verhinderten Laden von Storage in PDF
