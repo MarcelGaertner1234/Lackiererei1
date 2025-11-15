@@ -1280,6 +1280,34 @@
     <script src="../js/settings-manager.js"></script>
     <script src="../js/auth-manager.js"></script>
     <script>
+        // 🆕 FIX #1: FILE UPLOAD VALIDATION (2025-11-15)
+        // Prevents: Malware uploads, XSS via SVG, Storage quota exhaustion
+        window.validateImageFile = function(file) {
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+            const maxSize = 10 * 1024 * 1024; // 10 MB
+
+            if (!file) {
+                throw new Error('❌ Keine Datei ausgewählt!');
+            }
+
+            // Check 1: File-Type Validation
+            if (!allowedTypes.includes(file.type)) {
+                throw new Error(`❌ Ungültiger Dateityp!\n\nErlaubt: JPEG, PNG, WebP\nDein Typ: ${file.type || 'unbekannt'}`);
+            }
+
+            // Check 2: Size Validation
+            if (file.size > maxSize) {
+                throw new Error(`❌ Datei zu groß!\n\nMaximum: 10 MB\nDeine Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+            }
+
+            console.log('✅ [validateImageFile] Datei validiert:', {
+                type: file.type,
+                sizeMB: (file.size / 1024 / 1024).toFixed(2)
+            });
+
+            return { isValid: true };
+        };
+
         // Global Variables
         let currentStep = 1;
         const totalSteps = 10;
@@ -1602,6 +1630,17 @@
                 // Convert Base64 to Blob
                 const response = await fetch(base64);
                 const blob = await response.blob();
+
+                // 🆕 FIX #1: Validate file BEFORE upload (Security)
+                try {
+                    window.validateImageFile(blob);
+                } catch (validationError) {
+                    console.error('❌ [UPLOAD] Validation failed:', validationError.message);
+                    alert(validationError.message);
+                    btnNext.disabled = false;
+                    btnNext.textContent = 'Weiter →';
+                    return; // Stop upload
+                }
 
                 // Generate unique filename
                 const timestamp = Date.now();
