@@ -110,6 +110,23 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 - Read-only security rules for financial data
 - CSV export + interactive statistics
 
+**Session 2025-11-15: Phase 1 Security Fixes - File Upload Validation** 🛡️
+- **🔒 SECURITY FIX:** Client-side File Upload MIME Type Validation
+- **Challenge:** File uploads accepted ANY file type (malware upload risk)
+- **Approach:** Backup-First Methodology (systematic, careful, verified)
+  1. Created backup branch: `backup-before-phase1-fixes`
+  2. Researched MIME types: image/jpeg, image/png, image/webp (images); application/pdf (PDFs)
+  3. Risk assessment: Validated no breaking changes
+  4. Individual commits per file (10 files = 10 commits)
+  5. Pre-push verification: 12/12 smoke tests passed
+- **Files Modified:** 10 files
+  * annahme.html - validatePDFFile() (PDF validation, 50MB limit)
+  * 9 Partner-Service-Forms - validateImageFile() (Image validation, 10MB limit)
+- **Commits:** 0bf67cc → e5f7bcf (10 commits)
+- **Testing:** 100% pass rate (Chromium, Mobile Chrome, Tablet iPad)
+- **Documentation:** CLAUDE.md updated with RECENT FIX section
+- **Key Learning:** "Dich hinterfrägst" (question all changes) + Backup-First + Pre-Push Verification
+
 ---
 
 ## 🐛 21 Error Patterns - Complete Reference
@@ -584,6 +601,429 @@ await window.getCollection('partnerAnfragen').doc(anfrageId).set(anfrageData);
 - Immutability constraints MUST be enforced with READ-ONLY patterns, not just documentation
 - Defense in Depth is CRITICAL for data integrity (single layer = insufficient)
 - System-wide audits prevent "fixed here, but broken there" scenarios
+
+### Pattern 22: File Upload Validation Missing (Security Vulnerability)
+
+**Symptom:**
+```javascript
+// Console Output: (Fehlt komplett - keine Validation-Logs!)
+// User uploads .exe file → Upload succeeds
+// User uploads 500MB file → Upload succeeds
+
+// Security Risk:
+// - Malware uploads (EXE, BAT, scripts)
+// - Storage quota exhaustion (1GB+ files)
+// - XSS attacks via SVG uploads
+// - No user feedback for invalid files
+```
+
+**Root Cause:**
+- **Missing client-side MIME type validation** before Firebase Storage upload
+- No file size limits enforced
+- Upload code directly uploads Blob without validation:
+  ```javascript
+  // BAD: No validation
+  const blob = await response.blob();
+  await storageRef.put(blob);  // ❌ Accepts ANY file type
+  ```
+
+**Impact:** 🔴 **CRITICAL** - Security Vulnerability
+- Malicious users can upload executable files disguised as images
+- Large files can crash app or exceed Firebase Storage quotas
+- No user feedback when invalid files are uploaded
+- Potential for XSS attacks via SVG with embedded JavaScript
+
+**Fix:** Implement 2-Layer Defense-in-Depth Validation
+
+**Layer 1: Image Upload Validation (9 Partner-Service-Forms)**
+```javascript
+// FIX: Client-side validation function
+window.validateImageFile = function(file) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const maxSize = 10 * 1024 * 1024; // 10 MB
+
+    if (!file) {
+        throw new Error('❌ Keine Datei ausgewählt!');
+    }
+
+    // MIME type whitelist check
+    if (!allowedTypes.includes(file.type)) {
+        throw new Error(`❌ Ungültiger Dateityp!\n\nErlaubt: JPEG, PNG, WebP\nDein Typ: ${file.type || 'unbekannt'}`);
+    }
+
+    // File size limit check
+    if (file.size > maxSize) {
+        throw new Error(`❌ Datei zu groß!\n\nMaximum: 10 MB\nDeine Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+    }
+
+    console.log('✅ [validateImageFile] Datei validiert:', {
+        type: file.type,
+        sizeMB: (file.size / 1024 / 1024).toFixed(2)
+    });
+
+    return { isValid: true };
+};
+
+// Usage before upload
+try {
+    window.validateImageFile(blob);
+} catch (validationError) {
+    console.error('❌ [UPLOAD] Validation failed:', validationError.message);
+    alert(validationError.message);
+    return; // Stop upload
+}
+
+await storageRef.put(blob);
+```
+
+**Layer 2: PDF Upload Validation (annahme.html)**
+```javascript
+// FIX: PDF-specific validation function
+window.validatePDFFile = function(file) {
+    const allowedType = 'application/pdf';
+    const maxSize = 50 * 1024 * 1024; // 50 MB
+
+    if (!file) {
+        throw new Error('❌ Keine PDF-Datei!');
+    }
+
+    if (file.type !== allowedType) {
+        throw new Error(`❌ Nur PDF erlaubt!\n\nDein Typ: ${file.type || 'unbekannt'}`);
+    }
+
+    if (file.size > maxSize) {
+        throw new Error(`❌ PDF zu groß!\n\nMaximum: 50 MB\nDeine Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+    }
+
+    return { isValid: true };
+};
+```
+
+**Files Modified:**
+- annahme.html (Lines ~11-39: validatePDFFile, Lines ~3032-3040, ~3093-3101: Usage)
+- partner-app/pflege-anfrage.html (Lines ~1290-1320: validateImageFile, ~1607: Usage)
+- partner-app/mechanik-anfrage.html (same pattern)
+- partner-app/glas-anfrage.html (same pattern)
+- partner-app/reifen-anfrage.html (same pattern)
+- partner-app/tuev-anfrage.html (same pattern)
+- partner-app/versicherung-anfrage.html (same pattern)
+- partner-app/folierung-anfrage.html (same pattern)
+- partner-app/steinschutz-anfrage.html (same pattern)
+- partner-app/werbebeklebung-anfrage.html (same pattern)
+
+**Commits:**
+- `0bf67cc` - File upload validation - pflege-anfrage.html
+- `97cd499` - File upload validation - mechanik-anfrage.html
+- `63af4a7` - File upload validation - glas-anfrage.html
+- `d8dd242` - File upload validation - reifen-anfrage.html
+- `25daea9` - File upload validation - tuev-anfrage.html
+- `6fa6456` - File upload validation - versicherung-anfrage.html
+- `85456e4` - File upload validation - folierung-anfrage.html
+- `dea87c5` - File upload validation - steinschutz-anfrage.html
+- `2a421b8` - File upload validation - werbebeklebung-anfrage.html
+- `e5f7bcf` - PDF upload validation - annahme.html
+
+**Testing:**
+- ✅ 12/12 Smoke Tests passed (Chromium, Mobile Chrome, Tablet iPad)
+- ✅ annahme.html: Form load, fields editable, dropdowns, submit button
+- ✅ No JavaScript errors
+- ✅ Graceful error handling verified
+
+**Debugging Time:** 4-5h (Backup → MIME research → Risk assessment → Implementation → Testing → Documentation)
+
+**Lesson Learned - Backup-First Security Methodology:**
+1. **ALWAYS create backup branch BEFORE security fixes** (`backup-before-phase1-fixes`)
+2. **ALWAYS research MIME types BEFORE implementing validation** (don't assume)
+3. **ALWAYS conduct risk assessment** (identify potential breaking changes)
+4. **ALWAYS implement systematically** (core logic once, reuse across files)
+5. **ALWAYS use individual commits per file** (granular rollback capability)
+6. **ALWAYS run pre-push verification** (tests + documentation + review)
+7. **ALWAYS question/validate** ("dich hinterfrägst" - User's emphasis on careful approach)
+
+**Defense-in-Depth Layers:**
+- **Client-Side:** JavaScript validation (fast user feedback) ← This fix
+- **Server-Side:** Firebase Storage Rules (ultimate security boundary)
+
+---
+
+## 🛡️ Security Validation Patterns & Backup-First Methodology
+
+Diese Section dokumentiert die **Backup-First Security Methodology** aus Session 2025-11-15 (Phase 1 Security Fixes). Zukünftige Agents sollten diese Patterns für alle Security-relevanten Änderungen befolgen.
+
+### Pre-Implementation Security Checklist
+
+**BEFORE implementing security fixes, ALWAYS complete this checklist:**
+
+```markdown
+**Pre-Implementation Checklist:**
+- [ ] **Backup Branch Created:** git checkout -b backup-before-{phase}-{description}
+- [ ] **MIME Types Researched:** Document all valid MIME types for feature
+- [ ] **File Size Limits Defined:** Research realistic limits (10MB images, 50MB PDFs)
+- [ ] **Risk Assessment Completed:** List potential breaking changes
+- [ ] **Breaking Change Mitigation:** Plan how to handle edge cases
+- [ ] **Test Strategy Defined:** Which tests to run? When to run them?
+- [ ] **Rollback Strategy Ready:** How to revert if something breaks?
+- [ ] **User Communication Plan:** How to explain approach and risks?
+```
+
+**Example (Phase 1 Security Fixes):**
+```bash
+✅ Backup: backup-before-phase1-fixes
+✅ MIME Research: image/jpeg, image/png, image/webp (images); application/pdf (PDFs)
+✅ Size Limits: 10MB (images), 50MB (PDFs)
+✅ Risk Assessment: Potential to reject some image formats (e.g., HEIC)
+✅ Mitigation: Use broad whitelist (JPEG, PNG, WebP covers 99% of cases)
+✅ Test Strategy: Smoke tests after all 10 files
+✅ Rollback: git reset --hard backup-before-phase1-fixes
+✅ Communication: "Backup-First approach, systematic, careful, verified"
+```
+
+---
+
+### Backup Strategy Pattern
+
+**When to Create Backup Branches:**
+- **Security Fixes** (any security-related code change)
+- **Breaking Changes** (changes that could break existing functionality)
+- **Multi-File Modifications** (10+ files being modified)
+- **Data Structure Changes** (schema migrations, field renames)
+- **Critical Bug Fixes** (high-impact bugs with complex fixes)
+
+**Naming Convention:**
+```bash
+backup-before-{phase}-{short-description}
+
+Examples:
+✅ backup-before-phase1-fixes
+✅ backup-before-schema-migration
+✅ backup-before-multi-tenant-refactor
+❌ backup-20251115  # Too generic
+❌ temp-backup      # Not descriptive
+```
+
+**How to Create:**
+```bash
+# STEP 1: Create backup branch
+git checkout -b backup-before-phase1-fixes
+
+# STEP 2: Push to remote (optional but recommended)
+git push origin backup-before-phase1-fixes
+
+# STEP 3: Return to main
+git checkout main
+
+# STEP 4: Now safe to make risky changes
+# ... implement changes ...
+
+# STEP 5 (IF NEEDED): Rollback
+git reset --hard backup-before-phase1-fixes
+git push --force origin main  # Only if already pushed broken code
+```
+
+**Rollback Decision Tree:**
+```
+Change deployed → Tests failing? → YES → Rollback immediately
+                                 → NO → Monitor for 24h → Issues? → YES → Rollback
+                                                                    → NO → Delete backup branch after 1 week
+```
+
+---
+
+### Multi-File Implementation Methodology
+
+**When modifying 10+ files systematically (e.g., adding validation to 9 partner forms):**
+
+**STEP 1: Create Core Logic Once**
+```javascript
+// Create reusable validation function
+window.validateImageFile = function(file) {
+    // ... validation logic ...
+};
+```
+
+**STEP 2: Test Core Logic**
+- Create test file with validation function
+- Test with different file types (valid & invalid)
+- Verify error messages are user-friendly
+
+**STEP 3: Implement Systematically**
+- **DO:** Implement in batches (e.g., 3 files → test → 3 more files → test)
+- **DO:** Individual commit per file (granular rollback)
+- **DO:** Copy-paste exact same code (consistency)
+- **DON'T:** Modify all files at once (risky)
+- **DON'T:** Bulk commit (hard to rollback individual files)
+
+**Example Commit Pattern (Phase 1):**
+```bash
+git commit -m "fix: File upload validation - pflege-anfrage.html"
+git commit -m "fix: File upload validation - mechanik-anfrage.html"
+git commit -m "fix: File upload validation - glas-anfrage.html"
+# ... 7 more individual commits ...
+git commit -m "fix: PDF upload validation - annahme.html"
+```
+
+**STEP 4: Intermediate Testing**
+```bash
+# After every 3-5 files:
+npm run test:all
+
+# Expected: 100% pass rate
+# If failures: Rollback last 3 files, investigate, fix, retry
+```
+
+---
+
+### Pre-Push Verification Checklist
+
+**MANDATORY checklist BEFORE pushing security fixes to GitHub:**
+
+```markdown
+**Pre-Push Verification (MANDATORY):**
+- [ ] **All tests pass:** npm run test:all → 100% success rate
+- [ ] **All files reviewed:** No accidental changes (use git diff)
+- [ ] **Commit messages clear:** Each commit explains what/why
+- [ ] **Backup branch exists:** Can rollback if needed
+- [ ] **Documentation updated:** CLAUDE.md, NEXT_AGENT, etc.
+- [ ] **Risk assessment documented:** Commit message includes potential risks
+- [ ] **No breaking changes:** Verified existing features still work
+- [ ] **User feedback implemented:** Error messages clear & helpful (German)
+```
+
+**Example (Phase 1 Pre-Push Verification):**
+```bash
+✅ Tests: 12/12 smoke tests passed (Chromium, Mobile Chrome, Tablet iPad)
+✅ Files: git diff origin/main --stat → 10 files, 400 insertions, 0 deletions
+✅ Commits: 10 individual commits with clear messages
+✅ Backup: backup-before-phase1-fixes created & pushed
+✅ Docs: CLAUDE.md updated with RECENT FIX section
+✅ Risk: No breaking changes - validation is additive only
+✅ Existing: annahme.html, liste.html, kanban.html all working
+✅ UX: German error messages tested
+```
+
+**If ANY item fails → DO NOT PUSH. Fix first, then re-verify.**
+
+---
+
+### MIME Type Verification Pattern
+
+**BEFORE implementing file upload validation, ALWAYS verify MIME types:**
+
+**Why?**
+- Different browsers may report different MIME types for same file
+- Some file formats have multiple valid MIME types
+- Assuming MIME types can lead to rejecting valid files
+
+**How to Verify:**
+```javascript
+// STEP 1: Create test HTML file
+const input = document.createElement('input');
+input.type = 'file';
+input.onchange = (e) => {
+    const file = e.target.files[0];
+    console.log('File:', file.name);
+    console.log('MIME Type:', file.type);
+    console.log('Size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+};
+document.body.appendChild(input);
+
+// STEP 2: Upload test files
+// - .jpg → image/jpeg
+// - .png → image/png
+// - .gif → image/gif
+// - .webp → image/webp
+// - .pdf → application/pdf
+
+// STEP 3: Document findings
+// Supported MIME types: image/jpeg, image/png, image/webp, application/pdf
+```
+
+**Common MIME Types Reference:**
+| File Type | Extension | MIME Type | Notes |
+|-----------|-----------|-----------|-------|
+| JPEG Image | .jpg, .jpeg | `image/jpeg` | Most common image format |
+| PNG Image | .png | `image/png` | Lossless compression |
+| WebP Image | .webp | `image/webp` | Modern format, good compression |
+| GIF Image | .gif | `image/gif` | Animated images |
+| PDF Document | .pdf | `application/pdf` | Document format |
+| SVG Image | .svg | `image/svg+xml` | ⚠️ **SECURITY RISK:** Can contain JavaScript |
+
+**Security Note:**
+- **NEVER allow `image/svg+xml`** without server-side sanitization (XSS risk)
+- **ALWAYS use whitelist** (allowed types) NOT blacklist (blocked types)
+- **ALWAYS verify MIME type** AND file extension (double-check)
+
+---
+
+### Risk Assessment Methodology
+
+**When planning risky changes (security fixes, breaking changes), conduct thorough risk assessment:**
+
+**Template:**
+```markdown
+## Risk Assessment: [Feature Name]
+
+### Potential Risks:
+1. **Breaking Change Risk:** [Will this break existing functionality?]
+   - Impact: [Low/Medium/High]
+   - Mitigation: [How to prevent?]
+
+2. **Data Loss Risk:** [Could this cause data loss?]
+   - Impact: [Low/Medium/High]
+   - Mitigation: [Backup strategy?]
+
+3. **User Experience Risk:** [Will users be confused?]
+   - Impact: [Low/Medium/High]
+   - Mitigation: [Clear error messages, documentation]
+
+4. **Performance Risk:** [Will this slow down the app?]
+   - Impact: [Low/Medium/High]
+   - Mitigation: [Benchmarking, optimization]
+
+### Rollback Strategy:
+- **Backup Branch:** [Name of backup branch]
+- **Rollback Command:** `git reset --hard [branch]`
+- **Time to Rollback:** [Estimated minutes]
+
+### Acceptance Criteria:
+- [ ] All tests pass
+- [ ] No console errors
+- [ ] User feedback is clear
+- [ ] Performance is acceptable
+```
+
+**Example (Phase 1 Security Fixes):**
+```markdown
+## Risk Assessment: File Upload Validation
+
+### Potential Risks:
+1. **Breaking Change Risk:** Rejecting currently valid files
+   - Impact: Medium (some users may use unsupported formats)
+   - Mitigation: Broad whitelist (JPEG, PNG, WebP = 99% coverage)
+
+2. **Data Loss Risk:** None (validation is pre-upload)
+   - Impact: Low
+   - Mitigation: N/A
+
+3. **User Experience Risk:** Confusing error messages
+   - Impact: Low
+   - Mitigation: German messages with clear examples
+
+4. **Performance Risk:** Minimal (client-side validation is fast)
+   - Impact: Low
+   - Mitigation: N/A
+
+### Rollback Strategy:
+- **Backup Branch:** backup-before-phase1-fixes
+- **Rollback Command:** git reset --hard backup-before-phase1-fixes
+- **Time to Rollback:** < 5 minutes
+
+### Acceptance Criteria:
+- [x] All 12 smoke tests pass
+- [x] No console errors
+- [x] German error messages tested
+- [x] Upload speed unchanged
+```
 
 ---
 
@@ -1225,7 +1665,19 @@ _Success Rate: 100% on Chromium, Mobile Chrome, Tablet iPad_
 _Status: ✅ PRODUCTION-READY & FULLY AUTOMATED_
 _Lines: ~810 (reduced from 1401, -591 lines of obsolete content)_
 
-**Latest Achievement (2025-11-14):**
+**Latest Achievement (2025-11-15):**
+- 🛡️ **Pattern 22 Documented:** File Upload Validation Missing (CRITICAL security vulnerability)
+- 🛡️ **NEW SECTION:** Security Validation Patterns & Backup-First Methodology (280 lines)
+  - Pre-Implementation Security Checklist
+  - Backup Strategy Pattern (when, how, rollback)
+  - Multi-File Implementation Methodology
+  - Pre-Push Verification Checklist (MANDATORY)
+  - MIME Type Verification Pattern
+  - Risk Assessment Methodology
+- ✅ **Session Nov 15 Documented:** Phase 1 Security Fixes (10 files, backup-first approach)
+- 🎓 **Key Lesson:** "Dich hinterfrägst" (question all changes) + Backup-First + MIME research + Pre-Push Verification = Secure implementation
+
+**Previous Achievement (2025-11-14):**
 - ✅ Pattern 21 Documented: Multi-Service serviceTyp Overwrite (CRITICAL bug fix)
 - ✅ Multi-Service Architecture Constraints Section Added (80 lines)
 - ✅ Agent Behavior Guidelines Formalized (70 lines)
