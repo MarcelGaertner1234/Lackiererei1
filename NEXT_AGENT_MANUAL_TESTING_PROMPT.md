@@ -873,6 +873,551 @@ npm run test:all
 
 ---
 
+### Pattern 23: Multi-Service KVA - 3 Critical Blockers (2025-11-15)
+
+**Symptom:**
+```javascript
+// Console Output: No obvious errors - but data loss occurs silently
+// User fills out Multi-Service KVA form (Lackierung + Reifen + Mechanik)
+// Clicks submit → Success message shown
+// BUT: When loading anfrage-detail.html → Form fields are EMPTY
+// When generating PDF → Only 1 service appears (should be 3)
+// When checking quotes → Only 1 quote variant (should be 3)
+```
+
+**Impact:** 🔴 **CRITICAL DATA LOSS** - Multi-Service KVA Completely Broken
+- 100% data loss for service-specific fields
+- PDF generation missing 66% of services (2/3 services don't appear)
+- Partners receive incomplete quotes (only see primary service)
+- User frustration: "Form doesn't save my data!"
+
+**Root Causes - 3 Critical Blockers:**
+
+**BLOCKER #1: Input-ID Format Mismatch (100% Data Loss)**
+
+The problem is a mismatch between how HTML elements are generated vs how JavaScript queries them:
+
+```javascript
+// kva-erstellen.html - renderVarianteBoxDynamic() function
+// BEFORE (BROKEN - Commit before 477efed):
+const inputId = prefix ? `${prefix}_${variantType}_${field.id}` : `${variantType}_${field.id}`;
+// Creates HTML: <input id="reifen_original_montage" />
+//                              ↑
+//                        prefix FIRST (reifen_original_montage)
+
+// saveKVA() function - Submit logic
+const inputs = document.querySelectorAll(`input[id^="original_reifen_"]`);
+//                                                      ↑
+//                                              variantType FIRST (original_reifen_*)
+
+// Result: querySelector finds NOTHING → Returns empty NodeList → All data lost!
+```
+
+The mismatch:
+- **HTML IDs created:** `reifen_original_montage` (prefix_variantType_field)
+- **jQuery selector:** `original_reifen_montage` (variantType_prefix_field)
+- **Match result:** ZERO matches → 100% data loss
+
+**BLOCKER #2: serviceNames Inconsistency (Lackierung Missing from PDFs)**
+
+```javascript
+// SERVICE_TEMPLATES definition (kva-erstellen.html):
+const SERVICE_TEMPLATES = {
+    'lackierung': { displayName: '🎨 Lackierung', ... },  // ✅ With 'ung'
+    'reifen': { displayName: '🛞 Reifen-Service', ... },
+    // ... 10 more services
+};
+
+// PDF Generation (annahme.html, abnahme.html, rechnungen.html):
+const serviceNames = {
+    'lackier': '🎨 Lackierung',      // ❌ WITHOUT 'ung'
+    'reifen': '🛞 Reifen-Service',   // ✅ Correct
+    // ...
+};
+
+// When rendering PDF:
+const serviceName = serviceNames[fahrzeug.serviceTyp];  // fahrzeug.serviceTyp = 'lackierung'
+// serviceNames['lackierung'] → undefined (key doesn't exist!)
+// PDF section for Lackierung: SKIPPED (undefined check fails)
+```
+
+**BLOCKER #3: berechneVarianten() No Multi-Service Support**
+
+```javascript
+// kva-erstellen.html - berechneVarianten() function
+// BEFORE (BROKEN):
+function berechneVarianten() {
+    // Only processes gesamt-boxes for PRIMARY service
+    const gesamtBoxes = document.querySelectorAll('[id^="gesamt_"]');
+    
+    gesamtBoxes.forEach(box => {
+        const variantType = box.id.split('_')[1];  // "original" or "alternative"
+        const inputs = document.querySelectorAll(`input[id^="${variantType}_"]`);
+        // ❌ This finds inputs ONLY for Single-Service KVAs!
+        // Multi-Service inputs are: original_reifen_montage, original_lackier_montage
+        // Selector `input[id^="original_"]` finds BOTH (wrong! need service-specific)
+    });
+    
+    // Result: Only calculates quote for PRIMARY service
+    // Additional services (Reifen, Mechanik) are IGNORED
+}
+```
+
+**The Fix (3-Phase Approach - Commit 477efed):**
+
+**Fix #1: Input-ID Format Consistency**
+```javascript
+// kva-erstellen.html Line 2290
+// AFTER (FIXED):
+const inputId = prefix ? `${variantType}_${prefix}_${field.id}` : `${variantType}_${field.id}`;
+// Now creates: <input id="original_reifen_montage" />
+//                          ↑
+//                    variantType FIRST (matches selector!)
+
+// saveKVA() selector UNCHANGED:
+const inputs = document.querySelectorAll(`input[id^="original_reifen_"]`);
+// Now finds: original_reifen_montage ✅ MATCH!
+```
+
+**Fix #2: serviceNames Normalization (3 PDF files)**
+```javascript
+// annahme.html Line 7597, abnahme.html Line 2432, rechnungen.html Line 994
+// AFTER (FIXED):
+const serviceNames = {
+    'lackierung': '🎨 Lackierung',   // ✅ WITH 'ung' (matches SERVICE_TEMPLATES)
+    'reifen': '🛞 Reifen-Service',
+    'mechanik': '🔧 Mechanik',
+    'pflege': '✨ Pflege',
+    'tuev': '🔍 TÜV/AU',
+    'versicherung': '🛡️ Versicherung',
+    'glas': '🪟 Glas',
+    'klima': '❄️ Klima',
+    'dellen': '🔨 Dellen',
+    'folierung': '🎨 Folierung',
+    'steinschutz': '🛡️ Steinschutz',
+    'werbebeklebung': '🎨 Werbebeklebung'
+};
+
+// Now PDF rendering works:
+const serviceName = serviceNames['lackierung'];  // ✅ Returns '🎨 Lackierung'
+```
+
+**Fix #3: berechneVarianten() Multi-Service Detection**
+```javascript
+// kva-erstellen.html Lines 3363-3379
+// AFTER (FIXED):
+function berechneVarianten() {
+    const isMultiService = anfrage && anfrage.serviceData && Object.keys(anfrage.serviceData).length > 0;
+    
+    const gesamtBoxes = document.querySelectorAll('[id^="gesamt_"]');
+    
+    gesamtBoxes.forEach(box => {
+        const fullVariantId = box.id.replace('gesamt_', '');  // "reifen_original" or just "original"
+        
+        let inputSelector;
+        if (isMultiService && fullVariantId.includes('_')) {
+            // Multi-Service Format: "reifen_original" → selector "original_reifen_"
+            const parts = fullVariantId.split('_');
+            const serviceTyp = parts[0];      // "reifen"
+            const variantType = parts[1];     // "original"
+            inputSelector = `input[id^="${variantType}_${serviceTyp}_"]`;
+        } else {
+            // Single-Service Format: "original" → selector "original_"
+            inputSelector = `input[id^="${fullVariantId}_"]`;
+        }
+        
+        const inputs = document.querySelectorAll(inputSelector);
+        // Now correctly finds service-specific inputs!
+    });
+}
+```
+
+**Files Modified:**
+- `partner-app/kva-erstellen.html` (Lines 2290, 3363-3379)
+- `annahme.html` (Line 7597)
+- `abnahme.html` (Line 2432)
+- `partner-app/rechnungen.html` (Line 994)
+
+**Commit:** `477efed` - "fix: 3 Kritische Blocker in Multi-Service KVA behoben"
+
+**Testing Checklist:**
+- [ ] Create Multi-Service vehicle (Lackierung + Reifen + Mechanik)
+- [ ] Fill out service-specific fields for ALL 3 services
+- [ ] Submit KVA → Open DevTools → Check Firestore: ALL fields saved? (not undefined)
+- [ ] Load anfrage-detail.html → Form shows ALL 3 services' data correctly?
+- [ ] Generate PDF (annahme.html) → All 3 services appear in document?
+- [ ] Check quote variants (kva-erstellen.html) → 3 separate quotes generated?
+- [ ] Console check: NO "undefined" values in saved data
+
+**Debugging Time:** 5-6h (comprehensive dependency analysis → 3-phase fix → testing)
+
+**Lesson Learned:**
+- **Input-ID Consistency is CRITICAL:** HTML IDs MUST match jQuery selectors EXACTLY
+- **Naming Consistency Across Files:** serviceNames arrays MUST be identical in ALL files (PDFs, forms, templates)
+- **Multi-Service Support Not Automatic:** ALL business logic functions MUST explicitly handle additionalServices[] array
+- **Test End-to-End:** Data loss bugs only appear when testing full workflow (create → save → load → PDF → quote)
+
+---
+
+### Pattern 24: Partner Authentication Before Data Loading (2025-11-15)
+
+**Symptom:**
+```javascript
+// Console Output:
+"❌ Permission denied: Missing or insufficient permissions"
+"Anfrage nicht gefunden"  // "Request not found"
+
+// User Flow:
+// 1. Partner logs in successfully → Redirected to partner-dashboard.html
+// 2. Clicks on anfrage in list → Opens anfrage-detail.html?id=req_123
+// 3. Page loads BUT shows error: "Anfrage nicht gefunden"
+// 4. Console shows Firestore permission denied error
+```
+
+**Impact:** 🔴 **CRITICAL** - Partner Portal Broken
+- Partners cannot view their service requests
+- Error message is misleading ("not found" vs "not authorized")
+- User frustration: "I just logged in, why can't I see my data?"
+- Partner portal completely unusable
+
+**Root Cause:**
+
+```javascript
+// anfrage-detail.html (BEFORE Fix - Line 918):
+window.addEventListener('DOMContentLoaded', async () => {
+    await initFirebase();
+    
+    // ❌ PROBLEM: loadAnfrage() called WITHOUT partner authentication check!
+    await loadAnfrage();  // Tries to access Firestore immediately
+});
+
+// loadAnfrage() function (Line 1140):
+async function loadAnfrage() {
+    const anfrageId = urlParams.get('id');
+    
+    // ❌ Firestore query executes WITHOUT auth token!
+    const doc = await window.getCollection('partnerAnfragen').doc(anfrageId).get();
+    
+    if (!doc.exists) {
+        showError('Anfrage nicht gefunden');  // ❌ Misleading error!
+        return;
+    }
+}
+```
+
+**Why This Fails:**
+
+1. **Firebase Auth is ASYNCHRONOUS** - `auth().onAuthStateChanged()` callback hasn't fired yet
+2. **loadAnfrage() runs IMMEDIATELY** on page load - doesn't wait for auth
+3. **Firestore Security Rules check authentication** before allowing read access:
+```javascript
+// firestore.rules
+match /partnerAnfragen/{anfrageId} {
+    allow read: if isPartner() && isActive() && isOwner(resource.data.partnerId);
+}
+```
+4. **Query fails because user not authenticated** → `doc.exists = false` → "Anfrage nicht gefunden"
+
+**The Fix (2-Step Pattern - Commit 1b907dd):**
+
+**Step 1: Add checkLogin() Function**
+```javascript
+// anfrage-detail.html Lines 919-945
+let partner = null;  // ✅ Global variable for partner data
+
+async function checkLogin() {
+    partner = JSON.parse(localStorage.getItem('partner') || 'null');
+    
+    if (!partner) {
+        console.warn('⚠️ [ANFRAGE-DETAIL] Kein Partner eingeloggt - Redirect zu index.html');
+        window.safeNavigate('index.html');
+        return;
+    }
+    
+    console.log('✅ [ANFRAGE-DETAIL] Partner geladen:', partner.partnerId, partner.email);
+    
+    // Optional: Sync mit Firestore für aktuelle Partner-Daten
+    if (db && partner.partnerId) {
+        try {
+            const partnerDoc = await window.getCollection('partners').doc(partner.partnerId).get();
+            if (partnerDoc.exists) {
+                partner = { partnerId: partner.partnerId, ...partnerDoc.data() };
+                localStorage.setItem('partner', JSON.stringify(partner));
+                console.log('✅ [ANFRAGE-DETAIL] Partner-Daten mit Firestore synchronisiert');
+            }
+        } catch (error) {
+            console.warn('⚠️ [ANFRAGE-DETAIL] Firestore-Sync fehlgeschlagen:', error);
+        }
+    }
+}
+```
+
+**Step 2: Call checkLogin() BEFORE loadAnfrage()**
+```javascript
+// anfrage-detail.html (AFTER Fix - Lines 947-963):
+window.addEventListener('DOMContentLoaded', async () => {
+    await initFirebase();
+    
+    // ✅ CRITICAL FIX: Verify authentication FIRST!
+    await checkLogin();
+    
+    // ✅ NOW safe to load data (partner authenticated)
+    await loadAnfrage();
+});
+```
+
+**Step 3: Add Ownership Validation in loadAnfrage()**
+```javascript
+// anfrage-detail.html Lines 1180-1206
+async function loadAnfrage() {
+    const anfrageId = urlParams.get('id');
+    
+    // ✅ Verify partner loaded
+    if (!partner || !partner.partnerId) {
+        showError('Bitte melden Sie sich an');
+        setTimeout(() => window.safeNavigate('index.html'), 2000);
+        return;
+    }
+    
+    const doc = await window.getCollection('partnerAnfragen').doc(anfrageId).get();
+    
+    if (!doc.exists) {
+        showError('Anfrage nicht gefunden');
+        return;
+    }
+    
+    const data = doc.data();
+    
+    // ✅ Ownership-Validierung: Prüfe ob Anfrage dem Partner gehört
+    if (data.partnerId !== partner.partnerId) {
+        console.error('❌ Ownership-Check fehlgeschlagen');
+        showError('Sie haben keine Berechtigung diese Anfrage zu sehen');
+        setTimeout(() => window.safeNavigate('meine-anfragen.html'), 2000);
+        return;
+    }
+    
+    console.log('✅ Ownership-Check erfolgreich:', partner.partnerId);
+}
+```
+
+**Critical Pattern: Execution Order for Partner Pages**
+
+```javascript
+// MANDATORY order for ALL partner-app pages:
+$(document).ready(async function() {
+    try {
+        // ✅ STEP 1: Initialize Firebase
+        await initFirebase();
+        
+        // ✅ STEP 2: Verify authentication FIRST
+        await checkPartnerLogin();  // Load partner from localStorage, verify role
+        
+        // ✅ STEP 3: Initialize page (AFTER auth verified)
+        await initializePage();     // Load settings, setup UI
+        
+        // ✅ STEP 4: Load data (AFTER auth + init)
+        await loadData();           // Now safe to query Firestore
+        
+    } catch (error) {
+        console.error('❌ Page initialization failed:', error);
+        alert('Fehler beim Laden der Seite. Bitte erneut anmelden.');
+        window.location.href = 'index.html';
+    }
+});
+```
+
+**Files Modified:**
+- `partner-app/anfrage-detail.html` (~50 lines added)
+
+**Commits:**
+- `1b907dd` - "fix: Partner-Authentifizierung für anfrage-detail.html hinzugefügt"
+- `215aa8b` - "fix: werkstattId VOR checkLogin() initialisieren" (related fix)
+
+**Testing Checklist:**
+- [ ] Clear browser cache & localStorage (simulate fresh login)
+- [ ] Partner logs in → Redirected to partner-dashboard.html
+- [ ] Click on anfrage in list → Opens anfrage-detail.html
+- [ ] Page loads WITHOUT "Permission denied" errors
+- [ ] Console shows: "✅ Partner authenticated: [email]"
+- [ ] Console shows: "✅ Ownership-Check erfolgreich: [partnerId]"
+- [ ] Form displays anfrage data correctly (all fields populated)
+- [ ] Try accessing anfrage belonging to DIFFERENT partner → "Sie haben keine Berechtigung"
+
+**Debugging Time:** 2-3h (user report → root cause → implementation → testing)
+
+**Lesson Learned:**
+- **Execution Order is CRITICAL:** Authentication MUST complete BEFORE data loading
+- **Async Initialization:** Always use `await` to ensure proper execution sequence
+- **Error Messages Matter:** "Permission denied" often means auth not ready (not data missing)
+- **Pattern Reuse:** Apply same checkLogin() pattern to ALL partner-app pages (anfrage-list, meine-anfragen, etc.)
+- **Ownership Validation:** Even with auth, verify user owns the data they're accessing
+
+---
+
+### Pattern 25: werkstattId Initialization Order Bug (2025-11-15)
+
+**Symptom:**
+```javascript
+// Console Output (on EVERY page load):
+"❌ CRITICAL: getCollectionName - werkstattId nicht gefunden!"
+"TypeError: Cannot read properties of undefined (reading 'toLowerCase')"
+
+// User Flow:
+// 1. Werkstatt or Partner logs in successfully
+// 2. Redirected to any page (annahme.html, anfrage-detail.html, etc.)
+// 3. Page loads BUT throws console error
+// 4. Some Firestore queries fail intermittently (race condition)
+```
+
+**Impact:** 🔴 **CRITICAL INIT BUG** - Collection Access Fails
+- Console error on EVERY page load (unprofessional, alarming to users)
+- Firestore queries fail intermittently (race condition dependent)
+- Some features don't work on first load (need page refresh)
+- Developer experience degraded (error noise makes real bugs hard to spot)
+
+**Root Cause - Execution Order Bug:**
+
+```javascript
+// anfrage-detail.html (BEFORE Fix - Commit 1b907dd):
+window.addEventListener('DOMContentLoaded', async () => {
+    await initFirebase();
+    
+    // ❌ PROBLEM: checkLogin() called BEFORE werkstattId initialized!
+    await checkLogin();  // Calls getCollection('partners') internally
+    
+    // Inside checkLogin() (Line 934):
+    const partnerDoc = await window.getCollection('partners').doc(partner.partnerId).get();
+    //                          ↑
+    //                    Calls getCollectionName()
+    //                          ↓
+    // firebase-config.js getCollectionName() function:
+    const collectionName = baseCollection + '_' + window.werkstattId.toLowerCase();
+    //                                                       ↑
+    //                                                   undefined.toLowerCase()
+    //                                                       ↓
+    //                                                   TypeError!
+    
+    // ❌ werkstattId initialized TOO LATE (Line 955):
+    window.werkstattId = savedWerkstatt;  // After checkLogin() already executed!
+});
+```
+
+**Why This Happens:**
+
+1. **DOMContentLoaded fires** → Execution begins
+2. **checkLogin() called** (Line 951) → Triggers getCollection()
+3. **getCollection() needs werkstattId** (firebase-config.js Line 445)
+4. **werkstattId is still undefined** → TypeError
+5. **werkstattId initialized LATER** (Line 955) → Too late to help
+
+**Comparison with Correct Pattern (meine-anfragen.html):**
+
+```javascript
+// meine-anfragen.html (CORRECT Pattern):
+window.addEventListener('DOMContentLoaded', async () => {
+    // ✅ STEP 1: Pre-initialize werkstattId from localStorage (if available)
+    const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+    window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+    console.log('✅ werkstattId pre-initialized:', window.werkstattId);
+    
+    // ✅ STEP 2: Now safe to call functions that use getCollection()
+    await initFirebase();
+    await checkLogin();  // getCollection() works now!
+});
+```
+
+**The Fix (Pre-Initialize Pattern - Commit 215aa8b):**
+
+```javascript
+// anfrage-detail.html (AFTER Fix - Lines 947-963):
+window.addEventListener('DOMContentLoaded', async () => {
+    await initFirebase();
+    
+    // ✅ FIX: werkstattId ZUERST initialisieren (BEFORE checkLogin())
+    const savedWerkstatt = localStorage.getItem('selectedWerkstatt') || 'mosbach';
+    window.werkstattId = savedWerkstatt;
+    console.log('✅ [ANFRAGE-DETAIL] werkstattId initialized:', window.werkstattId);
+    
+    // ✅ NOW safe to call checkLogin() (uses getCollection internally)
+    await checkLogin();
+    
+    // ... rest of page initialization
+});
+```
+
+**Critical Pattern: Initialization Order (ALL Pages)**
+
+```javascript
+// MANDATORY order for werkstatt & partner pages:
+$(document).ready(async function() {
+    // ✅ STEP 1: Initialize werkstattId FIRST (synchronous, from cache)
+    const cachedWerkstattId = localStorage.getItem('werkstattId') || 
+                              localStorage.getItem('selectedWerkstatt') || 
+                              'mosbach';
+    window.werkstattId = cachedWerkstattId;
+    console.log('✅ werkstattId pre-initialized:', cachedWerkstattId);
+    
+    // ✅ STEP 2: Initialize Firebase (async)
+    await initFirebase();
+    
+    // ✅ STEP 3: Check authentication (uses getCollection - needs werkstattId)
+    await checkLogin();  // or checkPartnerLogin()
+    
+    // ✅ STEP 4: Update werkstattId if user has different value
+    // (In checkLogin callback after auth completes)
+    if (user && user.werkstattId && user.werkstattId !== window.werkstattId) {
+        window.werkstattId = user.werkstattId;
+        localStorage.setItem('werkstattId', user.werkstattId);
+        console.log('✅ werkstattId updated from user:', user.werkstattId);
+    }
+    
+    // ✅ STEP 5: Load page data (safe now - werkstattId + auth ready)
+    await loadPageData();
+});
+```
+
+**Why Pre-Initialization Works:**
+
+1. **localStorage is synchronous** → Instant access, no waiting
+2. **Cached value available immediately** → getCollection() works from first call
+3. **Updated later if needed** → Handles werkstatt switches gracefully
+4. **Eliminates race condition** → Deterministic execution order
+
+**Files Modified:**
+- `partner-app/anfrage-detail.html` (Lines 947-963)
+
+**Commits:**
+- `215aa8b` - "fix: werkstattId VOR checkLogin() initialisieren (CRITICAL)"
+
+**Testing Checklist:**
+- [ ] Clear browser cache & localStorage (simulate first-time login)
+- [ ] Partner/Werkstatt logs in → Redirected to dashboard
+- [ ] Open DevTools Console → NO "werkstattId nicht gefunden" error
+- [ ] Console shows: "✅ werkstattId initialized: mosbach" (or other werkstatt)
+- [ ] All Firestore queries work on FIRST page load (no race condition)
+- [ ] Refresh page 5 times → NO console errors on any refresh
+- [ ] Switch to different page → Still no console errors
+
+**Debugging Time:** 1-2h (console error spotted → root cause analysis → fix → testing)
+
+**Lesson Learned:**
+- **Pre-Initialize Critical Variables:** Use localStorage to cache values needed before async operations
+- **Execution Order Matters:** ALWAYS initialize dependencies BEFORE calling functions that use them
+- **Race Conditions:** Async operations (Firebase Auth, getCollection) can cause initialization order bugs if not carefully sequenced
+- **Pattern Reuse:** Apply same pre-init pattern to ALL pages (werkstatt + partner apps)
+- **Console Monitoring:** Errors on page load are CRITICAL - fix immediately, don't ignore
+
+**Comparison Table:**
+
+| Step | BEFORE (Broken) | AFTER (Fixed) |
+|------|-----------------|---------------|
+| 1 | initFirebase() | initFirebase() |
+| 2 | checkLogin() ← **FAILS** (werkstattId undefined) | werkstattId = localStorage.getItem() ← **Pre-init** |
+| 3 | werkstattId = localStorage.getItem() ← TOO LATE | checkLogin() ← **SUCCEEDS** (werkstattId ready) |
+
+---
+
+
 ### Pre-Push Verification Checklist
 
 **MANDATORY checklist BEFORE pushing security fixes to GitHub:**
@@ -1683,3 +2228,400 @@ _Lines: ~810 (reduced from 1401, -591 lines of obsolete content)_
 - ✅ Agent Behavior Guidelines Formalized (70 lines)
 - ✅ Complete Rewrite: Manual testing → Modern Code Quality Guardian role
 - 🎓 Lesson: Defense in Depth + System-wide audits + Immutability enforcement = Data integrity
+
+---
+
+## 🧪 Extended Testing Checklist (After Bug Fixes - 2025-11-15)
+
+**These extended checklists were added after fixing 3 critical bugs in one session. Use them to prevent regression.**
+
+### When Testing Execution Order Bugs
+
+**Scenario:** You fixed a bug where functions were called in wrong order (e.g., data loading before auth)
+
+**Mandatory Checks:**
+- [ ] Clear browser cache & localStorage completely (Cmd+Shift+Delete)
+- [ ] Open DevTools Console BEFORE any interaction with the page
+- [ ] Watch console during page load for initialization sequence
+- [ ] Verify green checkmarks (✅) appear for all initialization steps in correct order
+- [ ] Look for specific errors: "werkstattId nicht gefunden", "Permission denied", "undefined.toLowerCase()"
+- [ ] Test with slow network (DevTools → Network → Throttling → Slow 3G) to expose race conditions
+- [ ] Refresh page 5 times in a row → Should succeed ALL 5 times (no intermittent failures)
+- [ ] Try different browsers (Chrome, Safari, Firefox) → Same behavior everywhere?
+
+**Red Flags:**
+- ❌ Console errors appear randomly (race condition not fixed)
+- ❌ Page works on refresh but not on first load
+- ❌ Different behavior in different browsers
+
+---
+
+### When Testing Data Loss Bugs
+
+**Scenario:** You fixed a bug where form data wasn't being saved correctly
+
+**Mandatory Checks:**
+- [ ] Fill out ALL form fields (don't skip any - data loss might be field-specific)
+- [ ] Use diverse input: special characters (äöü€$), numbers, long text (>500 chars)
+- [ ] Submit form → Immediately open DevTools → Application → IndexedDB/LocalStorage → Firestore
+- [ ] Check Firestore document: Are ALL fields present? Any `undefined` values?
+- [ ] Reload page (hard refresh: Cmd+Shift+R) → Form should display ALL saved data
+- [ ] Generate PDF (if applicable) → All fields appear in document? Nothing missing?
+- [ ] For Multi-Service: Test with 3 services → Verify each service's data saved separately
+- [ ] Check calculations: If form has auto-calculations, verify they match saved values
+
+**Red Flags:**
+- ❌ ANY `undefined` value in Firestore (data loss occurred)
+- ❌ Form fields empty after reload (save didn't work)
+- ❌ PDF missing sections/fields (data not properly structured)
+- ❌ Calculated values don't match manual calculations
+
+---
+
+### When Testing Authentication Bugs
+
+**Scenario:** You fixed a bug where users couldn't access data after logging in
+
+**Mandatory Checks:**
+- [ ] Log out completely (clear session, not just logout button)
+- [ ] Close all browser tabs/windows for the app
+- [ ] Open new incognito/private window
+- [ ] Log in as Partner → Can access partner-dashboard.html without errors?
+- [ ] Log in as Werkstatt → Can access annahme.html without errors?
+- [ ] Try accessing partner page AS werkstatt → Should redirect to login (403/unauthorized)
+- [ ] Try accessing werkstatt page AS partner → Should redirect to login
+- [ ] Check console for "Permission denied" errors → Should be ZERO
+- [ ] Check console for authentication confirmations: "✅ Partner authenticated: [email]"
+- [ ] Test with different user roles (partner, werkstatt, mitarbeiter, admin)
+
+**Red Flags:**
+- ❌ "Permission denied" errors in console (auth not working)
+- ❌ User can access pages they shouldn't (security bug!)
+- ❌ Redirect loops (infinite redirects between login/dashboard)
+- ❌ Session doesn't persist (user logged out on page refresh)
+
+---
+
+### When Testing Multi-Service Workflows
+
+**Scenario:** You fixed a bug in Multi-Service KVA or booking system
+
+**Mandatory Checks:**
+- [ ] Create vehicle with Primary service + 2 Additional services (e.g., Lackierung + Reifen + Mechanik)
+- [ ] Fill out service-specific fields for ALL 3 services (not just primary)
+- [ ] Save/Submit → Open Firestore → Check `serviceData` object → All 3 services present?
+- [ ] Reload anfrage-detail.html → All 3 services' data displayed correctly?
+- [ ] Generate PDF (annahme.html) → All 3 services appear as separate sections?
+- [ ] Check quote generation (berechneVarianten) → Returns 3 quote variants (not just 1)?
+- [ ] Test Kanban board → Vehicle appears in ALL 3 service tabs (not just primary)?
+- [ ] Test service-specific filters → Vehicle shows up when filtering by ANY of its services?
+
+**Red Flags:**
+- ❌ Only primary service data saved (additional services lost)
+- ❌ PDF shows 1 service instead of 3
+- ❌ Quote calculation only for primary service
+- ❌ Vehicle missing from service-specific tabs
+- ❌ `additionalServices` array empty in Firestore
+
+---
+
+## 🎯 Updated Agent Behavior Guidelines (2025-11-15)
+
+**These guidelines were updated after fixing execution order, data loss, and auth bugs.**
+
+### ✅ ALWAYS Do (Critical Additions)
+
+**Execution Order Verification:**
+- ✅ **ALWAYS verify initialization sequence in partner/werkstatt pages**
+  - Authentication MUST complete BEFORE data loading functions
+  - `werkstattId` MUST be initialized BEFORE any `getCollection()` calls
+  - Use `await checkPartnerLogin()` or pre-init from localStorage pattern
+  - Pattern: Pre-init → Firebase Init → Auth Check → Data Load (in that exact order)
+  - Example: `localStorage → initFirebase() → checkLogin() → loadData()`
+
+**Form Input Validation:**
+- ✅ **ALWAYS validate Input-ID consistency across HTML and JavaScript**
+  - HTML element IDs MUST match jQuery selectors EXACTLY (character-for-character)
+  - Underscore vs Hyphen mismatch = 100% data loss risk
+  - Search codebase for patterns: `id="service_field"` vs `#service-field` (WRONG!)
+  - Test: Fill form → Submit → Check Firestore for `undefined` values (red flag!)
+  - Use consistent naming convention: ALWAYS hyphen (`reifen-schadenart`) or ALWAYS underscore (pick one!)
+
+**Multi-Service Workflow Testing:**
+- ✅ **ALWAYS test Multi-Service workflows end-to-end when modifying business logic**
+  - Create test vehicle with Primary + 2 Additional services
+  - Fill out service-specific fields for ALL services (not just primary)
+  - Verify save → load → PDF → quote generation workflow
+  - Check: Does `berechneVarianten()` process `additionalServices[]` array? (often forgotten!)
+  - Check: Are service names consistent across files? (`'lackierung'` everywhere, not `'lackier'` in some files)
+
+### ❌ NEVER Do (Critical Additions)
+
+**Async Operation Order:**
+- ❌ **NEVER call data loading functions before authentication completes**
+  - `loadAnfrage()` REQUIRES partner/werkstatt authentication FIRST
+  - `getCollection()` REQUIRES `werkstattId` initialized FIRST (or will crash!)
+  - Always use `await checkPartnerLogin()` or `await checkWerkstattLogin()` BEFORE data queries
+  - See Patterns 24 & 25 above for execution order examples
+
+**Naming Convention Inconsistencies:**
+- ❌ **NEVER use inconsistent naming conventions between HTML and JavaScript**
+  - Input IDs: `id="reifen-schadenart"` (ALWAYS hyphen in this codebase)
+  - jQuery selectors: `$('#reifen-schadenart')` (MUST match ID exactly)
+  - Firestore field names: `'reifen-schadenart'` (same convention as HTML)
+  - Inconsistency = 100% data loss (queries return `undefined` because no elements found)
+
+**Multi-Service Assumptions:**
+- ❌ **NEVER assume business logic functions handle Multi-Service automatically**
+  - Default behavior: Most functions only process PRIMARY service
+  - Fix required: Must explicitly loop through `additionalServices[]` array
+  - Verify: Function returns data for ALL services (not just primary)
+  - Example: `berechneVarianten()` must calculate quotes for all services, not just `fahrzeug.serviceTyp`
+  - See Pattern 23 above for Multi-Service implementation examples
+
+---
+
+## 🔍 Console Error Monitoring (Critical Debugging Tool - 2025-11-15)
+
+**This section was added after discovering that console errors were the FIRST indicator of all 3 bugs fixed in this session.**
+
+### Why Console Monitoring Matters
+
+**Console errors reveal bugs BEFORE users report them:**
+- ✅ Green checkmarks (✅) in console = Initialization successful (everything working)
+- ❌ Red errors = Critical bugs (often hidden from UI, only visible in console)
+- ⚠️ Yellow warnings = Non-critical issues (may become bugs later if ignored)
+
+**Professional Debugging Habit:**
+**ALWAYS open DevTools Console BEFORE testing ANY changes**
+
+```bash
+# Keyboard Shortcuts (Memorize These!)
+Chrome/Edge/Brave:
+  Mac: Cmd+Opt+J
+  Windows: Ctrl+Shift+J
+
+Firefox:
+  Mac: Cmd+Opt+K
+  Windows: Ctrl+Shift+K
+
+Safari:
+  Mac: Cmd+Opt+C
+  (Enable: Safari → Preferences → Advanced → Show Develop menu)
+```
+
+---
+
+### Common Console Error Patterns (From Real Bugs)
+
+**Pattern: werkstattId Initialization Error**
+```javascript
+// ❌ ERROR (Bug Present - Pattern 25):
+"❌ CRITICAL: getCollectionName - werkstattId nicht gefunden!"
+"TypeError: Cannot read properties of undefined (reading 'toLowerCase')"
+Location: firebase-config.js:445
+
+// Root Cause: checkLogin() called BEFORE werkstattId initialized
+// Fix: Move werkstattId init BEFORE checkLogin() call
+
+// ✅ SUCCESS (Bug Fixed):
+"✅ [ANFRAGE-DETAIL] werkstattId initialized: mosbach"
+"🏢 getCollectionName [window]: fahrzeuge → fahrzeuge_mosbach"
+```
+
+**Pattern: Partner Authentication Error**
+```javascript
+// ❌ ERROR (Bug Present - Pattern 24):
+"❌ Permission denied: Missing or insufficient permissions"
+"Anfrage nicht gefunden"
+Location: anfrage-detail.html:1140
+
+// Root Cause: loadAnfrage() called WITHOUT partner authentication check
+// Fix: Add checkPartnerLogin() call BEFORE loadAnfrage()
+
+// ✅ SUCCESS (Bug Fixed):
+"✅ Partner authenticated: test-partner@example.com"
+"✅ [ANFRAGE-DETAIL] Partner geladen: partner_abc123"
+"✅ Anfrage geladen: req_1763205158414"
+"✅ Ownership-Check erfolgreich: partner_abc123"
+```
+
+**Pattern: Multi-Service Data Loss (Silent Failure!)**
+```javascript
+// ❌ ERROR (Bug Present - Pattern 23):
+// No console error! Data loss happens silently!
+// But Firestore shows:
+{
+  'reifen-schadenart': undefined,     // ❌ Lost!
+  'lackier-schadenart': undefined,    // ❌ Lost!
+  'original_reifen_montage': 450.00   // ❌ Wrong ID format!
+}
+
+// Root Cause: Input ID format mismatch (underscore vs hyphen)
+// Fix: Standardize to hyphen format everywhere
+
+// ✅ SUCCESS (Bug Fixed):
+"✅ [saveKVA] Saving data for services: lackier, reifen, mechanik"
+{
+  'reifen-schadenart': 'Unfallschaden',      // ✅ Saved!
+  'lackier-schadenart': 'Kratzer',           // ✅ Saved!
+  'original-reifen-montage': 450.00          // ✅ Correct!
+}
+```
+
+**Pattern: Firebase Initialization Error**
+```javascript
+// ❌ ERROR (Bug Present):
+"Firebase initialization timeout"
+"Firestore unavailable"
+
+// Root Cause: Firebase SDK not loaded, network issue, or config error
+// Fix: Check <script> tags order, verify firebase-config.js loads first
+
+// ✅ SUCCESS (Bug Fixed):
+"✅ Firebase initialized successfully"
+"✅ Firestore ready"
+"✅ Storage ready"
+"✅ Auth ready"
+```
+
+---
+
+### Console Error Debugging Workflow
+
+**When you see a console error (4-step process):**
+
+**STEP 1: Copy the FULL error message**
+```bash
+# Click error in console → Right-click → "Copy stack trace"
+# Or: Click "Show more" to expand full error details
+# Note: File name + line number (e.g., "annahme.html:234")
+# Note: Stack trace (shows function call chain)
+```
+
+**STEP 2: Match to Error Patterns (1-25 in this guide)**
+```bash
+# Search this document for keywords from error
+# Example: Error says "werkstattId nicht gefunden"
+# → Search for "werkstattId" → Find Pattern 25
+# → Follow documented fix
+```
+
+**STEP 3: If no pattern matches, investigate**
+```bash
+# Search codebase for error message text:
+grep -r "exact error text" .
+
+# Check Firebase Console:
+# - Firestore rules (might be blocking)
+# - Storage rules (file upload errors)
+# - Auth settings (login failures)
+
+# Check Network tab (DevTools):
+# - Failed requests (404, 403, 500 errors)
+# - CORS errors (cross-origin blocks)
+```
+
+**STEP 4: Verify fix**
+```bash
+# Reload page with Console open
+# Error should be GONE
+# Green checkmarks (✅) should appear instead
+# If error persists: Fix didn't work, try different approach
+```
+
+---
+
+### Mandatory Console Checks (Before/After Changes)
+
+**BEFORE Making Changes (Establish Baseline):**
+```bash
+# 1. Open DevTools Console (Cmd+Opt+J)
+# 2. Clear console (Cmd+K / Ctrl+L)
+# 3. Reload page (Cmd+R / Ctrl+R)
+# 4. Check for red errors
+# 5. Screenshot or copy errors (baseline for comparison)
+# 6. Document: "Known Issues Before Changes"
+```
+
+**AFTER Making Changes (Verify No Regression):**
+```bash
+# 1. Open DevTools Console (if not already open)
+# 2. Clear console
+# 3. Reload page
+# 4. Compare to baseline:
+#    - ✅ No NEW errors introduced (regression check)
+#    - ✅ Previous errors FIXED (verify fix works)
+#    - ✅ Green checkmarks appear for initialization steps
+# 5. Test in multiple browsers (Chrome, Safari, Firefox)
+# 6. Test with slow network (DevTools → Network → Throttling)
+```
+
+**If New Errors Appear:**
+```bash
+# ❌ DO NOT COMMIT - Your change introduced a regression!
+# Debug immediately:
+# 1. Revert your changes → Does error disappear? (confirms you broke it)
+# 2. Re-apply changes incrementally → Which line causes error?
+# 3. Fix the regression
+# 4. Re-test (console should be error-free)
+# 5. Only commit when console is 100% clean
+```
+
+**Zero Tolerance Policy for Console Errors:**
+```bash
+# ✅ ACCEPTABLE: 0 errors, 0-5 warnings (minor)
+# ⚠️ REVIEW: 6-10 warnings (investigate before commit)
+# ❌ UNACCEPTABLE: ANY red errors (MUST fix before commit)
+
+# Professional Standard:
+# Production code should have ZERO console errors
+# Warnings are acceptable if documented and non-critical
+# Users WILL see console (View Source, DevTools)
+# Don't ship embarrassing errors!
+```
+
+---
+
+### Console Monitoring Best Practices
+
+**Make Console Monitoring a Habit:**
+1. **Always-On:** Keep DevTools Console open while developing
+2. **Clear Frequently:** Clear console before each test (Cmd+K)
+3. **Filter Smartly:** Use console filters (Errors, Warnings, Info)
+4. **Preserve Log:** Enable "Preserve log" checkbox (survives page reloads)
+5. **Screenshot Errors:** Document errors before fixing (evidence for documentation)
+
+**Console Log Categories (Use Consistent Prefixes):**
+```javascript
+// Initialization (use ✅ for success, ❌ for errors)
+console.log('✅ werkstattId initialized:', window.werkstattId);
+console.error('❌ CRITICAL: werkstattId not found!');
+
+// Authentication
+console.log('✅ Partner authenticated:', partner.email);
+console.warn('⚠️ Session expiring soon');
+
+// Data Operations
+console.log('✅ Anfrage geladen:', anfrage.id);
+console.error('❌ Firestore permission denied');
+
+// Debug Info (use 🔍 for debugging output)
+console.log('🔍 DEBUG: Current state:', { partner, anfrage, werkstattId });
+```
+
+**When to Add Console Logs:**
+- ✅ **DO:** Add logs for critical initialization steps
+- ✅ **DO:** Log auth state changes (login, logout)
+- ✅ **DO:** Log Firestore operations (save, load, delete)
+- ✅ **DO:** Log errors with context (what failed, why, how to fix)
+- ❌ **DON'T:** Log inside loops (spam console)
+- ❌ **DON'T:** Log sensitive data (passwords, tokens, emails in production)
+- ❌ **DON'T:** Leave debug logs in production (remove or use conditional logging)
+
+---
+
+**Updated:** 2025-11-15 after fixing 3 critical bugs (Patterns 23-25)  
+**Session Learnings:** Execution order bugs, data loss bugs, auth bugs  
+**Total Patterns:** 25 (added 3 new patterns in this session)
+
