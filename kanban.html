@@ -2974,11 +2974,14 @@
                         // Fix #2: Remove primary service from additionalServices (duplicate prevention)
                         if (Array.isArray(f.additionalServices) && f.additionalServices.length > 0) {
                             const beforeLength = f.additionalServices.length;
+                            const removedServices = [];  // 🆕 BUGFIX 2025-11-15 (FIX #3): Track removed services
+
                             f.additionalServices = f.additionalServices.filter(service => {
                                 // Remove if service matches primary service
                                 const isDuplicate = service.serviceTyp === f.serviceTyp;
                                 if (isDuplicate) {
                                     console.warn(`🔧 DATA RESCUE [${f.kennzeichen}]: Removing duplicate primary service "${f.serviceTyp}" from additionalServices`);
+                                    removedServices.push(service.serviceTyp);  // 🆕 Track removed service
                                 }
                                 return !isDuplicate;
                             });
@@ -2986,6 +2989,16 @@
                             if (f.additionalServices.length < beforeLength) {
                                 console.warn(`   → Removed ${beforeLength - f.additionalServices.length} duplicate service(s)`);
                                 needsFirestoreUpdate = true;
+
+                                // 🆕 BUGFIX 2025-11-15 (FIX #3): Cleanup serviceStatuses for removed services
+                                if (f.serviceStatuses && removedServices.length > 0) {
+                                    removedServices.forEach(serviceTyp => {
+                                        if (f.serviceStatuses[serviceTyp]) {
+                                            console.warn(`🧹 [CLEANUP] Removing orphaned serviceStatus for: ${serviceTyp}`);
+                                            delete f.serviceStatuses[serviceTyp];
+                                        }
+                                    });
+                                }
                             }
                         }
 
@@ -2993,7 +3006,9 @@
                         if (needsFirestoreUpdate && firebaseInitialized) {
                             console.log(`💾 DATA RESCUE [${f.kennzeichen}]: Auto-saving fix to Firestore...`);
                             window.getCollection('fahrzeuge').doc(f.id).update({
-                                additionalServices: f.additionalServices || []
+                                additionalServices: f.additionalServices || [],
+                                // 🆕 BUGFIX 2025-11-15 (FIX #3): Also save cleaned serviceStatuses
+                                serviceStatuses: f.serviceStatuses || {}
                             }).then(() => {
                                 console.log(`   ✅ DATA RESCUE [${f.kennzeichen}]: Auto-fix saved successfully`);
                             }).catch(err => {

@@ -3356,6 +3356,12 @@
                 return;
             }
 
+            // 🆕 BUGFIX 2025-11-15 (FIX #4): Service-Typ validieren VOR Fahrzeug-Erstellung
+            let validatedServiceTyp = anfrage.serviceTyp || 'lackier';
+            if (typeof window.validateServiceTyp === 'function') {
+                validatedServiceTyp = window.validateServiceTyp(validatedServiceTyp);
+            }
+
             const fahrzeugData = {
                 // Basis-Daten
                 kennzeichen: (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase(),
@@ -3368,14 +3374,23 @@
                 lackart: anfrage.lackart || 'wasserlack',  // Standard: Wasserlack
                 vin: anfrage.vin || '',
 
-                // Service-Typ
-                serviceTyp: anfrage.serviceTyp || 'lackier',
+                // Service-Typ (validiert)
+                serviceTyp: validatedServiceTyp,
 
                 // 🆕 FIX (2025-11-12): SERVICE DETAILS - Partner-Felder übernehmen
                 serviceDetails: (() => {
                     const details = {};
-                    const serviceTyp = anfrage.serviceTyp || 'lackier';
+                    let serviceTyp = anfrage.serviceTyp || 'lackier';
                     const serviceData = anfrage.serviceData || {};
+
+                    // 🆕 BUGFIX 2025-11-15 (FIX #4): Auto-Korrektur für Service-Typen
+                    if (typeof window.validateServiceTyp === 'function') {
+                        const correctedTyp = window.validateServiceTyp(serviceTyp);
+                        if (correctedTyp !== serviceTyp) {
+                            console.log(`🔧 [ADMIN-ANFRAGEN] Auto-korrigiert: "${serviceTyp}" → "${correctedTyp}"`);
+                            serviceTyp = correctedTyp;
+                        }
+                    }
 
                     // Service-spezifische Felder mappen
                     switch(serviceTyp) {
