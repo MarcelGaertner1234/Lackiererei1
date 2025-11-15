@@ -7584,9 +7584,88 @@
                 doc.setFont(undefined, 'normal');
                 doc.setFontSize(10);
 
-                // Positionen
+                // 🆕 MULTI-SERVICE BREAKDOWN RENDERING
                 const variante = data.kva.varianten[data.gewaehlteVariante];
-                const positionen = variante.positionen || [];
+
+                if (data.kva.isMultiService && data.kva.breakdown) {
+                    // Multi-Service: Render breakdown by service
+                    console.log('📦 [PDF] Rendere Multi-Service Breakdown');
+
+                    const breakdown = data.kva.breakdown;
+                    const serviceLabels = data.kva.serviceLabels || {};
+                    const serviceNames = {
+                        'lackier': '🎨 Lackierung',
+                        'reifen': '🛞 Reifen-Service',
+                        'mechanik': '🔧 Mechanik-Service',
+                        'pflege': '✨ Fahrzeug-Pflege',
+                        'tuev': '📋 TÜV/AU',
+                        'versicherung': '🛡️ Versicherung',
+                        'glas': '🔍 Glas-Reparatur',
+                        'klima': '❄️ Klima-Service',
+                        'dellen': '🔨 Dellen-Reparatur',
+                        'folierung': '🌈 Folierung',
+                        'steinschutz': '🛡️ Steinschutz',
+                        'werbebeklebung': '📢 Fahrzeugbeschriftung'
+                    };
+
+                    // Für jeden Service eine Section
+                    Object.keys(breakdown).forEach((serviceTyp, index) => {
+                        const service = breakdown[serviceTyp];
+
+                        if (y > 240) {
+                            doc.addPage();
+                            y = 20;
+                        }
+
+                        // Service-Überschrift
+                        if (index > 0) y += 5; // Abstand zwischen Services
+                        doc.setFillColor(230, 242, 253);
+                        doc.rect(15, y - 3, 140, 7, 'F');
+                        doc.setFont(undefined, 'bold');
+                        doc.setFontSize(10);
+                        doc.setTextColor(0, 51, 102);
+                        doc.text(serviceNames[serviceTyp] || serviceTyp, 20, y);
+                        doc.setTextColor(0, 0, 0);
+                        y += 7;
+                        doc.setFont(undefined, 'normal');
+                        doc.setFontSize(9);
+
+                        // Fields für diesen Service
+                        service.fields.forEach(fieldName => {
+                            const value = variante[fieldName] || 0;
+                            if (value === 0) return; // Skip 0€ Felder
+
+                            if (y > 250) {
+                                doc.addPage();
+                                y = 20;
+                            }
+
+                            const label = serviceLabels[fieldName] || fieldName;
+                            const beschreibung = doc.splitTextToSize(label, 110);
+                            doc.text(beschreibung, 20, y);
+                            doc.setFont(undefined, 'bold');
+                            doc.text(value.toFixed(2) + ' €', 170, y);
+                            doc.setFont(undefined, 'normal');
+
+                            y += Math.max(5, beschreibung.length * 4);
+                        });
+
+                        // Service-Summe
+                        y += 2;
+                        doc.setFont(undefined, 'bold');
+                        doc.setFontSize(10);
+                        doc.text(`Summe ${serviceNames[serviceTyp] || serviceTyp}:`, 120, y);
+                        doc.text(service.gesamt.toFixed(2) + ' €', 170, y);
+                        doc.setFont(undefined, 'normal');
+                        doc.setFontSize(9);
+                        y += 8;
+                    });
+
+                    y -= 3; // Korrektur nach letztem Service
+
+                } else {
+                    // Single-Service: Existing positionen logic
+                    const positionen = variante.positionen || [];
 
                 for (let i = 0; i < positionen.length; i++) {
                     const pos = positionen[i];
@@ -7613,6 +7692,7 @@
                 }
 
                 y += 5;
+                }  // 🆕 Ende des else-Blocks (Single-Service)
 
                 // Summen-Block
                 doc.setDrawColor(200, 200, 200);

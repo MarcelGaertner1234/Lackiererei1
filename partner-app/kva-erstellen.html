@@ -525,6 +525,7 @@
     <script>
         let anfrage = null;
         let anfrageId = null;
+        let isMultiService = false;  // 🆕 Global variable for Multi-Service detection
 
         // ============================================
         // SERVICE-TEMPLATE DEFINITIONEN (12 Service-Typen)
@@ -2077,6 +2078,83 @@
             const container = document.getElementById('variantenContainer');
             container.innerHTML = ''; // Clear
 
+            // ============================================
+            // 🆕 MULTI-SERVICE RENDERING
+            // ============================================
+            if (isMultiService) {
+                console.log('📦 [MULTI-SERVICE RENDER] Rendere für Services:', anfrage.serviceLabels);
+
+                // Titel anpassen
+                document.getElementById('kvaTitle').innerHTML = `📦 Kostenaufstellung - Multi-Service`;
+                document.getElementById('kvaDescription').textContent = 'Erstellen Sie ein kombiniertes Kosten-Angebot für alle Services.';
+
+                // Für jeden Service eine Section rendern
+                anfrage.serviceLabels.forEach(serviceTyp => {
+                    const template = SERVICE_TEMPLATES[serviceTyp];
+                    if (!template) {
+                        console.error('❌ Service-Template nicht gefunden:', serviceTyp);
+                        return;
+                    }
+
+                    // Service-Überschrift
+                    container.innerHTML += `
+                        <div style="background: linear-gradient(135deg, #003366 0%, #0059b3 100%);
+                                    padding: 15px 20px;
+                                    border-radius: 12px 12px 0 0;
+                                    margin-top: 20px;
+                                    color: white;
+                                    font-weight: 700;
+                                    font-size: 16px;
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 10px;
+                                    box-shadow: 0 2px 8px rgba(0,51,102,0.2);">
+                            <span style="font-size: 24px;">${template.icon}</span>
+                            <span>${template.name}</span>
+                        </div>
+                    `;
+
+                    // Varianten-Config generieren
+                    let variantConfig;
+                    if (typeof template.generateVariants === 'function') {
+                        console.log('✅ [MULTI-SERVICE] Verwende generateVariants() für', serviceTyp);
+                        variantConfig = template.generateVariants(anfrage.serviceData || {});
+                    } else {
+                        console.warn('⚠️ [MULTI-SERVICE] Service', serviceTyp, 'hat noch keine generateVariants() - verwende Fallback');
+                        // Fallback: Nur "original" Variante
+                        variantConfig = {
+                            variants: ['original'],
+                            labels: { original: 'Standard' },
+                            warnings: {},
+                            fields: { original: template.fields?.original || [] }
+                        };
+                    }
+
+                    // Varianten rendern (mit Service-Präfix für eindeutige IDs)
+                    variantConfig.variants.forEach(variantType => {
+                        const label = variantConfig.labels[variantType];
+                        const fields = variantConfig.fields[variantType];
+                        const warning = variantConfig.warnings[variantType] || null;
+
+                        // renderVarianteBoxDynamic() mit Prefix aufrufen
+                        container.innerHTML += renderVarianteBoxDynamic(
+                            variantType,
+                            fields,
+                            label,
+                            warning,
+                            serviceTyp  // 🆕 Prefix = serviceTyp (z.B. "reifen", "mechanik")
+                        );
+                    });
+                });
+
+                // Early return - Multi-Service Rendering fertig
+                console.log('✅ [MULTI-SERVICE RENDER] Abgeschlossen für', anfrage.serviceLabels.length, 'Services');
+                return;
+            }
+
+            // ============================================
+            // SINGLE-SERVICE RENDERING (existing logic)
+            // ============================================
             // Fallback auf 'lackierung' wenn serviceTyp fehlt oder unbekannt
             const actualServiceTyp = serviceTyp && SERVICE_TEMPLATES[serviceTyp] ? serviceTyp : 'lackierung';
             const template = SERVICE_TEMPLATES[actualServiceTyp];
@@ -2407,7 +2485,18 @@
                 anfrage = doc.data();
                 anfrage.id = anfrageId; // Store ID
 
-                console.log('📄 Single-Service Anfrage geladen:', anfrage.serviceTyp);
+                // ========================================
+                // 🆕 MULTI-SERVICE DETECTION
+                // ========================================
+                isMultiService = anfrage.serviceTyp === 'multi-service' &&
+                                 anfrage.serviceLabels &&
+                                 anfrage.serviceLabels.length > 1;
+
+                if (isMultiService) {
+                    console.log('📦 Multi-Service Anfrage geladen:', anfrage.serviceLabels);
+                } else {
+                    console.log('📄 Single-Service Anfrage geladen:', anfrage.serviceTyp);
+                }
 
                 // Prüfen ob bereits KVA existiert
                 if (anfrage.kva) {
@@ -3303,10 +3392,106 @@
                 const endDatum = document.getElementById('endDatum').value;
                 const abholzeit = document.getElementById('abholzeit').value || null;
 
-                // ============================================
-                // SINGLE-SERVICE KVA SPEICHERN
-                // ============================================
-                const serviceTyp = anfrage.serviceTyp || 'lackierung';
+                // ========================================
+                // MULTI-SERVICE vs SINGLE-SERVICE VERZWEIGUNG
+                // ========================================
+
+                if (isMultiService) {
+                    // ============================================
+                    // 🆕 MULTI-SERVICE KVA SPEICHERN
+                    // ============================================
+                    console.log('📦 [MULTI-SERVICE SUBMIT] Starte für Services:', anfrage.serviceLabels);
+
+                    const kvaData = {
+                        serviceTyp: "multi-service",
+                        isMultiService: true,
+                        varianten: { original: {} },  // Bei Multi-Service nur 1 Variante
+                        breakdown: {},
+                        serviceLabels: {},  // Field-Labels für PDF
+                        termine: {
+                            start: startDatum,
+                            ende: endDatum,
+                            abholzeit: abholzeit
+                        },
+                        notizen: document.getElementById('notizen').value || '',
+                        erstelltAm: new Date().toISOString(),
+                        erstelltVon: 'Admin',
+                        gewaehlteVariante: "original",  // Auto-set bei Multi-Service
+
+                        // Fahrzeugidentifikation
+                        identificationType: anfrage.identificationType || null,
+                        vin: anfrage.vin || null,
+                        fahrzeugscheinFotos: anfrage.fahrzeugscheinFotos || [],
+
+                        // Lieferoptionen
+                        lieferoption: anfrage.lieferoption || null,
+                        abholserviceGewuenscht: anfrage.abholserviceGewuenscht || false,
+                        abholtermin: anfrage.abholtermin || null,
+                        abholadresse: anfrage.abholadresse || null,
+                        ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false
+                    };
+
+                    // Für jeden Service: Felder sammeln
+                    anfrage.serviceLabels.forEach(serviceTyp => {
+                        const breakdown = { fields: [], gesamt: 0 };
+
+                        // Alle Input-Felder für diesen Service (mit Prefix)
+                        const inputs = document.querySelectorAll(`input[id^="original_${serviceTyp}_"]`);
+
+                        inputs.forEach(input => {
+                            const fullFieldName = input.id.replace('original_', '');  // "reifen_montage"
+                            const value = parseFloat(input.value) || 0;
+
+                            if (value === 0) return;  // Skip 0€ Felder
+
+                            // In flaches varianten.original Object schreiben
+                            kvaData.varianten.original[fullFieldName] = value;
+
+                            // In Breakdown tracken
+                            breakdown.fields.push(fullFieldName);
+                            breakdown.gesamt += value;
+
+                            // Label speichern für PDF
+                            const labelElement = document.querySelector(`label[for="${input.id}"]`);
+                            if (labelElement) {
+                                kvaData.serviceLabels[fullFieldName] = labelElement.textContent.replace(' *', '').trim();
+                            }
+                        });
+
+                        // Breakdown für diesen Service speichern
+                        kvaData.breakdown[serviceTyp] = breakdown;
+                        console.log(`📦 [MULTI-SERVICE] ${serviceTyp}: ${breakdown.gesamt.toFixed(2)} € (${breakdown.fields.length} Felder)`);
+                    });
+
+                    // Gesamt-Summe berechnen
+                    kvaData.varianten.original.gesamt = Object.values(kvaData.breakdown)
+                        .reduce((sum, b) => sum + b.gesamt, 0);
+
+                    console.log('💾 [MULTI-SERVICE] Speichere KVA:', {
+                        services: anfrage.serviceLabels,
+                        breakdown: kvaData.breakdown,
+                        gesamt: kvaData.varianten.original.gesamt
+                    });
+
+                    // KVA speichern
+                    await window.getCollection('partnerAnfragen').doc(anfrageId).update({
+                        kva: kvaData,
+                        status: 'kva_gesendet',
+                        statusText: 'Angebot erstellt',
+                        lastUpdated: Date.now()
+                    });
+
+                    console.log('✅ Multi-Service KVA gespeichert:', anfrageId);
+
+                    // Success anzeigen
+                    document.getElementById('contentArea').style.display = 'none';
+                    document.getElementById('successMessage').classList.add('show');
+
+                } else {
+                    // ============================================
+                    // SINGLE-SERVICE KVA SPEICHERN
+                    // ============================================
+                    const serviceTyp = anfrage.serviceTyp || 'lackierung';
 
                 // Lieferzeit-String für Anzeige generieren (SERVICE-SPEZIFISCH)
                 const startFormatted = new Date(startDatum).toLocaleDateString('de-DE');
@@ -3396,6 +3581,8 @@
                 // Success anzeigen
                 document.getElementById('contentArea').style.display = 'none';
                 document.getElementById('successMessage').classList.add('show');
+
+                }  // 🆕 Ende des else-Blocks (Single-Service)
 
             } catch (error) {
                 console.error('❌ Fehler:', error);

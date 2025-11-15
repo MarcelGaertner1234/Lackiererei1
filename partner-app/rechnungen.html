@@ -18,6 +18,9 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
+    <!-- jsPDF for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
     <style>
         /* ============================================
            RECHNUNGEN PAGE STYLES
@@ -895,17 +898,214 @@
         }
 
         // ========================================
-        // PDF DOWNLOAD (MVP: Placeholder)
+        // PDF DOWNLOAD (✅ Full Implementation with Multi-Service Support)
         // ========================================
 
         async function downloadPDF(fahrzeugId) {
-            // TODO: Phase 2 - PDF Generation mit jsPDF
-            alert('PDF-Download wird in Phase 2 implementiert.\n\nFahrzeug-ID: ' + fahrzeugId);
+            try {
+                // 1. Load complete fahrzeug data
+                console.log('📄 [PDF] Lade Fahrzeug-Daten für Rechnung:', fahrzeugId);
+                const fahrzeugDoc = await window.getCollection('fahrzeuge').doc(fahrzeugId).get();
 
-            // Future implementation:
-            // 1. Load complete fahrzeug data
-            // 2. Generate PDF with jsPDF
-            // 3. Download as "Rechnung-RE-2025-11-001.pdf"
+                if (!fahrzeugDoc.exists) {
+                    alert('Fahrzeug nicht gefunden!');
+                    return;
+                }
+
+                const fahrzeug = fahrzeugDoc.data();
+                const rechnung = fahrzeug.rechnung;
+
+                if (!rechnung) {
+                    alert('Keine Rechnung für dieses Fahrzeug vorhanden!');
+                    return;
+                }
+
+                // 2. Generate PDF with jsPDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                let y = 20;
+
+                // Header - Company Info
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(16);
+                doc.text('Auto-Lackierzentrum Mosbach', 20, y);
+                y += 7;
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                doc.text('Musterstraße 123 • 74821 Mosbach', 20, y);
+                y += 5;
+                doc.text('Tel: +49 6261 12345 • info@auto-lackierzentrum.de', 20, y);
+                y += 15;
+
+                // Invoice Number & Date
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(18);
+                doc.text(`RECHNUNG ${rechnung.rechnungsnummer}`, 20, y);
+                y += 10;
+
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Rechnungsdatum: ${rechnung.erstelltAm.toDate().toLocaleDateString('de-DE')}`, 20, y);
+                y += 5;
+                doc.text(`Fällig am: ${rechnung.faelligAm.toDate().toLocaleDateString('de-DE')}`, 20, y);
+                y += 5;
+                doc.text(`Status: ${rechnung.zahlungsstatus === 'bezahlt' ? '✅ Bezahlt' : '⏳ Offen'}`, 20, y);
+                y += 15;
+
+                // Customer Info
+                doc.setFont(undefined, 'bold');
+                doc.text('Kunde:', 20, y);
+                y += 5;
+                doc.setFont(undefined, 'normal');
+                doc.text(fahrzeug.partnerName || 'Partner', 20, y);
+                y += 5;
+                doc.text(fahrzeug.kundenEmail || '', 20, y);
+                y += 15;
+
+                // Vehicle Info
+                doc.setFont(undefined, 'bold');
+                doc.text('Fahrzeug:', 20, y);
+                y += 5;
+                doc.setFont(undefined, 'normal');
+                const fahrzeugInfo = `${fahrzeug.marke || ''} ${fahrzeug.modell || ''} (${fahrzeug.kennzeichen || fahrzeug.auftragsnummer || 'k.A.'})`;
+                doc.text(fahrzeugInfo, 20, y);
+                y += 15;
+
+                // 🆕 LINE ITEMS - Multi-Service Breakdown
+                doc.setFillColor(33, 150, 243);
+                doc.rect(15, y - 5, 180, 8, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(13);
+                doc.text('LEISTUNGEN', 20, y);
+                doc.setTextColor(0, 0, 0);
+                y += 10;
+
+                doc.setFontSize(10);
+
+                if (rechnung.isMultiService && rechnung.serviceBreakdown) {
+                    // Multi-Service: Render breakdown by service
+                    console.log('📦 [PDF] Rendere Multi-Service Breakdown');
+
+                    const breakdown = rechnung.serviceBreakdown;
+                    const serviceLabels = rechnung.serviceLabels || {};
+                    const serviceNames = {
+                        'lackier': '🎨 Lackierung',
+                        'reifen': '🛞 Reifen-Service',
+                        'mechanik': '🔧 Mechanik-Service',
+                        'pflege': '✨ Fahrzeug-Pflege',
+                        'tuev': '📋 TÜV/AU',
+                        'versicherung': '🛡️ Versicherung',
+                        'glas': '🔍 Glas-Reparatur',
+                        'klima': '❄️ Klima-Service',
+                        'dellen': '🔨 Dellen-Reparatur',
+                        'folierung': '🌈 Folierung',
+                        'steinschutz': '🛡️ Steinschutz',
+                        'werbebeklebung': '📢 Fahrzeugbeschriftung'
+                    };
+
+                    const kva = fahrzeug.kva || {};
+                    const variante = kva.varianten?.original || {};
+
+                    // Für jeden Service eine Section
+                    Object.keys(breakdown).forEach((serviceTyp, index) => {
+                        const service = breakdown[serviceTyp];
+
+                        if (y > 250) {
+                            doc.addPage();
+                            y = 20;
+                        }
+
+                        // Service-Überschrift
+                        if (index > 0) y += 5;
+                        doc.setFillColor(230, 242, 253);
+                        doc.rect(15, y - 3, 180, 7, 'F');
+                        doc.setFont(undefined, 'bold');
+                        doc.setTextColor(0, 51, 102);
+                        doc.text(serviceNames[serviceTyp] || serviceTyp, 20, y);
+                        doc.setTextColor(0, 0, 0);
+                        y += 7;
+                        doc.setFont(undefined, 'normal');
+                        doc.setFontSize(9);
+
+                        // Fields für diesen Service
+                        service.fields.forEach(fieldName => {
+                            const value = variante[fieldName] || 0;
+                            if (value === 0) return;
+
+                            if (y > 260) {
+                                doc.addPage();
+                                y = 20;
+                            }
+
+                            const label = serviceLabels[fieldName] || fieldName;
+                            doc.text(label, 20, y);
+                            doc.setFont(undefined, 'bold');
+                            doc.text(value.toFixed(2) + ' €', 185, y, { align: 'right' });
+                            doc.setFont(undefined, 'normal');
+
+                            y += 5;
+                        });
+
+                        // Service-Summe
+                        y += 2;
+                        doc.setFont(undefined, 'bold');
+                        doc.setFontSize(10);
+                        doc.text(`Summe ${serviceNames[serviceTyp] || serviceTyp}:`, 140, y);
+                        doc.text(service.gesamt.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        doc.setFont(undefined, 'normal');
+                        doc.setFontSize(9);
+                        y += 8;
+                    });
+
+                } else {
+                    // Single-Service: Einfache Leistungsauflistung
+                    doc.setFont(undefined, 'normal');
+                    doc.text('Service-Leistung', 20, y);
+                    doc.setFont(undefined, 'bold');
+                    doc.text(rechnung.bruttoBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                    doc.setFont(undefined, 'normal');
+                    y += 10;
+                }
+
+                // Totals
+                y += 10;
+                doc.setDrawColor(200, 200, 200);
+                doc.line(15, y, 195, y);
+                y += 7;
+
+                doc.setFont(undefined, 'normal');
+                doc.setFontSize(11);
+                doc.text('Brutto:', 140, y);
+                doc.text(rechnung.bruttoBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 6;
+
+                doc.text(`Rabatt (${rechnung.rabattProzent}%):`, 140, y);
+                doc.setTextColor(34, 197, 94);  // Green
+                doc.text('-' + rechnung.rabattBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                doc.setTextColor(0, 0, 0);
+                y += 10;
+
+                doc.setFillColor(76, 175, 80);
+                doc.rect(135, y - 5, 60, 10, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(14);
+                doc.text('GESAMT:', 140, y);
+                doc.text(rechnung.nettoBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                doc.setTextColor(0, 0, 0);
+
+                // 3. Download as "Rechnung-RE-2025-11-001.pdf"
+                const filename = `Rechnung-${rechnung.rechnungsnummer}.pdf`;
+                doc.save(filename);
+
+                console.log('✅ [PDF] Rechnung generiert:', filename);
+
+            } catch (error) {
+                console.error('❌ [PDF] Fehler:', error);
+                alert('Fehler beim Generieren der Rechnung!\n\n' + error.message);
+            }
         }
     </script>
 </body>

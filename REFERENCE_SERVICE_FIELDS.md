@@ -2,13 +2,15 @@
 
 **Purpose:** Vollständige Dokumentation des Service-spezifischen Felder Systems in der Fahrzeugannahme App
 
-**Zuletzt aktualisiert:** 2025-10-31 (Test Session)
+**Zuletzt aktualisiert:** 2025-11-15 (Dokumentation vervollständigt)
 
 ---
 
 ## 🎯 Overview
 
-Die App unterstützt **8 verschiedene Service-Typen** mit jeweils spezifischen Eingabefeldern:
+Die App unterstützt **12 verschiedene Service-Typen** mit jeweils spezifischen Eingabefeldern:
+
+### Werkstatt-Services (annahme.html)
 
 | Service | Icon | Spezifische Felder | Implementiert |
 |---------|------|-------------------|---------------|
@@ -21,10 +23,20 @@ Die App unterstützt **8 verschiedene Service-Typen** mit jeweils spezifischen E
 | **Pflege** | ✨ | (Standard-Felder only) | ✅ |
 | **TÜV** | 📋 | (Standard-Felder only) | ✅ |
 
+### Partner-Only Services (partner-app/*.html)
+
+| Service | Icon | Spezifische Felder | Partner-Form File |
+|---------|------|-------------------|-------------------|
+| **Versicherung** | 🛡️ | Schadenstyp, Schadennummer, Gutachter, Versicherung | `versicherung-anfrage.html` |
+| **Folierung** | 🎨 | Art, Material, Farbe, Bereiche, Design | `folierung-anfrage.html` |
+| **Steinschutz** | 🛡️ | Schutzart/Umfang, Bereiche, Material, Finish | `steinschutz-anfrage.html` |
+| **Werbebeklebung** | 📢 | Umfang, Komplexität, Text, Farbanzahl | `werbebeklebung-anfrage.html` |
+
 **Feature History:**
 - **v3.6 (2025-10-29):** Nur Reifen-Service hatte spezifische Felder
 - **v3.7 (2025-10-30):** 3 weitere Services hinzugefügt (Glas, Klima, Dellen)
 - **v3.8 (2025-10-31):** Testing & Bug Fixes
+- **v3.9+ (2025-11+):** 4 Partner-Services implementiert (Versicherung, Folierung, Steinschutz, Werbebeklebung)
 
 ---
 
@@ -711,5 +723,211 @@ const detailsHTML = `
 
 ---
 
+## 📱 Partner-Only Services - Detaillierte Felddokumentation
+
+Die folgenden 4 Services sind **NUR in der Partner-App** verfügbar (nicht in annahme.html). Partner erstellen Service-Anfragen über dedizierte Formulare.
+
+---
+
+### Service 9: Versicherung 🛡️
+
+**Partner-Form:** `partner-app/versicherung-anfrage.html`
+
+#### Felder:
+
+| Feld-Name | Typ | Beschreibung | Beispiel |
+|-----------|-----|--------------|----------|
+| `schadenstyp` | Select | Art des Schadens | Hagel, Wildunfall, Parkschaden, Unfall |
+| `schadennummer` | Text | Versicherungs-Schadensnummer | GDV-123456789 |
+| `gutachter` | Text | Gutachter-Name (falls vorhanden) | Max Mustermann |
+| `versicherung` | Text | Versicherungsgesellschaft | Allianz, HUK, etc. |
+
+#### Code-Locations:
+
+**Normalisierung:** `partner-app/admin-anfragen.html`
+```javascript
+// Line ~2250: normalizeServiceData('versicherung', rawData)
+// Keine spezielle Normalisierung nötig - Felder werden direkt übernommen
+```
+
+**Kanban-Process:** `kanban.html:processDefinitions.versicherung`
+```javascript
+{
+    name: '🛡️ Versicherung',
+    icon: '🛡️',
+    steps: [
+        { id: 'neu', label: 'Eingegangen' },
+        { id: 'gutachten', label: 'Gutachten' },
+        { id: 'freigabe', label: 'Freigabe' },
+        { id: 'reparatur', label: 'Reparatur' },
+        { id: 'fertig', label: 'Fertig' }
+    ]
+}
+```
+
+---
+
+### Service 10: Folierung 🎨
+
+**Partner-Form:** `partner-app/folierung-anfrage.html`
+
+#### Felder:
+
+| Feld-Name | Typ | Beschreibung | Beispiel |
+|-----------|-----|--------------|----------|
+| `art` / `folierungArt` | Select | Art der Folierung | Vollfolierung, Teilfolierung, Akzente |
+| `material` | Select | Folien-Marke | 3M, Avery, Hexis |
+| `farbe` | Text | Farbe/Finish | Schwarz Matt, Chrom, Carbon |
+| `bereiche` | Array | Zu folierende Bereiche | ['Motorhaube', 'Dach', 'Spiegel'] |
+| `design` | Textarea | Custom-Design Beschreibung | Freitext |
+
+#### Code-Locations:
+
+**Normalisierung:** `partner-app/anfrage-detail.html:1037-1045`
+```javascript
+function normalizeServiceData(serviceTyp, rawData) {
+    if (serviceTyp === 'folierung') {
+        return {
+            art: rawData.art || rawData.folierungArt || '',
+            material: rawData.material || '',
+            farbe: rawData.farbe || '',
+            bereiche: rawData.bereiche || [],
+            design: rawData.design || ''
+        };
+    }
+}
+```
+
+**Field-Alias:** `art` || `folierungArt` (Partner vs Fahrzeug)
+
+---
+
+### Service 11: Steinschutz 🛡️
+
+**Partner-Form:** `partner-app/steinschutz-anfrage.html`
+
+**⚠️ WICHTIG:** Dieser Service hat **40+ Code-Verwendungen** in 10 Files!
+
+#### Felder:
+
+| Feld-Name | Typ | Beschreibung | Beispiel |
+|-----------|-----|--------------|----------|
+| `schutzart` / `umfang` / `steinschutzUmfang` | Select | Umfang des Schutzes | vollverklebung, frontpaket, teilbereich |
+| `bereiche` | Array | Geschützte Bereiche | ['Front', 'Motorhaube', 'Spiegel'] |
+| `material` | Select | PPF-Marke | 3M, XPEL, SunTek |
+| `finish` | Select | Oberflächen-Finish | gloss, matte, satin |
+| `info` | Textarea | Zusätzliche Hinweise | Freitext |
+
+#### Code-Locations:
+
+**Normalisierung:** `partner-app/anfrage-detail.html:1025-1035`
+```javascript
+function normalizeServiceData(serviceTyp, rawData) {
+    if (serviceTyp === 'steinschutz') {
+        return {
+            schutzart: rawData.schutzart || rawData.umfang || rawData.steinschutzUmfang || '',
+            bereiche: rawData.bereiche || [],
+            material: rawData.material || '',
+            finish: rawData.finish || '',
+            info: rawData.info || ''
+        };
+    }
+}
+```
+
+**Field-Alias (3 Varianten):**
+- `umfang` = Partner-Anfrage Input
+- `steinschutzUmfang` = Fahrzeug Additional Service (Service-Präfix!)
+- `schutzart` = Render-Funktionen (semantisch korrekt)
+
+**Grund für 3 Namen:** Multi-Service Field-Kollisions-Vermeidung (siehe CLAUDE.md:2586-2596)
+
+**Kanban-Label:** `kanban.html:5779-5789`
+```javascript
+if (serviceData.steinschutzUmfang || serviceData.schutzart || serviceData.umfang) {
+    const umfang = serviceData.steinschutzUmfang || serviceData.schutzart || serviceData.umfang;
+    labelParts.push(`Umfang: ${umfang}`);
+}
+```
+
+---
+
+### Service 12: Werbebeklebung 📢
+
+**Partner-Form:** `partner-app/werbebeklebung-anfrage.html`
+
+#### Felder:
+
+| Feld-Name | Typ | Beschreibung | Beispiel |
+|-----------|-----|--------------|----------|
+| `umfang` / `werbebeklebungUmfang` | Select | Umfang der Beklebung | Vollverklebung, Teilverklebung, Nur Logo |
+| `komplexitaet` / `werbebeklebungKomplexitaet` | Select | Komplexitätsstufe | einfach, mittel, komplex |
+| `text` | Textarea | Text-Inhalt | Firmenname, Slogan, etc. |
+| `farbanzahl` | Number | Anzahl verwendeter Farben | 1-5 |
+
+#### Code-Locations:
+
+**Normalisierung:** `partner-app/anfrage-detail.html:1047-1052`
+```javascript
+function normalizeServiceData(serviceTyp, rawData) {
+    if (serviceTyp === 'werbebeklebung') {
+        return {
+            umfang: rawData.umfang || rawData.werbebeklebungUmfang || '',
+            komplexitaet: rawData.komplexitaet || rawData.werbebeklebungKomplexitaet || '',
+            text: rawData.text || '',
+            farbanzahl: rawData.farbanzahl || ''
+        };
+    }
+}
+```
+
+**Field-Alias (2 Varianten pro Feld):**
+- `umfang` vs `werbebeklebungUmfang`
+- `komplexitaet` vs `werbebeklebungKomplexitaet`
+
+**Grund:** Multi-Service Namenskollisions-Vermeidung (gleicher Pattern wie Steinschutz)
+
+---
+
+## 🔄 Multi-Service Field-Präfix Pattern
+
+**WICHTIG für Partner-Services:**
+
+Die 4 Partner-Services (Versicherung, Folierung, Steinschutz, Werbebeklebung) nutzen **Service-Präfixe** bei Field-Namen wenn sie als **Additional Services** in einem Fahrzeug gespeichert werden.
+
+**Beispiel:**
+
+```javascript
+// Partner-Anfrage (PRIMARY Service)
+{
+    serviceTyp: 'steinschutz',
+    serviceData: {
+        umfang: 'vollverklebung'  // ← KEIN Präfix
+    }
+}
+
+// Fahrzeug (ADDITIONAL Service)
+{
+    serviceTyp: 'lackier',  // PRIMARY
+    additionalServices: [
+        {
+            serviceTyp: 'steinschutz',
+            serviceDetails: {
+                steinschutzUmfang: 'vollverklebung'  // ← MIT Präfix!
+            }
+        }
+    ]
+}
+```
+
+**Warum?** Verhindert Field-Kollisionen bei Multi-Service-Fahrzeugen (z.B. Folierung + Werbebeklebung beide haben `umfang`-Field)
+
+**Normalisierung:** `normalizeServiceData()` Funktionen in `anfrage-detail.html` und `admin-anfragen.html` handeln beide Varianten via Fallback-Chains:
+```javascript
+normalized.umfang = rawData.umfang || rawData.steinschutzUmfang || '';
+```
+
+---
+
 _Created: 2025-10-31 during Manual Test Session_
-_Last Updated: 2025-10-31_
+_Last Updated: 2025-11-15 (4 Partner-Services dokumentiert)_

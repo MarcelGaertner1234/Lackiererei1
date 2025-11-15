@@ -2511,6 +2511,256 @@ match /werkstatt-logos/{werkstattId}/{fileName} {
 
 ---
 
+## 🗂️ Data Model & Architecture
+
+### Multi-Service Data Model
+
+**fahrzeugData Structure** (50+ fields, see anfrage-detail.html:3743-3836):
+
+#### IMMUTABLE Fields (Pattern 21 - 3-Layer Defense)
+```javascript
+{
+  serviceTyp: 'lackier',  // PRIMARY service - NEVER change after creation
+                          // Protected by: Kanban, validateServiceTyp(), Audit
+}
+```
+
+**Why IMMUTABLE:**
+- Forms **basis** for workflow routing (Kanban columns, status flow)
+- Used in **Security Rules** validation
+- Referenced in **12 service-specific forms** (partner-app)
+- Changing it **breaks status sync** across systems
+
+**3-Layer Defense Mechanism:**
+1. **Kanban Protection** (kanban.html:2156): Prevents drag-drop between service types
+2. **validateServiceTyp()** (mechanik-anfrage.html:635): Auto-correction map with fallback to 'lackier'
+3. **Comprehensive Audit** (NEXT_AGENT_MANUAL_TESTING_PROMPT.md:474-573): Pattern 21 documentation
+
+#### MUTABLE Fields (Multi-Service Support)
+```javascript
+{
+  additionalServices: [
+    { serviceTyp: 'reifen', status: 'terminiert' },
+    { serviceTyp: 'pflege', status: 'neu' }
+  ],  // Array of Objects (current format) OR Array of Strings (legacy)
+
+  serviceStatuses: {
+    'lackier': 'begutachtung',  // PRIMARY service status
+    'reifen': 'terminiert',     // Additional service status
+    'pflege': 'neu'
+  },
+
+  // Service-specific data (varies by serviceTyp)
+  serviceData: {
+    // Lackier: kva, gewählteVariante, lackierUmfang
+    // Reifen: reifenGröße, saison, montageTyp
+    // Mechanik: reparaturArt, diagnose
+    // ... (12 different structures)
+  },
+
+  serviceDetails: {
+    // Alternative field name for same data (inconsistency)
+    // Used in some workflows, serviceData in others
+  }
+}
+```
+
+**Field Evolution:**
+- **Legacy** (Pre-Nov 2024): Single service per vehicle, `additionalServices: ['reifen', 'pflege']` (strings)
+- **Current** (Nov 2024+): Multi-service with status tracking, `additionalServices: [{serviceTyp, status}]` (objects)
+
+### Field Naming Patterns
+
+#### Pattern 1: serviceData vs serviceDetails
+
+**Status:** ✅ **BEIDE SIND AKTIV UND NOTWENDIG** - Keine Vereinheitlichung möglich!
+
+**Warum existieren beide?**
+
+| Field Name | Quelle | Verwendung | Grund |
+|------------|--------|-----------|-------|
+| `serviceData` | **Partner-Anfragen** | Root-Level Field | Partner-Forms speichern in `serviceData` (12 Files) |
+| `serviceDetails` | **Werkstatt-Fahrzeuge** | Nested Field | Werkstatt nutzt `getServiceDetails()` Function |
+| `serviceDetails` | **Multi-Service** | Additional Services Array | `additionalServices[].serviceDetails` |
+
+**Code-Beispiel - Duale Verwendung:**
+
+```javascript
+// anfrage-detail.html:1843-1851
+// PRIMARY Service (von Partner erstellt)
+const serviceData = anfrage.serviceData || anfrage.serviceDetails;  // Fallback!
+
+// ADDITIONAL Service (im Fahrzeug-Dokument)
+const serviceData = additionalService?.serviceDetails;  // Nur serviceDetails
+```
+
+**Firestore-Daten:**
+
+1. **Partner-Anfragen Collection** (`partnerAnfragen_mosbach`):
+   ```javascript
+   {
+       serviceTyp: 'steinschutz',
+       serviceData: {  // ← Partner nutzt serviceData
+           umfang: 'vollverklebung',
+           bereiche: ['Front', 'Motorhaube']
+       }
+   }
+   ```
+
+2. **Werkstatt-Fahrzeuge Collection** (`fahrzeuge_mosbach`):
+   ```javascript
+   {
+       serviceTyp: 'lackier',
+       serviceDetails: {  // ← Werkstatt nutzt serviceDetails
+           lackierUmfang: 'vollverklebung'
+       },
+       additionalServices: [
+           {
+               serviceTyp: 'steinschutz',
+               serviceDetails: {  // ← Additional Service = serviceDetails
+                   steinschutzUmfang: 'frontpaket'
+               }
+           }
+       ]
+   }
+   ```
+
+**Warum KEINE Vereinheitlichung möglich?**
+
+1. **Breaking Changes würden betreffen:**
+   - Alle Partner-Anfragen in Firestore (`serviceData`)
+   - Alle Werkstatt-Fahrzeuge in Firestore (`serviceDetails`)
+   - 20+ Files mit Render-Logik
+
+2. **Semantische Korrektheit:**
+   - Primary Service: `anfrage.serviceData` (Partner erstellt)
+   - Additional Services: `fahrzeug.additionalServices[].serviceDetails` (Werkstatt fügt hinzu)
+   - Unterschiedliche Namensgebung ist semantisch sinnvoll!
+
+3. **Fallback-System funktioniert:**
+   ```javascript
+   // Normalisierungs-Logik (anfrage-detail.html:1843)
+   const serviceData = anfrage.serviceData || anfrage.serviceDetails;
+   const normalizedData = normalizeServiceData(serviceTyp, serviceData);
+   anfrage.serviceData = normalizedData;  // TEMPORARY override für Render
+   ```
+
+**Recommendation:** ✅ **BEIBEHALTEN WIE IST!** - System ist stabil, keine Breaking Changes nötig
+
+#### Pattern 2: Field Aliases (8+ different names for same data)
+
+| Canonical Field | Aliases | Code Example |
+|----------------|---------|--------------|
+| `kennzeichen` | `auftragsnummer` | `anfrage.kennzeichen \|\| anfrage.auftragsnummer` |
+| `kmstand` | `kilometerstand`, `kmStand` | `anfrage.kmstand \|\| anfrage.kilometerstand` |
+| `kundenname` | `partnerName`, `name` | `anfrage.partnerName \|\| 'Partner'` |
+| `notizen` | `schadenBeschreibung`, `beschreibung`, `anmerkungen`, `serviceData?.info` | 4-level fallback chain |
+| `schutzart` | `umfang`, `steinschutzUmfang` (Steinschutz) | Service-specific aliases |
+| `art` | `folierungArt` (Folierung) | Service-specific aliases |
+
+**Implementation:** See normalizeAnfrageData() (admin-anfragen.html:2190-2276)
+
+#### Pattern 3: 4-Level Pricing Fallback
+```javascript
+// Priority chain for KVA pricing data
+const kvaData = anfrage.serviceData?.kva              // 1. New structure
+             || anfrage.serviceData?.gewählteVariante // 2. Single variant auto-select
+             || anfrage.serviceData?.original         // 3. Original variant
+             || anfrage.kva;                          // 4. Legacy root field
+```
+
+### Multi-Tenant Implementation
+
+#### Collection Naming Pattern (PRIMARY Method)
+```javascript
+// ✅ CORRECT: Use window.getCollection() helper
+const fahrzeugeRef = firebase.firestore().collection(
+  window.getCollection('fahrzeuge')  // → 'fahrzeuge_mosbach'
+);
+
+// ❌ WRONG: Direct collection name
+const fahrzeugeRef = firebase.firestore().collection('fahrzeuge');
+```
+
+**196 uses** of `window.getCollection()` across codebase (firebase-config.js:428)
+
+#### werkstattId Field Patterns
+
+**Critical Finding:** werkstattId usage varies by collection type
+
+| Collection Type | Has werkstattId Field? | Multi-Tenant Method | Example |
+|----------------|------------------------|---------------------|---------|
+| Vehicle Data | ❌ NO | Collection Name Suffix | `fahrzeuge_mosbach` |
+| Session Data | ✅ YES | Both (Field + Suffix) | `activeSessions_mosbach` with `werkstattId: 'mosbach'` |
+| Employee Data | ✅ YES | Both (Field + Suffix) | `urlaubsAnfragen_mosbach` with `werkstattId: 'mosbach'` |
+
+**Security Rules Validation:**
+```javascript
+// fahrzeuge collection (firestore.rules:772)
+match /fahrzeuge_{werkstattId}/{fahrzeugId} {
+  // NO werkstattId field validation - tenant isolated by collection name only
+  allow read, write: if request.auth != null;
+}
+
+// activeSessions collection (firestore.rules:203)
+match /activeSessions_{werkstattId}/{sessionId} {
+  // WITH werkstattId field validation - double protection
+  allow read, write: if request.auth != null
+                     && resource.data.werkstattId == werkstattId;
+}
+```
+
+**Why Different Patterns?**
+- **Vehicle Data:** No field needed (collection already isolated, no cross-tenant queries)
+- **Session/Employee Data:** Field needed for query filtering & audit trails
+
+### Service Type Validation
+
+#### validateServiceTyp() Function
+```javascript
+// mechanik-anfrage.html:635-654
+function validateServiceTyp(serviceTyp) {
+  const validTypes = [
+    'lackier', 'reifen', 'mechanik', 'pflege', 'tuev',
+    'versicherung', 'glas', 'klima', 'dellen', 'folierung',
+    'steinschutz', 'werbebeklebung'  // 12 total
+  ];
+
+  // Auto-correction map
+  const serviceTypMap = {
+    'lackschutz': 'steinschutz',
+    'lackierung': 'lackier',
+    'smart-repair': 'dellen',
+    'karosserie': 'lackier'
+  };
+
+  let correctedTyp = serviceTypMap[serviceTyp] || serviceTyp;
+
+  if (!validTypes.includes(correctedTyp)) {
+    console.warn(`⚠️ Invalid serviceTyp: ${serviceTyp}, fallback to 'lackier'`);
+    return 'lackier';  // Safe fallback
+  }
+
+  return correctedTyp;
+}
+```
+
+**12 Valid Service Types:**
+1. lackier (Lackierung)
+2. reifen (Reifen-Service)
+3. mechanik (Mechanik)
+4. pflege (Fahrzeugpflege)
+5. tuev (TÜV/HU)
+6. versicherung (Versicherungsschaden)
+7. glas (Glasreparatur)
+8. klima (Klimaanlage)
+9. dellen (Smart Repair / Dellenentfernung)
+10. folierung (Fahrzeugfolierung)
+11. steinschutz (Steinschlagschutz)
+12. werbebeklebung (Werbebeklebung)
+
+---
+
 ## 📁 File Structure
 
 ```
@@ -3084,6 +3334,39 @@ Emulator UI:  http://localhost:4000
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21
 firebase emulators:start --only firestore,storage --project demo-test
 ```
+
+### Service Types (12 Total)
+
+**Valid Service Types:**
+```javascript
+const validServiceTypes = [
+  'lackier',        // Lackierung (PRIMARY default)
+  'reifen',         // Reifen-Service
+  'mechanik',       // Mechanik
+  'pflege',         // Fahrzeugpflege
+  'tuev',           // TÜV/HU
+  'versicherung',   // Versicherungsschaden
+  'glas',           // Glasreparatur
+  'klima',          // Klimaanlage
+  'dellen',         // Smart Repair / Dellenentfernung
+  'folierung',      // Fahrzeugfolierung
+  'steinschutz',    // Steinschlagschutz
+  'werbebeklebung'  // Werbebeklebung
+];
+```
+
+**Auto-Correction Map (validateServiceTyp function):**
+```javascript
+const serviceTypMap = {
+  'lackschutz': 'steinschutz',
+  'lackierung': 'lackier',
+  'smart-repair': 'dellen',
+  'karosserie': 'lackier'
+};
+```
+
+**Implementation:** mechanik-anfrage.html:635-654
+**Default Fallback:** 'lackier' (if invalid type detected)
 
 ---
 

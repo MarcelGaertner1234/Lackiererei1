@@ -1024,9 +1024,17 @@
             switch(serviceTyp) {
                 case 'steinschutz':
                     // ⚠️ FIX (2025-11-14): Removed 'case lackschutz' - NOT a valid service type
-                    // Partner: umfang, bereiche, material
-                    // Fahrzeug: steinschutzUmfang, steinschutzMaterial, steinschutzBereiche
-                    // Render expects: schutzart, bereiche, material
+                    //
+                    // ⚠️ MULTI-SERVICE FIELD-ALIAS PATTERN:
+                    // 3 Varianten für 'schutzart' Field notwendig um Field-Kollisionen zu vermeiden!
+                    //
+                    // 1. Partner-Anfrage:     umfang = 'vollverklebung' (Input-Field Name)
+                    // 2. Fahrzeug Additional: steinschutzUmfang = 'frontpaket' (Service-Präfix!)
+                    // 3. Render-Funktionen:   schutzart = 'vollverklebung' (Semantisch korrekt)
+                    //
+                    // Warum Präfix? Multi-Service-Fahrzeug kann Folierung + Werbebeklebung haben
+                    // → Beide Services haben 'umfang' Field → Kollision ohne Präfix!
+                    // Siehe CLAUDE.md:2586 & REFERENCE_SERVICE_FIELDS.md:838 für Details
                     normalized.schutzart = rawData.schutzart || rawData.umfang || rawData.steinschutzUmfang || '';
                     normalized.bereiche = rawData.bereiche || rawData.steinschutzBereiche || '';
                     normalized.material = rawData.material || rawData.steinschutzMaterial || '';
@@ -1035,8 +1043,9 @@
                     break;
 
                 case 'folierung':
-                    // Fahrzeug: folierungArt, folierungMaterial, folierungFarbe, folierungBereiche
-                    // Render expects: art, material, farbe, bereiche, design
+                    // ⚠️ MULTI-SERVICE FIELD-ALIAS PATTERN (gleicher Grund wie Steinschutz):
+                    // - art / folierungArt: Verhindert Kollision mit anderen Services
+                    // Siehe REFERENCE_SERVICE_FIELDS.md:770 für Details
                     normalized.art = rawData.art || rawData.folierungArt || '';
                     normalized.material = rawData.material || rawData.folierungMaterial || '';
                     normalized.farbe = rawData.farbe || rawData.folierungFarbe || '';
@@ -1045,6 +1054,10 @@
                     break;
 
                 case 'werbebeklebung':
+                    // ⚠️ MULTI-SERVICE FIELD-ALIAS PATTERN (gleicher Grund wie Steinschutz):
+                    // - umfang / werbebeklebungUmfang: Field-Kollision mit Steinschutz vermeiden
+                    // - komplexitaet / werbebeklebungKomplexitaet: Service-Präfix für Multi-Service
+                    // Siehe REFERENCE_SERVICE_FIELDS.md:855 für Details
                     normalized.umfang = rawData.umfang || rawData.werbebeklebungUmfang || '';
                     normalized.komplexitaet = rawData.komplexitaet || rawData.werbebeklebungKomplexitaet || '';
                     normalized.text = rawData.text || rawData.werbebeklebungText || '';
@@ -1840,6 +1853,10 @@
 
                 // Is this the PRIMARY service?
                 if (currentServiceTyp === anfrage.serviceTyp) {
+                    // ⚠️ WICHTIG: Fallback-Chain notwendig!
+                    // - serviceData = Partner-Anfrage Root-Level (12 Partner-Forms nutzen dies)
+                    // - serviceDetails = Werkstatt-Fahrzeug Nested Field (annahme.html nutzt dies)
+                    // BEIDE sind aktiv in Production! Siehe CLAUDE.md:2574 für Erklärung
                     serviceData = anfrage.serviceData || anfrage.serviceDetails;
                     console.log(`✅ Primary service data found for ${currentServiceTyp}:`, serviceData);
                 }
