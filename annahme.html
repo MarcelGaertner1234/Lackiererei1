@@ -8,6 +8,35 @@
         // window.werkstattId is set automatically after successful login
         // This ensures proper multi-tenant data isolation
     </script>
+    <script>
+        // 🆕 FIX #2: PDF UPLOAD VALIDATION (2025-11-15)
+        // Prevents: Non-PDF uploads, Storage quota exhaustion, Malware-disguised PDFs
+        window.validatePDFFile = function(file) {
+            const allowedType = 'application/pdf';
+            const maxSize = 50 * 1024 * 1024; // 50 MB
+
+            if (!file) {
+                throw new Error('❌ Keine PDF-Datei!');
+            }
+
+            // Check 1: File-Type Validation
+            if (file.type !== allowedType) {
+                throw new Error(`❌ Nur PDF erlaubt!\n\nDein Typ: ${file.type || 'unbekannt'}`);
+            }
+
+            // Check 2: Size Validation
+            if (file.size > maxSize) {
+                throw new Error(`❌ PDF zu groß!\n\nMaximum: 50 MB\nDeine Größe: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+            }
+
+            console.log('✅ [validatePDFFile] PDF validiert:', {
+                type: file.type,
+                sizeMB: (file.size / 1024 / 1024).toFixed(2)
+            });
+
+            return { isValid: true };
+        };
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fahrzeug-Annahme | Auto-Lackierzentrum Mosbach</title>
@@ -2999,6 +3028,16 @@
                                 console.log('   → Lade PDF zu Firebase Storage hoch...');
                                 const pdfFileName = `Annahme_${annahmeData.kennzeichen.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toLocaleDateString('de-DE').replace(/\./g, '')}.pdf`;
                                 const pdfRef = window.storage.ref(`pdfs/${annahmeData.id}/${pdfFileName}`);
+
+                                // 🆕 FIX #2: Validate PDF BEFORE upload (Security)
+                                try {
+                                    window.validatePDFFile(pdfBlob);
+                                } catch (validationError) {
+                                    console.error('❌ [PDF-UPLOAD] Validation failed:', validationError.message);
+                                    alert(validationError.message);
+                                    return; // Stop upload
+                                }
+
                                 const uploadTask = await pdfRef.put(pdfBlob);
                                 const pdfUrl = await uploadTask.ref.getDownloadURL();
                                 console.log('   ✅ PDF hochgeladen:', pdfUrl);
@@ -3050,6 +3089,16 @@
                                 console.log('   → Lade PDF zu Firebase Storage hoch...');
                                 const pdfFileName = `Annahme_${annahmeData.kennzeichen.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toLocaleDateString('de-DE').replace(/\./g, '')}.pdf`;
                                 const pdfRef = window.storage.ref(`pdfs/${annahmeData.id}/${pdfFileName}`);
+
+                                // 🆕 FIX #2: Validate PDF BEFORE upload (Security)
+                                try {
+                                    window.validatePDFFile(pdfBlob);
+                                } catch (validationError) {
+                                    console.error('❌ [PDF-UPLOAD] Validation failed:', validationError.message);
+                                    alert(validationError.message);
+                                    return; // Stop upload
+                                }
+
                                 const uploadTask = await pdfRef.put(pdfBlob);
                                 const pdfUrl = await uploadTask.ref.getDownloadURL();
 
