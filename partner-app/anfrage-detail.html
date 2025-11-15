@@ -914,9 +914,41 @@
     <script>
         let anfrage = null;
         let unsubscribe = null; // Firebase Listener
+        let partner = null; // ✅ FIX: Partner-Authentifizierung
+
+        // ✅ FIX: checkLogin() - Partner-Authentifizierung prüfen (wie meine-anfragen.html)
+        async function checkLogin() {
+            partner = JSON.parse(localStorage.getItem('partner') || 'null');
+
+            if (!partner) {
+                console.warn('⚠️ [ANFRAGE-DETAIL] Kein Partner eingeloggt - Redirect zu index.html');
+                window.safeNavigate('index.html');
+                return;
+            }
+
+            console.log('✅ [ANFRAGE-DETAIL] Partner geladen:', partner.partnerId, partner.email);
+
+            // Optional: Sync mit Firestore für aktuelle Partner-Daten
+            if (db && partner.partnerId) {
+                try {
+                    const partnerDoc = await window.getCollection('partners').doc(partner.partnerId).get();
+                    if (partnerDoc.exists) {
+                        partner = { partnerId: partner.partnerId, ...partnerDoc.data() };
+                        localStorage.setItem('partner', JSON.stringify(partner));
+                        console.log('✅ [ANFRAGE-DETAIL] Partner-Daten mit Firestore synchronisiert');
+                    }
+                } catch (error) {
+                    console.warn('⚠️ [ANFRAGE-DETAIL] Firestore-Sync fehlgeschlagen:', error);
+                    // Weiter mit localStorage-Daten
+                }
+            }
+        }
 
         window.addEventListener('DOMContentLoaded', async () => {
             await initFirebase();
+
+            // ✅ FIX: Partner-Authentifizierung ZUERST prüfen (wie meine-anfragen.html)
+            await checkLogin();
 
             // 🆕 PHASE 2.3: Load werkstattId from localStorage or default
             const savedWerkstatt = localStorage.getItem('selectedWerkstatt') || 'mosbach';
@@ -1085,6 +1117,15 @@
                 return;
             }
 
+            // ✅ FIX: Partner-Authentifizierung prüfen (nur für NORMAL Mode)
+            // QuickView Mode funktioniert ohne Login (PDF-QR-Code Zugriff)
+            if (mode !== 'quickview' && (!partner || !partner.partnerId)) {
+                console.error('❌ [ANFRAGE-DETAIL] Kein Partner geladen - Redirect zu index.html');
+                showError('Bitte melden Sie sich an');
+                setTimeout(() => window.safeNavigate('index.html'), 2000);
+                return;
+            }
+
             try {
                 // ✅ NEU: QuickView Mode (Direkt-Zugriff per Fahrzeug-ID + Kennzeichen)
                 if (mode === 'quickview' && kennzeichen) {
@@ -1144,7 +1185,22 @@
                     return;
                 }
 
-                anfrage = { id: doc.id, ...doc.data() };
+                const data = doc.data();
+
+                // ✅ FIX: Ownership-Validierung - Prüfe ob Anfrage dem Partner gehört
+                if (data.partnerId !== partner.partnerId) {
+                    console.error('❌ [ANFRAGE-DETAIL] Ownership-Check fehlgeschlagen:', {
+                        anfragePartnerId: data.partnerId,
+                        currentPartnerId: partner.partnerId
+                    });
+                    showError('Sie haben keine Berechtigung diese Anfrage zu sehen');
+                    setTimeout(() => window.safeNavigate('meine-anfragen.html'), 2000);
+                    return;
+                }
+
+                console.log('✅ [ANFRAGE-DETAIL] Ownership-Check erfolgreich:', partner.partnerId);
+
+                anfrage = { id: doc.id, ...data };
 
                 // 🆕 PHASE 1.2: Normalisiere anfrage (füge serviceLabels hinzu falls fehlt)
                 anfrage = normalizeAnfrageData(anfrage);
