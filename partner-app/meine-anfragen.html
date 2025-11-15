@@ -1356,6 +1356,125 @@
             }
         }
 
+        /* 🆕 MULTI-SERVICE UX FIX (2025-11-15): Accordion Styles */
+        .multi-service-accordion {
+            width: 100%;
+        }
+
+        .accordion-header {
+            cursor: pointer;
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            transition: background 0.2s;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .accordion-header:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .accordion-icon {
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+
+        .accordion-text {
+            flex: 1;
+        }
+
+        .accordion-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+        }
+
+        .accordion-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            padding: 0;
+        }
+
+        .accordion-content.expanded {
+            max-height: 500px; /* Adjust based on max services */
+            opacity: 1;
+            padding: 8px 0;
+        }
+
+        .service-accordion-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 12px;
+            margin: 2px 0;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .service-accordion-row:hover {
+            background: var(--bg-secondary);
+        }
+
+        .service-row-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .service-row-label {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .service-row-status {
+            font-size: 11px;
+            background: var(--bg-tertiary);
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        /* Mobile optimization */
+        @media (max-width: 768px) {
+            .accordion-header {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+
+            .accordion-content.expanded {
+                max-height: 300px;
+            }
+
+            .service-row-icon {
+                width: 20px;
+                height: 20px;
+                font-size: 10px;
+            }
+
+            .service-row-label {
+                font-size: 12px;
+            }
+
+            .service-row-status {
+                font-size: 10px;
+                padding: 2px 6px;
+            }
+        }
+
         .card-header {
             display: flex;
             justify-content: space-between;
@@ -5244,7 +5363,7 @@
                                        anfrage.fahrzeug.additionalServices.length > 0;
 
             if (!hasMultipleServices) {
-                // Single-Service: Original Badge
+                // Single-Service: Original Badge (UNCHANGED - no accordion needed)
                 const primaryServiceTyp = anfrage.serviceTyp || 'lackier';
                 const serviceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
                 return `
@@ -5254,59 +5373,104 @@
                 `;
             }
 
-            // Multi-Service: Badges mit Status
-            let badgesHTML = '';
+            // 🆕 MULTI-SERVICE UX FIX (2025-11-15): Expandable Accordion statt horizontal overflow
             const primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
-            const serviceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+
+            // Sammle alle Services (Primary + Additional)
+            const allServices = [];
 
             // 1️⃣ Primary Service
-            // 🔧 FIX (2025-11-13): Nutze getServiceStatus() Helper für Fallback-Logik
+            const primaryServiceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
             const primaryStatus = getServiceStatus(anfrage, primaryServiceTyp);
-            const statusLabel = statusLabels[primaryStatus] || primaryStatus;
-
-            if (primaryStatus && primaryStatus !== 'neu') {
-                badgesHTML += `
-                    <div class="card-service-badge-multi primary" style="background: ${serviceData.bg}; color: white;">
-                        <span>${serviceData.icon} ${getServiceLabel(primaryServiceTyp)}</span>
-                        <span class="status-pill">→ ${statusLabel}</span>
-                    </div>
-                `;
-            } else {
-                // Fallback: Kein Status vorhanden (oder Status = 'neu')
-                badgesHTML += `
-                    <div class="card-service-badge" style="background: ${serviceData.bg}; color: white;">
-                        ${serviceData.icon} ${getServiceLabel(primaryServiceTyp)}
-                    </div>
-                `;
-            }
+            allServices.push({
+                typ: primaryServiceTyp,
+                data: primaryServiceData,
+                status: primaryStatus,
+                isPrimary: true
+            });
 
             // 2️⃣ Additional Services
             anfrage.fahrzeug.additionalServices.forEach(additionalService => {
                 const addServiceTyp = additionalService.serviceTyp;
                 const addServiceData = serviceIcons[addServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
-
-                // 🔧 FIX (2025-11-13): Nutze getServiceStatus() Helper für Fallback-Logik
                 const addStatus = getServiceStatus(anfrage, addServiceTyp);
-                const addStatusLabel = statusLabels[addStatus] || addStatus;
-
-                if (addStatus && addStatus !== 'neu') {
-                    badgesHTML += `
-                        <div class="card-service-badge-multi additional" style="background: ${addServiceData.bg}; color: white;">
-                            <span>+ ${addServiceData.icon} ${getServiceLabel(addServiceTyp)}</span>
-                            <span class="status-pill">→ ${addStatusLabel}</span>
-                        </div>
-                    `;
-                } else {
-                    // Fallback: Kein Status vorhanden (oder Status = 'neu')
-                    badgesHTML += `
-                        <div class="card-service-badge" style="background: ${addServiceData.bg}; color: white; opacity: 0.8;">
-                            + ${addServiceData.icon} ${getServiceLabel(addServiceTyp)}
-                        </div>
-                    `;
-                }
+                allServices.push({
+                    typ: addServiceTyp,
+                    data: addServiceData,
+                    status: addStatus,
+                    isPrimary: false
+                });
             });
 
-            return badgesHTML;
+            // Zähle Services in Arbeit (Status !== 'neu' und !== 'fertig')
+            const servicesInArbeit = allServices.filter(s =>
+                s.status && s.status !== 'neu' && s.status !== 'fertig'
+            ).length;
+
+            // Accordion Header (always visible)
+            const totalServices = allServices.length;
+            const accordionId = `accordion-${anfrage.id}`;
+
+            // Accordion Content (Service-Liste, vertical)
+            let serviceListHTML = '';
+            allServices.forEach(service => {
+                const statusLabel = statusLabels[service.status] || service.status;
+                const hasStatus = service.status && service.status !== 'neu';
+
+                serviceListHTML += `
+                    <div class="service-accordion-row">
+                        <div class="service-row-icon" style="background: ${service.data.bg};">
+                            ${service.data.icon}
+                        </div>
+                        <div class="service-row-label">
+                            ${service.isPrimary ? '' : '+ '}${getServiceLabel(service.typ)}
+                        </div>
+                        ${hasStatus ? `
+                            <div class="service-row-status">${statusLabel}</div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            return `
+                <div class="multi-service-accordion">
+                    <div class="accordion-header" onclick="toggleServiceAccordion(event, '${accordionId}')">
+                        <span class="accordion-icon" id="${accordionId}-icon">▼</span>
+                        <span class="accordion-text">${totalServices} Services${servicesInArbeit > 0 ? ` (${servicesInArbeit} in Arbeit)` : ''}</span>
+                    </div>
+                    <div class="accordion-content collapsed" id="${accordionId}">
+                        ${serviceListHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * 🆕 MULTI-SERVICE UX FIX (2025-11-15): Toggle Service Accordion
+         * Expands/collapses the service list in multi-service cards
+         * @param {Event} event - Click event
+         * @param {string} accordionId - ID of the accordion to toggle
+         */
+        function toggleServiceAccordion(event, accordionId) {
+            // Prevent card click event from firing
+            event.stopPropagation();
+
+            const content = document.getElementById(accordionId);
+            const icon = document.getElementById(`${accordionId}-icon`);
+
+            if (!content || !icon) return;
+
+            if (content.classList.contains('collapsed')) {
+                // Expand
+                content.classList.remove('collapsed');
+                content.classList.add('expanded');
+                icon.textContent = '▲';
+            } else {
+                // Collapse
+                content.classList.remove('expanded');
+                content.classList.add('collapsed');
+                icon.textContent = '▼';
+            }
         }
 
         /**
