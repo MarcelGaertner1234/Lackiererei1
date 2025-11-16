@@ -2530,13 +2530,25 @@
         function displayAnfrageInfo() {
             const infoBox = document.getElementById('anfrageInfo');
 
-            const datum = new Date(anfrage.timestamp).toLocaleDateString('de-DE', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            // ✅ FIX 6 (2025-11-16): Timestamp korrekt konvertieren (Firestore Timestamp)
+            let datum = 'k.A.';
+            if (anfrage.timestamp) {
+                try {
+                    const dateObj = anfrage.timestamp.toDate ? anfrage.timestamp.toDate() : new Date(anfrage.timestamp);
+                    if (!isNaN(dateObj)) {
+                        datum = dateObj.toLocaleDateString('de-DE', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    }
+                } catch (e) {
+                    console.error('❌ Timestamp-Konvertierung fehlgeschlagen:', e);
+                    datum = 'Invalid Date';
+                }
+            }
 
             // Dringlichkeit-Label formatieren
             const dringlichkeitLabels = {
@@ -2575,8 +2587,8 @@
             }
 
             infoBox.innerHTML = `
-                <h3>🚗 Anfrage von ${anfrage.partnerName}</h3>
-                ${anfrage.kundenEmail || anfrage.kundenTelefon ? `
+                <h3>🚗 Anfrage von ${anfrage.partnerName || 'Unbekannt'}</h3>
+                ${anfrage.kundenEmail || anfrage.kundenTelefon || anfrage.telefon ? `
                     <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #1976d2;">
                         <div style="font-weight: 600; color: #1565c0; margin-bottom: 8px; font-size: 13px;">📞 Kontaktdaten</div>
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 13px;">
@@ -2586,10 +2598,10 @@
                                     <a href="mailto:${anfrage.kundenEmail}" style="color: #1976d2; text-decoration: none;">${anfrage.kundenEmail}</a>
                                 </div>
                             ` : ''}
-                            ${anfrage.kundenTelefon ? `
+                            ${(anfrage.kundenTelefon || anfrage.telefon) ? `
                                 <div>
                                     <strong style="color: #1976d2;">Telefon:</strong>
-                                    <a href="tel:${anfrage.kundenTelefon}" style="color: #1976d2; text-decoration: none;">${anfrage.kundenTelefon}</a>
+                                    <a href="tel:${anfrage.kundenTelefon || anfrage.telefon}" style="color: #1976d2; text-decoration: none;">${anfrage.kundenTelefon || anfrage.telefon}</a>
                                 </div>
                             ` : ''}
                         </div>
@@ -2631,7 +2643,25 @@
                 </div>
                 <div class="schadensbeschreibung">
                     <div class="label">Schadensbeschreibung:</div>
-                    <div class="text">${anfrage.schadenBeschreibung || anfrage.anmerkungen || 'Keine Angaben'}</div>
+                    <div class="text">${(() => {
+                        // ✅ FIX 3 (2025-11-16): Multi-Service Anmerkungen aggregieren
+                        const isMultiService = anfrage.serviceTyp === 'multi-service' || anfrage.serviceLabels?.length > 1;
+
+                        if (isMultiService && anfrage.serviceData && anfrage.serviceLabels) {
+                            const allBeschreibungen = anfrage.serviceLabels
+                                .map(serviceTyp => {
+                                    const data = anfrage.serviceData[serviceTyp];
+                                    return data?.beschreibung || data?.info || data?.anmerkungen;
+                                })
+                                .filter(Boolean);
+
+                            if (allBeschreibungen.length > 0) {
+                                return allBeschreibungen.join(' | ');
+                            }
+                        }
+
+                        return anfrage.schadenBeschreibung || anfrage.anmerkungen || 'Keine Angaben';
+                    })()}</div>
                 </div>
                 ${anfrage.marke || anfrage.modell || anfrage.baujahr ? `
                     <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #003366;">
@@ -2801,10 +2831,77 @@
             // ============================================
             // SERVICE-SPEZIFISCHE DETAILS ANZEIGEN
             // ============================================
-            const serviceDetailsHTML = generateServiceDetails(anfrage.serviceTyp, anfrage.serviceData);
+            // ✅ FIX 4 & 5 (2025-11-16): ALLE Services anzeigen bei Multi-Service (nicht nur 1!)
+            const isMultiService = anfrage.serviceTyp === 'multi-service' || anfrage.serviceLabels?.length > 1;
 
-            if (serviceDetailsHTML) {
-                infoBox.innerHTML += serviceDetailsHTML;
+            if (isMultiService && anfrage.serviceLabels && anfrage.serviceData) {
+                console.log('📦 [MULTI-SERVICE KVA] Zeige Details für', anfrage.serviceLabels.length, 'Services');
+
+                // Service-Icons Mapping
+                const serviceIcons = {
+                    lackier: '🎨',
+                    reifen: '🛞',
+                    mechanik: '🔧',
+                    pflege: '✨',
+                    tuev: '📋',
+                    versicherung: '🛡️',
+                    glas: '🔍',
+                    klima: '❄️',
+                    dellen: '🔨',
+                    folierung: '🌈',
+                    steinschutz: '🛡️',
+                    werbebeklebung: '📢'
+                };
+
+                const serviceLabels = {
+                    lackier: 'Lackierung',
+                    reifen: 'Reifen-Service',
+                    mechanik: 'Mechanik',
+                    pflege: 'Fahrzeugaufbereitung',
+                    tuev: 'TÜV & Prüfung',
+                    versicherung: 'Versicherungsschaden',
+                    glas: 'Glas-Reparatur',
+                    klima: 'Klima-Service',
+                    dellen: 'Dellen-Drückung',
+                    folierung: 'Auto Folierung',
+                    steinschutz: 'Steinschutzfolie',
+                    werbebeklebung: 'Fahrzeugbeschriftung'
+                };
+
+                // JEDER Service wird angezeigt
+                anfrage.serviceLabels.forEach((serviceTyp, index) => {
+                    const serviceSpecificData = anfrage.serviceData[serviceTyp] || {};
+                    const icon = serviceIcons[serviceTyp] || '📋';
+                    const label = serviceLabels[serviceTyp] || serviceTyp;
+
+                    // Service-Header
+                    infoBox.innerHTML += `
+                        <div style="background: linear-gradient(135deg, #003366 0%, #0059b3 100%);
+                                    padding: 12px 20px;
+                                    border-radius: 8px;
+                                    margin-top: 20px;
+                                    color: white;
+                                    font-weight: 600;
+                                    font-size: 14px;">
+                            ${icon} Service ${index + 1} von ${anfrage.serviceLabels.length}: ${label}
+                        </div>
+                    `;
+
+                    // Service-Details generieren
+                    const serviceDetailsHTML = generateServiceDetails(serviceTyp, serviceSpecificData);
+                    if (serviceDetailsHTML) {
+                        infoBox.innerHTML += serviceDetailsHTML;
+                    } else {
+                        console.warn('⚠️ Keine Details für Service:', serviceTyp, serviceSpecificData);
+                    }
+                });
+            } else {
+                // Single-Service (existing logic)
+                const serviceDetailsHTML = generateServiceDetails(anfrage.serviceTyp, anfrage.serviceData);
+
+                if (serviceDetailsHTML) {
+                    infoBox.innerHTML += serviceDetailsHTML;
+                }
             }
         }
 
