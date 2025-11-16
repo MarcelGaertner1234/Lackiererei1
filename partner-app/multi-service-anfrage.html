@@ -1181,12 +1181,41 @@
             document.getElementById('summaryContent').innerHTML = summaryHTML;
         }
 
+        // Upload photo to Firebase Storage
+        async function uploadPhotoToStorage(dataUrl) {
+            try {
+                // Convert Data URL to Blob
+                const blob = await fetch(dataUrl).then(r => r.blob());
+
+                // Generate unique filename
+                const timestamp = Date.now();
+                const random = Math.random().toString(36).substr(2, 9);
+                const fileName = `multi-service-${timestamp}-${random}.jpg`;
+
+                // Upload to Firebase Storage
+                const storageRef = firebase.storage().ref(`anfragen/${fileName}`);
+                await storageRef.put(blob);
+
+                // Get download URL
+                const downloadURL = await storageRef.getDownloadURL();
+                console.log('✅ Photo uploaded:', fileName);
+                return downloadURL;
+            } catch (error) {
+                console.error('❌ Photo upload failed:', error);
+                throw error;
+            }
+        }
+
         // Submit Multi-Service Anfrage
         async function submitMultiServiceAnfrage() {
+            // ✅ FIX (2025-11-16): Get button reference properly (not from event)
+            const submitBtn = document.querySelector('button[onclick="submitMultiServiceAnfrage()"]');
+
             try {
-                const submitBtn = event.target;
-                submitBtn.disabled = true;
-                submitBtn.textContent = '⏳ Wird gesendet...';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = '⏳ Wird gesendet...';
+                }
 
                 // Collect base data
                 const identificationType = document.querySelector('input[name="identificationType"]:checked').value;
@@ -1213,9 +1242,16 @@
                 });
                 baseData.serviceData = serviceData;
 
-                // Upload photos if any
+                // ✅ FIX (2025-11-16): Upload photos to Storage, save only download URLs
                 if (uploadedPhotos.length > 0) {
-                    baseData.photos = uploadedPhotos;
+                    console.log(`📸 Uploading ${uploadedPhotos.length} photos to Storage...`);
+                    const photoUrls = [];
+                    for (const photoDataUrl of uploadedPhotos) {
+                        const photoUrl = await uploadPhotoToStorage(photoDataUrl);
+                        photoUrls.push(photoUrl);
+                    }
+                    baseData.photoUrls = photoUrls;  // Only URLs (~100 bytes each)
+                    console.log('✅ All photos uploaded, URLs saved');
                 }
 
                 // 🛡️ DEFENSE IN DEPTH: Validate serviceTyp before saving
@@ -1232,8 +1268,10 @@
             } catch (error) {
                 console.error('❌ Error:', error);
                 alert('❌ Fehler beim Senden der Anfrage: ' + error.message);
-                submitBtn.disabled = false;
-                submitBtn.textContent = '📤 Anfrage absenden';
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '📤 Anfrage absenden';
+                }
             }
         }
 
