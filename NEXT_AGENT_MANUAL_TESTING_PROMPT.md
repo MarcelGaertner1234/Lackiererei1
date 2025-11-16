@@ -13,7 +13,79 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ---
 
-## 📊 Latest Session History (2025-11-14)
+## 📊 Latest Session History (2025-11-17)
+
+### Session 2025-11-17: Ersatzteile-System für KVA (4-Phasen-Implementierung)
+
+**🎯 USER STORY:** "Per PDF sollen sie eingetragen werden und wie in der Annahme auch manuell eingetragen werden!"
+
+**🔴 CRITICAL BUG:** Ersatzteile-Daten gingen bei KVA-Annahme verloren (Pattern 30 - Silent Data Loss)
+
+**Symptom:**
+- Admin erstellt KVA mit DAT-PDF → Ersatzteile werden extrahiert
+- Partner nimmt KVA an → Fahrzeug wird erstellt
+- Ersatzteile FEHLEN im Fahrzeug-Dokument
+- Zentrale Ersatzteile-DB wird NICHT befüllt
+- 100% Datenverlust!
+
+**Root Cause:**
+- `prepareFahrzeugData()` in anfrage-detail.html hatte KEIN pdfImport.editedData.ersatzteile Mapping
+- `saveErsatzteileToCentralDB()` Funktion fehlte komplett
+- `kva-erstellen.html` hatte KEINE UI-Tabelle für Ersatzteile
+- PDF-Import füllte nur Preisfelder, nicht die Ersatzteile-Tabelle
+
+**Fixes Implemented (4 Phasen - Commit d97dffb):**
+
+1. **Phase 1: Datenübertragung bei KVA-Annahme** (anfrage-detail.html)
+   - ✅ `prepareFahrzeugData()` erweitert: pdfImport.editedData.ersatzteile hinzugefügt
+   - ✅ `saveErsatzteileToCentralDB()` Funktion implementiert (70 Zeilen)
+   - ✅ Automatischer Aufruf in `annehmenKVA()` nach Fahrzeug-Erstellung
+   - Zeilen: 4025-4032, 4069-4130, 4416-4434
+
+2. **Phase 2: UI-Tabelle für manuelle Eingabe** (kva-erstellen.html)
+   - ✅ Ersatzteile-Tabelle mit 6 Spalten (ETN, Benennung, Anzahl, Einzelpreis, Gesamtpreis, Aktion)
+   - ✅ 5 JavaScript-Funktionen: addErsatzteilRow, updateErsatzteil, deleteErsatzteilRow, reRenderErsatzteileTable, updateErsatzteileSumme
+   - ✅ Globales ersatzteileData Array für Datenverwaltung
+   - ✅ "Zeile hinzufügen" Button + Löschen-Buttons
+   - Zeilen: 478-517 (HTML), 1897-2025 (JS)
+
+3. **Phase 3: PDF-Import-Integration** (kva-erstellen.html)
+   - ✅ `fillErsatzteileTable(pdfData)` Funktion implementiert
+   - ✅ Integration in `handleKvaPdfUpload()` Workflow
+   - ✅ Automatisches Befüllen der Tabelle aus DAT-PDF
+   - ✅ Wiederverwendung vorhandener extractKvaErsatzteile() Logik
+   - Zeilen: 2027-2055, 2041-2042
+
+4. **Phase 4: Datenstruktur & Speicherung** (kva-erstellen.html)
+   - ✅ Multi-Service KVA: pdfImport.editedData.ersatzteile hinzugefügt
+   - ✅ Single-Service KVA: pdfImport.editedData.ersatzteile hinzugefügt
+   - ✅ Conditional Spread Operator für saubere Datenstruktur
+   - Zeilen: 3748-3755 (Multi-Service), 3853-3860 (Single-Service)
+
+**Workflow (End-to-End):**
+1. Admin erstellt KVA → PDF hochladen ODER manuell Ersatzteile eingeben
+2. Ersatzteile in Tabelle sichtbar (editierbar)
+3. KVA an Partner senden → Ersatzteile in KVA gespeichert
+4. Partner nimmt an → annehmenKVA() triggert
+5. ✅ Fahrzeug wird mit Ersatzteilen erstellt
+6. ✅ saveErsatzteileToCentralDB() speichert in ersatzteile_{werkstattId}
+7. ✅ Kein Datenverlust!
+
+**Commits:**
+- `d97dffb` - feat: Ersatzteile-System für KVA - Komplettintegration (4 Phasen) +324 Zeilen
+- `accce7d` - fix: Multi-Service display bug in admin-anfragen.html (Pattern 30)
+
+**Files Modified:** 2 files
+- partner-app/anfrage-detail.html (+191 Zeilen)
+- partner-app/kva-erstellen.html (+133 Zeilen)
+
+**Key Learnings:**
+- **Data Loss Prevention:** Alle Datenpipelines müssen vollständig durchgetestet werden (KVA → Annahme → DB)
+- **User Story Driven:** "Per PDF UND manuell" → Beide Wege müssen funktionieren!
+- **4-Phasen-Ansatz:** Datenübertragung → UI → Import → Speicherung (systematisch abarbeiten)
+- **Pattern 30 verstanden:** Silent Data Loss entsteht durch fehlende Daten-Mappings in Transformationsfunktionen
+
+---
 
 ### Session 2025-11-14: Multi-Service serviceTyp Consistency (CRITICAL BUG FIX)
 
@@ -72,7 +144,34 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ---
 
-### Recent Sessions Summary (2025-11-09 to 2025-11-13)
+### Recent Sessions Summary (2025-11-09 to 2025-11-17)
+
+**Session 2025-11-17: Ersatzteile-System für KVA** 🎯
+- 4-Phasen-Implementierung (+324 Zeilen Code, 2 Dateien)
+- Pattern 30 Fix (Silent Data Loss) - Ersatzteile bei KVA-Annahme
+- PDF-Import + Manuelle Eingabe + Datenübertragung
+- User Story: "Per PDF UND manuell eingetragen" - ✅ ERFÜLLT
+- Commits: d97dffb, accce7d
+
+**Session 2025-11-16: Multi-Service Pipeline Fixes**
+- 5 Commits (877e9ca → b7e87dd)
+- Backward compatibility + Field Mismatches + Missing Fields
+- 12/12 Services complete
+
+**Session 2025-11-15: Phase 1 Security - File Upload Validation** 🛡️
+- Client-side MIME type + File size validation
+- 10 Commits (0bf67cc → e5f7bcf)
+- 10 Files modified, 12/12 Tests passed
+
+**Session 2025-11-14: Multi-Service serviceTyp Consistency** 🔴
+- CRITICAL Bug Fix: serviceTyp overwrite in Kanban
+- 2-Layer Defense + Pattern 21 established
+- 15+ files audited
+- Commits: 750d7b2, 7083778, bf407b9
+
+---
+
+### Earlier Sessions Summary (2025-11-09 to 2025-11-13)
 
 **Session 2025-11-09: Hybrid Testing Breakthrough** 🎉
 - 17 UI E2E Test Attempts → All failed
@@ -2202,8 +2301,8 @@ When starting a new session:
 
 ---
 
-_Last Updated: 2025-11-14 by Claude Code (Sonnet 4.5)_
-_Version: v9.0 - COMPLETE REWRITE (Session 2025-11-14: Multi-Service serviceTyp Consistency)_
+_Last Updated: 2025-11-17 by Claude Code (Sonnet 4.5)_
+_Version: v9.1 - Ersatzteile-System für KVA (Session 2025-11-17: 4-Phasen-Implementierung + Pattern 30 Fix)_
 _Testing Method: **Hybrid Approach** (Integration Tests + Smoke Tests, 23 total)_
 _Performance: 15x improvement (30s → 2s per test), ~46s total suite time_
 _Success Rate: 100% on Chromium, Mobile Chrome, Tablet iPad_
@@ -2621,7 +2720,238 @@ console.log('🔍 DEBUG: Current state:', { partner, anfrage, werkstattId });
 
 ---
 
-**Updated:** 2025-11-15 after fixing 3 critical bugs (Patterns 23-25)  
-**Session Learnings:** Execution order bugs, data loss bugs, auth bugs  
-**Total Patterns:** 25 (added 3 new patterns in this session)
+## ⚠️ Common Pitfalls - Multi-Service System (Nov 16, 2025)
+
+**Critical Lessons Learned from Production Debugging Session**
+
+### 🔥 Pitfall #1: Missing Backward Compatibility (CRITICAL)
+
+**Symptom:**
+- Multi-service KVA shows "k.A." for ALL fields despite data existing in Firebase
+- Console shows no errors, but all service data displays as "keine Angaben"
+
+**Root Cause:**
+- Form collection uses ONE naming convention (`art`, `groesse`)
+- Display code expects DIFFERENT naming convention (`reifen_art`, `reifen_dimension`)
+- Without fallbacks, lookup fails silently → displays "k.A."
+
+**Why It Happened:**
+```javascript
+// collectServiceData() removes prefixes:
+"reifen_art" → "art"  (saved to Firebase)
+
+// Display code only checks prefixed version:
+serviceData.reifen_art  // ❌ undefined (field doesn't exist!)
+// → Falls back to "k.A."
+```
+
+**Solution (Commit 877e9ca):**
+```javascript
+// ✅ Check BOTH naming conventions:
+serviceData.art || serviceData.reifen_art  // Works for both!
+```
+
+**Prevention:**
+- ✅ ALWAYS add fallback chains: `unprefixed || prefixed`
+- ✅ Test with BOTH old (prefixed) and new (unprefixed) data
+- ✅ Document field naming conventions in CLAUDE.md
+- ✅ Add to testing checklist: "Verify backward compatibility"
+
+---
+
+### 🔥 Pitfall #2: Type Mismatch - String vs Array (HIGH)
+
+**Symptom:**
+- Console error: `TypeError: position.map is not a function`
+- Dellen service crashes when displaying KVA
+
+**Root Cause:**
+- Form collects position as free-text **textarea** → stores as STRING
+- Display code assumes position is **ARRAY** → tries to call `.map()` on it
+
+**Why It Happened:**
+```html
+<!-- Form: Textarea input (string) -->
+<textarea id="dellen_position">Motorhaube mittig, Tür links</textarea>
+
+<!-- Display expects: Array -->
+position.map(p => formatDellenPosition(p))  // ❌ CRASH!
+```
+
+**Solution (Commit 6d168af):**
+```javascript
+// ✅ Handle as string, not array:
+serviceData.position || serviceData.dellen_position  // Just display it!
+```
+
+**Prevention:**
+- ✅ ALWAYS verify field types between form and display
+- ✅ Checkbox = boolean, Textarea = string, Multi-select = array
+- ✅ Add type comments in code: `// @type {string}`
+- ✅ Test with actual form data, not mock data
+
+---
+
+### 🔥 Pitfall #3: Naming Inconsistency - Template Keys (HIGH)
+
+**Symptom:**
+- Console error: "❌ Service-Template nicht gefunden: lackier"
+- Only 11/12 services show in Kostenaufstellung
+- Lackierung service completely missing from cost estimation
+
+**Root Cause:**
+- Form sends service ID as `lackier`
+- SERVICE_TEMPLATES object has key `lackierung`
+- Lookup fails → service not rendered
+
+**Why It Happened:**
+```javascript
+// Form checkbox:
+<input value="lackier" />  // Sends "lackier"
+
+// Template definition:
+SERVICE_TEMPLATES = {
+  lackierung: { ... }  // ❌ Key mismatch!
+}
+
+// Lookup:
+SERVICE_TEMPLATES['lackier']  // undefined → Error!
+```
+
+**Solution (Commit 1569351):**
+```javascript
+// ✅ Match form ID exactly:
+SERVICE_TEMPLATES = {
+  lackier: { ... }  // Matches form checkbox value
+}
+```
+
+**Prevention:**
+- ✅ ALWAYS use EXACT same IDs across form, Firebase, display
+- ✅ Audit all service IDs: form → collection → templates
+- ✅ Add validation: Check template exists before rendering
+- ✅ Test ALL 12 services, not just a few
+
+---
+
+### 🔥 Pitfall #4: Wrong Field Priority (CRITICAL)
+
+**Symptom:**
+- Variant generation broken for 6/12 services
+- Fields show "k.A." even with backward compatibility
+- KVA displays wrong data or defaults
+
+**Root Cause:**
+- Display code checks WRONG field FIRST in fallback chain
+- Example: Checks `dimension` first, but form saves `groesse`
+- Fallback never reaches correct field → displays "k.A."
+
+**Why It Happened:**
+```javascript
+// Form collects:
+<input id="reifen_groesse" />  → Saves as "groesse"
+
+// Display checks in wrong order:
+serviceData.dimension || serviceData.groesse  // ❌ Wrong priority!
+// "dimension" is undefined → fallback to groesse works, BUT...
+// If display checks dimension FIRST, it assumes that's the primary field
+```
+
+**Solution (Commit dae9431):**
+```javascript
+// ✅ Check form field FIRST:
+serviceData.groesse || serviceData.dimension  // Correct priority!
+```
+
+**Prevention:**
+- ✅ Field priority MUST match form collection logic
+- ✅ Primary field = what form actually collects
+- ✅ Secondary field = backward compatibility fallback
+- ✅ Test with NEW data (form submission) not just old data
+
+---
+
+### 🔥 Pitfall #5: Silent Data Loss - Missing Display Fields (CRITICAL)
+
+**Symptom:**
+- Form collects 50+ fields successfully
+- Firebase shows all data stored correctly
+- KVA display missing most fields → user sees incomplete quote
+
+**Root Cause:**
+- Form collects fields: `farbcode`, `km`, `kaeltemittel`, `flaeche`
+- Display code NEVER checks these fields → silently ignored
+- Conditional rendering hides entire sections if ALL fields empty
+
+**Why It Happened:**
+```javascript
+// Form collects:
+<input id="lackier_farbcode" />  → Saved to Firebase ✅
+
+// Display code:
+${serviceData.teile ? ... : ''}  // Only shows if "teile" exists
+// ❌ NEVER checks for "farbcode" → field invisible!
+```
+
+**Solution (Commit b7e87dd):**
+```javascript
+// ✅ Add display for EVERY form field:
+${(serviceData.farbcode || serviceData.lackier_farbcode) ?
+  `<div><strong>Farbcode:</strong> ${serviceData.farbcode || serviceData.lackier_farbcode}</div>`
+  : ''}
+```
+
+**Prevention:**
+- ✅ AUDIT: List ALL form fields vs ALL display fields
+- ✅ Every `<input>` in form MUST have matching display code
+- ✅ Use comprehensive fallbacks: unconditional core fields
+- ✅ Test with FULLY FILLED forms, not minimal data
+
+---
+
+### 📋 Multi-Service Testing Checklist
+
+**Before Committing Multi-Service Changes:**
+
+1. **Field Name Consistency:**
+   - [ ] Form IDs match Firebase field names?
+   - [ ] Template keys match form service IDs?
+   - [ ] Display code checks BOTH prefixed + unprefixed?
+
+2. **Type Safety:**
+   - [ ] String fields not treated as arrays?
+   - [ ] Checkbox values handled as booleans?
+   - [ ] Array fields use `.map()` safely?
+
+3. **Data Completeness:**
+   - [ ] ALL form fields have display code?
+   - [ ] Tested with FULLY filled form?
+   - [ ] Tested with EMPTY form (no crashes)?
+
+4. **Backward Compatibility:**
+   - [ ] Old data (prefixed) still displays?
+   - [ ] New data (unprefixed) displays?
+   - [ ] Fallback chains in correct priority?
+
+5. **All 12 Services:**
+   - [ ] Tested EVERY service, not just one?
+   - [ ] All templates render (12/12)?
+   - [ ] Console has ZERO errors?
+
+**Related Commits:**
+- 877e9ca - Backward compatibility fix
+- 6d168af - Dellen position type fix
+- 1569351 - Lackierung template key fix
+- dae9431 - Field priority corrections
+- b7e87dd - Missing display fields added
+
+**Related Docs:**
+- See CLAUDE.md "Multi-Service Pipeline Fixes" section
+- See FEATURES_CHANGELOG.md for detailed implementation
+
+---
+
+**Updated:** 2025-11-16 after fixing 5 critical multi-service bugs
+**Session Learnings:** Backward compatibility, type mismatches, naming inconsistencies, field priorities, silent data loss
+**Total Patterns:** 30 (added 5 new patterns from multi-service debugging)
 

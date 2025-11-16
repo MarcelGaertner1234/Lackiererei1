@@ -59,8 +59,160 @@ npm run test:all  # Expected: 23/23 tests passed (100%)
 
 **Dieses CLAUDE.md nutzen für:**
 - 🏗️ Architecture Deep-Dives (Multi-Tenant, Firebase Init)
-- 📖 Error Patterns 1-20 (NEXT_AGENT hat 1-23)
+- 📖 Error Patterns 1-20 (NEXT_AGENT hat 1-30)
 - 🔍 Code Examples & Implementation Details
+
+---
+
+## ⚡ Quick Command Reference
+
+### Testing (ALWAYS run before coding!)
+```bash
+npm run test:all          # ✅ REQUIRED: 23 Hybrid Tests (~46s, 100% pass rate)
+npm run test:integration  # 10 Integration tests (Firestore-based, ~2s each)
+npm run test:smoke        # 13 Smoke tests (UI accessibility)
+npm run test:headed       # Run with browser UI visible
+npm run test:ui           # Interactive Playwright UI mode
+npm run test:debug        # Debug mode with breakpoints
+npm run test:report       # Show latest test report
+```
+
+### Development Servers
+```bash
+# Terminal 1: Local dev server
+npm run server            # → http://localhost:8000
+
+# Terminal 2: Firebase Emulators (REQUIRED for local testing!)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21  # Java 21+ required!
+firebase emulators:start --only firestore,storage --project demo-test
+# Firestore UI: http://localhost:4000
+# Firestore: http://localhost:8080
+# Storage: http://localhost:9199
+```
+
+### Deployment
+```bash
+git add . && git commit -m "..." && git push origin main
+# GitHub Pages auto-deploys in 2-3 minutes
+# Live URL: https://marcelgaertner1234.github.io/Lackiererei1/
+```
+
+### Firebase Deployment (Functions, Rules)
+```bash
+firebase deploy --only functions          # Cloud Functions
+firebase deploy --only firestore:rules    # Security Rules
+firebase deploy --only storage:rules      # Storage Rules
+```
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | Vanilla JS, HTML5, CSS3 | No framework dependencies - fast & simple |
+| **Backend** | Firebase Firestore + Storage | Real-time database + file storage (DSGVO: europe-west3) |
+| **Authentication** | Firebase Auth | 2-stage: Werkstatt selection + Employee login |
+| **Cloud Functions** | Node.js (Firebase Functions) | OpenAI GPT-4, Email notifications, Auto-login tokens |
+| **Testing** | Playwright | Hybrid: 10 Integration + 13 Smoke tests (100% success) |
+| **CI/CD** | GitHub Actions | Auto-deploy to GitHub Pages on push |
+| **AI Services** | OpenAI (GPT-4, Whisper, TTS-1-HD) | Chat widget, Speech-to-Text, Text-to-Speech |
+| **PDF Generation** | jsPDF | Client-side PDF creation for intake/handover docs |
+| **Charts** | Chart.js | Financial dashboards for Steuerberater portal |
+
+---
+
+## 📁 Key Files & Directories
+
+### Core App Pages (Werkstatt Portal)
+- **`index.html`** - Login & Werkstatt selection (entry point)
+- **`annahme.html`** - Vehicle intake form (12 service types, dynamic fields) - 438KB, 11k lines
+- **`liste.html`** - Vehicle list/overview with filters
+- **`kanban.html`** - Kanban board (10 custom workflows, drag & drop) - 354KB, 9k lines
+- **`kunden.html`** - Customer management
+- **`kalender.html`** - Calendar view
+- **`material.html`** - Material ordering with photo upload
+
+### Partner Portal (`partner-app/`)
+**12 Service Request Forms** (each with validation + photo upload):
+- `lackier-anfrage.html`, `reifen-anfrage.html`, `mechanik-anfrage.html`
+- `pflege-anfrage.html`, `tuev-anfrage.html`, `versicherung-anfrage.html`
+- `glas-anfrage.html`, `klima-anfrage.html`, `dellen-anfrage.html`
+- `folierung-anfrage.html`, `steinschutz-anfrage.html`, `werbebeklebung-anfrage.html`
+
+**Partner Management Pages:**
+- **`meine-anfragen.html`** - Partner dashboard (6800 lines, realtime sync)
+- **`kva-erstellen.html`** - Quote (KVA) creation (2648 lines, dynamic variants)
+- **`anfrage-detail.html`** - Request detail view + status tracking
+- **`auto-login.html`** - QR-Code auto-login (from PDF)
+- **`service-auswahl.html`** - Service selection grid
+
+### Admin Pages
+- **`admin-dashboard.html`** - Admin overview
+- **`admin-einstellungen.html`** - Settings (logo upload, dark mode) - 93KB
+- **`mitarbeiter-verwaltung.html`** - Employee management + Zeiterfassung admin - 230KB
+- **`mitarbeiter-dienstplan.html`** - Employee time clock (Start/Pause/Finish) - 129KB
+- **`dienstplan.html`** - Schedule management - 145KB
+- **`pending-registrations.html`** - Partner approval workflow
+- **`admin-bonus-auszahlungen.html`** - Bonus payment dashboard
+- **`rechnungen-admin.html`** - Invoice management
+- **`nutzer-verwaltung.html`** - User account management
+
+### Steuerberater Portal (Tax Accountant)
+- `steuerberater-statistiken.html` - Statistics dashboard (Chart.js)
+- `steuerberater-bilanz.html` - Balance sheet view
+- `steuerberater-kosten.html` - Cost analysis
+- `steuerberater-export.html` - CSV export functionality
+
+### Core JavaScript (`js/`)
+- **`auth-manager.js`** - 2-stage authentication (werkstatt + mitarbeiter)
+- **`settings-manager.js`** - User preferences + Logo branding (Auto-Init, Multi-tenant)
+- **`ai-agent-engine.js`** - OpenAI GPT-4 integration
+- **`ai-chat-widget.js`** - AI chat UI component
+- **`ai-agent-tools.js`** - AI function calling
+- **`app-events.js`** - Event bus
+- **`mitarbeiter-notifications.js`** - Employee alerts
+
+### Firebase Configuration (CRITICAL)
+- **`firebase-config.js`** - Firebase init + Multi-tenant helpers (`window.getCollection()`) - 42KB
+- **`firestore.rules`** - Security Rules (CRITICAL - pattern order matters!) - 77KB
+- **`firestore.indexes.json`** - Composite indexes for queries
+- **`storage.rules`** - Storage access control (path validation)
+- **`firebase.json`** - Firebase config + Emulator ports
+
+### Cloud Functions (`functions/`)
+- **`index.js`** - All Cloud Functions (3200+ lines)
+  - `ensurePartnerAccount` - Create partner Firebase Auth
+  - `createPartnerAutoLoginToken` - Generate QR token for PDF
+  - `validatePartnerAutoLoginToken` - Validate + create custom Firebase token
+  - `monthlyBonusReset` - Scheduled: 1st of month (reset partner bonuses)
+  - `testMonthlyBonusReset` - HTTP endpoint for manual testing
+
+### Testing (`tests/`)
+**Integration Tests (`tests/integration/`):**
+- `vehicle-integration.spec.js` - 10 Firestore-based tests (~2s each)
+
+**Smoke Tests (`tests/smoke/`):**
+- `ui-smoke.spec.js` - 13 UI accessibility tests
+
+**Legacy Tests (Archived):**
+- `00-smoke-test.spec.js` → `10-mobile-comprehensive.spec.js` (17 tests, archived after Hybrid approach)
+- Test helpers in `tests/helpers/`
+
+### Data Migration Scripts
+- `migrate-partneranfrageid.html` - Add partnerAnfrageId field (Nov 2025)
+- `migrate-kennzeichen-uppercase.html` - Normalize license plates
+- `migrate-fotos-to-firestore.html` - Migrate photos to Firestore
+- `migrate-multi-service-status.html` - Multi-service status sync
+- `migrate-mitarbeiter.html` - Employee data migration
+- `migrate-price-consistency.html` - Price field consistency
+- `migrate-status-consistency.html` - Status field consistency
+
+### Documentation
+- **`NEXT_AGENT_MANUAL_TESTING_PROMPT.md`** - **THE BIBLE** (2858 lines, 30 error patterns)
+- **`CLAUDE.md`** - This file (architecture reference)
+- **`FEATURES_CHANGELOG.md`** - Feature implementation history (4921 lines)
+- **`README.md`** - Outdated v1.0/2.0 docs (use CLAUDE.md instead)
 
 ---
 
@@ -99,37 +251,151 @@ const werkstattId = window.werkstattId;  // Pre-initialized from localStorage
 ```
 **⚠️ Ohne Await = Race Conditions!** Siehe: [Firebase Init Pattern](#firebase-initialization)
 
-### 4. 🐛 20 Critical Error Patterns (Must-Know!)
-Dokumentierte Fehler-Patterns mit Lösungen (basierend auf 9 Debugging-Sessions):
-- Pattern 1-5: Multi-Tenant, Firebase Init, ID Type Mismatch, Listener Registry, PDF Pagination
-- Pattern 6-10: Security Rules Order, Field Inconsistency, Duplicates, Service Worker, Firestore Indexes
-- Pattern 11-15: Nested Transactions, Counter Rules, Mobile Breakpoints, Dark Mode Contrast, Storage Rules
-- Pattern 16-20: Path Matching, CollectionReference Type, Function Verification, PDF Unicode/Emoji, CORS Blocking
+### 4. 🐛 30 Critical Error Patterns (Must-Know!)
+Dokumentierte Fehler-Patterns mit Lösungen (basierend auf 15+ Debugging-Sessions):
+- **Pattern 1-20** (This CLAUDE.md): Core patterns mit Code Examples
+  - Multi-Tenant, Firebase Init, ID Type Mismatch, Listener Registry, PDF Pagination
+  - Security Rules Order, Field Inconsistency, Duplicates, Service Worker, Firestore Indexes
+  - Nested Transactions, Counter Rules, Mobile Breakpoints, Dark Mode Contrast, Storage Rules
+  - Path Matching, CollectionReference Type, Function Verification, PDF Unicode/Emoji, CORS Blocking
 
-**Siehe:** [20 Critical Error Patterns](#-20-critical-error-patterns) für vollständige Solutions
+- **Pattern 21-30** (NEXT_AGENT): Extended patterns mit Session History
+  - Multi-Service serviceTyp Overwrite (DATA LOSS)
+  - File Upload Validation (SECURITY)
+  - Multi-Service KVA Blockers, Partner Auth Order, werkstattId Init Order
+  - Multi-Service Pipeline Fixes (Nov 16)
+
+**Siehe:** [Pattern 1-20](#-20-critical-error-patterns) + [Pattern 21-30](#-pattern-21-30-see-next_agent-extended-patterns)
 
 ### 5. 📚 Dokumentations-Struktur
 | Dokument | Zweck | Wann verwenden? |
 |----------|-------|-----------------|
-| **NEXT_AGENT_MANUAL_TESTING_PROMPT.md** ⭐ | **CODE QUALITY BIBLE** - Workflow, Testing, 23 Error Patterns, Security | **PRIMARY** - IMMER vor Code-Änderungen lesen! |
-| **CLAUDE.md** (dieses File) | Architecture Reference, Multi-Tenant, Firebase Init, Error Patterns 1-20 | Architecture Deep-Dive, Implementation Details |
-| **FEATURES_CHANGELOG.md** | Feature Implementation Details (Lines 54-3647 extrahiert) | Feature Deep-Dive, Implementation-Recherche |
+| **NEXT_AGENT_MANUAL_TESTING_PROMPT.md** ⭐ | **CODE QUALITY BIBLE** - Workflow, Testing, 30 Error Patterns, Security | **PRIMARY** - IMMER vor Code-Änderungen lesen! |
+| **CLAUDE.md** (dieses File) | Architecture Reference, Multi-Tenant, Firebase Init, Pattern 1-20, Quick Commands | Architecture Deep-Dive, Implementation Details |
+| **FEATURES_CHANGELOG.md** | Feature Implementation Details (4921 lines) | Feature Deep-Dive, Implementation-Recherche |
 | **TESTING_AGENT_PROMPT.md** | QA Testing Strategy & 18 Error Patterns | Testing-Role, Pattern-Referenz |
 | **CLAUDE_SESSIONS_ARCHIVE.md** | Session-Historie | Bug-Kontext, Historical Reference |
 
 **⚡ Quick-Links (NEXT_AGENT_MANUAL_TESTING_PROMPT.md):**
-- **Session History** - Latest fixes (Nov 14-15: Multi-Service, File Upload, KVA)
-- **23 Error Patterns** - Complete with Symptom → Root Cause → Fix → Code
+- **Session History** - Latest fixes (Nov 14-16: Multi-Service, File Upload, KVA, Pipeline)
+- **30 Error Patterns** - Complete with Symptom → Root Cause → Fix → Code
 - **ALWAYS/NEVER Do Guidelines** - 15+ critical rules, 9+ forbidden patterns
 - **Hybrid Testing Workflow** - Test-First Methodology (100% pass rate required)
 - **Security Methodology** - Backup-First, Pre-Implementation Checklist
 
 **⚡ Quick-Links (Dieses CLAUDE.md):**
+- [Quick Commands](#-quick-command-reference) - Testing, Dev Servers, Deployment
+- [Tech Stack](#️-technology-stack) - All technologies used
+- [File Structure](#-key-files--directories) - Navigate the codebase
+- [Console Monitoring](#️-console-monitoring-guide) - Debug like a pro
+- [Pre-Push Checklist](#-pre-push-verification-checklist) - Never break production
+- [Pattern 1-20](#-20-critical-error-patterns) - Core patterns with code
+- [Pattern 21-30](#-pattern-21-30-see-next_agent-extended-patterns) - Extended patterns (NEXT_AGENT)
 - [Testing Guide](#-testing-guide) - Hybrid Testing Approach
-- [20 Error Patterns](#-20-critical-error-patterns) - Mit Solutions & Code Examples
-- [12 Best Practices](#-12-best-practices--lessons-learned) - Production Debugging Lessons
+- [Best Practices](#-12-best-practices--lessons-learned) - Production Debugging Lessons
 - [Decision Trees](#-decision-trees) - Quick Reference für common decisions
 - [Architecture](#-core-architecture) - Multi-Tenant, Firebase, Security
+
+---
+
+## 🖥️ Console Monitoring Guide
+
+**CRITICAL HABIT:** ALWAYS open DevTools Console BEFORE testing changes!
+
+### Keyboard Shortcuts
+| Browser | Mac | Windows/Linux |
+|---------|-----|---------------|
+| **Chrome/Chromium** | `Cmd+Opt+J` | `Ctrl+Shift+J` |
+| **Firefox** | `Cmd+Opt+K` | `Ctrl+Shift+K` |
+| **Safari** | `Cmd+Opt+C` | N/A |
+
+### Zero Tolerance Policy
+- ✅ **ACCEPTABLE:** 0 errors (perfect!)
+- ⚠️ **REVIEW:** 6-10 warnings (investigate but not blocking)
+- ❌ **UNACCEPTABLE:** ANY red errors (MUST fix before pushing!)
+
+### Common Console Error Patterns
+```javascript
+// Pattern 1: Firebase initialization not awaited
+"werkstattId is undefined" → Add: await window.firebaseInitialized
+
+// Pattern 2: Collection helper not used
+"Permission denied" → Use: window.getCollection('fahrzeuge')
+
+// Pattern 3: ID type mismatch
+"Fahrzeug nicht gefunden" → Use: String(v.id) === String(vehicleId)
+
+// Pattern 4: Listener not cleaned up
+"Memory leak detected" → Use: listener-registry.js pattern
+
+// Pattern 5: Function doesn't exist
+"ReferenceError: setupXXX is not defined" → Grep for function definition
+```
+
+### When to Add Console Logs
+✅ **DO ADD** console logs for:
+- Firebase init checkpoints (`console.log('🔥 Firebase initialized')`)
+- Multi-tenant collection resolution (`console.log('🏢 getCollection...')`)
+- Critical state changes (`console.log('✅ Vehicle created:', id)`)
+
+❌ **DON'T ADD** console logs for:
+- Every function call (too noisy)
+- Loop iterations (performance impact)
+- Production code without conditional guard (`if (window.DEBUG_MODE)`)
+
+**See NEXT_AGENT Lines 2383-2622 for extended Console Monitoring documentation.**
+
+---
+
+## ✅ Pre-Push Verification Checklist
+
+**MANDATORY before every `git push`:**
+
+### 1. Testing (NON-NEGOTIABLE)
+```bash
+npm run test:all  # MUST show 23/23 passed (100%)
+```
+- [ ] All tests pass (100% success rate)
+- [ ] No console errors during test run
+- [ ] Test report reviewed (`npm run test:report`)
+
+### 2. Code Review
+```bash
+git diff  # Review ALL changes before committing
+```
+- [ ] All changes reviewed line-by-line
+- [ ] No debug code left (`console.log`, `debugger`, commented code)
+- [ ] No sensitive data (API keys, passwords, emails)
+- [ ] Commit message is clear and descriptive
+
+### 3. Functionality Check
+- [ ] Tested in development environment (localhost:8000)
+- [ ] Tested with Firebase Emulators (not production DB!)
+- [ ] No breaking changes for existing features
+- [ ] User-facing changes documented
+
+### 4. Security Check
+- [ ] No new Firestore collections without Security Rules
+- [ ] File uploads have MIME type validation
+- [ ] Partner/Admin access controls enforced
+- [ ] Query-Rule compliance verified (queries filter by Security Rule fields)
+
+### 5. Multi-Tenant Compliance
+- [ ] All collections use `window.getCollection()` helper
+- [ ] No direct `db.collection()` calls (except global collections: users, settings)
+- [ ] `werkstattId` properly initialized before Firestore operations
+
+### 6. Documentation
+- [ ] CLAUDE.md updated (if architecture changed)
+- [ ] NEXT_AGENT updated (if new error pattern discovered)
+- [ ] FEATURES_CHANGELOG updated (if new feature added)
+
+### 7. Backup Strategy (for risky changes)
+- [ ] Backup branch created (`backup-before-{description}`)
+- [ ] Risk assessment documented
+- [ ] Rollback strategy defined
+
+**See NEXT_AGENT Lines 747-1574 for extended Security & Backup Methodology.**
 
 ---
 
@@ -990,6 +1256,59 @@ await window.getCollection('partnerAnfragen').doc(anfrageId).set(anfrageData);
 - UI state (`currentProcess`) must be separate from data model (`serviceTyp`)
 - Defense in Depth: Validate at creation AND protect at update
 - Comprehensive audits catch hidden overwrites in legacy code
+
+---
+
+## 🔗 Pattern 21-30: See NEXT_AGENT (Extended Patterns)
+
+**CRITICAL:** This CLAUDE.md documents Pattern 1-20. **Pattern 21-30 are documented in NEXT_AGENT_MANUAL_TESTING_PROMPT.md** for maintainability (avoid duplication).
+
+### Pattern 21: Multi-Service serviceTyp Overwrite (CRITICAL!)
+**Symptom:** Primary service lost during Kanban drag & drop
+**Impact:** DATA LOSS - permanent
+**Debug Time:** 3-4h
+**📖 See:** NEXT_AGENT Lines 474-604 for complete documentation
+
+### Pattern 22: File Upload Validation Missing (Security Vulnerability)
+**Symptom:** Malware uploads accepted (EXE, BAT, scripts)
+**Impact:** 🔴 CRITICAL - XSS risk, storage exhaustion
+**Debug Time:** 2-3h (Phase 1 Security Fixes)
+**📖 See:** NEXT_AGENT Lines 605-746
+
+### Pattern 23: Multi-Service KVA - 3 Critical Blockers
+**Symptom:** 100% data loss for service-specific fields
+**Impact:** Quote creation completely broken
+**Debug Time:** 5-6h
+**📖 See:** NEXT_AGENT Lines 876-1059
+
+### Pattern 24: Partner Authentication Before Data Loading
+**Symptom:** "Permission denied" on page load
+**Root Cause:** loadAnfrage() called BEFORE auth completes
+**Debug Time:** 2-3h
+**📖 See:** NEXT_AGENT Lines 1062-1254
+
+### Pattern 25: werkstattId Initialization Order Bug
+**Symptom:** Console error on EVERY page load
+**Root Cause:** checkLogin() uses werkstattId BEFORE it's initialized
+**Debug Time:** 1-2h
+**📖 See:** NEXT_AGENT Lines 1257-1419
+
+### Pattern 26-30: Multi-Service Pipeline Fixes (Nov 16)
+**Five critical bugs** in display pipeline:
+- Pattern 26: Backward compatibility missing ("k.A." displays)
+- Pattern 27: Type mismatch (String vs Array → `.map()` crash)
+- Pattern 28: Naming inconsistency (template not found)
+- Pattern 29: Wrong field priority (incorrect data displayed)
+- Pattern 30: Silent data loss (missing display fields)
+
+**📖 See:** NEXT_AGENT Lines 2623-2858 for complete documentation
+
+**Why Extended Patterns are in NEXT_AGENT:**
+- ✅ Avoid duplication (single source of truth)
+- ✅ Detailed session history with commit references
+- ✅ Extended code examples (100+ lines per pattern)
+- ✅ Testing methodology integration
+- ✅ Continuous updates after each debugging session
 
 ---
 
@@ -2820,103 +3139,9 @@ function validateServiceTyp(serviceTyp) {
 
 ## 📁 File Structure
 
-```
-/Fahrzeugannahme_App/
-├── index.html                    # Landing page (login/navigation)
-├── annahme.html                  # Vehicle intake form (12 service types)
-├── liste.html                    # Vehicle list view
-├── kanban.html                   # Kanban board (10 custom workflows)
-├── kalender.html                 # Calendar view
-├── material.html                 # Material ordering
-├── kunden.html                   # Customer management
-├── admin-dashboard.html          # Admin dashboard
-├── pending-registrations.html    # Partner approval workflow
-├── admin-bonus-auszahlungen.html # Bonus payment dashboard
-├── mitarbeiter-verwaltung.html   # Employee management + Zeiterfassung admin panel
-├── mitarbeiter-dienstplan.html   # Employee schedule + Time clock (Start/Pause/Finish)
-├── dienstplan.html               # Admin: Schedule management
-├── firebase-config.js            # Firebase init + Multi-tenant helper (CRITICAL)
-├── firestore.rules               # Security rules (CRITICAL - pattern order!)
-├── firestore.indexes.json        # Query indexes
-├── storage.rules                 # Storage access control
-├── firebase.json                 # Firebase config + Emulator ports
-├── package.json                  # NPM dependencies
-├── playwright.config.js          # Playwright E2E test config
-├── js/
-│   ├── auth-manager.js          # 2-stage auth (werkstatt + mitarbeiter)
-│   ├── ai-agent-engine.js       # OpenAI GPT-4 integration
-│   ├── ai-chat-widget.js        # AI chat UI component
-│   ├── settings-manager.js      # User preferences + Logo branding (Auto-Init pattern, Multi-tenant)
-│   ├── ai-agent-tools.js        # AI function calling
-│   ├── app-events.js            # Event bus
-│   └── mitarbeiter-notifications.js # Employee alerts
-├── partner-app/                  # B2B Partner Portal (12 services)
-│   ├── index.html               # Partner dashboard
-│   ├── service-auswahl.html     # Service selection grid
-│   ├── meine-anfragen.html      # Partner's request list (6800 lines)
-│   ├── anfrage-detail.html      # Request detail view + Status tracking
-│   ├── kva-erstellen.html       # Quote (KVA) creation (2648 lines)
-│   ├── admin-anfragen.html      # Admin: All partner requests
-│   ├── auto-login.html          # QR-Code auto-login page
-│   ├── lackier-anfrage.html     # Paint service form
-│   ├── reifen-anfrage.html      # Tire service form
-│   ├── mechanik-anfrage.html    # Mechanic service form
-│   ├── pflege-anfrage.html      # Detailing service form
-│   ├── tuev-anfrage.html        # TÜV inspection form
-│   ├── versicherung-anfrage.html # Insurance form
-│   ├── glas-anfrage.html        # Glass repair form
-│   ├── klima-anfrage.html       # A/C service form
-│   ├── dellen-anfrage.html      # Dent removal form
-│   ├── folierung-anfrage.html   # Wrapping service form
-│   ├── steinschutz-anfrage.html # Paint protection form
-│   └── werbebeklebung-anfrage.html # Advertising wrap form
-├── functions/                    # Firebase Cloud Functions
-│   ├── index.js                 # All Cloud Functions (3200+ lines)
-│   │   ├── ensurePartnerAccount        # Create partner Firebase Auth
-│   │   ├── createPartnerAutoLoginToken # Generate QR token
-│   │   ├── validatePartnerAutoLoginToken # Validate + create custom token
-│   │   ├── monthlyBonusReset           # Scheduled: 1st of month
-│   │   └── testMonthlyBonusReset       # HTTP: Manual test
-│   └── package.json
-├── tests/                        # Playwright E2E tests
-│   ├── 00-smoke-test.spec.js
-│   ├── 01-vehicle-intake.spec.js
-│   ├── 02-partner-flow.spec.js
-│   ├── 03-kanban-drag-drop.spec.js
-│   ├── 04-edge-cases.spec.js
-│   ├── 05-transaction-failure.spec.js
-│   ├── 06-cascade-delete-race.spec.js
-│   ├── 07-service-consistency-v32.spec.js
-│   ├── 08-admin-einstellungen.spec.js
-│   ├── 09-ki-chat-widget.spec.js
-│   ├── 10-mobile-comprehensive.spec.js
-│   ├── 99-firebase-config-check.spec.js
-│   ├── partner-app-kva-logic.spec.js
-│   ├── partner-app-multi-tenant.spec.js
-│   └── helpers/                  # Test utilities
-├── migrate-*.html               # Data migration scripts (6 files)
-│   ├── migrate-partneranfrageid.html (NEW 2025-11-07)
-│   ├── migrate-fotos-to-firestore.html
-│   ├── migrate-kennzeichen-uppercase.html
-│   ├── migrate-mitarbeiter.html
-│   ├── migrate-price-consistency.html
-│   └── migrate-status-consistency.html
-├── libs/                        # Local libraries
-│   └── qrious.min.js           # QR-Code generation (17KB)
-├── css/                         # Global stylesheets
-│   ├── light-mode.css          # Light Mode theme (NEW 2025-11-10, 301 lines)
-│   └── ...                     # Other CSS files
-├── n8n-workflows/               # Automation workflows (n8n)
-└── CLAUDE.md                    # This file
-```
+**See [Key Files & Directories](#-key-files--directories) section at the top of this document for the comprehensive, categorized file structure.**
 
-**Key Files to Know:**
-- **firebase-config.js** - CRITICAL: Multi-tenant helper, Firebase initialization
-- **firestore.rules** - CRITICAL: Security Rules (pattern order matters!)
-- **annahme.html** - Vehicle intake with 12 service types + dynamic fields
-- **kanban.html** - Kanban board with 10 custom workflows + drag & drop
-- **partner-app/meine-anfragen.html** - Partner dashboard (6800 lines, realtime sync)
-- **partner-app/kva-erstellen.html** - Quote creation (2648 lines, dynamic variants)
+_(Old detailed file tree removed to avoid duplication - see top of document for enhanced version)_
 
 ---
 
@@ -3174,7 +3399,9 @@ npm run test:all
 
 ## 📚 Session History
 
-**Latest Sessions (2025-11-06 to 2025-11-16):**
+**Latest Sessions (2025-11-06 to 2025-11-17):**
+- ✅ **Ersatzteile-System für KVA** (1 Commit: d97dffb) - 4-Phasen-Implementierung (324+ Zeilen), PDF-Import + Manuelle Eingabe + KVA-Annahme Übertragung, Pattern 30 Fix (Silent Data Loss) (Nov 17)
+- ✅ **Multi-Service Display Bug Fix** (1 Commit: accce7d) - Pattern 30 (Silent Data Loss) in admin-anfragen.html, Multi-Service Requests jetzt korrekt dargestellt (Nov 17)
 - ✅ **Multi-Service Pipeline Fixes** (5 Commits: 877e9ca → b7e87dd) - Backward compatibility, field mismatches, missing fields, 12/12 services complete (Nov 16)
 - ✅ **Phase 1 Security - File Upload Validation** (10 Commits: 0bf67cc → e5f7bcf) - Client-side MIME type + file size validation, 10 files, 12/12 tests passed (Nov 15)
 - ✅ **Multi-Service serviceTyp Consistency** (2 Commits: 750d7b2, 7083778) - 2-Layer Defense, 15+ files audited, CRITICAL data loss fix (Nov 14)
@@ -3581,7 +3808,7 @@ firebase firestore:import \
 
 ---
 
-_Last Updated: 2025-11-15 by Claude Code (Sonnet 4.5)_
-_Version: 8.1 (NEXT_AGENT_MANUAL_TESTING_PROMPT.md Integration - PRIMARY Instruction Source)_
+_Last Updated: 2025-11-17 by Claude Code (Sonnet 4.5)_
+_Version: 8.2 (Ersatzteile-System für KVA - 4-Phasen-Implementierung + Multi-Service Display Fix)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
 _Lines: ~3,070_
