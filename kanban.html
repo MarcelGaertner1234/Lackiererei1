@@ -4622,9 +4622,9 @@
                     [`serviceStatuses.${currentService}.statusHistory`]: firebase.firestore.FieldValue.arrayUnion({
                         status: newStatus,
                         timestamp: timestamp,
-                        user: window.currentUser?.email || 'system',
-                        foto: null,
-                        notiz: null
+                        user: window.currentUser?.email || 'system'
+                        // 🔧 PHASE 2 (2025-11-16): Don't set foto/notiz to null
+                        // Photos are added separately via updateFahrzeugStatusWithPhoto()
                     }),
 
                     // ✅ Bestehende Fields
@@ -5087,12 +5087,41 @@
                 const mappedStatus = mapProzessToStatus(newStatus);
                 fahrzeug.status = mappedStatus;
 
+                // 🆕 PHASE 2 (2025-11-16): Add photo to ALL serviceStatuses for multi-service vehicles
+                // WHY: Multi-service timeline reads from serviceStatuses.{service}.statusHistory
+                // SOLUTION: Add photo to all services so it appears in all timelines
+                if (fahrzeug.serviceStatuses && typeof fahrzeug.serviceStatuses === 'object') {
+                    const allServices = [fahrzeug.serviceTyp];
+                    if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                        fahrzeug.additionalServices.forEach(as => {
+                            const serviceTyp = typeof as === 'string' ? as : as.serviceTyp;
+                            if (serviceTyp) allServices.push(serviceTyp);
+                        });
+                    }
+
+                    // Add photo to statusHistory of all services
+                    allServices.forEach(serviceTyp => {
+                        if (fahrzeug.serviceStatuses[serviceTyp] && fahrzeug.serviceStatuses[serviceTyp].statusHistory) {
+                            // Add new history entry with photo
+                            fahrzeug.serviceStatuses[serviceTyp].statusHistory.push({
+                                status: newStatus,
+                                timestamp: timestamp,
+                                user: window.currentUser?.email || 'system',
+                                foto: photoURL,  // ✅ Photo included!
+                                notiz: notiz || null
+                            });
+                            console.log(`✅ Added photo to service '${serviceTyp}' statusHistory`);
+                        }
+                    });
+                }
+
                 const updateData = {
                     prozessStatus: newStatus,
                     status: mappedStatus,  // ✅ CRITICAL FIX: Auch status aktualisieren!
                     prozessTimestamps: fahrzeug.prozessTimestamps,
                     statusHistory: fahrzeug.statusHistory,
                     bearbeitungsHistory: fahrzeug.bearbeitungsHistory,  // 🆕 Phase 1.3: Audit-Trail
+                    serviceStatuses: fahrzeug.serviceStatuses || {},  // 🆕 PHASE 2: Include updated serviceStatuses
                     lastModified: timestamp
                 };
 
