@@ -1014,7 +1014,24 @@
                 serviceDataKeys: anfrage.serviceData ? Object.keys(anfrage.serviceData) : []
             });
 
+            // 🔧 CRITICAL FIX (2025-11-16): ALWAYS prioritize fahrzeug.additionalServices if it exists
+            // This check MUST run BEFORE hasInvalidLabels check to ensure multi-service is detected
+            // even if serviceLabels was already set (e.g., from first normalization before fahrzeug load)
+            if (anfrage.fahrzeug?.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices) && anfrage.fahrzeug.additionalServices.length > 0) {
+                const primaryService = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
+                // additionalServices is array of objects: [{serviceTyp: 'steinschutz', serviceDetails: {...}}]
+                // Extract serviceTyp from each object
+                const additionalServiceTypes = anfrage.fahrzeug.additionalServices.map(as => {
+                    if (typeof as === 'string') return as;  // legacy format
+                    return as.serviceTyp;  // current format
+                }).filter(Boolean);  // remove undefined/null
+                anfrage.serviceLabels = [primaryService, ...additionalServiceTypes];
+                console.log(`✅ [${anfrage.id}] Multi-Service (ACCEPTED): Built serviceLabels from fahrzeug.additionalServices:`, anfrage.serviceLabels);
+                return anfrage;  // Early return - fahrzeug.additionalServices is most authoritative
+            }
+
             // PHASE 1: Validiere serviceLabels - prüfe ob es leer ist ODER ungültige Werte enthält
+            // (Only runs if fahrzeug.additionalServices doesn't exist)
             const hasInvalidLabels = !anfrage.serviceLabels ||
                 anfrage.serviceLabels.length === 0 ||
                 anfrage.serviceLabels.some(label => !validServiceTypes.includes(label));
@@ -1025,30 +1042,17 @@
                     console.warn(`⚠️ [${anfrage.id}] Invalid serviceLabels detected:`, anfrage.serviceLabels, '- Re-normalizing...');
                 }
 
-                // 🔧 FIX (2025-11-16): PRIORITIZE fahrzeug.additionalServices (most reliable for accepted multi-service)
-                // PHASE 2: Build from fahrzeug.additionalServices (accepted anfragen with multiple services)
-                if (anfrage.fahrzeug?.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices) && anfrage.fahrzeug.additionalServices.length > 0) {
-                    const primaryService = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
-                    // additionalServices is array of objects: [{serviceTyp: 'steinschutz', serviceDetails: {...}}]
-                    // Extract serviceTyp from each object
-                    const additionalServiceTypes = anfrage.fahrzeug.additionalServices.map(as => {
-                        if (typeof as === 'string') return as;  // legacy format
-                        return as.serviceTyp;  // current format
-                    }).filter(Boolean);  // remove undefined/null
-                    anfrage.serviceLabels = [primaryService, ...additionalServiceTypes];
-                    console.log(`✅ [${anfrage.id}] Multi-Service (ACCEPTED): Built serviceLabels from fahrzeug.additionalServices:`, anfrage.serviceLabels);
-                }
-                // PHASE 3: Build from serviceData keys (partner multi-service anfragen before acceptance)
-                else if (anfrage.serviceTyp === 'multi-service' && anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
+                // PHASE 2: Build from serviceData keys (partner multi-service anfragen before acceptance)
+                if (anfrage.serviceTyp === 'multi-service' && anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
                     anfrage.serviceLabels = Object.keys(anfrage.serviceData);
                     console.log(`✅ [${anfrage.id}] Multi-Service (UNACCEPTED): Built serviceLabels from serviceData keys:`, anfrage.serviceLabels);
                 }
-                // PHASE 4: Fallback to single service from serviceTyp
+                // PHASE 3: Fallback to single service from serviceTyp
                 else if (anfrage.serviceTyp && anfrage.serviceTyp !== 'multi-service') {
                     anfrage.serviceLabels = [anfrage.serviceTyp];
                     console.log(`ℹ️ [${anfrage.id}] Single service from serviceTyp:`, anfrage.serviceTyp);
                 }
-                // PHASE 5: Ultimate fallback
+                // PHASE 4: Ultimate fallback
                 else {
                     console.warn(`⚠️ Anfrage ${anfrage.id}: No service data found, using default 'lackier'`);
                     anfrage.serviceLabels = ['lackier'];
