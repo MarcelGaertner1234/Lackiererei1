@@ -1182,7 +1182,7 @@
         }
 
         // Upload photo to Firebase Storage
-        async function uploadPhotoToStorage(dataUrl) {
+        async function uploadPhotoToStorage(dataUrl, anfrageId) {
             try {
                 // Convert Data URL to Blob
                 const blob = await fetch(dataUrl).then(r => r.blob());
@@ -1190,15 +1190,17 @@
                 // Generate unique filename
                 const timestamp = Date.now();
                 const random = Math.random().toString(36).substr(2, 9);
-                const fileName = `multi-service-${timestamp}-${random}.jpg`;
+                const fileName = `photo_${timestamp}_${random}.jpg`;
 
-                // Upload to Firebase Storage
-                const storageRef = firebase.storage().ref(`anfragen/${fileName}`);
+                // ✅ FIX (2025-11-16): Use correct Storage path to match security rules
+                // Pattern: partner-anfragen/{werkstattId}/{anfrageId}/{fileName}
+                const storagePath = `partner-anfragen/${window.werkstattId}/${anfrageId}/${fileName}`;
+                const storageRef = firebase.storage().ref(storagePath);
                 await storageRef.put(blob);
 
                 // Get download URL
                 const downloadURL = await storageRef.getDownloadURL();
-                console.log('✅ Photo uploaded:', fileName);
+                console.log('✅ Photo uploaded:', storagePath);
                 return downloadURL;
             } catch (error) {
                 console.error('❌ Photo upload failed:', error);
@@ -1242,12 +1244,16 @@
                 });
                 baseData.serviceData = serviceData;
 
+                // ✅ FIX (2025-11-16): Generate temporary Anfrage ID BEFORE photo upload
+                // This ID will be used in Storage path AND as Firestore document ID
+                const tempAnfrageId = `multi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
                 // ✅ FIX (2025-11-16): Upload photos to Storage, save only download URLs
                 if (uploadedPhotos.length > 0) {
                     console.log(`📸 Uploading ${uploadedPhotos.length} photos to Storage...`);
                     const photoUrls = [];
                     for (const photoDataUrl of uploadedPhotos) {
-                        const photoUrl = await uploadPhotoToStorage(photoDataUrl);
+                        const photoUrl = await uploadPhotoToStorage(photoDataUrl, tempAnfrageId);
                         photoUrls.push(photoUrl);
                     }
                     baseData.photoUrls = photoUrls;  // Only URLs (~100 bytes each)
@@ -1257,9 +1263,9 @@
                 // 🛡️ DEFENSE IN DEPTH: Validate serviceTyp before saving
                 baseData.serviceTyp = validateServiceTyp(baseData.serviceTyp);
 
-                // Save to Firestore
-                const docRef = await window.getCollection('partnerAnfragen').add(baseData);
-                console.log('✅ Multi-Service Anfrage created:', docRef.id);
+                // ✅ FIX (2025-11-16): Use tempAnfrageId as Firestore document ID (same as Storage path)
+                const docRef = await window.getCollection('partnerAnfragen').doc(tempAnfrageId).set(baseData);
+                console.log('✅ Multi-Service Anfrage created:', tempAnfrageId);
 
                 // Success
                 alert('✅ Ihre Multi-Service Anfrage wurde erfolgreich übermittelt!\n\nSie werden in Kürze kontaktiert.');
