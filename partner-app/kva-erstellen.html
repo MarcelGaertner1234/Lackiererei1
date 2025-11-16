@@ -475,6 +475,47 @@
                 <!-- DYNAMISCHER VARIANTEN-CONTAINER (wird per JavaScript gefüllt) -->
                 <div id="variantenContainer"></div>
 
+                <!-- ✅ PHASE 2: ERSATZTEILE TABELLE (Manuell + PDF-Import) -->
+                <div id="ersatzteileSection" style="margin-top: 20px; padding: 15px; background: rgba(79, 172, 254, 0.1); border-radius: 8px; border-left: 4px solid #4facfe;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="color: #4facfe; font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <svg data-feather="package" style="width: 20px; height: 20px;"></svg>
+                            <span>Ersatzteile (<span id="ersatzteileCount">0</span>)</span>
+                        </h4>
+                        <button type="button" id="addErsatzteilBtn" onclick="addErsatzteilRow()" style="padding: 6px 12px; background: #4facfe; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                            <svg data-feather="plus" style="width: 14px; height: 14px;"></svg>
+                            Zeile hinzufügen
+                        </button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table id="ersatzteileTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead>
+                                <tr style="background: rgba(0,0,0,0.1); text-align: left;">
+                                    <th style="padding: 8px; border-bottom: 2px solid #4facfe; width: 120px;">ETN</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #4facfe;">Benennung</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #4facfe; text-align: center; width: 80px;">Anzahl</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #4facfe; text-align: right; width: 100px;">Einzelpreis</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #4facfe; text-align: right; width: 100px;">Gesamtpreis</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #4facfe; text-align: center; width: 60px;">Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ersatzteileTableBody">
+                                <!-- Dynamisch gefüllt - Zeilen werden durch JavaScript hinzugefügt -->
+                            </tbody>
+                            <tfoot style="background: rgba(79, 172, 254, 0.1); font-weight: 600;">
+                                <tr>
+                                    <td colspan="4" style="padding: 8px; text-align: right;">SUMME:</td>
+                                    <td style="padding: 8px; text-align: right; color: #4facfe;" id="ersatzteileSumme">0.00 €</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <p style="font-size: 11px; color: #666; margin-top: 10px; font-style: italic;">
+                        💡 Tipp: PDF hochladen befüllt die Tabelle automatisch. Oder manuell Zeilen hinzufügen mit dem "+ Zeile hinzufügen" Button.
+                    </p>
+                </div>
+
                 <!-- Termine statt vage Lieferzeit -->
                 <div class="section-title" id="terminSectionTitle">📅 Service-Termin</div>
                 <div class="form-row">
@@ -1853,6 +1894,166 @@
 
         let kvaPdfData = null;
 
+        // ✅ PHASE 2: Ersatzteile-Tabellen-Management (Manuell + PDF-Import)
+        let ersatzteileData = [];
+
+        /**
+         * Fügt eine neue Ersatzteil-Zeile hinzu
+         * @param {Object} data - Ersatzteil-Daten (optional)
+         */
+        function addErsatzteilRow(data = {}) {
+            const tableBody = document.getElementById('ersatzteileTableBody');
+            const rowIndex = ersatzteileData.length;
+
+            // Daten mit Defaults
+            const teil = {
+                etn: data.etn || '',
+                benennung: data.benennung || '',
+                anzahl: data.anzahl || 1,
+                einzelpreis: data.einzelpreis || 0,
+                gesamtpreis: data.gesamtpreis || (data.anzahl || 1) * (data.einzelpreis || 0)
+            };
+
+            // In globales Array speichern
+            ersatzteileData.push(teil);
+
+            // Neue Zeile erstellen
+            const row = document.createElement('tr');
+            row.dataset.index = rowIndex;
+            row.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
+            row.style.background = rowIndex % 2 === 0 ? 'rgba(255,255,255,0.5)' : 'transparent';
+
+            row.innerHTML = `
+                <td style="padding: 4px;">
+                    <input type="text" value="${teil.etn}" onchange="updateErsatzteil(${rowIndex}, 'etn', this.value)"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="text" value="${teil.benennung}" onchange="updateErsatzteil(${rowIndex}, 'benennung', this.value)"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="number" value="${teil.anzahl}" onchange="updateErsatzteil(${rowIndex}, 'anzahl', this.value)" min="1" step="1"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: center; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="number" value="${teil.einzelpreis.toFixed(2)}" onchange="updateErsatzteil(${rowIndex}, 'einzelpreis', this.value)" min="0" step="0.01"
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: right; font-family: 'Courier New', monospace; font-size: 12px;">
+                </td>
+                <td style="padding: 4px;">
+                    <input type="number" value="${teil.gesamtpreis.toFixed(2)}" readonly
+                           style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; text-align: right; background: #f5f5f5; font-weight: 600; color: #28a745; font-family: 'Courier New', monospace; font-size: 12px;">
+                </td>
+                <td style="padding: 4px; text-align: center;">
+                    <button type="button" onclick="deleteErsatzteilRow(${rowIndex})"
+                            style="padding: 4px 8px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                        🗑️
+                    </button>
+                </td>
+            `;
+
+            tableBody.appendChild(row);
+            updateErsatzteileSumme();
+
+            // Feather icons neu rendern
+            if (typeof feather !== 'undefined') feather.replace();
+        }
+
+        /**
+         * Aktualisiert ein Ersatzteil-Feld
+         * @param {number} index - Zeilen-Index
+         * @param {string} field - Feld-Name (etn, benennung, anzahl, einzelpreis)
+         * @param {*} value - Neuer Wert
+         */
+        function updateErsatzteil(index, field, value) {
+            if (!ersatzteileData[index]) return;
+
+            // Wert aktualisieren
+            if (field === 'anzahl' || field === 'einzelpreis') {
+                ersatzteileData[index][field] = parseFloat(value) || 0;
+                // Gesamtpreis neu berechnen
+                ersatzteileData[index].gesamtpreis = ersatzteileData[index].anzahl * ersatzteileData[index].einzelpreis;
+
+                // Gesamtpreis-Feld aktualisieren
+                const row = document.querySelector(`tr[data-index="${index}"]`);
+                if (row) {
+                    const gesamtpreisInput = row.querySelectorAll('input')[4]; // 5. Input = Gesamtpreis
+                    gesamtpreisInput.value = ersatzteileData[index].gesamtpreis.toFixed(2);
+                }
+            } else {
+                ersatzteileData[index][field] = value;
+            }
+
+            updateErsatzteileSumme();
+        }
+
+        /**
+         * Löscht eine Ersatzteil-Zeile
+         * @param {number} index - Zeilen-Index
+         */
+        function deleteErsatzteilRow(index) {
+            if (!confirm('Diese Zeile wirklich löschen?')) return;
+
+            // Aus Array entfernen
+            ersatzteileData.splice(index, 1);
+
+            // Tabelle neu rendern
+            reRenderErsatzteileTable();
+            updateErsatzteileSumme();
+        }
+
+        /**
+         * Rendert die komplette Tabelle neu (nach Delete)
+         */
+        function reRenderErsatzteileTable() {
+            const tableBody = document.getElementById('ersatzteileTableBody');
+            tableBody.innerHTML = '';
+
+            // Alle Zeilen neu erstellen
+            const tempData = [...ersatzteileData];
+            ersatzteileData = [];
+            tempData.forEach(teil => addErsatzteilRow(teil));
+        }
+
+        /**
+         * Berechnet und aktualisiert die Summe
+         */
+        function updateErsatzteileSumme() {
+            const summe = ersatzteileData.reduce((sum, teil) => sum + (teil.gesamtpreis || 0), 0);
+            document.getElementById('ersatzteileSumme').textContent = summe.toFixed(2) + ' €';
+            document.getElementById('ersatzteileCount').textContent = ersatzteileData.length;
+        }
+
+        /**
+         * ✅ PHASE 3: Befüllt die Ersatzteile-Tabelle aus PDF-Daten
+         * @param {Object} pdfData - Extrahierte PDF-Daten mit ersatzteile-Array
+         */
+        function fillErsatzteileTable(pdfData) {
+            if (!pdfData || !pdfData.ersatzteile || pdfData.ersatzteile.length === 0) {
+                console.log('ℹ️ [PHASE 3] Keine Ersatzteile in PDF gefunden');
+                return;
+            }
+
+            console.log(`📦 [PHASE 3] Lade ${pdfData.ersatzteile.length} Ersatzteile aus PDF in Tabelle...`);
+
+            // Tabelle leeren (falls schon Daten vorhanden)
+            ersatzteileData = [];
+            document.getElementById('ersatzteileTableBody').innerHTML = '';
+
+            // Jedes Ersatzteil als Zeile hinzufügen
+            pdfData.ersatzteile.forEach(teil => {
+                addErsatzteilRow({
+                    etn: teil.etn || '',
+                    benennung: teil.benennung || '',
+                    anzahl: teil.anzahl || 1,
+                    einzelpreis: teil.einzelpreis || 0,
+                    gesamtpreis: teil.gesamtpreis || 0
+                });
+            });
+
+            console.log(`✅ [PHASE 3] ${pdfData.ersatzteile.length} Ersatzteile in Tabelle geladen`);
+        }
+
         async function handleKvaPdfUpload(event) {
             const file = event.target.files[0];
             if (!file || file.type !== 'application/pdf') {
@@ -1867,6 +2068,8 @@
                 console.log('⏳ PDF wird gelesen...');
                 kvaPdfData = await parseKvaDatPdf(file);
                 fillKvaFromPdf(kvaPdfData);
+                // ✅ PHASE 3: Ersatzteile in Tabelle laden
+                fillErsatzteileTable(kvaPdfData);
                 await saveErsatzteileToFirestore(kvaPdfData);
                 alert('✅ KVA-Daten aus PDF übernommen!');
             } catch (error) {
@@ -3572,7 +3775,16 @@
                         abholserviceGewuenscht: anfrage.abholserviceGewuenscht || false,
                         abholtermin: anfrage.abholtermin || null,
                         abholadresse: anfrage.abholadresse || null,
-                        ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false
+                        ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false,
+
+                        // ✅ PHASE 4: Ersatzteile-Daten übernehmen (wenn vorhanden)
+                        ...(ersatzteileData.length > 0 && {
+                            pdfImport: {
+                                editedData: {
+                                    ersatzteile: ersatzteileData
+                                }
+                            }
+                        })
                     };
 
                     // Für jeden Service: Felder sammeln
@@ -3668,7 +3880,16 @@
                     abholserviceGewuenscht: anfrage.abholserviceGewuenscht || false,
                     abholtermin: anfrage.abholtermin || null,
                     abholadresse: anfrage.abholadresse || null,
-                    ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false
+                    ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false,
+
+                    // ✅ PHASE 4: Ersatzteile-Daten übernehmen (wenn vorhanden)
+                    ...(ersatzteileData.length > 0 && {
+                        pdfImport: {
+                            editedData: {
+                                ersatzteile: ersatzteileData
+                            }
+                        }
+                    })
                 };
 
                 // 🆕 DYNAMIC: Find all gesamt_ elements instead of hard-coding variant types
