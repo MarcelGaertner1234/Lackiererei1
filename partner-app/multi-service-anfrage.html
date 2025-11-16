@@ -9,6 +9,12 @@
     <link rel="stylesheet" href="service-form-styles.css">
     <link rel="stylesheet" href="../mobile-responsive.css">
 
+    <!-- 🔥 CRITICAL FIX: Firebase SDK (MUST load BEFORE firebase-config.js) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
     <!-- 🔥 PHASE 1: Multi-Service Specific Styles -->
     <style>
         /* Service Selection Grid (unique to multi-service) */
@@ -851,11 +857,60 @@
     </div> <!-- 🆕 PHASE 2: End main-layout -->
 
     <script src="../firebase-config.js"></script>
-    <script src="partner-auth.js"></script>
     <script>
         let currentStep = 1;
         let selectedServices = [];
         let uploadedPhotos = [];
+        let partner = null;
+
+        // ============================================
+        // 🔥 CRITICAL FIX: Inline Authentication
+        // ============================================
+        // PRE-INITIALIZE werkstattId from localStorage
+        const storedPartner = JSON.parse(localStorage.getItem('partner') || 'null');
+        window.werkstattId = (storedPartner && storedPartner.werkstattId) || 'mosbach';
+        console.log('✅ [MULTI-SERVICE] werkstattId pre-initialized:', window.werkstattId);
+
+        // AUTH-CHECK POLLING
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 20;
+
+        const authCheckInterval = setInterval(async () => {
+            authCheckAttempts++;
+
+            if (window.firebaseInitialized && window.werkstattId) {
+                clearInterval(authCheckInterval);
+                console.log('✅ [MULTI-SERVICE] Firebase ready');
+                checkLogin();
+                return;
+            }
+
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.error('❌ [MULTI-SERVICE] Firebase timeout');
+                alert('Fehler: Werkstatt-Initialisierung fehlgeschlagen. Bitte neu einloggen.');
+                window.location.href = 'index.html';
+            }
+        }, 250);
+
+        // Check Login
+        function checkLogin() {
+            partner = JSON.parse(localStorage.getItem('partner') || 'null');
+            if (!partner) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // werkstattId initialization (Multi-Tenant)
+            if (!partner.werkstattId) {
+                console.error('❌ Partner-Daten unvollständig - werkstattId fehlt!');
+                alert('Fehler: Partner-Daten unvollständig. Bitte melden Sie sich erneut an.');
+                window.location.href = 'index.html';
+                return;
+            }
+            window.werkstattId = partner.werkstattId || 'mosbach';
+            console.log('✅ [MULTI-SERVICE] werkstattId initialized:', window.werkstattId);
+        }
 
         // 🛡️ DEFENSE IN DEPTH (2025-11-14): serviceTyp Validation
         function validateServiceTyp(serviceTyp) {
