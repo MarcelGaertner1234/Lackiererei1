@@ -248,7 +248,12 @@
                 </div>
                 <div class="sidebar-step pending" data-step="4">
                     <div class="step-number">4</div>
-                    <div class="step-label">Fertig</div>
+                    <div class="step-label">Termin & Lieferung</div>
+                    <div class="step-icon"></div>
+                </div>
+                <div class="sidebar-step pending" data-step="5">
+                    <div class="step-number">5</div>
+                    <div class="step-label">Zusammenfassung</div>
                     <div class="step-icon"></div>
                 </div>
             </div>
@@ -855,8 +860,75 @@
                     </div>
                 </div>
 
-                <!-- Step 4: Zusammenfassung & Submit -->
+                <!-- Step 4: Termin & Lieferoptionen -->
                 <div class="wizard-step" data-step="4">
+                    <div class="step-title">
+                        <span class="icon">📅</span>
+                        <span>Termin & Lieferoptionen</span>
+                    </div>
+
+                    <!-- Smart-Termine -->
+                    <div class="form-group">
+                        <label>Wann soll der Service durchgeführt werden?</label>
+                        <div class="termin-grid" id="terminGrid">
+                            <div class="loading">
+                                <div class="icon">⏳</div>
+                                <div>Lade verfügbare Termine...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lieferoptionen -->
+                    <div class="form-group" style="margin-top: 30px;">
+                        <label>Wie wird das Fahrzeug angeliefert?</label>
+                        <div class="toggle-group">
+                            <label class="toggle-option selected" onclick="selectLieferoption('selbst_bringen')">
+                                <input type="radio" name="lieferoption" value="selbst_bringen" checked>
+                                ✅ Selbst bringen
+                            </label>
+                            <label class="toggle-option" onclick="selectLieferoption('abholung')">
+                                <input type="radio" name="lieferoption" value="abholung">
+                                🚚 Abholservice
+                            </label>
+                        </div>
+
+                        <!-- Abholservice Details -->
+                        <div id="abholserviceDetails" class="conditional-field" style="display: none; margin-top: 20px;">
+                            <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+                                <p style="margin: 0; color: #1976d2; font-size: 13px; line-height: 1.6;">
+                                    📍 <strong>Abholung:</strong> Wir holen das Fahrzeug am <strong>Vortag vor dem Anliefertermin</strong> an Ihrer Geschäftsadresse ab.<br>
+                                    <small style="color: #666;">Den genauen Abholtermin erhalten Sie mit dem Kostenvoranschlag.</small>
+                                </p>
+                            </div>
+                            <div class="form-group">
+                                <label for="abholadresse">Abholadresse</label>
+                                <input type="text" id="abholadresse" placeholder="Straße, Hausnummer, PLZ Ort">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ersatzfahrzeug-Option -->
+                    <div class="form-group" style="margin-top: 25px;">
+                        <label>Ersatzfahrzeug benötigt?</label>
+                        <div class="toggle-group">
+                            <label class="toggle-option selected" onclick="selectErsatzfahrzeug('nein')">
+                                <input type="radio" name="ersatzfahrzeug" value="nein" checked>
+                                ❌ Nein
+                            </label>
+                            <label class="toggle-option" onclick="selectErsatzfahrzeug('ja')">
+                                <input type="radio" name="ersatzfahrzeug" value="ja">
+                                ✅ Ja, benötigt
+                            </label>
+                        </div>
+                    </div>
+
+                    <p style="color: #999; font-size: 13px; margin-top: 15px;">
+                        💡 Tipp: Abholservice & Ersatzfahrzeug können den Preis beeinflussen
+                    </p>
+                </div>
+
+                <!-- Step 5: Zusammenfassung & Submit -->
+                <div class="wizard-step" data-step="5">
                     <div class="step-title">
                         <span class="icon">✅</span>
                         <span>Zusammenfassung</span>
@@ -1023,6 +1095,122 @@
             }
         }
 
+        // ============================================
+        // 🆕 PHASE 2: Termin & Lieferoptionen Functions
+        // ============================================
+
+        // Smart-Termine laden
+        async function ladeSmartetermine() {
+            const terminGrid = document.getElementById('terminGrid');
+
+            if (!firebase.firestore) {
+                console.error('Firebase nicht initialisiert');
+                terminGrid.innerHTML = '<div class="loading"><div style="color: red;">Fehler beim Laden der Termine</div></div>';
+                return;
+            }
+
+            try {
+                const heute = new Date();
+                heute.setHours(0, 0, 0, 0);
+                const terminOptionen = [];
+
+                console.log('📅 Lade Terminauslastung...');
+
+                // 14 Tage vorausschauen
+                for (let i = 0; i < 14; i++) {
+                    const datum = new Date(heute);
+                    datum.setDate(heute.getDate() + i);
+                    const dateStr = datum.toISOString().split('T')[0];
+
+                    // Terminauslastung berechnen
+                    const annahmeSnapshot = await window.getCollection('fahrzeuge')
+                        .where('annahmeDatum', '==', dateStr)
+                        .get();
+                    const abnahmeSnapshot = await window.getCollection('fahrzeuge')
+                        .where('geplantesAbnahmeDatum', '==', dateStr)
+                        .get();
+
+                    const totalTermine = annahmeSnapshot.size + abnahmeSnapshot.size;
+
+                    let auslastung;
+                    if (totalTermine <= 2) auslastung = 'frei';
+                    else if (totalTermine <= 4) auslastung = 'normal';
+                    else auslastung = 'hoch';
+
+                    terminOptionen.push({
+                        datum: datum,
+                        dateStr: dateStr,
+                        anzahlTermine: totalTermine,
+                        auslastung: auslastung,
+                        tageVonHeute: i
+                    });
+                }
+
+                // 4 Smart-Termine auswählen
+                const option1 = terminOptionen.find(t => t.tageVonHeute >= 1 && t.auslastung === 'frei') || terminOptionen[1];
+                const option2 = terminOptionen.find(t => t.tageVonHeute >= 2 && t.tageVonHeute <= 3 && t.auslastung === 'frei') || terminOptionen[2];
+                const option3 = terminOptionen.find(t => t.tageVonHeute >= 4 && t.tageVonHeute <= 6 && t.auslastung !== 'hoch') || terminOptionen[5];
+                const option4 = terminOptionen.find(t => t.tageVonHeute >= 7 && t.tageVonHeute <= 10) || terminOptionen[8];
+
+                const selectedTermine = [option1, option2, option3, option4];
+                const labels = ['EXPRESS', 'SCHNELL', 'NORMAL', 'ENTSPANNT'];
+                const colors = ['#d32f2f', '#ff6f00', '#1976d2', '#388e3c'];
+
+                terminGrid.innerHTML = selectedTermine.map((t, idx) => {
+                    const auslastungIcon = t.auslastung === 'frei' ? '🟢' : t.auslastung === 'normal' ? '🟡' : '🔴';
+                    const auslastungText = t.auslastung === 'frei' ? 'Freie Kapazität' : t.auslastung === 'normal' ? 'Normale Auslastung' : 'Ausgelastet';
+                    const wochentag = t.datum.toLocaleDateString('de-DE', { weekday: 'short' });
+                    const tag = t.datum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+
+                    return `
+                        <label class="termin-option ${idx === 0 ? 'selected' : ''}" onclick="selectTermin(this)">
+                            <input type="radio" name="anliefertermin" value="${t.dateStr}" data-label="${labels[idx]}" ${idx === 0 ? 'checked' : ''}>
+                            <div class="label" style="color: ${colors[idx]};">${labels[idx]}</div>
+                            <div style="font-weight: 600; margin: 5px 0;">${wochentag}, ${tag}</div>
+                            <small style="display: block;">${auslastungIcon} ${auslastungText}</small>
+                            <small style="display: block; color: #999; margin-top: 3px;">
+                                ${t.tageVonHeute === 0 ? 'Heute' : t.tageVonHeute === 1 ? 'Morgen' : `in ${t.tageVonHeute} Tagen`}
+                            </small>
+                        </label>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Fehler beim Laden der Termine:', error);
+                terminGrid.innerHTML = '<div class="loading"><div style="color: red;">Fehler beim Laden der Termine</div></div>';
+            }
+        }
+
+        function selectTermin(element) {
+            document.querySelectorAll('.termin-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            element.querySelector('input').checked = true;
+        }
+
+        function selectLieferoption(option) {
+            document.querySelectorAll('input[name="lieferoption"]').forEach(input => {
+                input.parentElement.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+
+            const abholserviceDiv = document.getElementById('abholserviceDetails');
+            if (option === 'abholung') {
+                abholserviceDiv.style.display = 'block';
+            } else {
+                abholserviceDiv.style.display = 'none';
+                document.getElementById('abholadresse').value = '';
+            }
+        }
+
+        function selectErsatzfahrzeug(option) {
+            document.querySelectorAll('input[name="ersatzfahrzeug"]').forEach(input => {
+                input.parentElement.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+        }
+
         // Photo Upload Handler
         document.getElementById('photoInput').addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
@@ -1074,9 +1262,32 @@
                 }
             }
 
-            if (currentStep < 4) {
+            // 🆕 PHASE 2: Validation for Step 4 (Termin & Lieferoptionen)
+            if (currentStep === 4) {
+                const termin = document.querySelector('input[name="anliefertermin"]:checked');
+                if (!termin) {
+                    alert('Bitte wählen Sie einen Termin aus.');
+                    return;
+                }
+
+                const lieferoption = document.querySelector('input[name="lieferoption"]:checked').value;
+                if (lieferoption === 'abholung') {
+                    const abholadresse = document.getElementById('abholadresse').value.trim();
+                    if (!abholadresse) {
+                        alert('Bitte geben Sie eine Abholadresse ein.');
+                        return;
+                    }
+                }
+            }
+
+            if (currentStep < 5) {
                 currentStep++;
                 updateWizardUI();
+
+                // 🆕 PHASE 2: Load termine when entering step 4
+                if (currentStep === 4) {
+                    ladeSmartetermine();
+                }
             }
         }
 
@@ -1116,10 +1327,10 @@
 
             // Update Buttons
             document.getElementById('prevBtn').style.display = currentStep === 1 ? 'none' : 'inline-block';
-            document.getElementById('nextBtn').style.display = currentStep === 4 ? 'none' : 'inline-block';
+            document.getElementById('nextBtn').style.display = currentStep === 5 ? 'none' : 'inline-block';
 
-            // Update Summary on Step 4
-            if (currentStep === 4) {
+            // 🆕 PHASE 2: Update Summary on Step 5 (not 4)
+            if (currentStep === 5) {
                 generateSummary();
             }
 
@@ -1243,7 +1454,17 @@
                     partnerId: partner?.partnerId || partner?.id || null,
                     partnerName: partner?.name || 'Unbekannt',
                     kundenEmail: firebase.auth().currentUser.email.toLowerCase(),
-                    kundenTelefon: partner?.telefon || null
+                    kundenTelefon: partner?.telefon || null,
+
+                    // 🆕 PHASE 2 (2025-11-16): Termin & Lieferoptionen
+                    anliefertermin: document.querySelector('input[name="anliefertermin"]:checked')?.value || null,
+                    dringlichkeitLabel: document.querySelector('input[name="anliefertermin"]:checked')?.getAttribute('data-label') || 'NORMAL',
+                    lieferoption: document.querySelector('input[name="lieferoption"]:checked')?.value || 'selbst_bringen',
+                    abholserviceGewuenscht: document.querySelector('input[name="lieferoption"]:checked')?.value === 'abholung',
+                    abholtermin: null, // Wird vom Lackierer im KVA festgelegt
+                    abholadresse: document.querySelector('input[name="lieferoption"]:checked')?.value === 'abholung' ?
+                                  (document.getElementById('abholadresse')?.value || null) : null,
+                    ersatzfahrzeugGewuenscht: document.querySelector('input[name="ersatzfahrzeug"]:checked')?.value === 'ja'
                 };
 
                 // Collect service-specific data
