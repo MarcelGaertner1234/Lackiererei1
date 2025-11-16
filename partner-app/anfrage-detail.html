@@ -1002,6 +1002,18 @@
                 'steinschutz', 'felgen', 'reifen', 'dellen', 'dellenentfernung',
                 'pflege', 'kva', 'versicherung', 'sonstiges', 'multi-service'];
 
+            // 🔍 DEBUG (2025-11-16): Log anfrage structure to identify multi-service detection issues
+            console.log(`🔍 [NORMALIZE-DEBUG] ${anfrage.id}:`, {
+                serviceTyp: anfrage.serviceTyp,
+                hasServiceLabels: !!anfrage.serviceLabels,
+                serviceLabelsLength: anfrage.serviceLabels?.length,
+                hasFahrzeug: !!anfrage.fahrzeug,
+                hasAdditionalServices: !!anfrage.fahrzeug?.additionalServices,
+                additionalServicesLength: anfrage.fahrzeug?.additionalServices?.length,
+                hasServiceData: !!anfrage.serviceData,
+                serviceDataKeys: anfrage.serviceData ? Object.keys(anfrage.serviceData) : []
+            });
+
             // PHASE 1: Validiere serviceLabels - prüfe ob es leer ist ODER ungültige Werte enthält
             const hasInvalidLabels = !anfrage.serviceLabels ||
                 anfrage.serviceLabels.length === 0 ||
@@ -1013,13 +1025,9 @@
                     console.warn(`⚠️ [${anfrage.id}] Invalid serviceLabels detected:`, anfrage.serviceLabels, '- Re-normalizing...');
                 }
 
-                // PHASE 2: Multi-Service anfragen (WICHTIG: serviceTyp === 'multi-service' check FIRST!)
-                if (anfrage.serviceTyp === 'multi-service' && anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
-                    anfrage.serviceLabels = Object.keys(anfrage.serviceData);
-                    console.log(`✅ [${anfrage.id}] Multi-Service: Built serviceLabels from serviceData keys:`, anfrage.serviceLabels);
-                }
-                // PHASE 3: Try to build from fahrzeug.additionalServices (accepted anfragen)
-                else if (anfrage.fahrzeug?.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices) && anfrage.fahrzeug.additionalServices.length > 0) {
+                // 🔧 FIX (2025-11-16): PRIORITIZE fahrzeug.additionalServices (most reliable for accepted multi-service)
+                // PHASE 2: Build from fahrzeug.additionalServices (accepted anfragen with multiple services)
+                if (anfrage.fahrzeug?.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices) && anfrage.fahrzeug.additionalServices.length > 0) {
                     const primaryService = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp || 'lackier';
                     // additionalServices is array of objects: [{serviceTyp: 'steinschutz', serviceDetails: {...}}]
                     // Extract serviceTyp from each object
@@ -1028,7 +1036,12 @@
                         return as.serviceTyp;  // current format
                     }).filter(Boolean);  // remove undefined/null
                     anfrage.serviceLabels = [primaryService, ...additionalServiceTypes];
-                    console.log(`✅ [${anfrage.id}] Built serviceLabels from fahrzeug.additionalServices:`, anfrage.serviceLabels);
+                    console.log(`✅ [${anfrage.id}] Multi-Service (ACCEPTED): Built serviceLabels from fahrzeug.additionalServices:`, anfrage.serviceLabels);
+                }
+                // PHASE 3: Build from serviceData keys (partner multi-service anfragen before acceptance)
+                else if (anfrage.serviceTyp === 'multi-service' && anfrage.serviceData && typeof anfrage.serviceData === 'object' && Object.keys(anfrage.serviceData).length > 0) {
+                    anfrage.serviceLabels = Object.keys(anfrage.serviceData);
+                    console.log(`✅ [${anfrage.id}] Multi-Service (UNACCEPTED): Built serviceLabels from serviceData keys:`, anfrage.serviceLabels);
                 }
                 // PHASE 4: Fallback to single service from serviceTyp
                 else if (anfrage.serviceTyp && anfrage.serviceTyp !== 'multi-service') {
@@ -1040,6 +1053,8 @@
                     console.warn(`⚠️ Anfrage ${anfrage.id}: No service data found, using default 'lackier'`);
                     anfrage.serviceLabels = ['lackier'];
                 }
+            } else {
+                console.log(`✅ [${anfrage.id}] serviceLabels already valid:`, anfrage.serviceLabels);
             }
             return anfrage;
         }
@@ -2362,12 +2377,14 @@
             }
 
             // 2️⃣ Additional Services Timelines
-            anfrage.fahrzeug.additionalServices.forEach(additionalService => {
-                const addServiceTyp = additionalService.serviceTyp;
-                const addServiceData = serviceIcons[addServiceTyp] || { icon: '📋', label: 'Service', color: '#666' };
-                const addServiceStatus = anfrage.fahrzeug.serviceStatuses[addServiceTyp];
+            // 🔧 FIX (2025-11-16): Add null-check to prevent crash if additionalServices is undefined
+            if (anfrage.fahrzeug.additionalServices && Array.isArray(anfrage.fahrzeug.additionalServices)) {
+                anfrage.fahrzeug.additionalServices.forEach(additionalService => {
+                    const addServiceTyp = additionalService.serviceTyp;
+                    const addServiceData = serviceIcons[addServiceTyp] || { icon: '📋', label: 'Service', color: '#666' };
+                    const addServiceStatus = anfrage.fahrzeug.serviceStatuses[addServiceTyp];
 
-                if (addServiceStatus) {
+                    if (addServiceStatus) {
                     html += `
                         <div class="service-timeline-card additional">
                             <div class="service-timeline-header" style="background: ${addServiceData.color};">
@@ -2410,8 +2427,9 @@
                             </div>
                         </div>
                     `;
-                }
-            });
+                    }
+                });
+            }
 
             html += `</div>`;
             return html;
