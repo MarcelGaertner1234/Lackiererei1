@@ -1120,36 +1120,24 @@
         }
 
         async function loadAnfrage() {
-            // 🚨 CRITICAL DEBUG (2025-11-16): This log MUST appear if loadAnfrage() is called
-            console.log('🚨🚨🚨 [ENTRY-POINT] loadAnfrage() FUNCTION STARTED 🚨🚨🚨');
-            console.log('🚨 [ENTRY-POINT] Timestamp:', new Date().toISOString());
-
             const urlParams = new URLSearchParams(window.location.search);
             const anfrageId = urlParams.get('id');
             const mode = urlParams.get('mode');
             const kennzeichen = urlParams.get('kennzeichen');
 
-            console.log('🚨 [ENTRY-POINT] URL Parameters:', { anfrageId, mode, kennzeichen });
-
             if (!anfrageId) {
-                console.error('🚨 [ENTRY-POINT] EARLY RETURN: No anfrageId');
                 showError('Keine Anfrage-ID angegeben');
                 return;
             }
 
-            console.log('🚨 [ENTRY-POINT] Partner check:', { hasPartner: !!partner, partnerId: partner?.partnerId, mode: mode });
-
             // ✅ FIX: Partner-Authentifizierung prüfen (nur für NORMAL Mode)
             // QuickView Mode funktioniert ohne Login (PDF-QR-Code Zugriff)
             if (mode !== 'quickview' && (!partner || !partner.partnerId)) {
-                console.error('🚨 [ENTRY-POINT] EARLY RETURN: Partner check failed');
                 console.error('❌ [ANFRAGE-DETAIL] Kein Partner geladen - Redirect zu index.html');
                 showError('Bitte melden Sie sich an');
                 setTimeout(() => window.safeNavigate('index.html'), 2000);
                 return;
             }
-
-            console.log('🚨 [ENTRY-POINT] Entering try block');
 
             try {
                 // ✅ NEU: QuickView Mode (Direkt-Zugriff per Fahrzeug-ID + Kennzeichen)
@@ -1243,6 +1231,8 @@
                 // FIX #1: Debug Logging für Fahrzeug-Suche
                 console.log('🔍 [FAHRZEUG-LOAD] START: Versuche Fahrzeug zu laden:', {
                     anfrageId: anfrageId,
+                    hasFahrzeugId: !!anfrage.fahrzeugId,
+                    fahrzeugId: anfrage.fahrzeugId || 'LEER!',
                     hasKennzeichen: !!anfrage.kennzeichen,
                     kennzeichen: anfrage.kennzeichen || 'LEER!',
                     hasAuftragsnummer: !!anfrage.auftragsnummer,
@@ -1253,16 +1243,25 @@
                     status: anfrage.status
                 });
 
-                // 🔧 FIX (2025-11-16): CRITICAL - Ensure fahrzeug is loaded via SOME method
-                // Problem: If kennzeichen/auftragsnummer missing, fahrzeug never loads
-                // Solution: Force partnerAnfrageId fallback if other methods fail
+                // 🔧 FIX (2025-11-16): CRITICAL - Ensure fahrzeug is loaded via BEST method
+                // Priority Order:
+                // 1. fahrzeugId (fastest - direct doc access)
+                // 2. kennzeichen (fast - indexed query)
+                // 3. auftragsnummer (fast - indexed query)
+                // 4. partnerAnfrageId (ultimate fallback)
 
                 let fahrzeugLoaded = false;
 
                 // CRITICAL FIX: AWAIT fahrzeug load BEFORE rendering to prevent status flicker
                 // Problem: Without await, renderAnfrage() uses anfrage.status instead of anfrage.fahrzeug.prozessStatus
                 // Result: Status-Übersicht shows old status until onSnapshot triggers re-render
-                if (anfrage.kennzeichen) {
+
+                // 🔧 NEW (2025-11-16): PRIORITIZE fahrzeugId (direct document access - fastest!)
+                if (anfrage.fahrzeugId) {
+                    console.log('🔍 [FAHRZEUG-LOAD] Method: fahrzeugId (DIRECT DOC ACCESS)');
+                    await loadFahrzeugById(anfrage.fahrzeugId);  // ✅ AWAIT!
+                    fahrzeugLoaded = !!anfrage.fahrzeug;
+                } else if (anfrage.kennzeichen) {
                     console.log('🔍 [FAHRZEUG-LOAD] Method: kennzeichen');
                     await loadFahrzeugByKennzeichen(anfrage.kennzeichen);  // ✅ AWAIT!
                     fahrzeugLoaded = !!anfrage.fahrzeug;
@@ -1274,19 +1273,16 @@
 
                 // 🔧 FIX (2025-11-16): FORCE partnerAnfrageId fallback if no fahrzeug loaded yet
                 if (!fahrzeugLoaded) {
-                    console.warn('⚠️ [FAHRZEUG-LOAD] Kein Kennzeichen/Auftragsnummer oder Laden fehlgeschlagen, FORCE partnerAnfrageId-Fallback');
+                    console.warn('⚠️ [FAHRZEUG-LOAD] All methods failed, trying partnerAnfrageId fallback');
                     await loadFahrzeugByPartnerAnfrageId(anfrageId);  // ✅ AWAIT!
                     fahrzeugLoaded = !!anfrage.fahrzeug;
                 }
 
                 console.log('🔍 [FAHRZEUG-LOAD] COMPLETE: fahrzeug loaded?', fahrzeugLoaded, '| has additionalServices?', !!anfrage.fahrzeug?.additionalServices);
 
-                console.log('🚨 [ENTRY-POINT] About to call renderAnfrage()');
                 renderAnfrage();  // Now executes AFTER fahrzeug is loaded!
-                console.log('🚨 [ENTRY-POINT] renderAnfrage() completed');
 
                 // Live-Update Listener aktivieren
-                console.log('🚨 [ENTRY-POINT] Setting up live updates');
                 setupLiveUpdates(anfrageId);
 
                 // NEU: Live-Updates für Fahrzeug
@@ -1294,14 +1290,8 @@
                     setupLiveFahrzeugUpdates(anfrage.kennzeichen);
                 }
 
-                console.log('🚨 [ENTRY-POINT] loadAnfrage() FUNCTION COMPLETED SUCCESSFULLY');
-
             } catch (error) {
-                console.error('🚨🚨🚨 [ENTRY-POINT] CATCH BLOCK TRIGGERED 🚨🚨🚨');
-                console.error('🚨 [ENTRY-POINT] Error type:', error.constructor.name);
-                console.error('🚨 [ENTRY-POINT] Error message:', error.message);
-                console.error('🚨 [ENTRY-POINT] Error stack:', error.stack);
-                console.error('Fehler beim Laden:', error);
+                console.error('❌ [LOAD-ERROR] Fehler beim Laden der Anfrage:', error);
                 showError('Fehler beim Laden der Anfrage');
             }
         }
@@ -1446,6 +1436,32 @@
                 }
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Fahrzeugs:', error);
+            }
+        }
+
+        // 🔧 FIX (2025-11-16): Fahrzeug per fahrzeugId laden (direkt via document ID)
+        // FASTEST method - no query needed, just direct document access
+        async function loadFahrzeugById(fahrzeugId) {
+            try {
+                console.log('🔍 [FAHRZEUG-LOAD] Loading via fahrzeugId (direct doc access):', fahrzeugId);
+
+                const fahrzeugDoc = await window.getCollection('fahrzeuge').doc(String(fahrzeugId)).get();
+
+                if (fahrzeugDoc.exists) {
+                    anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
+                    console.log('✅ [FAHRZEUG-LOAD] Fahrzeug loaded via ID:', fahrzeugDoc.id);
+                    console.log('🔍 [FAHRZEUG-LOAD] Has additionalServices?', !!anfrage.fahrzeug.additionalServices);
+
+                    // Re-normalize anfrage with fahrzeug data
+                    anfrage = normalizeAnfrageData(anfrage);
+
+                    // Re-render after successful load
+                    renderAnfrage(true);
+                } else {
+                    console.warn('⚠️ [FAHRZEUG-LOAD] Fahrzeug not found with ID:', fahrzeugId);
+                }
+            } catch (error) {
+                console.error('❌ [FAHRZEUG-LOAD] Error loading fahrzeug by ID:', error);
             }
         }
 
