@@ -3719,3 +3719,290 @@ WICHTIGE REGELN:
       );
     }
   });
+
+// ============================================
+// ENTWURF-SYSTEM (MVP): Email & Notifications
+// ============================================
+
+/**
+ * FUNCTION: sendEntwurfEmail
+ * Sendet Email an Kunde wenn Angebot fertig ist
+ * Called from: entwuerfe-bearbeiten.html
+ */
+exports.sendEntwurfEmail = functions
+    .region("europe-west3")
+    .runWith({
+      secrets: [sendgridApiKey]
+    })
+    .https.onCall(async (data, context) => {
+      console.log("📧 sendEntwurfEmail called");
+
+      // Validate input
+      const { kundenEmail, kundenname, kennzeichen, qrCodeUrl, fahrzeugId } = data;
+
+      if (!kundenEmail || !kundenname || !kennzeichen || !qrCodeUrl) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Fehlende erforderliche Felder"
+        );
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(kundenEmail)) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Ungültiges Email-Format"
+        );
+      }
+
+      try {
+        // Initialize SendGrid
+        const apiKey = getSendGridApiKey();
+        sgMail.setApiKey(apiKey);
+
+        // Email HTML (inline for MVP)
+        const emailHtml = `
+          <!DOCTYPE html>
+          <html lang="de">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #003366, #0066cc); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+              .button { display: inline-block; background: #00bfff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+              .button:hover { background: #0099cc; }
+              .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #666; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>🚗 Ihr Kosten-Voranschlag ist fertig!</h1>
+              </div>
+              <div class="content">
+                <p>Hallo ${kundenname},</p>
+                <p>wir haben Ihr Kosten-Voranschlag für <strong>${kennzeichen}</strong> fertiggestellt!</p>
+                <p>Sie können Ihr Angebot jetzt online einsehen und bestätigen:</p>
+                <p style="text-align: center;">
+                  <a href="${qrCodeUrl}" class="button">
+                    📄 Angebot jetzt ansehen
+                  </a>
+                </p>
+                <p><small>Alternativ können Sie den QR-Code in Ihrem Annahme-PDF scannen.</small></p>
+                <p><strong>💡 Tipp:</strong> Das Angebot ist 14 Tage gültig.</p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+                <p>Bei Fragen erreichen Sie uns unter:<br>
+                📞 <strong>06261 9363580</strong><br>
+                📧 <strong>info@auto-lackierzentrum.de</strong></p>
+                <p>Mit freundlichen Grüßen,<br>
+                <strong>Ihr Team vom Auto-Lackierzentrum Mosbach</strong></p>
+              </div>
+              <div class="footer">
+                <p>Diese Email wurde automatisch generiert.</p>
+                <p>Auto-Lackierzentrum Mosbach | Hinkel GmbH<br>
+                Pfalzgraf-Otto-Straße 2, 74821 Mosbach</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `;
+
+        // Send email
+        const msg = {
+          to: kundenEmail,
+          from: SENDER_EMAIL,
+          subject: `🚗 Ihr Kosten-Voranschlag für ${kennzeichen}`,
+          html: emailHtml,
+        };
+
+        await sgMail.send(msg);
+        console.log(`✅ Entwurf-Email sent to: ${kundenEmail}`);
+
+        // Log to Firestore
+        await db.collection("email_logs").add({
+          to: kundenEmail,
+          subject: msg.subject,
+          trigger: "entwurf_email",
+          fahrzeugId: fahrzeugId || null,
+          kennzeichen: kennzeichen,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          status: "sent",
+        });
+
+        return { success: true, message: "Email versendet" };
+      } catch (error) {
+        console.error("❌ SendGrid error:", error.message);
+
+        // Log error
+        await db.collection("email_logs").add({
+          to: kundenEmail,
+          subject: `Kosten-Voranschlag für ${kennzeichen}`,
+          trigger: "entwurf_email",
+          fahrzeugId: fahrzeugId || null,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          status: "failed",
+          error: error.message,
+        });
+
+        throw new functions.https.HttpsError(
+            "internal",
+            `Email-Versand fehlgeschlagen: ${error.message}`
+        );
+      }
+    });
+
+/**
+ * FUNCTION: sendEntwurfBestaetigtNotification
+ * Erstellt Notification für Werkstatt wenn Kunde Angebot bestätigt
+ * Called from: kunde-angebot.html (or partner portal)
+ */
+exports.sendEntwurfBestaetigtNotification = functions
+    .region("europe-west3")
+    .https.onCall(async (data, context) => {
+      console.log("🔔 sendEntwurfBestaetigtNotification called");
+
+      // Validate input
+      const { fahrzeugId, werkstattId = "mosbach" } = data;
+
+      if (!fahrzeugId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "fahrzeugId erforderlich"
+        );
+      }
+
+      try {
+        // Load Fahrzeug/PartnerAnfrage data
+        const docRef = await db.collection(`partnerAnfragen_${werkstattId}`).doc(fahrzeugId).get();
+
+        if (!docRef.exists) {
+          // Try fahrzeuge collection as fallback
+          const fahrzeugRef = await db.collection(`fahrzeuge_${werkstattId}`).doc(fahrzeugId).get();
+          if (!fahrzeugRef.exists) {
+            throw new functions.https.HttpsError(
+                "not-found",
+                "Fahrzeug nicht gefunden"
+            );
+          }
+        }
+
+        const fahrzeug = docRef.data();
+
+        // Load all Meister/Admin users
+        const adminsSnapshot = await db.collection(`mitarbeiter_${werkstattId}`)
+            .where("role", "in", ["admin", "meister"])
+            .where("status", "==", "active")
+            .get();
+
+        if (adminsSnapshot.empty) {
+          console.warn(`⚠️ No admins found for werkstatt: ${werkstattId}`);
+          return { success: false, message: "Keine Admins gefunden" };
+        }
+
+        // Create Notifications for each Admin/Meister
+        const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
+          return db.collection(`mitarbeiterNotifications_${werkstattId}`).add({
+            mitarbeiterId: adminDoc.id,
+            title: "✅ Kunde hat Angebot bestätigt!",
+            message: `${fahrzeug.kundenname || "Kunde"} (${fahrzeug.kennzeichen || "k.A."}) hat das Angebot akzeptiert.`,
+            type: "success",
+            status: "unread",
+            priority: "high",
+            link: `/partner-anfragen-pruefen.html?highlight=${fahrzeugId}`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        });
+
+        await Promise.all(notificationPromises);
+        console.log(`✅ Notifications created for ${adminsSnapshot.size} admins`);
+
+        return { success: true, notificationCount: adminsSnapshot.size };
+      } catch (error) {
+        console.error("❌ Notification creation failed:", error.message);
+
+        throw new functions.https.HttpsError(
+            "internal",
+            `Notification fehlgeschlagen: ${error.message}`
+        );
+      }
+    });
+
+/**
+ * FUNCTION: sendEntwurfAbgelehntNotification
+ * Erstellt Notification für Werkstatt wenn Kunde Angebot ablehnt
+ * Called from: kunde-angebot.html (or partner portal)
+ */
+exports.sendEntwurfAbgelehntNotification = functions
+    .region("europe-west3")
+    .https.onCall(async (data, context) => {
+      console.log("🔔 sendEntwurfAbgelehntNotification called");
+
+      // Validate input
+      const { fahrzeugId, grund, werkstattId = "mosbach" } = data;
+
+      if (!fahrzeugId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "fahrzeugId erforderlich"
+        );
+      }
+
+      try {
+        // Load Fahrzeug/PartnerAnfrage data
+        const docRef = await db.collection(`partnerAnfragen_${werkstattId}`).doc(fahrzeugId).get();
+
+        if (!docRef.exists) {
+          // Try fahrzeuge collection as fallback
+          const fahrzeugRef = await db.collection(`fahrzeuge_${werkstattId}`).doc(fahrzeugId).get();
+          if (!fahrzeugRef.exists) {
+            throw new functions.https.HttpsError(
+                "not-found",
+                "Fahrzeug nicht gefunden"
+            );
+          }
+        }
+
+        const fahrzeug = docRef.data();
+
+        // Load all Meister/Admin users
+        const adminsSnapshot = await db.collection(`mitarbeiter_${werkstattId}`)
+            .where("role", "in", ["admin", "meister"])
+            .where("status", "==", "active")
+            .get();
+
+        if (adminsSnapshot.empty) {
+          console.warn(`⚠️ No admins found for werkstatt: ${werkstattId}`);
+          return { success: false, message: "Keine Admins gefunden" };
+        }
+
+        // Create Notifications for each Admin/Meister
+        const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
+          return db.collection(`mitarbeiterNotifications_${werkstattId}`).add({
+            mitarbeiterId: adminDoc.id,
+            title: "❌ Kunde hat Angebot abgelehnt",
+            message: `${fahrzeug.kundenname || "Kunde"} (${fahrzeug.kennzeichen || "k.A."}) hat das Angebot abgelehnt.${grund ? ` Grund: ${grund}` : ""}`,
+            type: "warning",
+            status: "unread",
+            priority: "normal",
+            link: `/partner-anfragen-pruefen.html?highlight=${fahrzeugId}`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        });
+
+        await Promise.all(notificationPromises);
+        console.log(`✅ Notifications created for ${adminsSnapshot.size} admins`);
+
+        return { success: true, notificationCount: adminsSnapshot.size };
+      } catch (error) {
+        console.error("❌ Notification creation failed:", error.message);
+
+        throw new functions.https.HttpsError(
+            "internal",
+            `Notification fehlgeschlagen: ${error.message}`
+        );
+      }
+    });
