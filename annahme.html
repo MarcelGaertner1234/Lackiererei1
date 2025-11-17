@@ -3258,6 +3258,7 @@
                     // Service-Daten (OPTIONAL)
                     serviceTyp: document.getElementById('serviceTyp')?.value || 'lackier',
                     notizen: document.getElementById('notizen')?.value || '',
+                    vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis')?.value) || 0,
 
                     // Entwurf-Spezifische Felder
                     isEntwurf: true,
@@ -3371,6 +3372,7 @@
                     // Service-Daten
                     serviceTyp: document.getElementById('serviceTyp')?.value || 'lackier',
                     notizen: notizen,
+                    vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis')?.value) || 0,
 
                     // Entwurf-Felder
                     isEntwurf: true,
@@ -3629,15 +3631,40 @@
                 }
             }
 
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = async function(event) {
-                    const compressed = await compressImage(event.target.result);
-                    photos.push(compressed);
-                    updatePhotoGrid();
-                };
-                reader.readAsDataURL(file);
-            });
+            // ✅ MIGRATED TO FIREBASE STORAGE (Phase: Nov 17, 2025)
+            // Old: Base64 compression → Firestore (1MB limit issues)
+            // New: Direct upload to Firebase Storage → Store URLs
+            const werkstattId = window.werkstattId || 'mosbach';
+            const timestamp = Date.now();
+            const entwurfId = `temp_${timestamp}`; // Temporary ID for photos before final save
+
+            (async () => {
+                for (const file of files) {
+                    try {
+                        // Create unique filename
+                        const fileTimestamp = Date.now();
+                        const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                        const storagePath = `entwuerfe/${werkstattId}/${entwurfId}/photo_${fileTimestamp}_${sanitizedFilename}`;
+
+                        // Upload to Firebase Storage
+                        const storage = firebase.storage();
+                        const storageRef = storage.ref(storagePath);
+                        await storageRef.put(file);
+
+                        // Get download URL
+                        const downloadURL = await storageRef.getDownloadURL();
+
+                        // Store URL instead of Base64
+                        photos.push(downloadURL);
+                        console.log(`✅ Foto hochgeladen: ${storagePath}`);
+
+                    } catch (error) {
+                        console.error('❌ Fehler beim Foto-Upload:', error);
+                        showToast(`Fehler beim Upload von "${file.name}": ${error.message}`, 'error', 5000);
+                    }
+                }
+                updatePhotoGrid();
+            })();
             e.target.value = '';
         };
         window.listenerRegistry.registerDOM(photoInput, 'change', photoInputHandler, 'Photo Input Change');
@@ -3668,7 +3695,22 @@
             feather.replace();
         }
 
-        function removePhoto(index) {
+        async function removePhoto(index) {
+            const photoUrl = photos[index];
+
+            // ✅ If it's a Storage URL (not Base64), delete from Storage
+            if (photoUrl && photoUrl.startsWith('https://firebasestorage.googleapis.com')) {
+                try {
+                    const storage = firebase.storage();
+                    const photoRef = storage.refFromURL(photoUrl);
+                    await photoRef.delete();
+                    console.log(`✅ Foto aus Storage gelöscht: ${photoRef.fullPath}`);
+                } catch (error) {
+                    // Ignore errors (file might already be deleted or not exist)
+                    console.warn('⚠️ Konnte Foto nicht aus Storage löschen:', error.message);
+                }
+            }
+
             photos.splice(index, 1);
             updatePhotoGrid();
         }

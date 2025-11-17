@@ -4143,136 +4143,29 @@ exports.generateAngebotPDF = functions
 // ============================================
 // FUNCTION: SEND ANGEBOT PDF TO ADMIN
 // ============================================
+// ============================================
+// SEND ANGEBOT PDF TO ADMIN (EMAIL DISABLED)
+// ============================================
+// NOTE: Temporarily disabled due to SendGrid trial expiration
+// TODO: Re-enable when production email service is configured
+// Options: SendGrid paid plan, Gmail SMTP, AWS SES, Resend, Mailgun
 exports.sendAngebotPDFToAdmin = functions
     .region("europe-west3")
-    .runWith({
-      secrets: [sendgridApiKey]
-    })
     .https
     .onCall(async (data, context) => {
-      console.log("📧 === SEND ANGEBOT PDF TO ADMIN ===");
-
-      // 🚧 CRITICAL: EARLY RETURN AT THE START TO PREVENT CORS ERROR
-      // This bypass MUST be FIRST, BEFORE any auth checks or validation
-      // Otherwise: Auth check throws HttpsError → CORS error → Function fails
-      console.log("⏭️  [TEMP] Admin-Email übersprungen (SendGrid Trial abgelaufen)");
-      console.log("📧 [TEMP] Würde PDF senden an Admin");
-      console.log("📎 [TEMP] Datei:", data.filename || "N/A");
-      console.log("🎯 [TEMP] Kennzeichen:", data.kennzeichen || "N/A");
-      console.log("💰 [TEMP] Preis:", data.vereinbarterPreis || "N/A");
+      console.log("📧 === SEND ANGEBOT PDF TO ADMIN (TEMP DISABLED) ===");
+      console.log("⏭️  Admin-Email übersprungen (SendGrid Trial abgelaufen)");
+      console.log("📎 Datei:", data.filename || "N/A");
+      console.log("🎯 Kennzeichen:", data.kennzeichen || "N/A");
+      console.log("💰 Preis:", data.vereinbarterPreis || "N/A");
 
       // Return success immediately to allow workflow to continue
       return {
         success: true,
-        message: "Admin-Email übersprungen (Testmodus - SendGrid Trial abgelaufen)",
+        message: "Admin-Email übersprungen (SendGrid Trial abgelaufen)",
         tempDisabled: true,
         filename: data.filename || "angebot.pdf"
       };
-
-      /* ❌ DISABLED CODE BELOW - Will be re-enabled when email service is configured
-
-      // ✅ SECURITY: Authentication check
-      if (!context.auth) {
-        throw new functions.https.HttpsError(
-            "unauthenticated",
-            "Authentifizierung erforderlich"
-        );
-      }
-
-      try {
-        // 1. Validation
-        if (!data.pdfBase64 || !data.filename || !data.werkstattId) {
-          throw new functions.https.HttpsError(
-              "invalid-argument",
-              "pdfBase64, filename und werkstattId sind erforderlich"
-          );
-        }
-
-        const { pdfBase64, filename, werkstattId, kennzeichen, kundenname, vereinbarterPreis } = data;
-
-        /* TODO: Re-enable email sending after configuring production email service
-        // Options: SendGrid paid plan, Gmail SMTP, AWS SES, Resend, Mailgun
-
-        // 2. Load Admin Email from Settings
-        console.log(`🔍 Lade Admin-Email für Werkstatt: ${werkstattId}`);
-        const settingsDoc = await db.collection("settings").doc(werkstattId).get();
-
-        let adminEmail = "info@auto-lackierzentrum.de"; // Fallback
-        if (settingsDoc.exists && settingsDoc.data().adminEmail) {
-          adminEmail = settingsDoc.data().adminEmail;
-          console.log(`✅ Admin-Email gefunden: ${adminEmail}`);
-        } else {
-          console.warn(`⚠️ Keine Admin-Email in settings/${werkstattId} → Fallback: ${adminEmail}`);
-        }
-
-        // 3. Initialize SendGrid
-        const apiKey = getSendGridApiKey();
-        sgMail.setApiKey(apiKey);
-
-        // 4. Prepare Email
-        const msg = {
-          to: adminEmail,
-          from: SENDER_EMAIL,
-          subject: `📄 Neues Angebot erstellt - ${kennzeichen || ""}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #003366;">Neues Angebot erstellt</h2>
-              <p>Ein neues Angebot wurde im System erstellt:</p>
-
-              <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <p style="margin: 5px 0;"><strong>Kennzeichen:</strong> ${kennzeichen || "N/A"}</p>
-                <p style="margin: 5px 0;"><strong>Kunde:</strong> ${kundenname || "N/A"}</p>
-                <p style="margin: 5px 0;"><strong>Preis:</strong> ${vereinbarterPreis ? vereinbarterPreis + " €" : "N/A"}</p>
-                <p style="margin: 5px 0;"><strong>Erstellt am:</strong> ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE")}</p>
-              </div>
-
-              <p>Die vollständige Kalkulation finden Sie im Anhang.</p>
-
-              <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
-              <p style="color: #666; font-size: 12px;">
-                Diese Email wurde automatisch generiert vom Fahrzeugannahme-System.
-              </p>
-            </div>
-          `,
-          attachments: [
-            {
-              content: pdfBase64,
-              filename: filename,
-              type: "application/pdf",
-              disposition: "attachment"
-            }
-          ]
-        };
-
-        // 5. Send Email
-        console.log(`📧 Sende Email an: ${adminEmail}`);
-        await sgMail.send(msg);
-        console.log("✅ Email erfolgreich versendet");
-
-        return {
-          success: true,
-          adminEmail: adminEmail
-        };
-
-      } catch (error) {
-        console.error("❌ Email-Versand fehlgeschlagen:", error);
-
-        // SendGrid-spezifische Error Messages
-        if (error.response) {
-          console.error("SendGrid Response:", error.response.body);
-        }
-
-        throw new functions.https.HttpsError(
-            "internal",
-            `Email-Versand fehlgeschlagen: ${error.message}`
-        );
-      } catch (error) {
-        // Dieser catch-Block sollte niemals erreicht werden, da wir früh returnen
-        console.error("❌ Unexpected error in sendAngebotPDFToAdmin:", error);
-        throw new functions.https.HttpsError("internal", "Unerwarteter Fehler");
-      }
-
-      */ // End of disabled code block
     });
 
 // ============================================
