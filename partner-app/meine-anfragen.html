@@ -6665,7 +6665,7 @@
                 // Fahrzeugdaten (aus anfrage ODER serviceData.fahrzeugdaten)
                 // WICHTIG: Kennzeichen IMMER in Großbuchstaben für konsistente Suche!
                 kennzeichen: (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase(),
-                kundenname: anfrage.partnerName || 'Partner',
+                kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',  // ✅ FIX #13: kundenname priority
                 marke: anfrage.marke || anfrage.serviceData?.fahrzeugdaten?.marke || '',
                 modell: anfrage.modell || anfrage.serviceData?.fahrzeugdaten?.modell || '',
                 baujahrVon: anfrage.baujahrVon || anfrage.baujahr || anfrage.serviceData?.fahrzeugdaten?.baujahr || '',
@@ -6692,11 +6692,13 @@
                 }),
 
                 // Service-spezifische Daten (NEU! - z.B. Reifen: {typ, art, dimension, anzahl})
-                serviceData: anfrage.serviceData || {},
+                serviceData: anfrage.serviceData || anfrage.serviceDetails || {},  // ✅ FIX #16: serviceDetails fallback
 
                 // Termine & Planung (KVA-Termine > Kundenwunsch!)
                 // WICHTIG: Wenn KVA existiert, MUSS kva.termine.ende verwendet werden (echter Werkstatt-Termin)
-                geplantesAbnahmeDatum: anfrage.kva?.termine?.ende || anliefertermin, // → Kalender-Event
+                geplantesAbnahmeDatum: anfrage.angebotDetails?.fertigstellungsdatum ||  // ✅ FIX #15: Angebot finish date
+                                       anfrage.kva?.termine?.ende ||
+                                       anliefertermin, // → Kalender-Event
                 geplantesStartDatum: anfrage.kva?.termine?.start || null, // NEU: Lackierung-Start aus KVA
                 abholzeit: anfrage.kva?.termine?.abholzeit || null, // NEU: Abholzeit aus KVA
 
@@ -6718,7 +6720,11 @@
                 // Benefit: Kunden-Umsatz kann auf kva.varianten zugreifen + Audit Trail
                 kva: anfrage.kva || null,
 
-                notizen: anfrage.schadenBeschreibung ||
+                // ✅ FIX #18: Kalkulations-Daten preservation (Optional - für Audit)
+                kalkulationData: anfrage.kalkulationData || null,
+
+                notizen: anfrage.angebotDetails?.serviceBeschreibung ||  // ✅ FIX #14: Angebot description
+                         anfrage.schadenBeschreibung ||
                          anfrage.beschreibung ||
                          anfrage.serviceData?.info ||
                          anfrage.anmerkungen || '',
@@ -6728,11 +6734,12 @@
                 partnerName: anfrage.partnerName || '',
                 partnerEmail: anfrage.partnerEmail || partner?.email || '',
                 kundenEmail: anfrage.partnerEmail || partner?.email || '', // 🆕 BUGFIX 2025-11-04 (FIX #32): Same as partnerEmail (Partner = Kunde in diesem Flow)
+                kundenTelefon: anfrage.telefon || anfrage.kundenTelefon || anfrage.partnerTelefon || '',  // ✅ FIX #12: Telefon mapping
                 anfrageId: anfrage.id, // Referenz zur Partner-Anfrage
 
                 // Photos & Signature (WERDEN SEPARAT IN SUBCOLLECTION GESPEICHERT)
                 photos: [], // Leerer Platzhalter - Fotos werden in fahrzeuge/{id}/fotos/vorher gespeichert
-                signature: null, // Wird bei physischer Annahme ergänzt
+                signature: anfrage.signature || null,  // ✅ FIX #17: Preserve Meister signature
 
                 // Prozess-Tracking
                 prozessTimestamps: {
