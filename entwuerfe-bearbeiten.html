@@ -2359,6 +2359,262 @@
         }
 
         // ============================================
+        // ZENTRALE DATENBANKEN - KALKULATIONS-DATA
+        // ============================================
+
+        /**
+         * Speichert Ersatzteile in zentrale Ersatzteile-DB (ersatzteile_{werkstattId})
+         * Ermöglicht spätere Statistiken, API-Integrationen und Ersatzteil-Suche
+         * @param {Array} ersatzteile - Array von Ersatzteilen (ersatzteileData)
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} kundenname - Name des Kunden
+         * @returns {Promise<number>} Anzahl der gespeicherten Ersatzteile
+         */
+        async function saveErsatzteileToCentralDB(ersatzteile, fahrzeugId, kennzeichen, kundenname) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile zum Speichern');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`🗄️ Speichere ${ersatzteile.length} Ersatzteile in zentrale DB (ersatzteile_${window.werkstattId || 'mosbach'})...`);
+
+            const userName = window.currentUser?.name || localStorage.getItem('userName') || 'Büro';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            for (const teil of ersatzteile) {
+                try {
+                    const ersatzteilId = 'et_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    // Zentrale Ersatzteil-Daten
+                    const ersatzteilData = {
+                        id: ersatzteilId,
+                        etn: teil.etn || '',
+                        benennung: teil.benennung || '',
+                        einzelpreis: teil.einzelpreis || 0,
+                        // Referenz-Daten
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: kennzeichen,
+                        kundenname: kundenname,
+                        // Meta-Daten
+                        werkstattId: werkstattId,
+                        createdAt: new Date().toISOString(),
+                        createdBy: userName,
+                        // Optional: Anzahl aus diesem spezifischen Auftrag
+                        anzahlInAuftrag: teil.anzahl || 1,
+                        gesamtpreisInAuftrag: teil.gesamtpreis || 0
+                    };
+
+                    // In Batch hinzufügen
+                    const docRef = window.getCollection('ersatzteile').doc(ersatzteilId);
+                    batch.set(docRef, ersatzteilData);
+
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern von Ersatzteil:', teil, error);
+                }
+            }
+
+            // Batch commit
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Ersatzteile erfolgreich in zentraler DB gespeichert`);
+                return successCount;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                throw error;
+            }
+        }
+
+        /**
+         * Speichert Arbeitslohn in zentrale Arbeitslohn-DB (arbeitslohn_{werkstattId})
+         * Ermöglicht spätere Durchschnittspreise und Standard-Tätigkeiten
+         * @param {Array} arbeitslohn - Array von Arbeitslohn-Positionen
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} kundenname - Name des Kunden
+         * @returns {Promise<number>} Anzahl der gespeicherten Positionen
+         */
+        async function saveArbeitslohnToCentralDB(arbeitslohn, fahrzeugId, kennzeichen, kundenname) {
+            if (!arbeitslohn || arbeitslohn.length === 0) {
+                console.log('ℹ️ Kein Arbeitslohn zum Speichern');
+                return 0;
+            }
+
+            console.log(`🗄️ Speichere ${arbeitslohn.length} Arbeitslohn-Positionen in zentrale DB...`);
+
+            const userName = window.currentUser?.name || localStorage.getItem('userName') || 'Büro';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            for (const position of arbeitslohn) {
+                try {
+                    const positionId = 'al_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    const positionData = {
+                        id: positionId,
+                        taetigkeit: position.taetigkeit || '',
+                        stundensatz: position.stundensatz || 0,
+                        stunden: position.stunden || 0,
+                        gesamtpreis: position.gesamtpreis || 0,
+                        // Referenz-Daten
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: kennzeichen,
+                        kundenname: kundenname,
+                        // Meta-Daten
+                        werkstattId: werkstattId,
+                        createdAt: new Date().toISOString(),
+                        createdBy: userName
+                    };
+
+                    const docRef = window.getCollection('arbeitslohn').doc(positionId);
+                    batch.set(docRef, positionData);
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern von Arbeitslohn:', position, error);
+                }
+            }
+
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Arbeitslohn-Positionen gespeichert`);
+                return successCount;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                throw error;
+            }
+        }
+
+        /**
+         * Speichert Lackierung in zentrale Lackierung-DB (lackierung_{werkstattId})
+         * Ermöglicht spätere Preisstatistiken und m²-Berechnungen
+         * @param {Array} lackierung - Array von Lackierungs-Positionen
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} kundenname - Name des Kunden
+         * @returns {Promise<number>} Anzahl der gespeicherten Positionen
+         */
+        async function saveLackierungToCentralDB(lackierung, fahrzeugId, kennzeichen, kundenname) {
+            if (!lackierung || lackierung.length === 0) {
+                console.log('ℹ️ Keine Lackierung zum Speichern');
+                return 0;
+            }
+
+            console.log(`🗄️ Speichere ${lackierung.length} Lackierungs-Positionen in zentrale DB...`);
+
+            const userName = window.currentUser?.name || localStorage.getItem('userName') || 'Büro';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            for (const position of lackierung) {
+                try {
+                    const positionId = 'lack_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    const positionData = {
+                        id: positionId,
+                        teil: position.teil || '',
+                        m2: position.m2 || 0,
+                        preis_pro_m2: position.preis_pro_m2 || 0,
+                        gesamtpreis: position.gesamtpreis || 0,
+                        // Referenz-Daten
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: kennzeichen,
+                        kundenname: kundenname,
+                        // Meta-Daten
+                        werkstattId: werkstattId,
+                        createdAt: new Date().toISOString(),
+                        createdBy: userName
+                    };
+
+                    const docRef = window.getCollection('lackierung').doc(positionId);
+                    batch.set(docRef, positionData);
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern von Lackierung:', position, error);
+                }
+            }
+
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Lackierungs-Positionen gespeichert`);
+                return successCount;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                throw error;
+            }
+        }
+
+        /**
+         * Speichert Materialien in zentrale Materialien-DB (materialien_{werkstattId})
+         * Ermöglicht spätere Material-Statistiken und Bestandsverwaltung
+         * @param {Array} materialien - Array von Material-Positionen
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} kundenname - Name des Kunden
+         * @returns {Promise<number>} Anzahl der gespeicherten Positionen
+         */
+        async function saveMaterialienToCentralDB(materialien, fahrzeugId, kennzeichen, kundenname) {
+            if (!materialien || materialien.length === 0) {
+                console.log('ℹ️ Keine Materialien zum Speichern');
+                return 0;
+            }
+
+            console.log(`🗄️ Speichere ${materialien.length} Material-Positionen in zentrale DB...`);
+
+            const userName = window.currentUser?.name || localStorage.getItem('userName') || 'Büro';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            for (const material of materialien) {
+                try {
+                    const materialId = 'mat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    const materialData = {
+                        id: materialId,
+                        material: material.material || '',
+                        einheit: material.einheit || '',
+                        menge: material.menge || 0,
+                        einzelpreis: material.einzelpreis || 0,
+                        gesamtpreis: material.gesamtpreis || 0,
+                        // Referenz-Daten
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: kennzeichen,
+                        kundenname: kundenname,
+                        // Meta-Daten
+                        werkstattId: werkstattId,
+                        createdAt: new Date().toISOString(),
+                        createdBy: userName
+                    };
+
+                    const docRef = window.getCollection('materialien').doc(materialId);
+                    batch.set(docRef, materialData);
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern von Material:', material, error);
+                }
+            }
+
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Material-Positionen gespeichert`);
+                return successCount;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                throw error;
+            }
+        }
+
+        // ============================================
         // ERSTELLE ANGEBOT & VERSENDE
         // ============================================
 
@@ -2514,6 +2770,38 @@
                 });
 
                 console.log('✅ Entwurf-Status aktualisiert (Email + Status update komplett)');
+
+                // 🗄️ Step 5b: Speichere Kalkulations-Daten in zentrale Datenbanken (für Automatisierung & Preisvorschläge)
+                console.log('🗄️ Step 5b: Speichere Kalkulations-Daten in zentrale DBs...');
+                try {
+                    const kennzeichen = document.getElementById('kennzeichen').value.trim();
+                    const kundenname = document.getElementById('kundenname').value.trim();
+
+                    // ✅ Phase 1: Ersatzteile speichern
+                    if (ersatzteileData && ersatzteileData.length > 0) {
+                        await saveErsatzteileToCentralDB(ersatzteileData, currentEntwurfId, kennzeichen, kundenname);
+                    }
+
+                    // ✅ Phase 2: Arbeitslohn speichern
+                    if (arbeitslohnData && arbeitslohnData.length > 0) {
+                        await saveArbeitslohnToCentralDB(arbeitslohnData, currentEntwurfId, kennzeichen, kundenname);
+                    }
+
+                    // ✅ Phase 3: Lackierung speichern
+                    if (lackierungData && lackierungData.length > 0) {
+                        await saveLackierungToCentralDB(lackierungData, currentEntwurfId, kennzeichen, kundenname);
+                    }
+
+                    // ✅ Phase 4: Materialien speichern
+                    if (materialienData && materialienData.length > 0) {
+                        await saveMaterialienToCentralDB(materialienData, currentEntwurfId, kennzeichen, kundenname);
+                    }
+
+                    console.log('✅ Alle Kalkulations-Daten in zentrale DBs gespeichert');
+                } catch (error) {
+                    console.error('⚠️ Fehler beim Speichern in zentrale DBs (nicht-kritisch):', error);
+                    // Non-blocking error - continue with PDF generation
+                }
 
                 // Step 6: Generate PDF für Admin
                 console.log('📄 Step 6: Generiere Kalkulation-PDF für Admin...');
