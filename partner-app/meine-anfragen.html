@@ -4776,8 +4776,29 @@
             // Preis-Anzeige vorbereiten (mit Vergleich wenn beide Varianten vorhanden)
             let preisHTML = '';
 
+            // 🔧 FIX (2025-11-17): BUG #4 - Entwurf angebotDetails.gesamtpreis priorisieren
+            // WICHTIG: Entwurf-Angebote haben keinen KVA, sondern angebotDetails.gesamtpreis
+            if (anfrage.angebotDetails?.gesamtpreis) {
+                preisHTML = `
+                    <div class="card-preis" style="background: linear-gradient(135deg, #2196f3 0%, #42a5f5 100%);
+                                                   color: white;
+                                                   border: none;
+                                                   padding: 10px 12px;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-size: 16px;">📄</span>
+                            <span style="font-weight: 600; font-size: 12px;">Angebot erstellt</span>
+                        </div>
+                        <div style="font-size: 22px; font-weight: 700;">
+                            ${anfrage.angebotDetails.gesamtpreis.toFixed(2)}€
+                        </div>
+                        <div style="font-size: 10px; opacity: 0.9; margin-top: 2px;">
+                            ${anfrage.angebotDetails.erstelltAm ? new Date(anfrage.angebotDetails.erstelltAm).toLocaleDateString('de-DE') : ''}
+                        </div>
+                    </div>
+                `;
+            }
             // 🆕 BUGFIX 2025-11-04: Werkstatt-initiierte Anfragen mit vereinbartem Preis
-            if (anfrage.werkstattInitiiert && anfrage.vereinbarterPreis) {
+            else if (anfrage.werkstattInitiiert && anfrage.vereinbarterPreis) {
                 preisHTML = `
                     <div class="card-preis" style="background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);
                                                    color: white;
@@ -5061,10 +5082,15 @@
 
             // Foto-Galerie vorbereiten (max 2 Fotos + Badge für restliche)
             let fotoGalerieHTML = '';
-            if (anfrage.fotos && anfrage.fotos.length > 0) {
+
+            // 🔧 FIX (2025-11-17): BUG #5 - Entwürfe verwenden "photos" statt "fotos"
+            // Normalisiere Property-Namen für konsistente Verarbeitung
+            const fotoArray = anfrage.fotos || anfrage.photos || [];
+
+            if (fotoArray && fotoArray.length > 0) {
                 const maxAnzeige = 2;  // ✅ FIX v12: Von 4 auf 2 geändert (User-Request: max 2 Fotos)
-                const fotosZuZeigen = anfrage.fotos.slice(0, maxAnzeige);
-                const restFotos = anfrage.fotos.length - maxAnzeige;
+                const fotosZuZeigen = fotoArray.slice(0, maxAnzeige);
+                const restFotos = fotoArray.length - maxAnzeige;
 
                 const thumbnailsHTML = fotosZuZeigen.map((foto, index) =>
                     `<img src="${foto}" class="foto-thumbnail" onclick="openLightbox('${anfrage.id}', ${index}, event)" alt="Foto ${index + 1}">`
@@ -5455,10 +5481,15 @@
             // 🔧 FIX (2025-11-17): BUG #2 - Entwurf Multi-Service Support
             const allServices = [];
 
-            // ===== ENTWURF Multi-Service (serviceTyp = Array) =====
-            if (isEntwurf && isServiceTypArray) {
-                // Entwurf mit serviceTyp als Array ["lackier", "reifen"]
-                anfrage.serviceTyp.forEach((serviceTyp, index) => {
+            // 🔧 FIX (2025-11-17): BUG #6 - Universelle Entwurf-Behandlung (String UND Array)
+            // ===== ENTWURF Multi-Service (serviceTyp = Array ODER String) =====
+            if (isEntwurf) {
+                // Normalisiere serviceTyp zu Array (egal ob String oder Array)
+                const serviceTypArray = Array.isArray(anfrage.serviceTyp)
+                    ? anfrage.serviceTyp
+                    : [anfrage.serviceTyp || 'lackier'];  // String → Array, Fallback zu 'lackier'
+
+                serviceTypArray.forEach((serviceTyp, index) => {
                     const serviceData = serviceIcons[serviceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
                     const status = anfrage.entwurfStatus || 'neu';  // Entwurf-Status für alle Services gleich
 
@@ -5471,7 +5502,9 @@
                 });
             }
             // ===== ANGENOMMENES Fahrzeug Multi-Service (fahrzeug.additionalServices) =====
-            else {
+            else if (anfrage.fahrzeug?.additionalServices &&
+                     Array.isArray(anfrage.fahrzeug.additionalServices) &&
+                     anfrage.fahrzeug.additionalServices.length > 0) {
                 const primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
 
                 // 1️⃣ Primary Service
@@ -5495,6 +5528,18 @@
                         status: addStatus,
                         isPrimary: false
                     });
+                });
+            }
+            // ===== FALLBACK: Unbekanntes Format (sollte nie passieren) =====
+            else {
+                console.error('❌ buildServiceStatusBreakdown: Unbekanntes Datenformat', anfrage);
+                const primaryServiceTyp = anfrage.serviceTyp || 'lackier';
+                const serviceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+                allServices.push({
+                    typ: primaryServiceTyp,
+                    data: serviceData,
+                    status: 'neu',
+                    isPrimary: true
                 });
             }
 
