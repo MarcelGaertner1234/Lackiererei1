@@ -742,6 +742,26 @@
         let signatureData = null;
 
         // ============================================
+        // HELPER: BASE64 TO BLOB (FIX: Nov 17, 2025 - BUG #2)
+        // ============================================
+
+        /**
+         * Convert Base64 string to Blob for file download
+         * @param {string} base64 - Base64 encoded string
+         * @param {string} mimeType - MIME type (e.g., 'application/pdf')
+         * @returns {Blob}
+         */
+        function base64ToBlob(base64, mimeType) {
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            return new Blob([byteArray], { type: mimeType });
+        }
+
+        // ============================================
         // PDF.js WORKER CONFIGURATION
         // ============================================
 
@@ -1395,7 +1415,7 @@
                     console.log(`📸 ${photos.length} Fotos geladen`);
                 }
 
-                // 🖊️ Load Unterschrift (Phase 3)
+                // 🖊️ Load Unterschrift (Phase 3) - ✅ FIX: Nov 17, 2025 - BUG #1
                 signatureData = null;
                 if (currentEntwurf.signature) {
                     signatureData = currentEntwurf.signature;
@@ -1405,12 +1425,24 @@
                     const ctx = canvas.getContext('2d');
                     const img = new Image();
                     img.onload = function() {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);  // Clear canvas (including any placeholder)
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);  // Draw signature
                         hasDrawn = true;
+                        console.log('✅ Unterschrift angezeigt auf Canvas (hasDrawn=true)');
+                    };
+                    img.onerror = function() {
+                        console.error('❌ Fehler beim Laden der Unterschrift-Bilddaten');
+                        drawPlaceholder();  // Fallback: Show placeholder if image load fails
                     };
                     img.src = signatureData;
-                    console.log('✍️ Unterschrift geladen');
+                    console.log('✍️ Unterschrift wird geladen...');
+                } else {
+                    // ✅ FIX: No signature exists → show placeholder explicitly
+                    console.log('ℹ️ Keine Unterschrift vorhanden → Placeholder anzeigen');
+                    const canvas = document.getElementById('signatureCanvas');
+                    if (canvas && typeof drawPlaceholder === 'function') {
+                        drawPlaceholder();
+                    }
                 }
 
                 // Show form
@@ -1664,6 +1696,24 @@
                 });
 
                 console.log('✅ PDF generiert:', pdfResult.data.filename);
+
+                // ✅ FIX: Nov 17, 2025 - BUG #2 - Download PDF for Büro-Mitarbeiter
+                console.log('💾 Step 6b: Lade PDF herunter für Büro-Mitarbeiter...');
+                try {
+                    const pdfBlob = base64ToBlob(pdfResult.data.pdfBase64, 'application/pdf');
+                    const downloadUrl = URL.createObjectURL(pdfBlob);
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = downloadUrl;
+                    downloadLink.download = pdfResult.data.filename;
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    URL.revokeObjectURL(downloadUrl);
+                    console.log('✅ PDF heruntergeladen:', pdfResult.data.filename);
+                } catch (downloadError) {
+                    console.error('⚠️ PDF-Download fehlgeschlagen (aber Email wird trotzdem gesendet):', downloadError);
+                    // Continue with email sending even if download fails
+                }
 
                 // Step 7: Send PDF to Admin
                 console.log('📧 Step 7: Sende Kalkulation-PDF an Admin...');
