@@ -253,7 +253,7 @@ class StorageMonitor {
 
       // Fallback: LocalStorage
       const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
-      return fahrzeuge.find(f => f.id === fahrzeugId);
+      return fahrzeuge.find(f => String(f.id) === String(fahrzeugId)); // ✅ FIX 2025-11-17: Type-safe ID comparison
     } catch (error) {
       console.error('Fehler beim Laden des Fahrzeugs:', error);
       return null;

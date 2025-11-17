@@ -134,7 +134,8 @@ class MitarbeiterNotificationManager {
                         };
 
                         // Only show toast for NEW notifications (not initial load)
-                        if (!this.notifications.find(n => n.id === notification.id)) {
+                        // ✅ FIX 2025-11-17: Type-safe ID comparison
+                        if (!this.notifications.find(n => String(n.id) === String(notification.id))) {
                             console.log('🔔 New notification received:', notification.title);
                             this.showNotificationToast(notification);
                             this.speakNotification(notification);
@@ -146,7 +147,8 @@ class MitarbeiterNotificationManager {
                     }
 
                     if (change.type === 'modified') {
-                        const index = this.notifications.findIndex(n => n.id === change.doc.id);
+                        // ✅ FIX 2025-11-17: Type-safe ID comparison
+                        const index = this.notifications.findIndex(n => String(n.id) === String(change.doc.id));
                         if (index !== -1) {
                             this.notifications[index] = {
                                 id: change.doc.id,

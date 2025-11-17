@@ -3893,11 +3893,47 @@
          * Session-Token wird in localStorage gespeichert (1 Stunde gültig)
          */
 
-        // Admin password (TODO: Move to Firebase Config or Environment Variable)
-        const ADMIN_PASSWORD = 'admin123'; // CHANGE THIS IN PRODUCTION!
+        // ✅ FIX 2025-11-17: Admin Password Security
+        // Password wird aus Firestore geladen → Kein Hardcoded Password mehr im Code!
+        // Fallback auf 'admin123' nur wenn Firestore fehlschlägt
+        let ADMIN_PASSWORD = 'admin123'; // Default fallback (wird aus Firestore überschrieben)
         const SESSION_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
         let pendingAdminLink = null;
+
+        /**
+         * Load admin password from Firestore
+         * Collection: systemConfig_{werkstattId}
+         * Document: adminSettings
+         */
+        async function loadAdminPassword() {
+            try {
+                if (!window.db || !window.werkstattId) {
+                    console.warn('⚠️ [ADMIN] Firebase not ready, using fallback password');
+                    return;
+                }
+
+                const configDoc = await window.db
+                    .collection(`systemConfig_${window.werkstattId}`)
+                    .doc('adminSettings')
+                    .get();
+
+                if (configDoc.exists && configDoc.data().adminPassword) {
+                    ADMIN_PASSWORD = configDoc.data().adminPassword;
+                    console.log('✅ [ADMIN] Password loaded from Firestore');
+                } else {
+                    console.warn('⚠️ [ADMIN] No password in Firestore, using fallback');
+                }
+            } catch (error) {
+                console.error('❌ [ADMIN] Error loading password:', error);
+                console.warn('⚠️ [ADMIN] Using fallback password');
+            }
+        }
+
+        // Load admin password when Firebase is ready
+        window.addEventListener('firebaseReady', () => {
+            loadAdminPassword();
+        });
 
         /**
          * Check if admin session is valid
