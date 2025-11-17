@@ -4049,18 +4049,16 @@ exports.generateAngebotPDF = functions
         // 3. Create HTML Template
         const htmlContent = createAngebotHTML(entwurf, werkstattId);
 
-        // 4. Convert HTML to PDF with Puppeteer
-        console.log("🖨️ Generiere PDF mit Puppeteer...");
-        const puppeteer = require("puppeteer");
+        // 4. Convert HTML to PDF with Puppeteer-Core + @sparticuz/chromium
+        console.log("🖨️ Generiere PDF mit Puppeteer-Core...");
+        const puppeteer = require("puppeteer-core");
+        const chromium = require("@sparticuz/chromium");
 
         const browser = await puppeteer.launch({
-          headless: true,
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu"
-          ]
+          args: chromium.args,
+          defaultViewport: chromium.defaultViewport,
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless
         });
 
         const page = await browser.newPage();
