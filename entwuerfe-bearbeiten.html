@@ -446,6 +446,17 @@
                 firebaseInitialized = true;
                 console.log('✅ Firebase initialisiert');
 
+                // 🛡️ SECURITY: Page-Level Access Control (Pattern 6 - Defense in Depth)
+                // Partner-Accounts dürfen NICHT auf Werkstatt-Seiten zugreifen
+                if (window.currentUser?.role === 'partner') {
+                    console.warn('🚫 Partner-Zugriff blockiert! Redirect zu Partner-Portal...');
+                    showToast('⚠️ Zugriff verweigert. Sie werden zum Partner-Portal weitergeleitet...', 'error', 3000);
+                    setTimeout(() => {
+                        window.location.href = './partner-app/meine-anfragen.html';
+                    }, 2000);
+                    return; // Stop further execution
+                }
+
                 // Load drafts
                 await loadOffeneEntwuerfe();
 
@@ -698,8 +709,25 @@
                 const qrCodeUrl = `${baseUrl}partner-app/auto-login.html?token=${autoLoginToken}`;
                 console.log('🔗 QR-Code URL:', qrCodeUrl);
 
-                // Step 4: Update Entwurf Status & Save angebotDetails
-                console.log('📝 Step 4: Entwurf-Status aktualisieren...');
+                // 🔄 BUGFIX: Email-First Pattern (prevents inconsistent state)
+                // OLD: Update Firestore → Send Email (if email fails → status inconsistent!)
+                // NEW: Send Email → Update Firestore (only if email succeeds)
+
+                // Step 4: Send Email FIRST (before status change)
+                console.log('📧 Step 4: Email versenden (BEFORE status update)...');
+                const sendEmail = firebase.functions().httpsCallable('sendEntwurfEmail');
+                await sendEmail({
+                    kundenEmail: email,
+                    kundenname: document.getElementById('kundenname').value.trim(),
+                    kennzeichen: document.getElementById('kennzeichen').value.trim(),
+                    qrCodeUrl: qrCodeUrl,
+                    fahrzeugId: currentEntwurfId,
+                });
+
+                console.log('✅ Email versendet');
+
+                // Step 5: Update Entwurf Status ONLY AFTER successful email
+                console.log('📝 Step 5: Entwurf-Status aktualisieren (nach erfolgreicher Email)...');
                 const werkstattId = window.werkstattId || 'mosbach';
                 const collectionName = `partnerAnfragen_${werkstattId}`;
 
@@ -726,7 +754,7 @@
                     vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis').value),
                     geplantesAbnahmeDatum: document.getElementById('geplantesAbnahmeDatum').value,
 
-                    // Change entwurf status
+                    // Change entwurf status (ONLY after successful email!)
                     entwurfStatus: 'angebot_erstellt',
                     status: 'kva_gesendet',
 
@@ -738,20 +766,7 @@
                     updatedAt: new Date().toISOString(),
                 });
 
-                console.log('✅ Entwurf-Status aktualisiert');
-
-                // Step 5: Send Email
-                console.log('📧 Step 5: Email versenden...');
-                const sendEmail = firebase.functions().httpsCallable('sendEntwurfEmail');
-                await sendEmail({
-                    kundenEmail: email,
-                    kundenname: document.getElementById('kundenname').value.trim(),
-                    kennzeichen: document.getElementById('kennzeichen').value.trim(),
-                    qrCodeUrl: qrCodeUrl,
-                    fahrzeugId: currentEntwurfId,
-                });
-
-                console.log('✅ Email versendet');
+                console.log('✅ Entwurf-Status aktualisiert (Email + Status update komplett)');
 
                 // Step 6: Success!
                 sendBtn.innerHTML = '<i data-feather="check"></i> Versendet!';
@@ -770,7 +785,27 @@
 
             } catch (error) {
                 console.error('❌ Fehler beim Versenden des Angebots:', error);
-                showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+
+                // User-friendly error message based on error type
+                let errorMsg = '❌ Fehler beim Versenden des Angebots.\n\n';
+
+                if (error.message.includes('Email') || error.message.includes('sendEntwurfEmail')) {
+                    errorMsg += '📧 Email konnte nicht versendet werden.\n\n';
+                    errorMsg += 'Mögliche Gründe:\n';
+                    errorMsg += '• Ungültige Email-Adresse\n';
+                    errorMsg += '• SendGrid-Fehler\n';
+                    errorMsg += '• Netzwerkproblem\n\n';
+                    errorMsg += '💡 Tipp: Prüfen Sie die Email-Adresse und versuchen Sie es erneut.\n';
+                    errorMsg += '⚠️ Der Entwurf bleibt als "offen" gespeichert.';
+                } else if (error.message.includes('Token') || error.message.includes('createPartnerAutoLoginToken')) {
+                    errorMsg += '🔑 Auto-Login Token konnte nicht erstellt werden.\n\n';
+                    errorMsg += `Details: ${error.message}`;
+                } else {
+                    errorMsg += `Details: ${error.message}\n\n`;
+                    errorMsg += 'Bitte versuchen Sie es erneut.';
+                }
+
+                showToast(errorMsg, 'error', 8000);
                 document.getElementById('sendBtn').textContent = 'Angebot erstellen & versenden';
                 feather.replace();
             }
