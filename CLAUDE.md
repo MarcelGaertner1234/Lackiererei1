@@ -3820,7 +3820,35 @@ firebase firestore:import \
 
 ---
 
+## 📋 Latest Updates (2025-11-17)
+
+### Session 2025-11-17 (Phase 3): Data Loss Bug Hunting - Entwurf → Fahrzeug Mapping
+
+**CRITICAL BUGS FIXED (9 Bugs):**
+
+**Bug #12-18: Data Loss in Entwurf → Fahrzeug Mapping** (Commit 28d663d)
+- kundenTelefon, kundenname priority, serviceBeschreibung, fertigstellungsdatum, serviceDetails fallback, signature, kalkulationData
+- Files: partner-app/meine-anfragen.html (prepareFahrzeugData)
+- Pattern: #32 (Property Name Mismatches)
+
+**Bug #19: kundenname Override in anfrage-detail.html** (Commit d38e86b)
+- Duplicate code path with different logic than meine-anfragen.html
+- Pattern: #33 (Duplicate Code Paths)
+
+**Bug #20: Entwurf Fallback Chain Insufficient** (Commit 779b74a)
+- Added debug logging + comprehensive fallback chain
+- Pattern: #34 (Debug-First Approach)
+
+**KEY LEARNINGS:**
+- ALWAYS fix BOTH code paths (meine-anfragen.html AND anfrage-detail.html)
+- Use debug logging BEFORE fixing data loss
+- Check ALL possible property names (anfrage.kundenname, anfrage.angebotDetails?.kundenname, anfrage.kundendaten?.name)
+
+**NEW ERROR PATTERNS:** See NEXT_AGENT_MANUAL_TESTING_PROMPT.md Patterns #32-34
+
+---
+
 _Last Updated: 2025-11-17 by Claude Code (Sonnet 4.5)_
-_Version: 8.3 (Code Quality & Security - Session Nov 17 Phase 2: UX Fixes + Security Patterns + Guidelines)_
+_Version: 8.4 (Data Loss Bug Hunting - Entwurf → Fahrzeug Mapping Fixes)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
-_Lines: ~3,070_
+_Lines: ~3,860_

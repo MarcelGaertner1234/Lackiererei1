@@ -15,6 +15,63 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ## 📊 Latest Session History (2025-11-17)
 
+### Session 2025-11-17 (Phase 10): Data Loss Bug Hunting - Entwurf → Fahrzeug Mapping (CRITICAL FIXES)
+
+**🎯 USER REQUEST:** "warum wurde es als Partner gespeichert ??" - Entwurf mit kundenname "Marcel Gärtner" wird als Fahrzeug "Partner" gespeichert
+
+**🔴 CRITICAL BUSINESS IMPACT:**
+- Kunden können ihre Aufträge nicht finden
+- Rechnungen werden mit falschem Kundennamen erstellt
+- Zuordnung von Aufträgen zu Kunden unmöglich
+- 100% der Entwürfe betroffen
+
+**BUGS FOUND & FIXED (9 Bugs):**
+
+**Bug #12-18: Data Loss in Entwurf → Fahrzeug Mapping (7 Bugs)**
+- kundenTelefon: Lost - not mapped from anfrage
+- kundenname: Wrong priority - partnerName before kundenname
+- serviceBeschreibung: Lost - not extracted from angebotDetails
+- fertigstellungsdatum: Lost - not used from angebotDetails
+- serviceDetails: Missing fallback - no alternative property check
+- signature: Lost - hardcoded null instead of preserving
+- kalkulationData: Lost - field not mapped at all
+- **Fix:** Commit 28d663d - meine-anfragen.html prepareFahrzeugData() Lines 6668-6742
+
+**Bug #19: kundenname "Partner" Override in anfrage-detail.html**
+- Root Cause: Duplicate code path with different kundenname logic than meine-anfragen.html
+- **Fix:** Commit d38e86b - anfrage-detail.html Line 3982 (kundenname priority chain)
+
+**Bug #20: Entwurf Fallback Chain Insufficient (DEBUG LOGGING)**
+- Root Cause: Entwurf data structure different from normal Anfragen - kundenname field location unknown
+- **Fix:** Commit 779b74a - Added debug logging + comprehensive fallback chain
+  - Lines: meine-anfragen.html 6670-6689, anfrage-detail.html 3984-4003
+  - Fallbacks: kundenname → angebotDetails.kundenname → kundendaten.name → partnerName → 'Partner'
+
+**FILES MODIFIED:** 2 files
+- partner-app/meine-anfragen.html (+8 fields in prepareFahrzeugData, +19 lines debug logging)
+- partner-app/anfrage-detail.html (+19 lines debug logging, same fallback chain)
+
+**KEY LEARNINGS:**
+- **Duplicate Code Paths:** annehmenKVA() exists in BOTH meine-anfragen.html AND anfrage-detail.html - ALWAYS fix BOTH!
+- **Property Name Mismatches:** anfrage vs angebotDetails vs kundendaten - need comprehensive fallback chains
+- **Debug-First Approach:** When data loss occurs, add debug logging BEFORE fixing to understand exact data structure
+- **Entwurf vs Anfrage:** Different data structures require different fallback priorities
+- **Field Priority:** Always check ALL possible field names before falling back to default values
+
+**NEUE ERROR PATTERNS:**
+- **Pattern #32:** Data Loss in Entwurf → Fahrzeug Mapping (Property Name Mismatches)
+- **Pattern #33:** Duplicate Code Paths with Different Logic (meine-anfragen.html vs anfrage-detail.html)
+- **Pattern #34:** Entwurf-spezifische Fallback-Ketten (kundenname not found - need debug logging)
+
+**STATUS:** ✅ **Bugs #12-19 FIXED**, ⏳ **Bug #20 Debug Logging Deployed** (Testing pending tomorrow)
+
+**COMMITS:**
+- 28d663d - fix: Data loss in Entwurf → Fahrzeug mapping (Bugs #12-18)
+- d38e86b - fix: Bug #19 - kundenname "Partner" override in anfrage-detail.html
+- 779b74a - fix: Bug #20 - Entwurf kundenname "Partner" override with debug logging
+
+---
+
 ### Session 2025-11-17 (Phase 9): Entwurf-System Phase 2 - Angebot PDF Generation (PRODUCTION-READY)
 
 **🎯 USER REQUEST:** "PDF-Angebot vom Büro an Admin versenden"
@@ -4036,7 +4093,456 @@ ${(serviceData.farbcode || serviceData.lackier_farbcode) ?
 
 ---
 
-**Updated:** 2025-11-17 after implementing Entwurf-System Phase 2 (PDF Generation & Email)
-**Session Learnings:** Backward compatibility, type mismatches, naming inconsistencies, field priorities, silent data loss, PDF generation, email integration, Puppeteer configuration
-**Total Patterns:** 31 (Pattern 31: PDF Generation & Email Failures - Puppeteer/SendGrid)
+## Pattern 32: Data Loss in Entwurf → Fahrzeug Mapping (Property Name Mismatches)
+
+**Symptom:**
+```
+✅ Entwurf created with kundenname: "Marcel Gärtner"
+✅ PDF shows kundenname: "Marcel Gärtner"
+❌ Fahrzeug after acceptance shows kundenname: "Partner"
+❌ Fahrzeug missing: kundenTelefon, serviceBeschreibung, fertigstellungsdatum, signature, kalkulationData
+```
+
+**When This Happens:**
+- Partner accepts Entwurf via meine-anfragen.html or anfrage-detail.html
+- Fahrzeug is created with wrong/missing customer data
+- Data exists in Entwurf but not transferred to Fahrzeug
+- prepareFahrzeugData() doesn't check all possible field names
+
+**Root Causes:**
+
+### 1. Property Name Mismatches Between Data Structures
+**Problem:** Same data stored under different property names in anfrage vs angebotDetails vs kundendaten
+
+**Example:**
+```javascript
+// Entwurf structure (partnerAnfragen_mosbach):
+{
+  kundenname: "Marcel Gärtner",           // Direct property
+  telefon: "0621-123456",                 // NOT kundenTelefon!
+  angebotDetails: {
+    kundenname: "Marcel Gärtner",         // DUPLICATE in nested object
+    serviceBeschreibung: "Vollständige Neulackierung...",
+    fertigstellungsdatum: "2025-11-25"
+  },
+  kundendaten: {
+    name: "Marcel Gärtner"                // DUPLICATE in another nested object
+  },
+  signature: "data:image/png;base64...",
+  kalkulationData: { ersatzteile: [...] }
+}
+
+// prepareFahrzeugData() in meine-anfragen.html Line 6668:
+kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner'
+//          ^^^^^^^^^^^^^^^^^^    ^^^^^^^^^^^^^^^^^
+//          FOUND (correct)        Fallback (wrong for Entwürfe!)
+```
+
+**Fix #1 - kundenname Priority (Bug #13, #19):**
+```javascript
+// ❌ BEFORE:
+kundenname: anfrage.partnerName || 'Partner',  // WRONG!
+
+// ✅ AFTER:
+kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',  // kundenname FIRST
+```
+
+**Fix #2 - Missing Fields (Bugs #12, #14-18):**
+```javascript
+// ❌ BEFORE (meine-anfragen.html Lines 6668-6742):
+kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',
+// kundenTelefon: NOT MAPPED AT ALL!
+notizen: anfrage.schadenBeschreibung || anfrage.beschreibung || '',  // Missing serviceBeschreibung!
+geplantesAbnahmeDatum: anfrage.kva?.termine?.ende || anliefertermin,  // Missing fertigstellungsdatum!
+serviceData: anfrage.serviceData || {},  // Missing serviceDetails fallback!
+signature: null,  // Hardcoded! Should preserve!
+// kalkulationData: NOT MAPPED AT ALL!
+
+// ✅ AFTER (Commit 28d663d):
+kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',  // ✅ FIX #13
+kundenTelefon: anfrage.telefon || anfrage.kundenTelefon || anfrage.partnerTelefon || '',  // ✅ FIX #12
+notizen: anfrage.angebotDetails?.serviceBeschreibung ||  // ✅ FIX #14 (FIRST!)
+         anfrage.schadenBeschreibung ||
+         anfrage.beschreibung ||
+         anfrage.serviceData?.info ||
+         anfrage.anmerkungen || '',
+geplantesAbnahmeDatum: anfrage.angebotDetails?.fertigstellungsdatum ||  // ✅ FIX #15 (FIRST!)
+                       anfrage.kva?.termine?.ende ||
+                       anliefertermin,
+serviceData: anfrage.serviceData || anfrage.serviceDetails || {},  // ✅ FIX #16
+signature: anfrage.signature || null,  // ✅ FIX #17 (preserve!)
+kalkulationData: anfrage.kalkulationData || null,  // ✅ FIX #18 (NEW field!)
+```
+
+### 2. Comprehensive Fallback Chain Pattern
+**Rule:** ALWAYS check ALL possible property names before falling back to default
+
+**Template:**
+```javascript
+fieldName: anfrage.fieldName                  // Direct property (FIRST)
+        || anfrage.nestedObject?.fieldName   // Nested variant 1
+        || anfrage.anotherNested?.fieldName  // Nested variant 2
+        || anfrage.legacyName                // Legacy/alternative name
+        || anfrage.partnerFallback           // Partner-specific fallback (if applicable)
+        || defaultValue,                     // Default (LAST RESORT)
+```
+
+**Example - kundenname (3 possible locations):**
+```javascript
+kundenname: anfrage.kundenname                  // ← Direct (BEST)
+         || anfrage.angebotDetails?.kundenname  // ← Nested in Angebot
+         || anfrage.kundendaten?.name           // ← Nested in Kundendaten
+         || anfrage.partnerName                 // ← Fallback for non-Entwürfe
+         || 'Partner',                          // ← Default (WORST)
+```
+
+**Verification Checklist:**
+```javascript
+// BEFORE adding ANY new field to fahrzeugData, check:
+1. [ ] What is the field called in Entwurf structure?
+2. [ ] Are there MULTIPLE possible property names? (direct vs nested)
+3. [ ] What about legacy/old Anfragen? (backward compatibility)
+4. [ ] Is there a partner-specific fallback needed?
+5. [ ] What should the DEFAULT value be if ALL fail?
+```
+
+**Files to Check:**
+- `partner-app/meine-anfragen.html` - prepareFahrzeugData() Line ~6668
+- `partner-app/anfrage-detail.html` - fahrzeugData creation Line ~3982
+
+**Related Bugs:** #12 (kundenTelefon), #13 (kundenname priority), #14 (serviceBeschreibung), #15 (fertigstellungsdatum), #16 (serviceDetails), #17 (signature), #18 (kalkulationData)
+
+**Prevention:**
+1. **Add Debug Logging** BEFORE fixing data loss (see Pattern #34)
+2. **Check BOTH Code Paths** (see Pattern #33)
+3. **Document ALL Property Names** in CLAUDE.md data structure section
+
+---
+
+## Pattern 33: Duplicate Code Paths with Different Logic
+
+**Symptom:**
+```
+✅ Fix applied to meine-anfragen.html Line 6668
+❌ Bug still persists - data still wrong!
+🔍 Root Cause: anfrage-detail.html Line 3982 has DIFFERENT logic!
+```
+
+**When This Happens:**
+- Bug is fixed in ONE file but persists
+- Same function name exists in MULTIPLE files
+- Each file has slightly different implementation
+- User reports "bug still there" after fix
+
+**Root Cause:**
+
+### Duplicate annehmenKVA() Implementations
+The Fahrzeugannahme App has **TWO files** with acceptance logic:
+
+| File | Function | Line | Purpose |
+|------|----------|------|---------|
+| `meine-anfragen.html` | `annehmenKVA()` + `prepareFahrzeugData()` | 5978, 6488 | Main anfragen list view |
+| `anfrage-detail.html` | `annehmenKVA()` | 3842 | Detail view for single anfrage |
+
+**Problem:** When you fix a bug in ONE file, the OTHER file still has the old buggy code!
+
+**Example - Bug #19:**
+```javascript
+// ✅ FIXED in meine-anfragen.html (Bug #13, 2025-11-15):
+kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',  // kundenname FIRST
+
+// ❌ STILL BUGGY in anfrage-detail.html (until Bug #19 fix, 2025-11-17):
+kundenname: anfrage.partnerName || 'Partner',  // NO kundenname check!
+```
+
+**Result:**
+- User accepts Entwurf via **meine-anfragen.html** → ✅ Works (kundenname preserved)
+- User accepts Entwurf via **anfrage-detail.html** → ❌ Fails (kundenname = "Partner")
+
+### Detection Strategy
+
+**Step 1: Find All Acceptance Code Paths**
+```bash
+# Search for annehmenKVA function definitions
+grep -rn "function annehmenKVA\|async annehmenKVA" partner-app/
+
+# Expected output:
+# partner-app/meine-anfragen.html:5978:    async function annehmenKVA(anfrageId, event) {
+# partner-app/anfrage-detail.html:3842:    async function annehmenKVA(anfrageId, event) {
+```
+
+**Step 2: Search for fahrzeugData Creation**
+```bash
+# Find ALL places where fahrzeugData objects are created
+grep -rn "const fahrzeugData = {" partner-app/
+
+# Expected output:
+# partner-app/meine-anfragen.html:6659:    const fahrzeugData = {
+# partner-app/anfrage-detail.html:3977:    const fahrzeugData = {
+```
+
+**Step 3: Compare Implementations**
+```bash
+# Extract kundenname line from BOTH files
+grep -A 1 "kundenname:" partner-app/meine-anfragen.html | head -2
+grep -A 1 "kundenname:" partner-app/anfrage-detail.html | head -2
+
+# If outputs differ → BUG!
+```
+
+### Fix Template
+
+**When fixing a bug in prepareFahrzeugData() or annehmenKVA():**
+
+1. **ALWAYS check BOTH files:**
+   - [ ] `partner-app/meine-anfragen.html`
+   - [ ] `partner-app/anfrage-detail.html`
+
+2. **Apply IDENTICAL logic to both:**
+   ```javascript
+   // meine-anfragen.html Line 6668:
+   kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',
+
+   // anfrage-detail.html Line 3982 - MUST BE IDENTICAL!
+   kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',
+   ```
+
+3. **Verify with diff:**
+   ```bash
+   # Extract and compare the two implementations
+   diff <(sed -n '6660,6750p' partner-app/meine-anfragen.html) \
+        <(sed -n '3975,4065p' partner-app/anfrage-detail.html)
+   ```
+
+### Prevention Checklist
+
+**BEFORE committing any fix to acceptance logic:**
+```
+1. [ ] Fixed in meine-anfragen.html?
+2. [ ] Fixed in anfrage-detail.html?
+3. [ ] Both implementations IDENTICAL?
+4. [ ] Tested BOTH code paths?
+5. [ ] Updated BOTH files in same commit?
+```
+
+**Commit Message Template:**
+```
+fix: Bug #XX - [description]
+
+**Files Modified:**
+- partner-app/meine-anfragen.html (Line XXXX)
+- partner-app/anfrage-detail.html (Line XXXX)
+
+**Note:** Applied IDENTICAL fix to BOTH code paths (duplicate annehmenKVA implementations)
+```
+
+**Related Bugs:** #19 (kundenname override in anfrage-detail.html)
+
+**Long-Term Solution:**
+- **TODO:** Refactor annehmenKVA() into shared utility function (single source of truth)
+- **Location:** Create `partner-app/shared-utils.js` with `prepareFahrzeugDataShared(anfrage)`
+- **Benefits:** Fix once, works everywhere
+
+---
+
+## Pattern 34: Entwurf-spezifische Fallback-Ketten & Debug-First Approach
+
+**Symptom:**
+```
+✅ Comprehensive fallback chain added (Pattern #32)
+❌ kundenname still showing "Partner"
+🤔 WHY? Which fallback is being used?
+```
+
+**When This Happens:**
+- Data loss persists despite comprehensive fallback chain
+- Multiple possible property names, but unclear which one actually exists
+- Need to understand EXACT data structure before fixing
+- User reports "still broken" after multiple fix attempts
+
+**Root Cause: Unknown Data Structure**
+
+**The Problem:**
+```javascript
+// You add comprehensive fallback:
+kundenname: anfrage.kundenname
+         || anfrage.angebotDetails?.kundenname
+         || anfrage.kundendaten?.name
+         || anfrage.partnerName
+         || 'Partner'
+
+// But which one is ACTUALLY used? You don't know!
+// Maybe anfrage.kundenname is empty string ""? (falsy!)
+// Maybe it's under a DIFFERENT property you didn't check?
+```
+
+### Solution: Debug-First Approach (Bug #20)
+
+**Step 1: Add Debug Logging BEFORE Fixing**
+```javascript
+// ❌ DON'T do this (blind fixing):
+kundenname: anfrage.kundenname || anfrage.partnerName || 'Partner',
+
+// ✅ DO this (debug-first):
+kundenname: (() => {
+    // 1. Log ALL possible fields
+    const debug = {
+        'anfrage.kundenname': anfrage.kundenname,
+        'anfrage.angebotDetails?.kundenname': anfrage.angebotDetails?.kundenname,
+        'anfrage.kundendaten?.name': anfrage.kundendaten?.name,
+        'anfrage.partnerName': anfrage.partnerName,
+        'anfrage.isEntwurf': anfrage.isEntwurf,
+        'anfrage.entwurfStatus': anfrage.entwurfStatus,
+        'typeof kundenname': typeof anfrage.kundenname,  // Check if empty string!
+        'kundenname.length': anfrage.kundenname?.length  // Check length!
+    };
+    console.log('🔍 DEBUG kundenname (Bug #20):', debug);
+
+    // 2. Use fallback chain
+    const result = anfrage.kundenname
+                || anfrage.angebotDetails?.kundenname
+                || anfrage.kundendaten?.name
+                || anfrage.partnerName
+                || 'Partner';
+
+    // 3. Log WHICH fallback was used
+    console.log('✅ kundenname RESULT:', result);
+    console.log('📍 WHICH fallback used:', {
+        'direct': !!anfrage.kundenname,
+        'angebotDetails': !!anfrage.angebotDetails?.kundenname,
+        'kundendaten': !!anfrage.kundendaten?.name,
+        'partnerName': !!anfrage.partnerName
+    });
+
+    return result;
+})(),
+```
+
+**Step 2: Deploy & Test with Real Data**
+```bash
+# Deploy the debug version
+git add . && git commit -m "debug: Add kundenname fallback logging" && git push
+
+# Wait 2-3 minutes for GitHub Pages deployment
+
+# Test with actual Entwurf
+# → Open browser DevTools Console (F12)
+# → Accept Entwurf
+# → Read console output
+```
+
+**Step 3: Analyze Console Output**
+```javascript
+// Example Console Output:
+🔍 DEBUG kundenname (Bug #20): {
+  anfrage.kundenname: "",                           // ← AHA! Empty string (falsy!)
+  anfrage.angebotDetails?.kundenname: undefined,
+  anfrage.kundendaten?.name: "Marcel Gärtner",     // ← THIS is where the data is!
+  anfrage.partnerName: "Auto Lackierzentrum Mosbach",
+  anfrage.isEntwurf: true,
+  anfrage.entwurfStatus: "offen",
+  typeof kundenname: "string",
+  kundenname.length: 0                              // ← Length is 0 (empty!)
+}
+✅ kundenname RESULT: "Marcel Gärtner"
+📍 WHICH fallback used: {
+  direct: false,         // Empty string is falsy
+  angebotDetails: false,
+  kundendaten: true,     // ← THIS ONE WAS USED!
+  partnerName: false
+}
+```
+
+**Step 4: Fix Based on Evidence**
+```javascript
+// Now you KNOW the data is in kundendaten.name, so optimize:
+kundenname: anfrage.kundendaten?.name            // ← Move to FIRST position!
+         || anfrage.kundenname
+         || anfrage.angebotDetails?.kundenname
+         || anfrage.partnerName
+         || 'Partner',
+```
+
+### Edge Cases to Debug
+
+**Empty String vs Undefined:**
+```javascript
+// ❌ WRONG assumption:
+anfrage.kundenname  // You think: "If set, has value"
+
+// ✅ REALITY:
+anfrage.kundenname === ""  // Empty string is falsy! || fallback triggers!
+```
+
+**Debug for Empty Strings:**
+```javascript
+const debug = {
+    value: anfrage.kundenname,
+    typeof: typeof anfrage.kundenname,
+    length: anfrage.kundenname?.length,
+    isEmpty: anfrage.kundenname === "",
+    isFalsy: !anfrage.kundenname,
+    trimmed: anfrage.kundenname?.trim()  // Maybe it's whitespace?
+};
+```
+
+### Debug Logging Template
+
+**Use this for ANY data loss investigation:**
+```javascript
+fieldName: (() => {
+    // 1. Define all possible sources
+    const sources = {
+        'direct': anfrage.fieldName,
+        'nested1': anfrage.nested?.fieldName,
+        'nested2': anfrage.other?.fieldName,
+        'legacy': anfrage.oldFieldName,
+        'fallback': anfrage.fallbackValue
+    };
+
+    // 2. Log investigation
+    console.log(`🔍 DEBUG ${fieldName}:`, {
+        ...sources,
+        'typeof': typeof anfrage.fieldName,
+        'isEmpty': anfrage.fieldName === "",
+        'isNull': anfrage.fieldName === null,
+        'isUndefined': anfrage.fieldName === undefined
+    });
+
+    // 3. Apply fallback chain
+    const result = anfrage.fieldName
+                || anfrage.nested?.fieldName
+                || anfrage.other?.fieldName
+                || anfrage.oldFieldName
+                || anfrage.fallbackValue
+                || defaultValue;
+
+    // 4. Log which source was used
+    console.log(`✅ ${fieldName} RESULT:`, result);
+    console.log(`📍 Source:`, Object.entries(sources).find(([k, v]) => v === result)?.[0] || 'default');
+
+    return result;
+})(),
+```
+
+### Prevention Checklist
+
+**BEFORE claiming "data loss fixed":**
+```
+1. [ ] Added debug logging to see ACTUAL data structure?
+2. [ ] Tested with REAL Entwurf (not assumption)?
+3. [ ] Checked console output to verify which fallback used?
+4. [ ] Checked for empty strings ("") vs undefined vs null?
+5. [ ] Documented ACTUAL property name in CLAUDE.md?
+```
+
+**Related Bugs:** #20 (Entwurf kundenname still "Partner" despite fallback chain)
+
+**Commit:** 779b74a (meine-anfragen.html Lines 6670-6689, anfrage-detail.html Lines 3984-4003)
+
+---
+
+**Updated:** 2025-11-17 after Data Loss Bug Hunting Session (Phase 10)
+**Session Learnings:** Duplicate code paths, property name mismatches, debug-first approach, fallback chain priorities, empty string vs undefined, comprehensive testing
+**Total Patterns:** 34 (Patterns 32-34: Data Loss Mapping, Duplicate Code Paths, Entwurf Fallback Chains)
 
