@@ -2228,6 +2228,400 @@ document.body.appendChild(input);
 - [x] Upload speed unchanged
 ```
 
+## Pattern 31: PDF Generation & Email Failures (Puppeteer/SendGrid)
+
+**Symptom:**
+```
+❌ PDF-Generierung fehlgeschlagen: Navigation timeout of 30000 ms exceeded
+❌ Email-Versand fehlgeschlagen: Timeout waiting for connection
+❌ Function execution took 61234 ms, finished with status: 'timeout'
+❌ Memory limit exceeded (256MB)
+```
+
+**When This Happens:**
+- Cloud Function für PDF-Generierung läuft in Timeout (>60s)
+- Puppeteer startet nicht (`Error: Failed to launch chrome!`)
+- SendGrid Email kann nicht versendet werden
+- PDF ist leer oder korrupt
+- Base64-Encoding fehlschlägt
+- Admin bekommt keine Email-Benachrichtigung
+
+**Root Causes:**
+
+### 1. Memory Exhaustion (256MB Default)
+**Ursache:** Puppeteer benötigt ~200MB alleine für Chromium Binary
+**Fix:** Erhöhe Cloud Function Memory auf 1GB:
+```javascript
+exports.generateAngebotPDF = functions
+    .region("europe-west3")
+    .runWith({
+      memory: "1GB",  // ← CRITICAL für Puppeteer (default: 256MB)
+      timeoutSeconds: 120
+    })
+    .https
+    .onCall(async (data, context) => {
+      // PDF Generation Code
+    });
+```
+
+### 2. Timeout (60s Default)
+**Ursache:** HTML→PDF Konvertierung bei großen Angeboten dauert >60s
+**Fix:** Erhöhe Timeout auf 120s (siehe Code oben)
+
+**Beispiel Timing:**
+```
+Puppeteer Launch: 5-10s
+HTML Rendering: 10-20s (depends on complexity)
+PDF Generation: 5-15s (depends on page count)
+Total: 20-45s (Puffer für komplexe Angebote erforderlich)
+```
+
+### 3. API Connection Failures (SendGrid)
+**Ursache:** SendGrid API Key fehlt oder Network Timeout
+**Fix:** Lade API Key via Secret Manager + Error Handling:
+```javascript
+const sgMail = require("@sendgrid/mail");
+
+// Load API Key from Secret Manager
+const apiKey = getSendGridApiKey();  // Defined in index.js
+sgMail.setApiKey(apiKey);
+
+// Send with Error Handling
+try {
+  await sgMail.send(msg);
+  console.log("✅ Email erfolgreich versendet");
+} catch (error) {
+  console.error("❌ SendGrid Error:", error);
+
+  // SendGrid-spezifische Error Messages
+  if (error.response) {
+    console.error("Response Body:", error.response.body);
+  }
+
+  throw new functions.https.HttpsError(
+    "internal",
+    `Email-Versand fehlgeschlagen: ${error.message}`
+  );
+}
+```
+
+### 4. Base64 Encoding Issues
+**Ursache:** PDF Buffer wird nicht korrekt zu Base64 konvertiert
+**Fix:** Explizite Encoding + Size Validation:
+```javascript
+// Generate PDF Buffer
+const pdfBuffer = await page.pdf({
+  format: "A4",
+  printBackground: true,
+  margin: {
+    top: "20mm",
+    right: "15mm",
+    bottom: "20mm",
+    left: "15mm"
+  }
+});
+
+await browser.close();
+
+// Convert to Base64 with Validation
+const pdfBase64 = pdfBuffer.toString("base64");
+console.log(`📦 PDF Größe: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
+
+// Validate Size (SendGrid Limit: 30MB)
+if (pdfBuffer.length > 30 * 1024 * 1024) {
+  throw new Error("PDF zu groß für Email-Versand (>30MB)");
+}
+
+return {
+  success: true,
+  pdfBase64: pdfBase64,
+  filename: `Angebot_${entwurf.kennzeichen.replace(/\s/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`
+};
+```
+
+**Complete Working Example (generateAngebotPDF):**
+```javascript
+exports.generateAngebotPDF = functions
+    .region("europe-west3")
+    .runWith({
+      memory: "1GB",  // Puppeteer needs more memory
+      timeoutSeconds: 120  // PDF generation can take time
+    })
+    .https
+    .onCall(async (data, context) => {
+      console.log("📄 === GENERATE ANGEBOT PDF ===");
+
+      try {
+        // 1. Validation
+        if (!data.entwurfId || !data.werkstattId) {
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "entwurfId und werkstattId sind erforderlich"
+          );
+        }
+
+        const { entwurfId, werkstattId } = data;
+        console.log(`📝 Lade Entwurf: ${entwurfId} (Werkstatt: ${werkstattId})`);
+
+        // 2. Load Entwurf from Firestore
+        const collectionName = `partnerAnfragen_${werkstattId}`;
+        const entwurfDoc = await db.collection(collectionName).doc(entwurfId).get();
+
+        if (!entwurfDoc.exists) {
+          throw new functions.https.HttpsError(
+            "not-found",
+            `Entwurf ${entwurfId} nicht gefunden`
+          );
+        }
+
+        const entwurf = entwurfDoc.data();
+        console.log("✅ Entwurf geladen:", entwurf.kennzeichen);
+
+        // 3. Create HTML Template
+        const htmlContent = createAngebotHTML(entwurf, werkstattId);
+
+        // 4. Convert HTML to PDF with Puppeteer
+        console.log("🖨️ Generiere PDF mit Puppeteer...");
+        const puppeteer = require("puppeteer");
+
+        const browser = await puppeteer.launch({
+          headless: true,
+          args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu"
+          ]
+        });
+
+        const page = await browser.newPage();
+        await page.setContent(htmlContent, { waitUntil: "networkidle0" });
+
+        const pdfBuffer = await page.pdf({
+          format: "A4",
+          printBackground: true,
+          margin: {
+            top: "20mm",
+            right: "15mm",
+            bottom: "20mm",
+            left: "15mm"
+          }
+        });
+
+        await browser.close();
+        console.log("✅ PDF erfolgreich generiert");
+
+        // 5. Convert to Base64
+        const pdfBase64 = pdfBuffer.toString("base64");
+        const filename = `Angebot_${entwurf.kennzeichen.replace(/\s/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`;
+
+        console.log(`📦 PDF Größe: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
+        console.log(`✅ PDF generiert: ${filename}`);
+
+        return {
+          success: true,
+          pdfBase64: pdfBase64,
+          filename: filename
+        };
+
+      } catch (error) {
+        console.error("❌ PDF-Generierung fehlgeschlagen:", error);
+
+        throw new functions.https.HttpsError(
+          "internal",
+          `PDF-Generierung fehlgeschlagen: ${error.message}`
+        );
+      }
+    });
+```
+
+**Complete Working Example (sendAngebotPDFToAdmin):**
+```javascript
+exports.sendAngebotPDFToAdmin = functions
+    .region("europe-west3")
+    .runWith({
+      secrets: [sendgridApiKey]  // Load from Secret Manager
+    })
+    .https
+    .onCall(async (data, context) => {
+      console.log("📧 === SEND ANGEBOT PDF TO ADMIN ===");
+
+      try {
+        // 1. Validation
+        if (!data.pdfBase64 || !data.filename || !data.werkstattId) {
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "pdfBase64, filename und werkstattId sind erforderlich"
+          );
+        }
+
+        const { pdfBase64, filename, werkstattId, kennzeichen, kundenname, vereinbarterPreis } = data;
+
+        // 2. Load Admin Email from Settings
+        console.log(`🔍 Lade Admin-Email für Werkstatt: ${werkstattId}`);
+        const settingsDoc = await db.collection("settings").doc(werkstattId).get();
+
+        let adminEmail = "info@auto-lackierzentrum.de";  // Fallback
+        if (settingsDoc.exists && settingsDoc.data().adminEmail) {
+          adminEmail = settingsDoc.data().adminEmail;
+          console.log(`✅ Admin-Email gefunden: ${adminEmail}`);
+        } else {
+          console.warn(`⚠️ Keine Admin-Email in settings/${werkstattId} → Fallback: ${adminEmail}`);
+        }
+
+        // 3. Initialize SendGrid
+        const apiKey = getSendGridApiKey();
+        sgMail.setApiKey(apiKey);
+
+        // 4. Prepare Email
+        const msg = {
+          to: adminEmail,
+          from: SENDER_EMAIL,
+          subject: `📄 Neues Angebot erstellt - ${kennzeichen || ""}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #003366;">Neues Angebot erstellt</h2>
+              <p>Ein neues Angebot wurde im System erstellt:</p>
+
+              <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 5px 0;"><strong>Kennzeichen:</strong> ${kennzeichen || "N/A"}</p>
+                <p style="margin: 5px 0;"><strong>Kunde:</strong> ${kundenname || "N/A"}</p>
+                <p style="margin: 5px 0;"><strong>Preis:</strong> ${vereinbarterPreis ? vereinbarterPreis + " €" : "N/A"}</p>
+                <p style="margin: 5px 0;"><strong>Erstellt am:</strong> ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE")}</p>
+              </div>
+
+              <p>Die vollständige Kalkulation finden Sie im Anhang.</p>
+
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+              <p style="color: #666; font-size: 12px;">
+                Diese Email wurde automatisch generiert vom Fahrzeugannahme-System.
+              </p>
+            </div>
+          `,
+          attachments: [
+            {
+              content: pdfBase64,
+              filename: filename,
+              type: "application/pdf",
+              disposition: "attachment"
+            }
+          ]
+        };
+
+        // 5. Send Email
+        console.log(`📧 Sende Email an: ${adminEmail}`);
+        await sgMail.send(msg);
+        console.log("✅ Email erfolgreich versendet");
+
+        return {
+          success: true,
+          adminEmail: adminEmail
+        };
+
+      } catch (error) {
+        console.error("❌ Email-Versand fehlgeschlagen:", error);
+
+        // SendGrid-spezifische Error Messages
+        if (error.response) {
+          console.error("SendGrid Response:", error.response.body);
+        }
+
+        throw new functions.https.HttpsError(
+          "internal",
+          `Email-Versand fehlgeschlagen: ${error.message}`
+        );
+      }
+    });
+```
+
+**Testing Checklist:**
+
+1. **Memory Test:**
+   ```bash
+   # Check Cloud Function Logs for Memory Usage
+   firebase functions:log --only generateAngebotPDF
+   # Look for: "Memory Usage: XXX MB"
+   ```
+
+2. **Timeout Test:**
+   ```bash
+   # Test mit komplexem Angebot (viele Ersatzteile + Lackierung)
+   # Expected: < 120s execution time
+   ```
+
+3. **PDF Quality Test:**
+   ```javascript
+   // Frontend Test
+   const result = await generateAngebotPDF(entwurfId, werkstattId);
+   console.log("PDF Size:", result.pdfBase64.length);  // Should be > 0
+
+   // Download Test
+   const blob = base64ToBlob(result.pdfBase64, 'application/pdf');
+   const url = URL.createObjectURL(blob);
+   window.open(url);  // PDF sollte korrekt angezeigt werden
+   ```
+
+4. **SendGrid Test:**
+   ```bash
+   # Check SendGrid Activity Feed
+   # https://app.sendgrid.com/email_activity
+   # Filter by: to=admin@example.com, status=delivered
+   ```
+
+5. **Error Handling Test:**
+   ```javascript
+   // Test mit ungültigen Daten
+   try {
+     await generateAngebotPDF(null, null);
+   } catch (error) {
+     console.log("✅ Error handling works:", error.message);
+   }
+   ```
+
+6. **Deployment Test:**
+   ```bash
+   # First deployment takes longer (Chromium Binary Download ~200MB)
+   firebase deploy --only functions:generateAngebotPDF
+   # Expected: 5-10 minutes first time, 2-3 minutes thereafter
+   ```
+
+7. **Base64 Validation Test:**
+   ```javascript
+   // Check PDF Base64 String
+   console.log("First 100 chars:", pdfBase64.substring(0, 100));
+   // Should start with: "JVBERi0xLjQKJ..." (PDF header in Base64)
+   ```
+
+8. **Admin Email Loading Test:**
+   ```javascript
+   // Verify settings/{werkstattId} contains adminEmail
+   const settingsDoc = await db.collection("settings").doc("mosbach").get();
+   console.log("Admin Email:", settingsDoc.data().adminEmail);
+   // Should NOT be empty
+   ```
+
+**Prevention Strategies:**
+
+1. **ALWAYS use 1GB memory for Puppeteer-based Cloud Functions**
+2. **ALWAYS set timeout ≥ 120s for PDF generation**
+3. **ALWAYS load SendGrid API Key from Secret Manager (NOT hardcoded)**
+4. **ALWAYS validate PDF size before sending email (<30MB SendGrid limit)**
+5. **ALWAYS log PDF generation timing for debugging**
+6. **ALWAYS check SendGrid Activity Feed after deployment**
+7. **ALWAYS test with real data (NOT mock data) before production**
+8. **ALWAYS use Error Handling für SendGrid API calls**
+
+**Related Patterns:**
+- Pattern 10: Firebase Initialization Timeout → Cloud Functions brauchen auch `admin.initializeApp()`
+- Pattern 23: SendGrid Email Failures → API Key aus Secret Manager laden
+
+**Files Affected:**
+- `functions/index.js` (Lines 4013-4229): generateAngebotPDF + sendAngebotPDFToAdmin
+- `functions/package.json` (Line 20): Puppeteer v21.11.0 dependency
+- `entwuerfe-bearbeiten.html`: Frontend integration (PDF download + Email trigger)
+
+**Commit Reference:** dc2f31e (Phase 2 Implementation - Nov 17, 2025)
+
 ---
 
 ## 🏗️ Multi-Service Architecture Constraints
@@ -3110,6 +3504,15 @@ _Lines: ~810 (reduced from 1401, -591 lines of obsolete content)_
   - Check: Does `berechneVarianten()` process `additionalServices[]` array? (often forgotten!)
   - Check: Are service names consistent across files? (`'lackierung'` everywhere, not `'lackier'` in some files)
 
+**Puppeteer Cloud Functions Configuration:**
+- ✅ **ALWAYS configure adequate memory and timeout for Puppeteer-based Cloud Functions**
+  - Memory: ALWAYS use 1GB (NOT 256MB default) → Puppeteer needs ~200MB for Chromium
+  - Timeout: ALWAYS use ≥ 120s (NOT 60s default) → HTML→PDF can take 20-45s for complex documents
+  - Configuration: `functions.runWith({ memory: "1GB", timeoutSeconds: 120 })`
+  - First Deployment: Expect 5-10 minutes (Chromium binary download ~200MB)
+  - Subsequent Deployments: 2-3 minutes (cached)
+  - See Pattern 31 for complete configuration examples
+
 ### ❌ NEVER Do (Critical Additions)
 
 **Async Operation Order:**
@@ -3133,6 +3536,32 @@ _Lines: ~810 (reduced from 1401, -591 lines of obsolete content)_
   - Verify: Function returns data for ALL services (not just primary)
   - Example: `berechneVarianten()` must calculate quotes for all services, not just `fahrzeug.serviceTyp`
   - See Pattern 23 above for Multi-Service implementation examples
+
+**Puppeteer Configuration Shortcuts:**
+- ❌ **NEVER use default Cloud Function memory/timeout for Puppeteer-based PDF generation**
+  - Default 256MB = Memory Exhaustion → `Error: Failed to launch chrome!`
+  - Default 60s = Timeout → `Function execution took 61234 ms, finished with status: 'timeout'`
+  - ALWAYS use: `functions.runWith({ memory: "1GB", timeoutSeconds: 120 })`
+  - Reason: Puppeteer Chromium binary needs ~200MB memory, HTML→PDF can take 20-45s
+  - See Pattern 31 for complete error symptoms and fixes
+
+**Email Attachment Size:**
+- ❌ **NEVER send email attachments >30MB via SendGrid**
+  - SendGrid Hard Limit: 30MB total attachment size
+  - Typical PDF Size: 50-500KB (safe)
+  - Large PDFs: 1-5MB (still safe)
+  - Red Flag: >10MB = Something wrong with PDF generation
+  - ALWAYS validate: `if (pdfBuffer.length > 30 * 1024 * 1024) throw new Error(...)`
+  - See Pattern 31 for Base64 encoding validation examples
+
+**Hardcoded API Keys:**
+- ❌ **NEVER hardcode SendGrid API keys in Cloud Functions**
+  - Security Risk: Keys leaked via source code repository
+  - Compliance Violation: GDPR/ISO 27001 require secret management
+  - ALWAYS use: Google Secret Manager → `functions.runWith({ secrets: [sendgridApiKey] })`
+  - ALWAYS load dynamically: `const apiKey = getSendGridApiKey()`
+  - Rollback Strategy: Revoke old key in SendGrid Dashboard immediately if leaked
+  - See Pattern 31 for Secret Manager integration examples
 
 ---
 
@@ -3607,7 +4036,7 @@ ${(serviceData.farbcode || serviceData.lackier_farbcode) ?
 
 ---
 
-**Updated:** 2025-11-16 after fixing 5 critical multi-service bugs
-**Session Learnings:** Backward compatibility, type mismatches, naming inconsistencies, field priorities, silent data loss
-**Total Patterns:** 30 (added 5 new patterns from multi-service debugging)
+**Updated:** 2025-11-17 after implementing Entwurf-System Phase 2 (PDF Generation & Email)
+**Session Learnings:** Backward compatibility, type mismatches, naming inconsistencies, field priorities, silent data loss, PDF generation, email integration, Puppeteer configuration
+**Total Patterns:** 31 (Pattern 31: PDF Generation & Email Failures - Puppeteer/SendGrid)
 
