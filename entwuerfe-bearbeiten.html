@@ -1343,19 +1343,20 @@
 
                 // Load Kalkulations-Tabellen if available
                 clearAllTables();
-                if (currentEntwurf.kalkulationData) {
+                // ✅ VALIDATE kalkulationData type (FIX: Nov 17, 2025 - BUG #5)
+                if (currentEntwurf.kalkulationData && typeof currentEntwurf.kalkulationData === 'object') {
                     console.log('📊 Lade Kalkulations-Daten:', currentEntwurf.kalkulationData);
 
-                    if (currentEntwurf.kalkulationData.ersatzteile) {
+                    if (Array.isArray(currentEntwurf.kalkulationData.ersatzteile)) {
                         currentEntwurf.kalkulationData.ersatzteile.forEach(item => addErsatzteilRow(item));
                     }
-                    if (currentEntwurf.kalkulationData.arbeitslohn) {
+                    if (Array.isArray(currentEntwurf.kalkulationData.arbeitslohn)) {
                         currentEntwurf.kalkulationData.arbeitslohn.forEach(item => addArbeitslohnRow(item));
                     }
-                    if (currentEntwurf.kalkulationData.lackierung) {
+                    if (Array.isArray(currentEntwurf.kalkulationData.lackierung)) {
                         currentEntwurf.kalkulationData.lackierung.forEach(item => addLackierungRow(item));
                     }
-                    if (currentEntwurf.kalkulationData.materialien) {
+                    if (Array.isArray(currentEntwurf.kalkulationData.materialien)) {
                         currentEntwurf.kalkulationData.materialien.forEach(item => addMaterialienRow(item));
                     }
 
@@ -1429,7 +1430,7 @@
                     vin: document.getElementById('vin').value.trim(),
                     serviceTyp: document.getElementById('serviceTyp').value,
                     notizen: document.getElementById('notizen').value.trim(),
-                    vereinbarterPreis: document.getElementById('vereinbarterPreis').value,
+                    vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis').value) || 0,  // FIX: Nov 17, 2025 - BUG #2 (type consistency)
                     geplantesAbnahmeDatum: document.getElementById('geplantesAbnahmeDatum').value,
                     updatedAt: new Date().toISOString(),
 
@@ -1529,6 +1530,13 @@
 
                 // 🆔 Extract partnerId (FIX: Nov 17, 2025 - Pipeline Data Mapping)
                 const partnerId = accountResult.data.partnerId;
+
+                // ✅ VALIDATE partnerId exists (FIX: Nov 17, 2025 - BUG #3)
+                if (!partnerId) {
+                    console.error('❌ ensurePartnerAccount returned:', accountResult.data);
+                    throw new Error('Partner-ID konnte nicht erstellt werden. Bitte erneut versuchen.');
+                }
+
                 console.log('📌 Partner ID:', partnerId);
 
                 // Step 2: Create Auto-Login Token
@@ -1579,6 +1587,7 @@
                 await window.db.collection(collectionName).doc(currentEntwurfId).update({
                     // Update all fields
                     kundenname: document.getElementById('kundenname').value.trim(),
+                    kennzeichen: document.getElementById('kennzeichen').value.trim(),  // FIX: Nov 17, 2025 - BUG #4
                     kundenEmail: email,
                     telefon: document.getElementById('telefon').value.trim(),
                     marke: document.getElementById('marke').value.trim(),
@@ -1667,26 +1676,42 @@
             } catch (error) {
                 console.error('❌ Fehler beim Versenden des Angebots:', error);
 
-                // User-friendly error message based on error type
+                // ✅ IMPROVED: Context-specific error messages (FIX: Nov 17, 2025 - BUG #6)
                 let errorMsg = '❌ Fehler beim Versenden des Angebots.\n\n';
 
-                if (error.message.includes('Email') || error.message.includes('sendEntwurfEmail')) {
+                if (error.message.includes('Partner-Account') || error.message.includes('ensurePartnerAccount') || error.message.includes('Partner-ID')) {
+                    errorMsg += '👤 Partner-Account konnte nicht erstellt werden.\n\n';
+                    errorMsg += `Details: ${error.message}\n\n`;
+                    errorMsg += '💡 Tipp: Prüfen Sie die Kunden-Email und versuchen Sie es erneut.';
+                } else if (error.message.includes('Email') || error.message.includes('sendEntwurfEmail')) {
                     errorMsg += '📧 Email konnte nicht versendet werden.\n\n';
                     errorMsg += 'Mögliche Gründe:\n';
                     errorMsg += '• Ungültige Email-Adresse\n';
-                    errorMsg += '• SendGrid-Fehler\n';
+                    errorMsg += '• SendGrid-Fehler (Trial abgelaufen)\n';
                     errorMsg += '• Netzwerkproblem\n\n';
                     errorMsg += '💡 Tipp: Prüfen Sie die Email-Adresse und versuchen Sie es erneut.\n';
                     errorMsg += '⚠️ Der Entwurf bleibt als "offen" gespeichert.';
                 } else if (error.message.includes('Token') || error.message.includes('createPartnerAutoLoginToken')) {
                     errorMsg += '🔑 Auto-Login Token konnte nicht erstellt werden.\n\n';
-                    errorMsg += `Details: ${error.message}`;
+                    errorMsg += `Details: ${error.message}\n\n`;
+                    errorMsg += '💡 Tipp: Versuchen Sie es erneut oder kontaktieren Sie den Support.';
+                } else if (error.message.includes('PDF') || error.message.includes('generateAngebotPDF')) {
+                    errorMsg += '📄 PDF konnte nicht generiert werden.\n\n';
+                    errorMsg += `Details: ${error.message}\n\n`;
+                    errorMsg += '💡 Tipp: Prüfen Sie die Kalkulations-Daten und versuchen Sie es erneut.';
+                } else if (error.message.includes('network') || error.message.includes('Network') || error.message.includes('fetch')) {
+                    errorMsg += '🌐 Netzwerkfehler aufgetreten.\n\n';
+                    errorMsg += 'Mögliche Gründe:\n';
+                    errorMsg += '• Keine Internetverbindung\n';
+                    errorMsg += '• Firebase-Server nicht erreichbar\n';
+                    errorMsg += '• Timeout\n\n';
+                    errorMsg += '💡 Tipp: Prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.';
                 } else {
                     errorMsg += `Details: ${error.message}\n\n`;
-                    errorMsg += 'Bitte versuchen Sie es erneut.';
+                    errorMsg += '💡 Tipp: Bitte versuchen Sie es erneut oder kontaktieren Sie den Support.';
                 }
 
-                showToast(errorMsg, 'error', 8000);
+                showToast(errorMsg, 'error', 10000);
                 document.getElementById('sendBtn').textContent = 'Angebot erstellen & versenden';
                 feather.replace();
             }
