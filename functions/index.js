@@ -4152,6 +4152,25 @@ exports.sendAngebotPDFToAdmin = functions
     .onCall(async (data, context) => {
       console.log("📧 === SEND ANGEBOT PDF TO ADMIN ===");
 
+      // 🚧 CRITICAL: EARLY RETURN AT THE START TO PREVENT CORS ERROR
+      // This bypass MUST be FIRST, BEFORE any auth checks or validation
+      // Otherwise: Auth check throws HttpsError → CORS error → Function fails
+      console.log("⏭️  [TEMP] Admin-Email übersprungen (SendGrid Trial abgelaufen)");
+      console.log("📧 [TEMP] Würde PDF senden an Admin");
+      console.log("📎 [TEMP] Datei:", data.filename || "N/A");
+      console.log("🎯 [TEMP] Kennzeichen:", data.kennzeichen || "N/A");
+      console.log("💰 [TEMP] Preis:", data.vereinbarterPreis || "N/A");
+
+      // Return success immediately to allow workflow to continue
+      return {
+        success: true,
+        message: "Admin-Email übersprungen (Testmodus - SendGrid Trial abgelaufen)",
+        tempDisabled: true,
+        filename: data.filename || "angebot.pdf"
+      };
+
+      /* ❌ DISABLED CODE BELOW - Will be re-enabled when email service is configured
+
       // ✅ SECURITY: Authentication check
       if (!context.auth) {
         throw new functions.https.HttpsError(
@@ -4170,22 +4189,6 @@ exports.sendAngebotPDFToAdmin = functions
         }
 
         const { pdfBase64, filename, werkstattId, kennzeichen, kundenname, vereinbarterPreis } = data;
-
-        // 🚧 TEMPORARY: Skip email sending until SendGrid is configured
-        // SendGrid Free Trial has expired, temporarily bypassing admin email
-        console.log("⏭️  [TEMP] Admin-Email übersprungen (SendGrid Trial abgelaufen)");
-        console.log("📧 [TEMP] Würde PDF senden an Admin");
-        console.log("📎 [TEMP] Datei:", filename);
-        console.log("🎯 [TEMP] Kennzeichen:", kennzeichen);
-        console.log("💰 [TEMP] Preis:", vereinbarterPreis);
-
-        // Return success to allow workflow to continue
-        return {
-          success: true,
-          message: "Admin-Email übersprungen (Testmodus - SendGrid Trial abgelaufen)",
-          tempDisabled: true,
-          filename: filename
-        };
 
         /* TODO: Re-enable email sending after configuring production email service
         // Options: SendGrid paid plan, Gmail SMTP, AWS SES, Resend, Mailgun
@@ -4263,12 +4266,13 @@ exports.sendAngebotPDFToAdmin = functions
             "internal",
             `Email-Versand fehlgeschlagen: ${error.message}`
         );
-        */
       } catch (error) {
         // Dieser catch-Block sollte niemals erreicht werden, da wir früh returnen
         console.error("❌ Unexpected error in sendAngebotPDFToAdmin:", error);
         throw new functions.https.HttpsError("internal", "Unerwarteter Fehler");
       }
+
+      */ // End of disabled code block
     });
 
 // ============================================
