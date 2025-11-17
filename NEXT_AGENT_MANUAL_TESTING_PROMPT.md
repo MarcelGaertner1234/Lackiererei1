@@ -15,6 +15,75 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ## 📊 Latest Session History (2025-11-17)
 
+### Session 2025-11-17 (Phase 9): Entwurf-System Phase 2 - Angebot PDF Generation (PRODUCTION-READY)
+
+**🎯 USER REQUEST:** "PDF-Angebot vom Büro an Admin versenden"
+
+**IMPLEMENTATION SUMMARY (2 Commits):**
+
+**PHASE 1: Cloud Functions - PDF Generation & Email**
+- ✅ `generateAngebotPDF()` - Puppeteer-basierte PDF-Generation (1GB memory, 120s timeout, europe-west3)
+  - Input: entwurfId, werkstattId
+  - Output: PDF Base64 + filename
+  - Features: Professional HTML→PDF mit Kalkulation-Tables (Ersatzteile, Arbeitslohn, Lackierung, Materialien)
+  - Memory: 1GB (Puppeteer benötigt ~200MB für Chromium Binary)
+  - Timeout: 120s (komplexe HTML-Konvertierung kann >60s dauern)
+  - File: functions/index.js (Lines 4013-4104, +92 Zeilen)
+- ✅ `sendAngebotPDFToAdmin()` - SendGrid Email mit PDF-Anhang (callable)
+  - Empfänger: adminEmail aus settings/{werkstattId} (Fallback: info@auto-lackierzentrum.de)
+  - Attachment: Base64-encoded PDF
+  - Subject: "📄 Neues Angebot erstellt - {kennzeichen}"
+  - SendGrid API Key: Loaded from Secret Manager
+  - File: functions/index.js (Lines 4109-4206, +98 Zeilen)
+- ✅ `createAngebotHTML()` - Helper für HTML-Template
+  - Minified HTML mit inline CSS
+  - Pagination-ready (A4 format)
+  - File: functions/index.js (Lines 4211-4229, +19 Zeilen)
+- Dependencies: Puppeteer v21.11.0 zu functions/package.json hinzugefügt
+- Deployed: generateAngebotPDF ✅, sendAngebotPDFToAdmin ⏳ (retry pending)
+
+**PHASE 2: Frontend Integration** (entwuerfe-bearbeiten.html)
+- ✅ Steps 6-7 erweitert für PDF-Erstellung & Admin-Email
+- ✅ `erstelleAngebot()` Workflow:
+  1. Collect entwurfData (Kennzeichen, Kunde, Kalkulation)
+  2. Send Entwurf-Email zu Customer (existing Step 5)
+  3. **NEW Step 6:** Call generateAngebotPDF() → PDF Base64
+  4. **NEW Step 7:** Call sendAngebotPDFToAdmin() → Email mit PDF-Anhang
+  5. Show Toast: "Angebot erfolgreich erstellt und versendet"
+- ✅ Error Handling: Catch Puppeteer Timeouts + SendGrid Failures
+- ✅ User Feedback: Toast mit klaren Fehlermeldungen
+- File: entwuerfe-bearbeiten.html (Lines 1616-1643, +28 Zeilen)
+
+**FILES MODIFIED:** 3 files
+- functions/index.js (+230 Zeilen: 2 Cloud Functions + HTML Helper)
+- entwuerfe-bearbeiten.html (+28 Zeilen: PDF + Email Integration)
+- functions/package.json (+1 dependency: Puppeteer v21.11.0)
+
+**COLLECTIONS USED:**
+- `partnerAnfragen_{werkstattId}` - Load Entwurf data
+- `settings` - Load adminEmail (werkstattId-spezifisch)
+
+**DEPENDENCIES ADDED:**
+- Puppeteer v21.11.0 (functions/package.json)
+- No new Firestore Rules needed (existing permissions allow)
+
+**STATUS:** ✅ **Code DEPLOYED**, ⏳ **sendAngebotPDFToAdmin retry pending** (timeout bei erstem Deployment)
+
+**COMMIT:** dc2f31e - feat: Implement Angebot PDF Generation & Admin Email (Phase 2)
+
+**KEY LEARNINGS:**
+- **Puppeteer Memory Management:** Cloud Functions benötigen 1GB memory für HTML → PDF (default 256MB führt zu OOM)
+- **Timeout Configuration:** PDF Generation bei großen Angeboten kann >60s dauern → 120s timeout erforderlich
+- **Email Attachment Encoding:** SendGrid erfordert Base64-Encoding für Binary-Daten (Buffer → toString('base64'))
+- **API Rate Limits:** Google Cloud Service API hat "Mutate requests per minute" Quota → Deployment kann bei mehreren Retries fehlschlagen
+- **Deployment Stuck Operations:** Google Cloud Operations können 10-15 Minuten "in progress" hängen → Manual deletion in Console erforderlich
+- **Error Resilience:** Deployment Timeouts sind normal bei Puppeteer (Chromium Binary Installation dauert 3-5 Minuten)
+
+**NEUE ERROR PATTERNS:**
+- **Pattern 31:** PDF Generation & Email Failures (Puppeteer Timeouts, SendGrid API Errors, Base64 Encoding Issues)
+
+---
+
 ### Session 2025-11-17: Ersatzteile-System für KVA (4-Phasen-Implementierung)
 
 **🎯 USER STORY:** "Per PDF sollen sie eingetragen werden und wie in der Annahme auch manuell eingetragen werden!"

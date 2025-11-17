@@ -4005,7 +4005,7 @@ exports.sendEntwurfAbgelehntNotification = functions
             `Notification fehlgeschlagen: ${error.message}`
         );
       }
-    }); */
+    });
 
 // ============================================
 // FUNCTION: GENERATE ANGEBOT PDF (Puppeteer)
