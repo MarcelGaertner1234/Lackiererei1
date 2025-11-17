@@ -6022,10 +6022,15 @@
                 ? anfrage.angebotDetails.preis.toFixed(2) + ' €'
                 : (anfrage.kva?.gesamt ? anfrage.kva.gesamt.toFixed(2) + ' €' : 'k.A.');
 
+            // 🔧 FIX (2025-11-17): Multi-Service Support in Confirmation Dialog
+            const serviceLabelText = Array.isArray(anfrage.serviceTyp)
+                ? anfrage.serviceTyp.map(t => getServiceLabel(t)).join(' + ')
+                : getServiceLabel(anfrage.serviceTyp);
+
             const bestaetigung = confirm(
                 'Möchten Sie dieses Angebot annehmen?\\n\\n' +
                 `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
-                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                `Service: ${serviceLabelText}\\n` +
                 `Anliefertermin: ${anlieferterminText}\\n` +
                 `Preis: ${preisText}`
             );
@@ -6494,11 +6499,35 @@
             }
 
             // VALIDIERUNG 2: serviceTyp muss gültig sein (STRIKT - kein Fallback!)
+            // 🔧 FIX (2025-11-17): Multi-Service Support (Entwürfe haben Array)
             const gueltigeServiceTypen = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev', 'versicherung', 'glas', 'klima', 'dellen', 'folierung', 'steinschutz', 'werbebeklebung'];
-            let serviceTyp = anfrage.serviceTyp;
+            let serviceTyp;
+            let additionalServices = [];
 
+            console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
+
+            // Handle Array (Multi-Service Entwurf) vs String (Single-Service)
+            if (Array.isArray(anfrage.serviceTyp)) {
+                // Multi-Service: Split in Primary + Additional
+                serviceTyp = anfrage.serviceTyp[0];  // First service = primary
+
+                // Additional services (all except first)
+                additionalServices = anfrage.serviceTyp.slice(1).map(typ => ({
+                    serviceTyp: typ,
+                    status: 'neu',
+                    timestamp: Date.now()
+                }));
+
+                console.log(`✅ Multi-Service erkannt: Primary="${serviceTyp}", Additional=${additionalServices.length} Services`);
+            } else {
+                // Single-Service: Normal flow
+                serviceTyp = anfrage.serviceTyp;
+                console.log(`✅ Single-Service: "${serviceTyp}"`);
+            }
+
+            // Validate primary serviceTyp
             if (!serviceTyp || !gueltigeServiceTypen.includes(serviceTyp)) {
-                const error = `Ungültiger oder fehlender serviceTyp: "${serviceTyp}".\n\nErlaubte Werte: ${gueltigeServiceTypen.join(', ')}`;
+                const error = `Ungültiger oder fehlender primary serviceTyp: "${serviceTyp}".\n\nErlaubte Werte: ${gueltigeServiceTypen.join(', ')}`;
                 console.error('❌', error);
                 console.error('   📋 Anfrage-Daten:', {
                     id: anfrage.id,
@@ -6506,6 +6535,17 @@
                     serviceTyp: anfrage.serviceTyp
                 });
                 throw new Error(error);
+            }
+
+            // Validate ALL additional serviceTyp values
+            if (additionalServices.length > 0) {
+                const invalidServices = additionalServices.filter(s => !gueltigeServiceTypen.includes(s.serviceTyp));
+                if (invalidServices.length > 0) {
+                    const error = `Ungültige zusätzliche Services: ${invalidServices.map(s => s.serviceTyp).join(', ')}.\n\nErlaubte Werte: ${gueltigeServiceTypen.join(', ')}`;
+                    console.error('❌', error);
+                    throw new Error(error);
+                }
+                console.log(`✅ Alle ${additionalServices.length} zusätzlichen Services validiert`);
             }
 
             console.log('✅ ServiceTyp validiert:', serviceTyp);
@@ -6641,6 +6681,11 @@
                 serviceTyp: serviceTyp, // Verwende validierten serviceTyp (nicht anfrage.serviceTyp!)
                 status: 'angenommen',
                 prozessStatus: 'terminiert', // Neue Spalte "Terminiert"
+
+                // 🔧 FIX (2025-11-17): Multi-Service Support (Additional Services if any)
+                ...(additionalServices.length > 0 && {
+                    additionalServices: additionalServices
+                }),
 
                 // Service-spezifische Daten (NEU! - z.B. Reifen: {typ, art, dimension, anzahl})
                 serviceData: anfrage.serviceData || {},
