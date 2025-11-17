@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<!-- CACHE BUSTER: v2025-11-17-entwuerfe-bearbeiten -->
+<html lang="de">
+<head>
+    <script>
+        /// <reference path="js/types.js" />
+        // window.werkstattId is set automatically after successful login
+        // This ensures proper multi-tenant data isolation
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entwürfe Bearbeiten | Auto-Lackierzentrum Mosbach</title>
+
+    <!-- Aggressive No-Cache Headers -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
+    <!-- Design System -->
+    <link rel="stylesheet" href="design-system.css?v=af6b90f">
+    <link rel="stylesheet" href="components.css?v=af6b90f">
+    <link rel="stylesheet" href="animations.css?v=af6b90f">
+    <link rel="stylesheet" href="mobile-first.css?v=af6b90f">
+
+    <!-- Google Fonts - Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Feather Icons -->
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- QRious - Browser-optimized QR Code Generator -->
+    <script src="./libs/qrious.min.js"></script>
+
+    <!-- Firebase SDK (Compat Mode) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+
+    <style>
+        body {
+            background: var(--color-background);
+            min-height: 100vh;
+            padding: var(--space-6) var(--space-4) 100px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        /* Page Header */
+        .page-header {
+            text-align: center;
+            margin-bottom: var(--space-8);
+            padding: var(--space-8) var(--space-6);
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .page-header h1 {
+            font-size: clamp(24px, 5vw, 36px);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-3);
+        }
+
+        .page-header p {
+            color: var(--color-text-secondary);
+            font-size: var(--font-size-sm);
+        }
+
+        /* Draft Selector */
+        .draft-selector {
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-md);
+            padding: var(--space-8);
+            margin-bottom: var(--space-6);
+        }
+
+        .draft-selector h2 {
+            font-size: var(--font-size-xl);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-4);
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        /* Form Container */
+        .form-container {
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-md);
+            padding: var(--space-8);
+            display: none; /* Hidden until draft selected */
+        }
+
+        .form-container.visible {
+            display: block;
+        }
+
+        /* Section Title */
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            font-size: var(--font-size-xl);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+            margin: var(--space-8) 0 var(--space-6) 0;
+            padding-bottom: var(--space-3);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .section-title:first-child {
+            margin-top: 0;
+        }
+
+        .section-title i {
+            width: 24px;
+            height: 24px;
+            color: var(--color-primary);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: var(--space-12) var(--space-4);
+            color: var(--color-text-secondary);
+        }
+
+        .empty-state i {
+            width: 64px;
+            height: 64px;
+            margin-bottom: var(--space-4);
+            opacity: 0.3;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: var(--space-4);
+            margin-top: var(--space-8);
+            flex-wrap: wrap;
+        }
+
+        .action-buttons .btn {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        /* Loading Indicator */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Success Message */
+        .success-message {
+            display: none;
+            background: var(--color-success);
+            color: white;
+            padding: var(--space-4) var(--space-6);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--space-6);
+            text-align: center;
+            font-weight: var(--font-weight-medium);
+            box-shadow: var(--shadow-md);
+        }
+
+        .success-message.show {
+            display: block;
+            animation: slideInDown 0.3s ease-out;
+        }
+
+        @keyframes slideInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Required Asterisk */
+        .required {
+            color: var(--color-error);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1>
+                <i data-feather="edit"></i>
+                Entwürfe Bearbeiten
+            </h1>
+            <p>Vervollständigen Sie offene Entwürfe und erstellen Sie Angebote</p>
+        </div>
+
+        <!-- Success Message -->
+        <div class="success-message" id="successMessage">
+            ✅ Angebot erfolgreich versendet!
+        </div>
+
+        <!-- Draft Selector -->
+        <div class="draft-selector">
+            <h2>
+                <i data-feather="file-text"></i>
+                Entwurf auswählen
+            </h2>
+
+            <div class="form-group">
+                <label for="entwurfDropdown" class="form-label">Offene Entwürfe <span class="required">*</span></label>
+                <select id="entwurfDropdown" class="form-select" onchange="loadEntwurf()">
+                    <option value="">-- Bitte wählen --</option>
+                </select>
+                <small style="color: var(--color-text-tertiary); display: block; margin-top: var(--space-2);">
+                    💡 Wählen Sie einen Entwurf, um ihn zu vervollständigen und ein Angebot zu erstellen
+                </small>
+            </div>
+
+            <!-- Empty State (shown when no drafts) -->
+            <div id="emptyState" class="empty-state" style="display: none;">
+                <i data-feather="inbox"></i>
+                <h3>Keine offenen Entwürfe</h3>
+                <p>Es gibt aktuell keine Entwürfe, die bearbeitet werden müssen.</p>
+            </div>
+        </div>
+
+        <!-- Form Container (Hidden until draft selected) -->
+        <div class="form-container" id="formContainer">
+            <form id="entwurfForm">
+                <!-- KUNDENDATEN -->
+                <div class="section-title">
+                    <i data-feather="user"></i>
+                    Kundendaten
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="kennzeichen" class="form-label">Kennzeichen <span class="required">*</span></label>
+                        <input type="text" id="kennzeichen" class="form-input" placeholder="z.B. MOS-CG 123" required readonly style="background: var(--color-bg-secondary);">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="kundenname" class="form-label">Kundenname <span class="required">*</span></label>
+                        <input type="text" id="kundenname" class="form-input" placeholder="z.B. Max Mustermann" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="kundenEmail" class="form-label">Kunden-Email <span class="required">*</span></label>
+                        <input type="email" id="kundenEmail" class="form-input" placeholder="z.B. kunde@example.com" required>
+                        <small style="color: var(--color-text-tertiary);">
+                            📧 Angebot wird an diese Email versendet
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="telefon" class="form-label">Telefonnummer</label>
+                        <input type="tel" id="telefon" class="form-input" placeholder="z.B. +49 6261 123456">
+                    </div>
+                </div>
+
+                <!-- FAHRZEUGDATEN -->
+                <div class="section-title">
+                    <i data-feather="truck"></i>
+                    Fahrzeugdaten
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="marke" class="form-label">Marke <span class="required">*</span></label>
+                        <input type="text" id="marke" class="form-input" placeholder="z.B. VW, BMW, Mercedes" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="modell" class="form-label">Modell <span class="required">*</span></label>
+                        <input type="text" id="modell" class="form-input" placeholder="z.B. Golf, 3er, C-Klasse" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="baujahrVon" class="form-label">Baujahr</label>
+                        <input type="text" id="baujahrVon" class="form-input" placeholder="z.B. 2018">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="kmstand" class="form-label">KM-Stand</label>
+                        <input type="text" id="kmstand" class="form-input" placeholder="z.B. 45.000">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="vin" class="form-label">Fahrgestellnummer (VIN)</label>
+                    <input type="text" id="vin" class="form-input" placeholder="z.B. WVWZZZ1KZBW123456">
+                </div>
+
+                <!-- SERVICE-DETAILS -->
+                <div class="section-title">
+                    <i data-feather="tool"></i>
+                    Service-Details
+                </div>
+
+                <div class="form-group">
+                    <label for="serviceTyp" class="form-label">Service-Typ <span class="required">*</span></label>
+                    <select id="serviceTyp" class="form-select" required>
+                        <option value="lackier">🎨 Lackierung</option>
+                        <option value="reifen">🔧 Reifen-Service</option>
+                        <option value="mechanik">⚙️ Mechanik</option>
+                        <option value="pflege">✨ Pflege & Aufbereitung</option>
+                        <option value="tuev">📋 TÜV & Prüfung</option>
+                        <option value="versicherung">🛡️ Versicherungsschaden</option>
+                        <option value="glas">🔍 Glas-Reparatur</option>
+                        <option value="klima">❄️ Klima-Service</option>
+                        <option value="dellen">🔨 Dellen-Drückung</option>
+                        <option value="folierung">🌈 Auto Folierung</option>
+                        <option value="steinschutz">🛡️ Steinschutzfolie</option>
+                        <option value="werbebeklebung">📢 Fahrzeugbeschriftung</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="notizen" class="form-label">Notizen / Beschreibung <span class="required">*</span></label>
+                    <textarea id="notizen" class="form-textarea" rows="4" placeholder="Detaillierte Beschreibung des Auftrags..." required></textarea>
+                    <small style="color: var(--color-text-tertiary);">
+                        💡 Diese Beschreibung wird im Angebot an den Kunden gesendet
+                    </small>
+                </div>
+
+                <!-- PREISKALKULATION -->
+                <div class="section-title">
+                    <i data-feather="dollar-sign"></i>
+                    Preiskalkulation
+                </div>
+
+                <div class="form-group">
+                    <label for="vereinbarterPreis" class="form-label">Vereinbarter Preis (€) <span class="required">*</span></label>
+                    <input type="number" id="vereinbarterPreis" class="form-input" placeholder="z.B. 450" step="0.01" min="0" required>
+                    <small style="color: var(--color-text-tertiary);">
+                        💰 Dieser Preis wird im Angebot genannt (inkl. MwSt.)
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="geplantesAbnahmeDatum" class="form-label">Voraussichtliches Fertigstellungsdatum <span class="required">*</span></label>
+                    <input type="date" id="geplantesAbnahmeDatum" class="form-input" required>
+                    <small style="color: var(--color-text-tertiary);">
+                        📅 Wann wird das Fahrzeug voraussichtlich fertig sein?
+                    </small>
+                </div>
+
+                <!-- ACTION BUTTONS -->
+                <div class="action-buttons">
+                    <button type="button" class="btn btn-secondary btn-lg" onclick="saveEntwurf()">
+                        <i data-feather="save"></i>
+                        <span id="saveBtn">Entwurf aktualisieren</span>
+                    </button>
+                    <button type="button" class="btn btn-primary btn-lg" onclick="erstelleAngebot()">
+                        <i data-feather="send"></i>
+                        <span id="sendBtn">Angebot erstellen & versenden</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase Config & Initialization -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-app.js"></script>
+    <script src="js/auth-manager.js"></script>
+
+    <script>
+        // Initialize Feather Icons
+        feather.replace();
+
+        // Global State
+        let firebaseInitialized = false;
+        let offeneEntwuerfe = [];
+        let currentEntwurf = null;
+        let currentEntwurfId = null;
+
+        // ============================================
+        // FIREBASE INITIALIZATION
+        // ============================================
+
+        window.addEventListener('load', async () => {
+            try {
+                console.log('🔥 === ENTWÜRFE-BEARBEITEN.HTML INIT ===');
+
+                // Wait for Firebase initialization
+                if (!window.db) {
+                    console.log('⏳ Warte auf Firebase Initialisierung...');
+                    await new Promise((resolve) => {
+                        const interval = setInterval(() => {
+                            if (window.db) {
+                                clearInterval(interval);
+                                resolve();
+                            }
+                        }, 100);
+                    });
+                }
+
+                firebaseInitialized = true;
+                console.log('✅ Firebase initialisiert');
+
+                // Load drafts
+                await loadOffeneEntwuerfe();
+
+            } catch (error) {
+                console.error('❌ Fehler bei Initialisierung:', error);
+                showToast('❌ Fehler beim Laden der Entwürfe', 'error', 6000);
+            }
+        });
+
+        // ============================================
+        // LOAD OFFENE ENTWÜRFE
+        // ============================================
+
+        async function loadOffeneEntwuerfe() {
+            try {
+                console.log('📥 === LADE OFFENE ENTWÜRFE ===');
+
+                if (!window.db) {
+                    throw new Error('Firebase nicht initialisiert');
+                }
+
+                const werkstattId = window.werkstattId || 'mosbach';
+                const collectionName = `partnerAnfragen_${werkstattId}`;
+
+                console.log(`🔍 Query: ${collectionName} WHERE isEntwurf==true AND entwurfStatus=='offen'`);
+
+                const snapshot = await window.db
+                    .collection(collectionName)
+                    .where('isEntwurf', '==', true)
+                    .where('entwurfStatus', '==', 'offen')
+                    .orderBy('timestamp', 'desc')
+                    .get();
+
+                offeneEntwuerfe = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log(`✅ ${offeneEntwuerfe.length} offene Entwürfe geladen`);
+
+                // Populate dropdown
+                const dropdown = document.getElementById('entwurfDropdown');
+                const emptyState = document.getElementById('emptyState');
+
+                dropdown.innerHTML = '<option value="">-- Bitte wählen --</option>';
+
+                if (offeneEntwuerfe.length === 0) {
+                    emptyState.style.display = 'block';
+                    dropdown.disabled = true;
+                } else {
+                    emptyState.style.display = 'none';
+                    dropdown.disabled = false;
+
+                    offeneEntwuerfe.forEach(entwurf => {
+                        const option = document.createElement('option');
+                        option.value = entwurf.id;
+                        option.textContent = `${entwurf.kennzeichen} - ${entwurf.kundenname} (${entwurf.datum || 'Kein Datum'})`;
+                        dropdown.appendChild(option);
+                    });
+                }
+
+                feather.replace(); // Re-render icons
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Entwürfe:', error);
+                showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+            }
+        }
+
+        // ============================================
+        // LOAD ENTWURF (Fill Form)
+        // ============================================
+
+        function loadEntwurf() {
+            try {
+                const dropdown = document.getElementById('entwurfDropdown');
+                const selectedId = dropdown.value;
+
+                if (!selectedId) {
+                    document.getElementById('formContainer').classList.remove('visible');
+                    currentEntwurf = null;
+                    currentEntwurfId = null;
+                    return;
+                }
+
+                // Find entwurf
+                currentEntwurf = offeneEntwuerfe.find(e => String(e.id) === String(selectedId));
+                currentEntwurfId = selectedId;
+
+                if (!currentEntwurf) {
+                    throw new Error('Entwurf nicht gefunden');
+                }
+
+                console.log('📝 Lade Entwurf:', currentEntwurf);
+
+                // Fill form
+                document.getElementById('kennzeichen').value = currentEntwurf.kennzeichen || '';
+                document.getElementById('kundenname').value = currentEntwurf.kundenname || '';
+                document.getElementById('kundenEmail').value = currentEntwurf.kundenEmail || '';
+                document.getElementById('telefon').value = currentEntwurf.telefon || '';
+                document.getElementById('marke').value = currentEntwurf.marke || '';
+                document.getElementById('modell').value = currentEntwurf.modell || '';
+                document.getElementById('baujahrVon').value = currentEntwurf.baujahrVon || '';
+                document.getElementById('kmstand').value = currentEntwurf.kmstand || '';
+                document.getElementById('vin').value = currentEntwurf.vin || '';
+                document.getElementById('serviceTyp').value = currentEntwurf.serviceTyp || 'lackier';
+                document.getElementById('notizen').value = currentEntwurf.notizen || '';
+                document.getElementById('vereinbarterPreis').value = currentEntwurf.vereinbarterPreis || '';
+                document.getElementById('geplantesAbnahmeDatum').value = currentEntwurf.geplantesAbnahmeDatum || '';
+
+                // Show form
+                document.getElementById('formContainer').classList.add('visible');
+                feather.replace();
+
+                console.log('✅ Entwurf geladen und Formular ausgefüllt');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Entwurfs:', error);
+                showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+            }
+        }
+
+        // ============================================
+        // SAVE ENTWURF (Update intermediate state)
+        // ============================================
+
+        async function saveEntwurf() {
+            try {
+                console.log('💾 === ENTWURF AKTUALISIEREN ===');
+
+                if (!currentEntwurfId) {
+                    throw new Error('Kein Entwurf ausgewählt');
+                }
+
+                // Show loading
+                const saveBtn = document.getElementById('saveBtn');
+                const originalText = saveBtn.textContent;
+                saveBtn.innerHTML = '<span class="loading"></span> Speichert...';
+
+                // Gather data
+                const updatedData = {
+                    kundenname: document.getElementById('kundenname').value.trim(),
+                    kundenEmail: document.getElementById('kundenEmail').value.trim().toLowerCase(),
+                    telefon: document.getElementById('telefon').value.trim(),
+                    marke: document.getElementById('marke').value.trim(),
+                    modell: document.getElementById('modell').value.trim(),
+                    baujahrVon: document.getElementById('baujahrVon').value.trim(),
+                    kmstand: document.getElementById('kmstand').value.trim(),
+                    vin: document.getElementById('vin').value.trim(),
+                    serviceTyp: document.getElementById('serviceTyp').value,
+                    notizen: document.getElementById('notizen').value.trim(),
+                    vereinbarterPreis: document.getElementById('vereinbarterPreis').value,
+                    geplantesAbnahmeDatum: document.getElementById('geplantesAbnahmeDatum').value,
+                    updatedAt: new Date().toISOString(),
+                };
+
+                // Update Firestore
+                const werkstattId = window.werkstattId || 'mosbach';
+                const collectionName = `partnerAnfragen_${werkstattId}`;
+
+                await window.db.collection(collectionName)
+                    .doc(currentEntwurfId)
+                    .update(updatedData);
+
+                console.log('✅ Entwurf aktualisiert');
+
+                // Reset button
+                saveBtn.innerHTML = '<i data-feather="check"></i> Gespeichert!';
+                feather.replace();
+                setTimeout(() => {
+                    saveBtn.textContent = originalText;
+                    feather.replace();
+                }, 2000);
+
+                showToast('✅ Entwurf aktualisiert', 'success', 3000);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+                document.getElementById('saveBtn').textContent = 'Entwurf aktualisieren';
+                feather.replace();
+            }
+        }
+
+        // ============================================
+        // ERSTELLE ANGEBOT & VERSENDE
+        // ============================================
+
+        async function erstelleAngebot() {
+            try {
+                console.log('📤 === ANGEBOT ERSTELLEN & VERSENDEN ===');
+
+                if (!currentEntwurfId) {
+                    throw new Error('Kein Entwurf ausgewählt');
+                }
+
+                // Validation
+                const requiredFields = {
+                    'Kundenname': document.getElementById('kundenname').value.trim(),
+                    'Kunden-Email': document.getElementById('kundenEmail').value.trim(),
+                    'Marke': document.getElementById('marke').value.trim(),
+                    'Modell': document.getElementById('modell').value.trim(),
+                    'Notizen': document.getElementById('notizen').value.trim(),
+                    'Preis': document.getElementById('vereinbarterPreis').value.trim(),
+                    'Fertigstellungsdatum': document.getElementById('geplantesAbnahmeDatum').value.trim(),
+                };
+
+                for (const [field, value] of Object.entries(requiredFields)) {
+                    if (!value) {
+                        showToast(`⚠️ Bitte füllen Sie das Feld "${field}" aus!`, 'error', 5000);
+                        return;
+                    }
+                }
+
+                // Email format validation
+                const email = document.getElementById('kundenEmail').value.trim();
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    showToast('⚠️ Ungültige Email-Adresse!', 'error', 5000);
+                    return;
+                }
+
+                // Show loading
+                const sendBtn = document.getElementById('sendBtn');
+                const originalText = sendBtn.textContent;
+                sendBtn.innerHTML = '<span class="loading"></span> Wird versendet...';
+
+                // Step 1: Ensure Partner Account exists
+                console.log('🔐 Step 1: Partner Account sicherstellen...');
+                const ensurePartnerAccount = firebase.functions().httpsCallable('ensurePartnerAccount');
+                const accountResult = await ensurePartnerAccount({
+                    email: email,
+                    name: document.getElementById('kundenname').value.trim(),
+                });
+
+                console.log('✅ Partner Account:', accountResult.data);
+
+                // Step 2: Create Auto-Login Token
+                console.log('🔑 Step 2: Auto-Login Token erstellen...');
+                const createToken = firebase.functions().httpsCallable('createPartnerAutoLoginToken');
+                const tokenResult = await createToken({
+                    email: email,
+                });
+
+                const autoLoginToken = tokenResult.data.token;
+                console.log('✅ Auto-Login Token erstellt');
+
+                // Step 3: Generate QR Code URL
+                const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]+$/, '');
+                const qrCodeUrl = `${baseUrl}partner-login.html?token=${autoLoginToken}`;
+                console.log('🔗 QR-Code URL:', qrCodeUrl);
+
+                // Step 4: Update Entwurf Status & Save angebotDetails
+                console.log('📝 Step 4: Entwurf-Status aktualisieren...');
+                const werkstattId = window.werkstattId || 'mosbach';
+                const collectionName = `partnerAnfragen_${werkstattId}`;
+
+                const angebotDetails = {
+                    preis: parseFloat(document.getElementById('vereinbarterPreis').value),
+                    serviceBeschreibung: document.getElementById('notizen').value.trim(),
+                    fertigstellungsdatum: document.getElementById('geplantesAbnahmeDatum').value,
+                    erstelltAm: new Date().toISOString(),
+                    erstelltVon: window.currentUser?.name || 'Büro',
+                };
+
+                await window.db.collection(collectionName).doc(currentEntwurfId).update({
+                    // Update all fields
+                    kundenname: document.getElementById('kundenname').value.trim(),
+                    kundenEmail: email,
+                    telefon: document.getElementById('telefon').value.trim(),
+                    marke: document.getElementById('marke').value.trim(),
+                    modell: document.getElementById('modell').value.trim(),
+                    baujahrVon: document.getElementById('baujahrVon').value.trim(),
+                    kmstand: document.getElementById('kmstand').value.trim(),
+                    vin: document.getElementById('vin').value.trim(),
+                    serviceTyp: document.getElementById('serviceTyp').value,
+                    notizen: document.getElementById('notizen').value.trim(),
+                    vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis').value),
+                    geplantesAbnahmeDatum: document.getElementById('geplantesAbnahmeDatum').value,
+
+                    // Change entwurf status
+                    entwurfStatus: 'angebot_erstellt',
+                    status: 'kva_gesendet',
+
+                    // Save offer details
+                    angebotDetails: angebotDetails,
+
+                    // Metadata
+                    angebotErstelltAm: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                });
+
+                console.log('✅ Entwurf-Status aktualisiert');
+
+                // Step 5: Send Email
+                console.log('📧 Step 5: Email versenden...');
+                const sendEmail = firebase.functions().httpsCallable('sendEntwurfEmail');
+                await sendEmail({
+                    kundenEmail: email,
+                    kundenname: document.getElementById('kundenname').value.trim(),
+                    kennzeichen: document.getElementById('kennzeichen').value.trim(),
+                    qrCodeUrl: qrCodeUrl,
+                    fahrzeugId: currentEntwurfId,
+                });
+
+                console.log('✅ Email versendet');
+
+                // Step 6: Success!
+                sendBtn.innerHTML = '<i data-feather="check"></i> Versendet!';
+                feather.replace();
+
+                // Show success message
+                const successMsg = document.getElementById('successMessage');
+                successMsg.classList.add('show');
+
+                showToast('✅ Angebot erfolgreich versendet!', 'success', 4000);
+
+                // Redirect after 2 seconds
+                setTimeout(() => {
+                    window.location.href = 'liste.html';
+                }, 2000);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Versenden des Angebots:', error);
+                showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+                document.getElementById('sendBtn').textContent = 'Angebot erstellen & versenden';
+                feather.replace();
+            }
+        }
+
+        // ============================================
+        // HELPER FUNCTIONS
+        // ============================================
+
+        function showToast(message, type = 'info', duration = 3000) {
+            // Check if toast container exists
+            let toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toast-container';
+                toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px;';
+                document.body.appendChild(toastContainer);
+            }
+
+            // Create toast
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                background: ${type === 'success' ? 'var(--color-success)' : type === 'error' ? 'var(--color-error)' : 'var(--color-primary)'};
+                color: white;
+                padding: 16px 24px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                font-weight: 500;
+                max-width: 400px;
+                animation: slideInRight 0.3s ease-out;
+            `;
+            toast.textContent = message;
+
+            toastContainer.appendChild(toast);
+
+            // Auto-remove
+            setTimeout(() => {
+                toast.style.animation = 'slideOutRight 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+
+        function safeNavigate(url) {
+            try {
+                window.location.href = url;
+            } catch (error) {
+                console.error('❌ Navigation failed:', error);
+            }
+        }
+
+        // Add animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideInRight {
+                from {
+                    opacity: 0;
+                    transform: translateX(100px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+            @keyframes slideOutRight {
+                from {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateX(100px);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
