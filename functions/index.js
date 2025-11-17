@@ -2935,8 +2935,8 @@ exports.ensurePartnerAccount = functions
  * Creates a secure auto-login token for partner
  * Token is valid for 30 days and stored in Firestore
  *
- * @param {string} partnerId - Partner ID (email username)
- * @param {string} werkstattId - Workshop ID
+ * @param {string} email - Partner email (will extract partnerId from username) - also accepts 'partnerId' directly
+ * @param {string} werkstattId - Workshop ID (default: "mosbach")
  * @param {string} fahrzeugId - Optional: Specific vehicle ID
  * @param {number} expiresInDays - Token expiration (default: 30)
  * @returns {object} { token, loginUrl, expiresAt }
@@ -2965,13 +2965,14 @@ exports.createPartnerAutoLoginToken = functions
 
       console.log(`✅ Auth check passed - Role: ${userRole}`);
 
-      // Validate input
-      const { partnerId, werkstattId, fahrzeugId = null, expiresInDays = 30 } = data;
+      // Validate input - Support both 'email' and 'partnerId' for backward compatibility
+      const { email, partnerId, werkstattId = "mosbach", fahrzeugId = null, expiresInDays = 30 } = data;
+      const finalPartnerId = partnerId || (email ? email.split('@')[0] : null);
 
-      if (!partnerId || !werkstattId) {
+      if (!finalPartnerId || !werkstattId) {
         throw new functions.https.HttpsError(
             "invalid-argument",
-            "partnerId und werkstattId erforderlich"
+            "partnerId (or email) und werkstattId erforderlich"
         );
       }
 
@@ -2985,7 +2986,7 @@ exports.createPartnerAutoLoginToken = functions
 
         // Store token in Firestore
         const tokenData = {
-          partnerId: partnerId,
+          partnerId: finalPartnerId,
           werkstattId: werkstattId,
           fahrzeugId: fahrzeugId,
           createdAt: admin.firestore.Timestamp.fromDate(new Date(now)),
