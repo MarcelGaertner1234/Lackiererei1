@@ -4238,6 +4238,10 @@
 
             // Werkstatt-Status → Partner-Kanban-Spalte Mapping (shared by single-service AND multi-service)
             const statusMapping = {
+                // ========== ENTWURF-STATUS (FIX: Nov 17, 2025 - BUG #3) ==========
+                'offen': 'beauftragt',             // Entwurf offen (Meister → Büro Bearbeitung) → Beauftragt
+                'angebot_erstellt': 'warte_kva',   // Angebot erstellt & versendet → Warte auf Bestätigung
+
                 // ========== SHARED STAGES (alle 6 Services) ==========
                 'neu': 'beauftragt',               // Neu eingegangen → Beauftragt
                 'terminiert': 'beauftragt',        // Terminiert → Beauftragt
@@ -5364,6 +5368,7 @@
         /**
          * 🆕 MULTI-SERVICE (2025-11-13): Build service status breakdown for Partner-Portal cards
          * Shows all services (primary + additional) with their individual statuses
+         * 🔧 FIX (2025-11-17): BUG #2 - Entwurf Multi-Service Support (serviceTyp Array)
          * @param {Object} anfrage - Die Anfrage mit optionalem verknüpften Fahrzeug
          * @returns {string} HTML für Service-Status-Badges
          */
@@ -5413,14 +5418,31 @@
                 'qualitaet': 'Qualität'
             };
 
-            // Prüfe ob Multi-Service
-            const hasMultipleServices = anfrage.fahrzeug?.additionalServices &&
-                                       Array.isArray(anfrage.fahrzeug.additionalServices) &&
-                                       anfrage.fahrzeug.additionalServices.length > 0;
+            // 🔧 FIX (2025-11-17): BUG #2 - Entwurf Multi-Service Support
+            // PROBLEM: Entwürfe haben serviceTyp als Array ["lackier", "reifen"] aber kein fahrzeug.additionalServices
+            // LÖSUNG: Prüfe auch ob serviceTyp ein Array ist (= Entwurf mit Multi-Service)
+            const isEntwurf = !!anfrage.entwurfStatus;  // Entwurf wenn entwurfStatus existiert
+            const isServiceTypArray = Array.isArray(anfrage.serviceTyp);
+
+            const hasMultipleServices = (anfrage.fahrzeug?.additionalServices &&
+                                        Array.isArray(anfrage.fahrzeug.additionalServices) &&
+                                        anfrage.fahrzeug.additionalServices.length > 0) ||
+                                       (isEntwurf && isServiceTypArray && anfrage.serviceTyp.length > 1);
 
             if (!hasMultipleServices) {
                 // Single-Service: Original Badge (UNCHANGED - no accordion needed)
-                const primaryServiceTyp = anfrage.serviceTyp || 'lackier';
+                let primaryServiceTyp = anfrage.serviceTyp;
+
+                // 🔧 FIX: Wenn serviceTyp ein Array mit 1 Element ist → Extrahiere Element
+                if (Array.isArray(primaryServiceTyp) && primaryServiceTyp.length === 1) {
+                    primaryServiceTyp = primaryServiceTyp[0];
+                } else if (Array.isArray(primaryServiceTyp)) {
+                    // Sollte nicht passieren (hasMultipleServices hätte true sein müssen)
+                    primaryServiceTyp = primaryServiceTyp[0];
+                } else if (!primaryServiceTyp) {
+                    primaryServiceTyp = 'lackier';  // Fallback
+                }
+
                 const serviceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
                 return `
                     <div class="card-service-badge" style="background: ${serviceData.bg}; color: white;">
@@ -5430,33 +5452,51 @@
             }
 
             // 🆕 MULTI-SERVICE UX FIX (2025-11-15): Expandable Accordion statt horizontal overflow
-            const primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
-
-            // Sammle alle Services (Primary + Additional)
+            // 🔧 FIX (2025-11-17): BUG #2 - Entwurf Multi-Service Support
             const allServices = [];
 
-            // 1️⃣ Primary Service
-            const primaryServiceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
-            const primaryStatus = getServiceStatus(anfrage, primaryServiceTyp);
-            allServices.push({
-                typ: primaryServiceTyp,
-                data: primaryServiceData,
-                status: primaryStatus,
-                isPrimary: true
-            });
+            // ===== ENTWURF Multi-Service (serviceTyp = Array) =====
+            if (isEntwurf && isServiceTypArray) {
+                // Entwurf mit serviceTyp als Array ["lackier", "reifen"]
+                anfrage.serviceTyp.forEach((serviceTyp, index) => {
+                    const serviceData = serviceIcons[serviceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+                    const status = anfrage.entwurfStatus || 'neu';  // Entwurf-Status für alle Services gleich
 
-            // 2️⃣ Additional Services
-            anfrage.fahrzeug.additionalServices.forEach(additionalService => {
-                const addServiceTyp = additionalService.serviceTyp;
-                const addServiceData = serviceIcons[addServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
-                const addStatus = getServiceStatus(anfrage, addServiceTyp);
-                allServices.push({
-                    typ: addServiceTyp,
-                    data: addServiceData,
-                    status: addStatus,
-                    isPrimary: false
+                    allServices.push({
+                        typ: serviceTyp,
+                        data: serviceData,
+                        status: status,
+                        isPrimary: index === 0  // Erstes Element = Primary
+                    });
                 });
-            });
+            }
+            // ===== ANGENOMMENES Fahrzeug Multi-Service (fahrzeug.additionalServices) =====
+            else {
+                const primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
+
+                // 1️⃣ Primary Service
+                const primaryServiceData = serviceIcons[primaryServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+                const primaryStatus = getServiceStatus(anfrage, primaryServiceTyp);
+                allServices.push({
+                    typ: primaryServiceTyp,
+                    data: primaryServiceData,
+                    status: primaryStatus,
+                    isPrimary: true
+                });
+
+                // 2️⃣ Additional Services
+                anfrage.fahrzeug.additionalServices.forEach(additionalService => {
+                    const addServiceTyp = additionalService.serviceTyp;
+                    const addServiceData = serviceIcons[addServiceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+                    const addStatus = getServiceStatus(anfrage, addServiceTyp);
+                    allServices.push({
+                        typ: addServiceTyp,
+                        data: addServiceData,
+                        status: addStatus,
+                        isPrimary: false
+                    });
+                });
+            }
 
             // Zähle Services in Arbeit (Status !== 'neu' und !== 'fertig')
             const servicesInArbeit = allServices.filter(s =>
