@@ -1765,6 +1765,10 @@
                         <i data-feather="file-plus"></i>
                         Als Entwurf speichern
                     </button>
+                    <button type="button" class="btn btn-success btn-lg" onclick="saveAsDraftWithPDF()" style="background: #28a745; border-color: #28a745;">
+                        <i data-feather="file-text"></i>
+                        Entwurf speichern & PDF erstellen
+                    </button>
                     <button type="button" class="btn btn-secondary btn-lg" onclick="createArbeitsauftrag()">
                         <i data-feather="file"></i>
                         Arbeitsauftrag für Werkstatt drucken
@@ -3297,6 +3301,166 @@
             } catch (error) {
                 console.error('❌ Fehler beim Speichern des Entwurfs:', error);
                 showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+            }
+        }
+
+        /**
+         * Als Entwurf speichern + PDF für Kunde erstellen
+         * Like saveAsDraft() but also generates QR-Code PDF for customer
+         */
+        async function saveAsDraftWithPDF() {
+            console.log('📄 === ENTWURF SPEICHERN + PDF ERSTELLEN ===');
+
+            // 🛡️ SECURITY: Only werkstatt users can create drafts
+            if (window.currentUser?.role === 'partner') {
+                console.warn('🚫 Partner-Zugriff blockiert!');
+                showToast('⚠️ Zugriff verweigert. Partner können keine Entwürfe erstellen.', 'error', 5000);
+                return;
+            }
+
+            try {
+                // ============================================
+                // 1. MINIMUM-VALIDIERUNG
+                // ============================================
+
+                const kennzeichen = document.getElementById('kennzeichen').value.trim();
+                const kundenname = document.getElementById('kundenname').value.trim();
+                const kundenEmail = document.getElementById('kundenEmail').value.trim();
+
+                if (!kennzeichen || !kundenname || !kundenEmail) {
+                    showToast('⚠️ Mindestens Kennzeichen, Kunde und Email erforderlich!', 'error', 5000);
+                    return;
+                }
+
+                // Email-Format validieren
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(kundenEmail)) {
+                    showToast('⚠️ Ungültiges Email-Format!', 'error', 5000);
+                    return;
+                }
+
+                console.log('✅ Minimum-Validierung erfolgreich');
+
+                // ============================================
+                // 2. DATEN SAMMELN
+                // ============================================
+
+                const timestamp = Date.now();
+                const entwurfId = String(timestamp);
+                const notizen = document.getElementById('notizen')?.value || '';
+
+                const entwurfData = {
+                    id: entwurfId,
+                    timestamp: timestamp,
+                    datum: new Date().toLocaleDateString('de-DE'),
+                    zeit: new Date().toLocaleTimeString('de-DE'),
+
+                    // Kunden-Daten
+                    kennzeichen: kennzeichen,
+                    kundenname: kundenname,
+                    kundenEmail: kundenEmail.toLowerCase(),
+                    telefon: document.getElementById('telefon')?.value || '',
+
+                    // Fahrzeug-Daten
+                    marke: document.getElementById('marke')?.value || '',
+                    modell: document.getElementById('modell')?.value || '',
+                    baujahrVon: document.getElementById('baujahrVon')?.value || '',
+                    kmstand: document.getElementById('kmstand')?.value || '',
+                    vin: document.getElementById('vin')?.value || '',
+
+                    // Service-Daten
+                    serviceTyp: document.getElementById('serviceTyp')?.value || 'lackier',
+                    notizen: notizen,
+
+                    // Entwurf-Felder
+                    isEntwurf: true,
+                    entwurfStatus: 'offen',
+                    status: 'warte_kva',
+
+                    // Multi-Tenant
+                    werkstattId: window.werkstattId || 'mosbach',
+
+                    // Metadaten
+                    createdAt: new Date().toISOString(),
+                    createdBy: window.currentUser?.name || 'Meister',
+                };
+
+                console.log('📦 Entwurf-Daten:', entwurfData);
+
+                // ============================================
+                // 3. AUTO-LOGIN TOKEN ERSTELLEN
+                // ============================================
+
+                console.log('🔑 Erstelle Auto-Login Token für Partner-Login...');
+                showToast('⏳ Erstelle Partner-Login...', 'info', 2000);
+
+                // Step 1: Ensure Partner Account exists
+                const ensurePartnerAccount = firebase.functions().httpsCallable('ensurePartnerAccount');
+                await ensurePartnerAccount({
+                    email: kundenEmail.toLowerCase(),
+                    name: kundenname,
+                });
+
+                // Step 2: Create Auto-Login Token
+                const createToken = firebase.functions().httpsCallable('createPartnerAutoLoginToken');
+                const tokenResult = await createToken({
+                    email: kundenEmail.toLowerCase(),
+                });
+
+                const autoLoginToken = tokenResult.data.token;
+                const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]+$/, '');
+                const qrCodeUrl = `${baseUrl}partner-app/auto-login.html?token=${autoLoginToken}`;
+
+                console.log('✅ Auto-Login Token erstellt');
+                console.log('🔗 QR-Code URL:', qrCodeUrl);
+
+                // ============================================
+                // 4. SPEICHERN in Firestore
+                // ============================================
+
+                if (!window.db) {
+                    throw new Error('Firebase nicht initialisiert');
+                }
+
+                const collectionName = `partnerAnfragen_${entwurfData.werkstattId}`;
+                await window.db.collection(collectionName).doc(entwurfId).set(entwurfData);
+
+                console.log(`✅ Entwurf gespeichert in: ${collectionName}/${entwurfId}`);
+
+                // ============================================
+                // 5. PDF ERSTELLEN mit QR-Code
+                // ============================================
+
+                console.log('📄 Generiere PDF mit QR-Code...');
+                showToast('📄 Erstelle PDF...', 'info', 2000);
+
+                await erstelleEntwurfPDF(qrCodeUrl, kennzeichen, kundenname, notizen);
+
+                // ============================================
+                // 6. SUCCESS FEEDBACK
+                // ============================================
+
+                showToast('✅ Entwurf gespeichert & PDF heruntergeladen!', 'success', 4000);
+
+                // Kurz warten, dann redirect
+                setTimeout(() => {
+                    safeNavigate('liste.html');
+                }, 2000);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern des Entwurfs + PDF:', error);
+
+                let errorMsg = '❌ Fehler beim Speichern.\n\n';
+                if (error.message.includes('Token') || error.message.includes('ensurePartnerAccount')) {
+                    errorMsg += '🔑 Partner-Account-Erstellung fehlgeschlagen.\n';
+                    errorMsg += 'Der Entwurf wurde NICHT gespeichert.\n\n';
+                    errorMsg += 'Bitte versuchen Sie es erneut oder verwenden Sie\n';
+                    errorMsg += '"Als Entwurf speichern" (ohne PDF).';
+                } else {
+                    errorMsg += `Details: ${error.message}`;
+                }
+
+                showToast(errorMsg, 'error', 8000);
             }
         }
 
@@ -8037,6 +8201,161 @@
             doc.save(filename);
 
             // Return PDF Blob for Firebase Storage upload
+            return doc.output('blob');
+        }
+
+        // ============================================
+        // ENTWURF-PDF ERSTELLEN (Minimal)
+        // ============================================
+        async function erstelleEntwurfPDF(qrCodeUrl, kennzeichen, kundenname, notizen) {
+            console.log('📄 Erstelle Entwurf-PDF mit QR-Code...');
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            // 🎨 HEADER (Professional style)
+            const settings = window.settingsManager ? await window.settingsManager.loadSettings() : null;
+            const werkstattName = settings?.profil?.name || 'Auto-Lackierzentrum Mosbach';
+
+            doc.setFillColor(0, 51, 102);  // Dark blue
+            doc.rect(0, 0, 210, 45, 'F');
+
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont(undefined, 'bold');
+            doc.text('Fahrzeug-Annahme', 105, 20, { align: 'center' });
+
+            doc.setFontSize(16);
+            doc.text('⚠️ ENTWURF', 105, 30, { align: 'center' });
+
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'normal');
+            doc.text(werkstattName, 105, 38, { align: 'center' });
+
+            // Separator line
+            doc.setDrawColor(255, 255, 255);
+            doc.setLineWidth(0.5);
+            doc.line(15, 42, 195, 42);
+
+            // 📝 FAHRZEUGDATEN (Minimal)
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+            let y = 55;
+
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(13);
+            doc.text('Kennzeichen:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(16);
+            doc.text(kennzeichen, 70, y);
+
+            y += 12;
+            doc.setFont(undefined, 'bold');
+            doc.setFontSize(13);
+            doc.text('Kundenname:', 20, y);
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(13);
+            doc.text(kundenname, 70, y);
+
+            // 📋 NOTIZEN
+            if (notizen) {
+                y += 15;
+                doc.setFont(undefined, 'bold');
+                doc.text('Notizen:', 20, y);
+                y += 7;
+                doc.setFont(undefined, 'normal');
+
+                // Text wrapping for notizen
+                const notizenLines = doc.splitTextToSize(notizen, 170);
+                doc.text(notizenLines, 20, y);
+                y += notizenLines.length * 7;
+            }
+
+            // 🔲 QR-CODE SECTION
+            if (qrCodeUrl) {
+                try {
+                    console.log('🔲 Generiere QR-Code für Partner-Login...');
+
+                    // Safety check: Verify QRious loaded
+                    if (typeof QRious === 'undefined') {
+                        throw new Error('QRious library not loaded');
+                    }
+
+                    // Generate QR Code Canvas with QRious
+                    const qrCanvas = document.createElement('canvas');
+                    new QRious({
+                        element: qrCanvas,
+                        value: qrCodeUrl,
+                        size: 300,
+                        background: '#FFFFFF',
+                        foreground: '#003366',  // Auto-Lackierzentrum blue
+                        padding: 4,
+                        backgroundAlpha: 1,
+                        foregroundAlpha: 1,
+                        level: 'H'               // High error correction (30%)
+                    });
+
+                    // Convert canvas to image data URL
+                    const qrImageData = qrCanvas.toDataURL('image/png');
+
+                    // Position QR Code (centered, large)
+                    y += 20;
+                    if (y > 230) {
+                        doc.addPage();
+                        y = 30;
+                    }
+
+                    const qrX = 105;  // Centered
+                    const qrY = y;
+                    const qrSize = 60;
+
+                    // Light gray background box
+                    doc.setFillColor(245, 245, 245);
+                    doc.roundedRect(qrX - (qrSize / 2) - 5, qrY - 10, qrSize + 10, qrSize + 30, 3, 3, 'F');
+
+                    // "PARTNER-PORTAL" Label above QR
+                    doc.setFontSize(14);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(0, 51, 102);
+                    doc.text('🔐 PARTNER-PORTAL ZUGANG', qrX, qrY - 5, { align: 'center' });
+
+                    // Add QR Code image (centered)
+                    doc.addImage(qrImageData, 'PNG', qrX - (qrSize / 2), qrY, qrSize, qrSize);
+
+                    // Border around QR code
+                    doc.setDrawColor(0, 51, 102);
+                    doc.setLineWidth(0.8);
+                    doc.rect(qrX - (qrSize / 2), qrY, qrSize, qrSize);
+
+                    // Instruction below QR code
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'normal');
+                    doc.setTextColor(80, 80, 80);
+                    doc.text('QR-Code scannen für Partner-Login', qrX, qrY + qrSize + 8, { align: 'center' });
+
+                    // URL below (kleinere Schrift)
+                    doc.setFontSize(7);
+                    doc.text(qrCodeUrl, qrX, qrY + qrSize + 13, { align: 'center' });
+
+                    console.log('✅ QR-Code erfolgreich im Entwurf-PDF platziert');
+
+                } catch (qrError) {
+                    console.error('❌ QR-Code Generierung fehlgeschlagen:', qrError);
+                    // Continue without QR code
+                }
+            }
+
+            // 📌 FOOTER
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.text(`Erstellt am: ${new Date().toLocaleDateString('de-DE')} ${new Date().toLocaleTimeString('de-DE')}`, 105, 280, { align: 'center' });
+            doc.text('⚠️ Dies ist ein ENTWURF - noch keine finale Annahme', 105, 285, { align: 'center' });
+
+            // Download PDF
+            const filename = `Entwurf_${kennzeichen.replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+            doc.save(filename);
+
+            console.log('✅ Entwurf-PDF erfolgreich erstellt:', filename);
             return doc.output('blob');
         }
 
