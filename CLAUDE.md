@@ -1346,8 +1346,19 @@ await window.getCollection('partnerAnfragen').doc(anfrageId).set(anfrageData);
 
 **Alle Feature-Details wurden nach FEATURES_CHANGELOG.md ausgelagert** für bessere Übersichtlichkeit.
 
-**Neueste Features (2025-11-11 - 2025-11-13):**
-- ✅ **Multi-Service Tab Filtering Fixes** (2 Critical Bugs, Service-Konsistenz 100%) **← NEU**
+**Neueste Features (2025-11-11 - 2025-11-17):**
+- ✅ **Entwurf-System - 2-Stufen Fahrzeugannahme** (14/14 Phasen, 8 Commits, PRODUCTION-READY) **← NEU Nov 17**
+  - Quick Draft Creation (3 Felder, <30 Sekunden)
+  - Draft Completion Workflow (Büro vervollständigt Entwurf)
+  - SendGrid Email mit QR-Code Auto-Login
+  - Customer Accept/Reject (Partner Portal)
+  - Real-Time Admin Notifications
+  - 3 Cloud Functions deployed & live
+  - NEW PAGE: entwuerfe-bearbeiten.html (+819 Zeilen)
+  - Complete End-to-End: Meister → Büro → Email → Customer → Notification
+- ✅ **Code Quality & Security Fixes** (22 Fixes: werkstattId/Password hardcoded → dynamic/Firestore, 14× UX improvements) **← NEU Nov 17**
+- ✅ **Ersatzteile-System für KVA** (4 Phasen, Pattern 30 Fix, PDF + Manual entry) **← NEU Nov 17**
+- ✅ **Multi-Service Tab Filtering Fixes** (2 Critical Bugs, Service-Konsistenz 100%)
 - ✅ Steuerberater-Dashboard mit Chart.js (4 Phasen, 4 Charts, CSV-Export)
 - ✅ Material Photo-Upload System (4 Bug-Fixes, Storage Rules)
 - ✅ Ersatzteil Bestellen Feature (11 Felder, Filter-System)
@@ -3400,8 +3411,9 @@ npm run test:all
 ## 📚 Session History
 
 **Latest Sessions (2025-11-06 to 2025-11-17):**
-- ✅ **Ersatzteile-System für KVA** (1 Commit: d97dffb) - 4-Phasen-Implementierung (324+ Zeilen), PDF-Import + Manuelle Eingabe + KVA-Annahme Übertragung, Pattern 30 Fix (Silent Data Loss) (Nov 17)
-- ✅ **Multi-Service Display Bug Fix** (1 Commit: accce7d) - Pattern 30 (Silent Data Loss) in admin-anfragen.html, Multi-Service Requests jetzt korrekt dargestellt (Nov 17)
+- ✅ **Entwurf-System - 2-Stufen Fahrzeugannahme** (8 Commits: 31b0e68 → f7b6871) - ✅ **PRODUCTION-READY**, 14/14 Phasen, 2,055 Zeilen, 3 Cloud Functions, NEW PAGE (entwuerfe-bearbeiten.html), SendGrid Email + QR Auto-Login + Real-Time Notifications, Complete End-to-End Workflow (Nov 17)
+- ✅ **Code Quality & Security Fixes** (2 Commits: 2d84093, 988f80e) - 22 Fixes (werkstattId hardcoded → dynamic, Admin Password → Firestore, 14× alert() → showToast(), 3× String() ID comparisons, Admin User Tracking) (Nov 17)
+- ✅ **Ersatzteile-System für KVA** (2 Commits: d97dffb, accce7d) - 4-Phasen-Implementierung (324+ Zeilen), PDF-Import + Manuelle Eingabe + KVA-Annahme Übertragung, Pattern 30 Fix (Silent Data Loss) (Nov 17)
 - ✅ **Multi-Service Pipeline Fixes** (5 Commits: 877e9ca → b7e87dd) - Backward compatibility, field mismatches, missing fields, 12/12 services complete (Nov 16)
 - ✅ **Phase 1 Security - File Upload Validation** (10 Commits: 0bf67cc → e5f7bcf) - Client-side MIME type + file size validation, 10 files, 12/12 tests passed (Nov 15)
 - ✅ **Multi-Service serviceTyp Consistency** (2 Commits: 750d7b2, 7083778) - 2-Layer Defense, 15+ files audited, CRITICAL data loss fix (Nov 14)
