@@ -1761,6 +1761,10 @@
                         <i data-feather="save"></i>
                         Speichern & PDF erstellen
                     </button>
+                    <button type="button" class="btn btn-warning btn-lg" onclick="saveAsDraft()" style="background: #ffc107; border-color: #ffc107;">
+                        <i data-feather="file-plus"></i>
+                        Als Entwurf speichern
+                    </button>
                     <button type="button" class="btn btn-secondary btn-lg" onclick="createArbeitsauftrag()">
                         <i data-feather="file"></i>
                         Arbeitsauftrag für Werkstatt drucken
@@ -3177,6 +3181,116 @@
             window.listenerRegistry.registerDOM(document.getElementById('annahmeForm'), 'submit', formSubmitHandler, 'Annahme Form Submit');
             console.log('✅ Form Submit Listener registriert');
         });
+
+        // ============================================
+        // ENTWURF-SYSTEM (MVP): Save as Draft
+        // ============================================
+
+        /**
+         * Speichert Annahme als Entwurf (partnerAnfrage mit isEntwurf=true)
+         * Minimum-Validierung: Nur Kennzeichen, Kunde, Email
+         * Workflow: Meister → Büro vervollständigt später → Kunde bestätigt
+         */
+        async function saveAsDraft() {
+            console.log('📝 === ENTWURF SPEICHERN ===');
+
+            try {
+                // ============================================
+                // 1. MINIMUM-VALIDIERUNG (nur essentials!)
+                // ============================================
+
+                const kennzeichen = document.getElementById('kennzeichen').value.trim();
+                const kundenname = document.getElementById('kundenname').value.trim();
+                const kundenEmail = document.getElementById('kundenEmail').value.trim();
+
+                if (!kennzeichen || !kundenname || !kundenEmail) {
+                    showToast('⚠️ Mindestens Kennzeichen, Kunde und Email erforderlich!', 'error', 5000);
+                    return;
+                }
+
+                // Email-Format validieren
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(kundenEmail)) {
+                    showToast('⚠️ Ungültiges Email-Format!', 'error', 5000);
+                    return;
+                }
+
+                console.log('✅ Minimum-Validierung erfolgreich');
+
+                // ============================================
+                // 2. DATEN SAMMELN (partial data OK für Entwurf)
+                // ============================================
+
+                const timestamp = Date.now();
+                const entwurfId = String(timestamp);
+
+                const entwurfData = {
+                    id: entwurfId,
+                    timestamp: timestamp,
+                    datum: new Date().toLocaleDateString('de-DE'),
+                    zeit: new Date().toLocaleTimeString('de-DE'),
+
+                    // Kunden-Daten (REQUIRED)
+                    kennzeichen: kennzeichen,
+                    kundenname: kundenname,
+                    kundenEmail: kundenEmail.toLowerCase(), // Normalize
+                    telefon: document.getElementById('telefon')?.value || '',
+
+                    // Fahrzeug-Daten (OPTIONAL für Entwurf)
+                    marke: document.getElementById('marke')?.value || '',
+                    modell: document.getElementById('modell')?.value || '',
+                    baujahrVon: document.getElementById('baujahrVon')?.value || '',
+                    kmstand: document.getElementById('kmstand')?.value || '',
+                    vin: document.getElementById('vin')?.value || '',
+
+                    // Service-Daten (OPTIONAL)
+                    serviceTyp: document.getElementById('serviceTyp')?.value || 'lackier',
+                    notizen: document.getElementById('notizen')?.value || '',
+
+                    // Entwurf-Spezifische Felder
+                    isEntwurf: true,
+                    entwurfStatus: 'offen',  // Status: offen → angebot_erstellt → bestaetigt/abgelehnt
+                    status: 'warte_kva',  // PartnerAnfrage Standard-Status
+
+                    // Multi-Tenant
+                    werkstattId: window.werkstattId || 'mosbach',
+
+                    // Metadaten
+                    createdAt: new Date().toISOString(),
+                    createdBy: window.currentUser?.name || 'Meister',
+                };
+
+                console.log('📦 Entwurf-Daten:', entwurfData);
+
+                // ============================================
+                // 3. SPEICHERN als partnerAnfrage (MVP Approach)
+                // ============================================
+
+                if (!window.db) {
+                    throw new Error('Firebase nicht initialisiert');
+                }
+
+                const collectionName = `partnerAnfragen_${entwurfData.werkstattId}`;
+                await window.db.collection(collectionName).doc(entwurfId).set(entwurfData);
+
+                console.log(`✅ Entwurf gespeichert in: ${collectionName}/${entwurfId}`);
+
+                // ============================================
+                // 4. SUCCESS FEEDBACK
+                // ============================================
+
+                showToast('✅ Entwurf gespeichert! Sie können ihn später vervollständigen.', 'success', 4000);
+
+                // Kurz warten, dann redirect
+                setTimeout(() => {
+                    safeNavigate('liste.html');
+                }, 1500);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern des Entwurfs:', error);
+                showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+            }
+        }
 
         // Kunden laden
         async function loadKunden() {
