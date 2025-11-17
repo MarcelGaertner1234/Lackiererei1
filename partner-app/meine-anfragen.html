@@ -5965,6 +5965,12 @@
                     beauftragtVon: partner?.email || partner?.name || partner?.id || 'Unbekannt'
                 };
 
+                // 🆕 ENTWURF-SYSTEM: Wenn dies ein Entwurf ist, entwurfStatus aktualisieren
+                if (anfrage.isEntwurf) {
+                    updateData.entwurfStatus = 'bestaetigt';
+                    console.log('✅ Entwurf wird bestätigt (entwurfStatus → bestaetigt)');
+                }
+
                 // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vor START, Wochenenden berücksichtigen)
                 let abholtermin = null;
                 if (anfrage.abholserviceGewuenscht) {
@@ -6253,6 +6259,22 @@
                     console.warn('⚠️ WARNUNG: Admin könnte Fahrzeug nochmal anlegen!');
                 }
 
+                // 🆕 ENTWURF-SYSTEM: Sende Notification an Admins wenn Entwurf bestätigt wurde
+                if (anfrage.isEntwurf) {
+                    console.log('📧 Sende Bestätigungs-Notification an Admins...');
+                    try {
+                        const sendNotification = firebase.functions().httpsCallable('sendEntwurfBestaetigtNotification');
+                        await sendNotification({
+                            fahrzeugId: anfrageId,
+                            werkstattId: window.werkstattId || 'mosbach'
+                        });
+                        console.log('✅ Notification an Admins gesendet');
+                    } catch (notificationError) {
+                        console.error('❌ Fehler beim Senden der Notification:', notificationError);
+                        // Non-critical error - continue without failing
+                    }
+                }
+
                 await loadAnfragen();
             } catch (error) {
                 console.error('❌ Fehler beim Annehmen:', error);
@@ -6308,15 +6330,40 @@
             if (!bestaetigung) return;
 
             try {
-                // Status zurück auf "neu" + Ablehnung markieren
-                await window.getCollection('partnerAnfragen').doc(anfrageId).update({
-                    status: 'neu',
-                    statusText: 'Neu eingegangen',
+                // 🆕 ENTWURF-SYSTEM: Unterscheide zwischen normaler Ablehnung und Entwurf-Ablehnung
+                const updateData = {
+                    status: anfrage.isEntwurf ? 'storniert' : 'neu', // Entwürfe → storniert, normale → neu
+                    statusText: anfrage.isEntwurf ? 'Storniert' : 'Neu eingegangen',
                     kvaAbgelehnt: true,
                     ablehnungsGrund: grund || 'Keine Angabe',
                     abgelehntAm: new Date().toISOString(),
                     abgelehntVon: partner?.email || partner?.name || 'Partner'
-                });
+                };
+
+                // Wenn Entwurf: entwurfStatus aktualisieren
+                if (anfrage.isEntwurf) {
+                    updateData.entwurfStatus = 'abgelehnt';
+                    console.log('✅ Entwurf wird abgelehnt (entwurfStatus → abgelehnt, status → storniert)');
+                }
+
+                await window.getCollection('partnerAnfragen').doc(anfrageId).update(updateData);
+
+                // 🆕 ENTWURF-SYSTEM: Sende Notification an Admins wenn Entwurf abgelehnt wurde
+                if (anfrage.isEntwurf) {
+                    console.log('📧 Sende Ablehnungs-Notification an Admins...');
+                    try {
+                        const sendNotification = firebase.functions().httpsCallable('sendEntwurfAbgelehntNotification');
+                        await sendNotification({
+                            fahrzeugId: anfrageId,
+                            werkstattId: window.werkstattId || 'mosbach',
+                            grund: grund || 'Keine Angabe'
+                        });
+                        console.log('✅ Notification an Admins gesendet');
+                    } catch (notificationError) {
+                        console.error('❌ Fehler beim Senden der Notification:', notificationError);
+                        // Non-critical error - continue without failing
+                    }
+                }
 
                 showToast('❌ Angebot abgelehnt.\\n\\nDie Werkstatt wird benachrichtigt und kann ein neues Angebot erstellen.', 'info');
                 await loadAnfragen();
