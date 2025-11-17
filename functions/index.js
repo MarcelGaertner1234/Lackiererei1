@@ -2719,7 +2719,7 @@ exports.setMitarbeiterClaims = functions
  * Used when generating PDF with QR-Code for customer
  *
  * @param {string} email - Partner email
- * @param {string} kundenname - Customer name
+ * @param {string} name - Customer name (also accepts legacy 'kundenname')
  * @param {string} werkstattId - Workshop ID (default: "mosbach")
  * @returns {object} { partnerId, email, generatedPassword | null, isNewPartner }
  */
@@ -2729,9 +2729,11 @@ exports.ensurePartnerAccount = functions
       console.log("🔐 ensurePartnerAccount called");
 
       // Validate input
-      const { email, kundenname, werkstattId = "mosbach" } = data;
+      // Support both 'name' (new) and 'kundenname' (legacy) for backward compatibility
+      const { email, name, kundenname, werkstattId = "mosbach" } = data;
+      const finalName = name || kundenname;
 
-      if (!email || !kundenname) {
+      if (!email || !finalName) {
         throw new functions.https.HttpsError(
             "invalid-argument",
             "Email und Kundenname erforderlich"
@@ -2778,7 +2780,7 @@ exports.ensurePartnerAccount = functions
               email: email,
               password: generatedPassword,
               emailVerified: false,
-              displayName: kundenname
+              displayName: finalName
             });
 
             console.log(`✅ Firebase Auth user created: ${userRecord.uid}`);
@@ -2796,7 +2798,7 @@ exports.ensurePartnerAccount = functions
             const userData = {
               uid: userRecord.uid,
               email: email,
-              name: kundenname,
+              name: finalName,
               role: "partner",
               status: "active", // Partners start active
               partnerId: partnerId,
@@ -2811,7 +2813,7 @@ exports.ensurePartnerAccount = functions
             const partnerData = {
               id: partnerId,
               email: email,
-              name: kundenname,
+              name: finalName,
               werkstattId: werkstattId,
               uid: userRecord.uid,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
