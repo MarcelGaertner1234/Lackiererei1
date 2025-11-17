@@ -3740,6 +3740,14 @@ exports.sendEntwurfEmail = functions
     .https.onCall(async (data, context) => {
       console.log("📧 sendEntwurfEmail called");
 
+      // ✅ SECURITY: Authentication check
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated",
+            "Authentifizierung erforderlich"
+        );
+      }
+
       // Validate input
       const { kundenEmail, kundenname, kennzeichen, qrCodeUrl, fahrzeugId } = data;
 
@@ -3759,6 +3767,25 @@ exports.sendEntwurfEmail = functions
         );
       }
 
+      // 🚧 TEMPORARY: Skip email sending until SendGrid is configured
+      // SendGrid Free Trial has expired, temporarily bypassing email
+      console.log("⏭️  [TEMP] Email-Versand übersprungen (SendGrid Trial abgelaufen)");
+      console.log("📧 [TEMP] Würde Email senden an:", kundenEmail);
+      console.log("🎯 [TEMP] Kennzeichen:", kennzeichen);
+      console.log("🔗 [TEMP] QR-Code URL:", qrCodeUrl);
+
+      // Return success to allow workflow to continue
+      return {
+        success: true,
+        message: "Email übersprungen (Testmodus - SendGrid Trial abgelaufen)",
+        tempDisabled: true,
+        recipient: kundenEmail
+      };
+
+      // TODO: Re-enable email sending after configuring production email service
+      // Options: SendGrid paid plan, Gmail SMTP, AWS SES, Resend, Mailgun
+
+      /* ORIGINAL EMAIL CODE (to be restored later):
       try {
         // Initialize SendGrid
         const apiKey = getSendGridApiKey();
@@ -3856,6 +3883,7 @@ exports.sendEntwurfEmail = functions
             `Email-Versand fehlgeschlagen: ${error.message}`
         );
       }
+      */
     });
 
 /**
@@ -4023,6 +4051,14 @@ exports.generateAngebotPDF = functions
     .onCall(async (data, context) => {
       console.log("📄 === GENERATE ANGEBOT PDF ===");
 
+      // ✅ SECURITY: Authentication check
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated",
+            "Authentifizierung erforderlich"
+        );
+      }
+
       try {
         // 1. Validation
         if (!data.entwurfId || !data.werkstattId) {
@@ -4116,6 +4152,14 @@ exports.sendAngebotPDFToAdmin = functions
     .onCall(async (data, context) => {
       console.log("📧 === SEND ANGEBOT PDF TO ADMIN ===");
 
+      // ✅ SECURITY: Authentication check
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated",
+            "Authentifizierung erforderlich"
+        );
+      }
+
       try {
         // 1. Validation
         if (!data.pdfBase64 || !data.filename || !data.werkstattId) {
@@ -4126,6 +4170,25 @@ exports.sendAngebotPDFToAdmin = functions
         }
 
         const { pdfBase64, filename, werkstattId, kennzeichen, kundenname, vereinbarterPreis } = data;
+
+        // 🚧 TEMPORARY: Skip email sending until SendGrid is configured
+        // SendGrid Free Trial has expired, temporarily bypassing admin email
+        console.log("⏭️  [TEMP] Admin-Email übersprungen (SendGrid Trial abgelaufen)");
+        console.log("📧 [TEMP] Würde PDF senden an Admin");
+        console.log("📎 [TEMP] Datei:", filename);
+        console.log("🎯 [TEMP] Kennzeichen:", kennzeichen);
+        console.log("💰 [TEMP] Preis:", vereinbarterPreis);
+
+        // Return success to allow workflow to continue
+        return {
+          success: true,
+          message: "Admin-Email übersprungen (Testmodus - SendGrid Trial abgelaufen)",
+          tempDisabled: true,
+          filename: filename
+        };
+
+        /* TODO: Re-enable email sending after configuring production email service
+        // Options: SendGrid paid plan, Gmail SMTP, AWS SES, Resend, Mailgun
 
         // 2. Load Admin Email from Settings
         console.log(`🔍 Lade Admin-Email für Werkstatt: ${werkstattId}`);
@@ -4200,6 +4263,11 @@ exports.sendAngebotPDFToAdmin = functions
             "internal",
             `Email-Versand fehlgeschlagen: ${error.message}`
         );
+        */
+      } catch (error) {
+        // Dieser catch-Block sollte niemals erreicht werden, da wir früh returnen
+        console.error("❌ Unexpected error in sendAngebotPDFToAdmin:", error);
+        throw new functions.https.HttpsError("internal", "Unerwarteter Fehler");
       }
     });
 
