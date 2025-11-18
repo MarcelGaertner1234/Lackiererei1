@@ -1251,18 +1251,94 @@
             }
             currentVehicle.prozessTimestamps.abgeschlossen = timestamp;
 
+            // ============================================
+            // FIX: Don't spread entire currentVehicle (includes statusHistory with photos = 2+ MB bloat!)
+            // Instead: Build abnahmeData with ONLY needed scalar fields (reduces document from 1.02 MB → ~50 KB)
+            // ============================================
             const abnahmeData = {
-                ...currentVehicle,
-                abnahmeDatum: jetzt.toLocaleDateString('de-DE'),
-                abnahmeZeit: jetzt.toLocaleTimeString('de-DE'),
-                nachherPhotos,
-                abnahmeSignature: signatureData,
+                // Basis-Daten (8 fields)
+                id: currentVehicle.id,
+                kennzeichen: currentVehicle.kennzeichen,
+                marke: currentVehicle.marke,
+                modell: currentVehicle.modell,
+                baujahrVon: currentVehicle.baujahrVon,
+                baujahrBis: currentVehicle.baujahrBis,
+                kmstand: currentVehicle.kmstand,
+                vin: currentVehicle.vin,
+
+                // Kunden-Daten (2 fields)
+                kundenname: currentVehicle.kundenname,
+                kundenId: currentVehicle.kundenId,
+
+                // Service-Daten (6 fields) - Include small objects
+                serviceTyp: currentVehicle.serviceTyp,
+                serviceData: currentVehicle.serviceData,
+                additionalServices: currentVehicle.additionalServices,
+                serviceStatuses: currentVehicle.serviceStatuses,
+                notizen: currentVehicle.notizen,
+                schadenBeschreibung: currentVehicle.schadenBeschreibung,
+
+                // Preis-Daten (7 fields)
+                vereinbarterPreis: currentVehicle.vereinbarterPreis,
+                originalPreis: currentVehicle.originalPreis,
+                rabattAngewendet: currentVehicle.rabattAngewendet,
+                rabattStufe: currentVehicle.rabattStufe,
+                rabattBetrag: currentVehicle.rabattBetrag,
+                kva: currentVehicle.kva,
+                kalkulationData: currentVehicle.kalkulationData,
+
+                // Status (3 fields) - EXCLUDE statusHistory (bloat!)
                 status: 'abgeschlossen',
                 prozessStatus: 'abgeschlossen',
                 prozessTimestamps: currentVehicle.prozessTimestamps,
+
+                // Partner Portal (7 fields)
+                quelle: currentVehicle.quelle,
+                partnerId: currentVehicle.partnerId,
+                partnerName: currentVehicle.partnerName,
+                partnerAnfrageId: currentVehicle.partnerAnfrageId,
+                kundenEmail: currentVehicle.kundenEmail,
+                kundenTelefon: currentVehicle.kundenTelefon,
+                anliefertermin: currentVehicle.anliefertermin,
+
+                // Datum/Zeit (8 fields)
+                datum: currentVehicle.datum,
+                zeit: currentVehicle.zeit,
+                geplantesAbnahmeDatum: currentVehicle.geplantesAbnahmeDatum,
+                abnahmeDatum: jetzt.toLocaleDateString('de-DE'),
+                abnahmeZeit: jetzt.toLocaleTimeString('de-DE'),
+                timestamp: currentVehicle.timestamp,
                 lastModified: timestamp,
+                erstelltAm: currentVehicle.erstelltAm,
+
+                // Abholung (6 fields)
+                fahrzeugAbholung: currentVehicle.fahrzeugAbholung,
+                abholadresse: currentVehicle.abholadresse,
+                abholdatum: currentVehicle.abholdatum,
+                abholzeit: currentVehicle.abholzeit,
+                abholtermin: currentVehicle.abholtermin,
+                abholnotiz: currentVehicle.abholnotiz,
+
+                // Farbe (5 fields)
+                farbe: currentVehicle.farbe,
+                farbname: currentVehicle.farbname,
+                farbnummer: currentVehicle.farbnummer,
+                farbvariante: currentVehicle.farbvariante,
+                lackart: currentVehicle.lackart,
+
+                // Payment (2 fields)
                 bezahlt: false,
-                rechnungGeschrieben: false
+                rechnungGeschrieben: false,
+
+                // Audit Trail (1 field)
+                bearbeitungsHistory: currentVehicle.bearbeitungsHistory,
+
+                // Abnahme-specific fields
+                nachherPhotos,  // Will be removed before Firestore save
+                abnahmeSignature: signatureData,  // Compressed base64 (OK size ~30-50 KB)
+
+                // Rechnung (if exists)
+                rechnung: currentVehicle.rechnung
             };
 
             try {
@@ -2013,8 +2089,20 @@
             // Logo (left side if available)
             if (settings.profil.logoUrl) {
                 try {
-                    doc.addImage(settings.profil.logoUrl, 'PNG', 15, 10, 35, 20);
-                    console.log('✅ Werkstatt-Logo in PDF-Header eingefügt');
+                    // ============================================
+                    // FIX: Check if logo is base64 DataURL (jsPDF can't load remote URLs)
+                    // ============================================
+                    if (settings.profil.logoUrl.startsWith('data:image/')) {
+                        // Detect format from DataURL
+                        const format = settings.profil.logoUrl.includes('data:image/png') ? 'PNG' :
+                                      settings.profil.logoUrl.includes('data:image/jpeg') || settings.profil.logoUrl.includes('data:image/jpg') ? 'JPEG' :
+                                      'PNG';  // Default fallback
+                        doc.addImage(settings.profil.logoUrl, format, 15, 10, 35, 20);
+                        console.log('✅ Werkstatt-Logo in PDF-Header eingefügt');
+                    } else {
+                        console.warn('⚠️ Logo ist Firebase Storage URL (wird übersprungen, PDF continues):', settings.profil.logoUrl.substring(0, 80));
+                        console.warn('💡 Tipp: Logo sollte als base64 DataURL in Firestore gespeichert werden, nicht als Storage URL');
+                    }
                 } catch (error) {
                     console.warn('⚠️ Logo konnte nicht in PDF eingefügt werden:', error);
                 }
@@ -2586,7 +2674,28 @@
             doc.text('VORHER-Fotos (Annahme):', 20, y);
             y += 10;
 
-            for (let i = 0; i < (data.photos || []).length; i += 2) {
+            // ============================================
+            // FIX: Filter out Firebase Storage URLs (jsPDF can't load remote URLs)
+            // Only use base64 DataURL photos (data:image/...)
+            // ============================================
+            const vorherPhotosBase64 = (data.photos || []).filter((photo, idx) => {
+                if (!photo || typeof photo !== 'string') {
+                    console.warn(`⚠️ [PDF] Vorher-Foto ${idx + 1} ist ungültig (nicht string):`, typeof photo);
+                    return false;
+                }
+                if (!photo.startsWith('data:image/')) {
+                    console.warn(`⚠️ [PDF] Vorher-Foto ${idx + 1} ist Firebase Storage URL (wird übersprungen):`, photo.substring(0, 80));
+                    return false;
+                }
+                return true;
+            });
+
+            if (vorherPhotosBase64.length < (data.photos || []).length) {
+                const skipped = (data.photos || []).length - vorherPhotosBase64.length;
+                console.warn(`⚠️ [PDF] ${skipped} Vorher-Foto(s) übersprungen (nicht im base64-Format)`);
+            }
+
+            for (let i = 0; i < vorherPhotosBase64.length; i += 2) {
                 if (y > 240) {
                     doc.addPage();
                     y = 20;
@@ -2595,9 +2704,9 @@
                 const imgWidth = 80;
                 const imgHeight = 60;
 
-                safeAddImage(data.photos[i], 'JPEG', 20, y, imgWidth, imgHeight, `Vorher-Foto ${i+1}`);
-                if (i + 1 < data.photos.length) {
-                    safeAddImage(data.photos[i + 1], 'JPEG', 110, y, imgWidth, imgHeight, `Vorher-Foto ${i+2}`);
+                safeAddImage(vorherPhotosBase64[i], 'JPEG', 20, y, imgWidth, imgHeight, `Vorher-Foto ${i+1}`);
+                if (i + 1 < vorherPhotosBase64.length) {
+                    safeAddImage(vorherPhotosBase64[i + 1], 'JPEG', 110, y, imgWidth, imgHeight, `Vorher-Foto ${i+2}`);
                 }
 
                 y += imgHeight + 10;
