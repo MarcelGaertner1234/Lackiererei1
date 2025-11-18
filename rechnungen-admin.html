@@ -390,6 +390,40 @@
         </div>
     </div>
 
+    <!-- 🆕 BUGFIX 2025-11-18 (FIX #7): Pre-initialize werkstattId from sessionStorage -->
+    <!-- Pattern: Same as liste.html Lines 9-20 -->
+    <!-- Fixes: werkstattId undefined error on page load -->
+    <script>
+        // auth-manager.js stores werkstatt session in sessionStorage (not localStorage)
+        // Pre-load werkstattId BEFORE Firebase initialization to prevent race conditions
+
+        const sessionWerkstatt = sessionStorage.getItem('session_werkstatt');
+        if (sessionWerkstatt) {
+            try {
+                const werkstattData = JSON.parse(sessionWerkstatt);
+                if (werkstattData.werkstattId) {
+                    window.werkstattId = werkstattData.werkstattId;
+                    console.log('✅ [RECHNUNGEN-PRELOAD] werkstattId pre-initialized from sessionStorage:', window.werkstattId);
+                } else {
+                    console.warn('⚠️ [RECHNUNGEN-PRELOAD] session_werkstatt exists but no werkstattId field');
+                }
+            } catch (e) {
+                console.error('❌ [RECHNUNGEN-PRELOAD] Failed to parse sessionStorage session_werkstatt:', e);
+            }
+        } else {
+            console.warn('⚠️ [RECHNUNGEN-PRELOAD] No session_werkstatt in sessionStorage - user must login first');
+        }
+
+        // Fallback: Check localStorage.werkstattId (legacy support, unlikely to exist)
+        if (!window.werkstattId) {
+            const storedWerkstattId = localStorage.getItem('werkstattId');
+            if (storedWerkstattId) {
+                window.werkstattId = storedWerkstattId;
+                console.log('✅ [RECHNUNGEN-PRELOAD] werkstattId pre-initialized from localStorage (fallback):', window.werkstattId);
+            }
+        }
+    </script>
+
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -400,6 +434,12 @@
     <script src="firebase-config.js"></script>
     <script src="listener-registry.js"></script>
 
+    <!-- 🆕 BUGFIX 2025-11-18 (FIX #7): Add auth-manager.js + settings-manager.js -->
+    <!-- Pattern: Same as liste.html Line 47 -->
+    <!-- Required for: window.authManager, getCurrentUser(), isLoggedIn() -->
+    <script src="js/auth-manager.js"></script>
+    <script src="js/settings-manager.js"></script>
+
     <script>
         let allRechnungen = [];
         let filteredRechnungen = [];
@@ -409,6 +449,16 @@
         // Kein Hardcoded 'mosbach' mehr → Multi-Tenant-Isolation gewährleistet
 
         window.addEventListener('firebaseReady', async () => {
+            // 🆕 BUGFIX 2025-11-18 (FIX #7): Login Required Check
+            // Redirect to login page if user not authenticated
+            // Users must login via index.html before accessing admin pages
+            if (!window.authManager || !window.authManager.isLoggedIn()) {
+                console.warn('🚫 [RECHNUNGEN] Not logged in - Redirect to index.html');
+                alert('Bitte melden Sie sich an, um Rechnungen zu verwalten.');
+                window.location.href = 'index.html';
+                return; // Stop execution
+            }
+
             // 🆕 BUGFIX 2025-11-15 (FIX #5): Partner-Zugriff auf Werkstatt-Seiten blockieren
             // Partner dürfen nur das Partner-Portal nutzen, nicht Werkstatt-Seiten
             if (window.authManager) {
@@ -423,15 +473,29 @@
                 }
             }
 
-            // 🆕 BUGFIX 2025-11-18 (FIX #6): werkstattId Race Condition
+            // 🆕 BUGFIX 2025-11-18 (FIX #7): werkstattId Race Condition - IMPROVED
             // Ensure werkstattId is initialized before calling loadRechnungen()
             // Root Cause: firebaseReady fires before auth-manager.js sets werkstattId
-            // Solution: Explicit initialization from authManager or localStorage fallback
+            // Solution: Check sessionStorage FIRST (primary source), then authManager, then localStorage
             if (!window.werkstattId) {
                 console.warn('⚠️ [RECHNUNGEN] werkstattId not yet initialized, attempting to set...');
 
-                // Try authManager first (mitarbeiter login)
-                if (window.authManager) {
+                // 1. Try sessionStorage FIRST (primary source - set by auth-manager.js)
+                const sessionWerkstatt = sessionStorage.getItem('session_werkstatt');
+                if (sessionWerkstatt) {
+                    try {
+                        const werkstattData = JSON.parse(sessionWerkstatt);
+                        if (werkstattData.werkstattId) {
+                            window.werkstattId = werkstattData.werkstattId;
+                            console.log('✅ [RECHNUNGEN] werkstattId set from sessionStorage:', window.werkstattId);
+                        }
+                    } catch (e) {
+                        console.error('❌ [RECHNUNGEN] Failed to parse sessionStorage session_werkstatt:', e);
+                    }
+                }
+
+                // 2. Fallback: Try authManager (if available and sessionStorage failed)
+                if (!window.werkstattId && window.authManager) {
                     const currentUser = window.authManager.getCurrentUser();
                     if (currentUser?.werkstattId) {
                         window.werkstattId = currentUser.werkstattId;
@@ -439,26 +503,20 @@
                     }
                 }
 
-                // Fallback to localStorage (werkstatt login)
+                // 3. Fallback: Try localStorage (legacy support, unlikely to exist)
                 if (!window.werkstattId) {
-                    const storedUser = localStorage.getItem('currentUser');
-                    if (storedUser) {
-                        try {
-                            const userData = JSON.parse(storedUser);
-                            if (userData.werkstattId) {
-                                window.werkstattId = userData.werkstattId;
-                                console.log('✅ [RECHNUNGEN] werkstattId set from localStorage:', window.werkstattId);
-                            }
-                        } catch (e) {
-                            console.error('❌ [RECHNUNGEN] Failed to parse localStorage currentUser:', e);
-                        }
+                    const storedWerkstattId = localStorage.getItem('werkstattId');
+                    if (storedWerkstattId) {
+                        window.werkstattId = storedWerkstattId;
+                        console.log('✅ [RECHNUNGEN] werkstattId set from localStorage (legacy fallback):', window.werkstattId);
                     }
                 }
 
-                // Final verification
+                // Final verification - if still unavailable, redirect to login
                 if (!window.werkstattId) {
                     console.error('❌ [RECHNUNGEN] werkstattId still not available after all attempts!');
                     alert('Fehler: Werkstatt-ID konnte nicht geladen werden. Bitte erneut einloggen.');
+                    window.location.href = 'index.html'; // Redirect to login
                     return; // Stop execution
                 }
             } else {
