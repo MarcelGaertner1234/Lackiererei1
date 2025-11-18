@@ -14,7 +14,7 @@
 // KONFIGURATION
 // ============================================
 
-const CACHE_VERSION = 'v4.6-openai-integration';
+const CACHE_VERSION = 'v4.7-steuerberater-fix';
 const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;
@@ -36,6 +36,12 @@ const STATIC_ASSETS = [
     './mitarbeiter-verwaltung.html',
     './dienstplan.html',
     './offline.html', // Fallback-Seite
+
+    // Steuerberater Dashboard (🆕 2025-11-18 - Service Worker Cache Fix)
+    './steuerberater-bilanz.html',
+    './steuerberater-statistiken.html',
+    './steuerberater-kosten.html',
+    './steuerberater-export.html',
 
     // CSS Files (Root)
     './design-system.css',
