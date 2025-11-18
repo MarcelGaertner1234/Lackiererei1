@@ -730,6 +730,53 @@
             box-shadow: var(--shadow-sm);
         }
 
+        /* TOGGLE BUTTONS - Payment & Invoice Status */
+        .btn-toggle {
+            padding: var(--space-2) var(--space-3);
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-semibold);
+            transition: all var(--duration-base) var(--ease-out);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+            min-width: 100px;
+            justify-content: center;
+        }
+
+        .btn-toggle i {
+            width: 14px;
+            height: 14px;
+        }
+
+        .btn-toggle-success {
+            background: rgba(52, 199, 89, 0.15);
+            color: #34c759;
+            border: 1px solid rgba(52, 199, 89, 0.3);
+        }
+
+        .btn-toggle-success:hover {
+            background: rgba(52, 199, 89, 0.25);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .btn-toggle-secondary {
+            background: rgba(142, 142, 147, 0.15);
+            color: var(--color-text-secondary);
+            border: 1px solid rgba(142, 142, 147, 0.3);
+        }
+
+        .btn-toggle-secondary:hover {
+            background: rgba(142, 142, 147, 0.25);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-sm);
+        }
+
         /* PAGINATION - Glass Container */
         .pagination-container {
             display: flex;
@@ -1686,6 +1733,8 @@
                             <th class="sortable" onclick="sortTable('serviceTyp')">Service</th>
                             <th class="sortable" onclick="sortTable('status')">Status</th>
                             <th class="sortable" onclick="sortTable('datum')">Datum</th>
+                            <th class="sortable" onclick="sortTable('bezahlt')">Bezahlt</th>
+                            <th class="sortable" onclick="sortTable('rechnungGeschrieben')">Rechnung</th>
                             <th>Aktionen</th>
                         </tr>
                     </thead>
@@ -2069,7 +2118,7 @@
             if (vehiclesToDisplay.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="7">
+                        <td colspan="9">
                             <div class="empty-state">
                                 <i data-feather="inbox"></i>
                                 <h3>Keine Fahrzeuge gefunden</h3>
@@ -2104,6 +2153,20 @@
                             </span>
                         </td>
                         <td>${formatDate(vehicle.datum)}</td>
+                        <td>
+                            <button class="btn-toggle ${vehicle.bezahlt ? 'btn-toggle-success' : 'btn-toggle-secondary'}"
+                                    onclick="toggleBezahlt('${vehicle.id}')">
+                                <i data-feather="${vehicle.bezahlt ? 'check-circle' : 'circle'}"></i>
+                                ${vehicle.bezahlt ? 'Bezahlt' : 'Unbezahlt'}
+                            </button>
+                        </td>
+                        <td>
+                            <button class="btn-toggle ${vehicle.rechnungGeschrieben ? 'btn-toggle-success' : 'btn-toggle-secondary'}"
+                                    onclick="toggleRechnung('${vehicle.id}')">
+                                <i data-feather="${vehicle.rechnungGeschrieben ? 'file-text' : 'file'}"></i>
+                                ${vehicle.rechnungGeschrieben ? 'Erstellt' : 'Ausstehend'}
+                            </button>
+                        </td>
                         <td>
                             <div class="action-buttons">
                                 <button class="btn-action btn-view" onclick="viewDetails('${vehicle.id}')">
@@ -2571,6 +2634,60 @@
             } catch (error) {
                 console.error('❌ [LISTE] Fehler beim Löschen:', error);
                 showToast('Fehler beim Löschen des Fahrzeugs', 'error');
+            }
+        }
+
+        // TOGGLE BEZAHLT STATUS
+        async function toggleBezahlt(vehicleId) {
+            const vehicle = allVehicles.find(v => String(v.id) === String(vehicleId));
+            if (!vehicle) {
+                showToast('Fahrzeug nicht gefunden', 'error');
+                return;
+            }
+
+            const newValue = !vehicle.bezahlt;
+
+            try {
+                if (firebaseInitialized && firebaseApp && firebaseApp.updateFahrzeug) {
+                    await firebaseApp.updateFahrzeug(vehicleId, {
+                        bezahlt: newValue,
+                        lastModified: Date.now()
+                    });
+                    showToast(`Bezahlt-Status: ${newValue ? 'Bezahlt' : 'Unbezahlt'}`, 'success');
+                    // Realtime listener will auto-update UI
+                } else {
+                    showToast('Firebase nicht verfügbar', 'error');
+                }
+            } catch (error) {
+                console.error('❌ [TOGGLE] Bezahlt-Fehler:', error);
+                showToast('Fehler beim Aktualisieren', 'error');
+            }
+        }
+
+        // TOGGLE RECHNUNG STATUS
+        async function toggleRechnung(vehicleId) {
+            const vehicle = allVehicles.find(v => String(v.id) === String(vehicleId));
+            if (!vehicle) {
+                showToast('Fahrzeug nicht gefunden', 'error');
+                return;
+            }
+
+            const newValue = !vehicle.rechnungGeschrieben;
+
+            try {
+                if (firebaseInitialized && firebaseApp && firebaseApp.updateFahrzeug) {
+                    await firebaseApp.updateFahrzeug(vehicleId, {
+                        rechnungGeschrieben: newValue,
+                        lastModified: Date.now()
+                    });
+                    showToast(`Rechnung: ${newValue ? 'Erstellt' : 'Ausstehend'}`, 'success');
+                    // Realtime listener will auto-update UI
+                } else {
+                    showToast('Firebase nicht verfügbar', 'error');
+                }
+            } catch (error) {
+                console.error('❌ [TOGGLE] Rechnung-Fehler:', error);
+                showToast('Fehler beim Aktualisieren', 'error');
             }
         }
 
