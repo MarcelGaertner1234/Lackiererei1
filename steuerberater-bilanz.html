@@ -453,7 +453,7 @@
         <div class="header">
             <div style="display: flex; align-items: center; gap: 16px;">
                 <h1>
-                    <i data-feather="bar-chart-3" style="color: var(--color-success);"></i>
+                    <i data-feather="bar-chart-2" style="color: var(--color-success);"></i>
                     Bilanz-Übersicht
                 </h1>
                 <!-- Offene Posten Badge (NEU 2025-11-12) -->
@@ -648,16 +648,45 @@
         </div>
     </div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <!-- 🆕 BUGFIX 2025-11-18: Pre-initialize werkstattId (Race Condition Fix - Pattern 2) -->
+    <script>
+        // Pre-load werkstattId from sessionStorage BEFORE Firebase SDKs load
+        // Prevents race condition where Firebase initializes before werkstattId is set
+        const sessionWerkstatt = sessionStorage.getItem('session_werkstatt');
+        if (sessionWerkstatt) {
+            try {
+                const werkstattData = JSON.parse(sessionWerkstatt);
+                if (werkstattData.werkstattId) {
+                    window.werkstattId = werkstattData.werkstattId;
+                    console.log('✅ [STEUERBERATER-PRELOAD] werkstattId pre-initialized:', window.werkstattId);
+                }
+            } catch (e) {
+                console.error('❌ [STEUERBERATER-PRELOAD] Failed to parse sessionStorage:', e);
+            }
+        }
 
-    <!-- Custom Scripts -->
-    <script src="js/firebase-config.js"></script>
-    <script src="js/toast.js"></script>
-    <script src="js/mobile-first-utils.js"></script>
+        // Fallback: Try localStorage (legacy support)
+        if (!window.werkstattId) {
+            const storedWerkstattId = localStorage.getItem('werkstattId');
+            if (storedWerkstattId) {
+                window.werkstattId = storedWerkstattId;
+                console.log('✅ [STEUERBERATER-PRELOAD] werkstattId from localStorage:', window.werkstattId);
+            }
+        }
+    </script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <!-- App Scripts (CRITICAL: firebase-config.js MUST be first!) -->
+    <script src="firebase-config.js"></script>
+    <script src="listener-registry.js"></script>
     <script src="js/auth-manager.js"></script>
+    <script src="js/settings-manager.js"></script>
+    <script src="js/toast.js"></script>
 
     <script>
         // ============================================
@@ -705,8 +734,8 @@
                         return;
                     }
 
-                    // Get werkstattId from sessionStorage
-                    werkstattId = sessionStorage.getItem('werkstattId');
+                    // Get werkstattId (pre-initialized globally, fallback to sessionStorage)
+                    werkstattId = window.werkstattId || sessionStorage.getItem('werkstattId');
                     if (!werkstattId) {
                         console.error('❌ Keine werkstattId gefunden');
                         showToast('Fehler: Keine Werkstatt-ID gefunden', 'error', 5000);
