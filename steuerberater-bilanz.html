@@ -817,8 +817,17 @@
             let totalKosten = 0;
 
             filteredFahrzeuge.forEach(fahrzeug => {
-                // Umsatz = Brutto-Gesamtsumme
-                const brutto = parseFloat(fahrzeug.gesamtsummeBrutto || 0);
+                // 🔧 2025-11-18: Waterfall-Logic für Revenue (Umsatz)
+                // SOURCE 1: gesamtsummeBrutto (from Entwurf workflow)
+                // SOURCE 2: rechnung.bruttoBetrag (from invoice generation)
+                // SOURCE 3: vereinbarterPreis (agreed price - fallback)
+                // SOURCE 4: 0 (no revenue data available)
+                const brutto = parseFloat(
+                    fahrzeug.gesamtsummeBrutto
+                    || fahrzeug.rechnung?.bruttoBetrag
+                    || fahrzeug.vereinbarterPreis
+                    || 0
+                );
                 totalUmsatz += brutto;
 
                 // Kosten = Ersatzteile + Arbeitslohn + Lackierung + Materialien (Netto)
@@ -880,46 +889,85 @@
         }
 
         // ============================================
-        // CALCULATE NETTO KOSTEN
+        // CALCULATE NETTO KOSTEN (🔧 2025-11-18: Waterfall-Logic)
         // ============================================
+        /**
+         * Waterfall-Logic für Kostenberechnung
+         * SOURCE 1: kalkulationData (BEST - full itemized breakdown)
+         * SOURCE 2: kva.breakdown (PARTIAL - category totals)
+         * SOURCE 3: kostenAufschluesselung (PARTIAL - direct workshop)
+         * SOURCE 4: pdfImport.editedData (PARTIAL - PDF import)
+         * SOURCE 5: 0 (no data available)
+         */
         function calculateNettoKosten(fahrzeug) {
-            let kosten = 0;
+            // ✅ SOURCE 1: kalkulationData (BEST - full itemized breakdown)
+            if (fahrzeug.kalkulationData) {
+                const kalkulation = fahrzeug.kalkulationData;
+                const hasData = (
+                    (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) ||
+                    (kalkulation.arbeitslohn && kalkulation.arbeitslohn.length > 0) ||
+                    (kalkulation.lackierung && kalkulation.lackierung.length > 0) ||
+                    (kalkulation.materialien && kalkulation.materialien.length > 0)
+                );
 
-            // Ersatzteile
-            if (fahrzeug.pdfImport?.editedData?.ersatzteile) {
-                kosten += fahrzeug.pdfImport.editedData.ersatzteile.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                if (hasData) {
+                    let kosten = 0;
+                    kosten += (kalkulation.ersatzteile || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                    kosten += (kalkulation.arbeitslohn || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                    kosten += (kalkulation.lackierung || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                    kosten += (kalkulation.materialien || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                    return kosten;
+                }
             }
 
-            // Arbeitslohn
-            if (fahrzeug.pdfImport?.editedData?.arbeitslohn) {
-                kosten += fahrzeug.pdfImport.editedData.arbeitslohn.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+            // ⚠️ SOURCE 2: kva.breakdown (PARTIAL - category totals only)
+            if (fahrzeug.kva && fahrzeug.kva.breakdown) {
+                const breakdown = fahrzeug.kva.breakdown;
+                return parseFloat(breakdown.ersatzteile || 0)
+                     + parseFloat(breakdown.arbeitslohn || 0)
+                     + parseFloat(breakdown.lackierung || 0)
+                     + parseFloat(breakdown.materialien || 0);
             }
 
-            // Lackierung
-            if (fahrzeug.pdfImport?.editedData?.lackierung) {
-                kosten += fahrzeug.pdfImport.editedData.lackierung.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+            // ⚠️ SOURCE 3: kostenAufschluesselung (PARTIAL - direct workshop breakdown)
+            if (fahrzeug.kostenAufschluesselung) {
+                const kosten = fahrzeug.kostenAufschluesselung;
+                return parseFloat(kosten.ersatzteile || 0)
+                     + parseFloat(kosten.arbeitslohn || 0)
+                     + parseFloat(kosten.lackierung || 0)
+                     + parseFloat(kosten.materialien || 0);
             }
 
-            // Materialien - ERWEITERT (2025-11-12): Geplante + Nachbestellte Materialien
-            let materialKosten = 0;
+            // ⚠️ SOURCE 4: pdfImport.editedData (PARTIAL - PDF import)
+            if (fahrzeug.pdfImport?.editedData) {
+                let kosten = 0;
+                const data = fahrzeug.pdfImport.editedData;
 
-            // 1. Geplante Materialien (aus PDF-Import)
-            if (fahrzeug.pdfImport?.editedData?.materialien) {
-                materialKosten += fahrzeug.pdfImport.editedData.materialien.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                if (data.ersatzteile) {
+                    kosten += data.ersatzteile.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                }
+                if (data.arbeitslohn) {
+                    kosten += data.arbeitslohn.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                }
+                if (data.lackierung) {
+                    kosten += data.lackierung.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                }
+                if (data.materialien) {
+                    kosten += data.materialien.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                }
+
+                // Add nachbestellungen (material orders)
+                if (fahrzeug.nachbestellungen && Array.isArray(fahrzeug.nachbestellungen)) {
+                    kosten += fahrzeug.nachbestellungen.reduce((sum, bestellung) => {
+                        return sum + (bestellung.gesamtpreis || 0);
+                    }, 0);
+                }
+
+                return kosten;
             }
 
-            // 2. Nachbestellte Materialien (beim Fahrzeug-Abschluss übertragen)
-            if (fahrzeug.nachbestellungen && Array.isArray(fahrzeug.nachbestellungen)) {
-                materialKosten += fahrzeug.nachbestellungen.reduce((sum, bestellung) => {
-                    // Verwende preisTatsaechlich (falls vorhanden), sonst Fallback auf gesamtpreis
-                    const preis = bestellung.gesamtpreis || 0;
-                    return sum + preis;
-                }, 0);
-            }
-
-            kosten += materialKosten;
-
-            return kosten;
+            // ❌ SOURCE 5: No data available
+            return 0;
         }
 
         // ============================================
