@@ -899,6 +899,98 @@
         }
 
         // ========================================
+        // KALKULATION DATA RETRIEVAL (Waterfall Logic)
+        // ========================================
+
+        /**
+         * 🔧 2025-11-18: Waterfall-Logic für Kalkulationsdaten
+         * Unterstützt ALLE Szenarien:
+         * - Entwurf-Workflow: Full kalkulationData (itemized)
+         * - KVA-Workflow: Category totals (kva.breakdown)
+         * - Direkt-Werkstatt: Nur vereinbarterPreis (no breakdown)
+         *
+         * @param {Object} fahrzeug - Fahrzeug-Dokument aus Firestore
+         * @returns {Object} { source, quality, data: { ersatzteile, arbeitslohn, lackierung, materialien } }
+         */
+        async function getKalkulationDataForInvoice(fahrzeug) {
+            // ✅ SOURCE 1: Entwurf kalkulationData (BEST - full itemized breakdown)
+            if (fahrzeug.kalkulationData) {
+                const kalkulation = fahrzeug.kalkulationData;
+                const hasData = (
+                    (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) ||
+                    (kalkulation.arbeitslohn && kalkulation.arbeitslohn.length > 0) ||
+                    (kalkulation.lackierung && kalkulation.lackierung.length > 0) ||
+                    (kalkulation.materialien && kalkulation.materialien.length > 0)
+                );
+
+                if (hasData) {
+                    console.log('✅ [KALKULATION] Using kalkulationData (full itemized breakdown)');
+                    return {
+                        source: 'kalkulationData',
+                        quality: 'full',
+                        data: kalkulation
+                    };
+                }
+            }
+
+            // ⚠️ SOURCE 2: KVA breakdown (PARTIAL - category totals only)
+            if (fahrzeug.kva && fahrzeug.kva.breakdown) {
+                const breakdown = fahrzeug.kva.breakdown;
+                console.log('⚠️ [KALKULATION] Using kva.breakdown (category totals, no items)');
+                return {
+                    source: 'kva.breakdown',
+                    quality: 'partial',
+                    data: {
+                        ersatzteile: breakdown.ersatzteile || 0,
+                        arbeitslohn: breakdown.arbeitslohn || 0,
+                        lackierung: breakdown.lackierung || 0,
+                        materialien: breakdown.materialien || 0
+                    }
+                };
+            }
+
+            // ⚠️ SOURCE 3: KVA varianten (FALLBACK - flat structure)
+            if (fahrzeug.kva && fahrzeug.kva.varianten) {
+                const varianteName = fahrzeug.kva.gewaehlteVariante || 'original';
+                const variante = fahrzeug.kva.varianten[varianteName];
+
+                if (variante) {
+                    console.log('⚠️ [KALKULATION] Using kva.varianten (flat structure)');
+                    return {
+                        source: 'kva.varianten',
+                        quality: 'partial',
+                        data: {
+                            ersatzteile: variante.ersatzteileNetto || 0,
+                            arbeitslohn: variante.arbeitslohnNetto || 0,
+                            lackierung: variante.lackierungNetto || 0,
+                            materialien: variante.materialienNetto || 0
+                        }
+                    };
+                }
+            }
+
+            // ❌ SOURCE 4: vereinbarterPreis ONLY (WORST - no breakdown!)
+            if (fahrzeug.vereinbarterPreis) {
+                console.warn('❌ [KALKULATION] NO calculation data - using vereinbarterPreis only!');
+                return {
+                    source: 'vereinbarterPreis',
+                    quality: 'none',
+                    data: {
+                        gesamt: parseFloat(fahrzeug.vereinbarterPreis) || 0
+                    }
+                };
+            }
+
+            // ❌ CRITICAL: No data at all!
+            console.error('❌ [KALKULATION] Keine Kalkulationsdaten verfügbar!');
+            return {
+                source: 'none',
+                quality: 'none',
+                data: null
+            };
+        }
+
+        // ========================================
         // PDF DOWNLOAD (✅ Full Implementation with Multi-Service Support)
         // ========================================
 
@@ -948,7 +1040,11 @@
                 console.log('📄 [PDF-DEBUG] rechtliches object:', rechtliches);
                 console.log('📄 [PDF-DEBUG] rechtliches.rechtsform:', rechtliches.rechtsform);
 
-                // 3. Generate PDF with jsPDF
+                // 3. Get Kalkulation Data (Waterfall Logic)
+                const kalkulationResult = await getKalkulationDataForInvoice(fahrzeug);
+                console.log('📊 [PDF] Kalkulation Result:', kalkulationResult);
+
+                // 4. Generate PDF with jsPDF
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF();
 
@@ -1118,6 +1214,141 @@
                     doc.text('Service-Leistung', 20, y);
                     doc.setFont(undefined, 'bold');
                     doc.text(rechnung.bruttoBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                    doc.setFont(undefined, 'normal');
+                    y += 10;
+                }
+
+                // ========================================
+                // KALKULATIONSAUFSCHLÜSSELUNG (🆕 2025-11-18)
+                // ========================================
+                if (kalkulationResult && kalkulationResult.quality !== 'none') {
+                    y += 10;
+
+                    // Section Header
+                    doc.setFillColor(76, 175, 80);  // Grün für Kalkulation
+                    doc.rect(15, y - 5, 180, 8, 'F');
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFont(undefined, 'bold');
+                    doc.setFontSize(13);
+                    doc.text('KALKULATIONSAUFSCHLÜSSELUNG', 20, y);
+                    doc.setTextColor(0, 0, 0);
+                    y += 10;
+
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'normal');
+
+                    const kalkData = kalkulationResult.data;
+
+                    if (kalkulationResult.quality === 'full') {
+                        // ✅ FULL: Zeige Kategorie-Summen aus itemized data
+                        console.log('📊 [PDF] Rendering FULL kalkulation (category totals from items)');
+
+                        // Helper: Calculate category total
+                        const calcTotal = (items) => {
+                            if (!items || items.length === 0) return 0;
+                            return items.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
+                        };
+
+                        const ersatzteileTotal = calcTotal(kalkData.ersatzteile);
+                        const arbeitslohnTotal = calcTotal(kalkData.arbeitslohn);
+                        const lackierungTotal = calcTotal(kalkData.lackierung);
+                        const materialienTotal = calcTotal(kalkData.materialien);
+
+                        // Nur nicht-leere Kategorien anzeigen
+                        if (ersatzteileTotal > 0) {
+                            doc.text('Ersatzteile:', 20, y);
+                            doc.text(ersatzteileTotal.toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+                        if (arbeitslohnTotal > 0) {
+                            doc.text('Arbeitslohn:', 20, y);
+                            doc.text(arbeitslohnTotal.toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+                        if (lackierungTotal > 0) {
+                            doc.text('Lackierung:', 20, y);
+                            doc.text(lackierungTotal.toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+                        if (materialienTotal > 0) {
+                            doc.text('Materialien:', 20, y);
+                            doc.text(materialienTotal.toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+
+                        // Zwischensumme
+                        const zwischensumme = ersatzteileTotal + arbeitslohnTotal + lackierungTotal + materialienTotal;
+                        y += 3;
+                        doc.setDrawColor(200, 200, 200);
+                        doc.line(140, y, 195, y);
+                        y += 5;
+                        doc.setFont(undefined, 'bold');
+                        doc.text('Zwischensumme:', 140, y);
+                        doc.text(zwischensumme.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        doc.setFont(undefined, 'normal');
+                        y += 5;
+
+                    } else if (kalkulationResult.quality === 'partial') {
+                        // ⚠️ PARTIAL: Zeige Kategorie-Summen direkt (kva.breakdown)
+                        console.log('📊 [PDF] Rendering PARTIAL kalkulation (category totals only)');
+
+                        if (kalkData.ersatzteile > 0) {
+                            doc.text('Ersatzteile:', 20, y);
+                            doc.text(parseFloat(kalkData.ersatzteile).toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+                        if (kalkData.arbeitslohn > 0) {
+                            doc.text('Arbeitslohn:', 20, y);
+                            doc.text(parseFloat(kalkData.arbeitslohn).toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+                        if (kalkData.lackierung > 0) {
+                            doc.text('Lackierung:', 20, y);
+                            doc.text(parseFloat(kalkData.lackierung).toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+                        if (kalkData.materialien > 0) {
+                            doc.text('Materialien:', 20, y);
+                            doc.text(parseFloat(kalkData.materialien).toFixed(2) + ' €', 185, y, { align: 'right' });
+                            y += 5;
+                        }
+
+                        // Zwischensumme
+                        const zwischensumme =
+                            parseFloat(kalkData.ersatzteile || 0) +
+                            parseFloat(kalkData.arbeitslohn || 0) +
+                            parseFloat(kalkData.lackierung || 0) +
+                            parseFloat(kalkData.materialien || 0);
+
+                        y += 3;
+                        doc.setDrawColor(200, 200, 200);
+                        doc.line(140, y, 195, y);
+                        y += 5;
+                        doc.setFont(undefined, 'bold');
+                        doc.text('Zwischensumme:', 140, y);
+                        doc.text(zwischensumme.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        doc.setFont(undefined, 'normal');
+                        y += 5;
+                    }
+
+                } else if (kalkulationResult && kalkulationResult.quality === 'none' && kalkulationResult.data?.gesamt) {
+                    // ❌ NONE: Zeige nur Gesamtpreis + Hinweis
+                    console.log('📊 [PDF] Rendering NONE kalkulation (vereinbarterPreis only)');
+
+                    y += 10;
+
+                    // Info-Box
+                    doc.setFillColor(255, 243, 205);  // Gelb für Warnung
+                    doc.rect(15, y - 3, 180, 15, 'F');
+                    doc.setFontSize(9);
+                    doc.setTextColor(120, 85, 0);
+                    doc.text('ℹ️ Hinweis: Detaillierte Kostenaufschlüsselung nicht verfügbar.', 20, y);
+                    doc.setTextColor(0, 0, 0);
+                    y += 6;
+                    doc.setFont(undefined, 'bold');
+                    doc.setFontSize(10);
+                    doc.text('Vereinbarter Gesamtpreis:', 20, y);
+                    doc.text(kalkulationResult.data.gesamt.toFixed(2) + ' €', 185, y, { align: 'right' });
                     doc.setFont(undefined, 'normal');
                     y += 10;
                 }
