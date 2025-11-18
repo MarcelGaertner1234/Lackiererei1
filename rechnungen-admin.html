@@ -533,12 +533,39 @@
 
                 const snapshot = await window.getCollection('fahrzeuge').get();
 
+                // 🔍 DEBUG: Log all vehicles before filtering
+                console.log('🔍 [DEBUG] Gesamte Fahrzeuge aus Firestore:', snapshot.size);
+
                 allRechnungen = [];
+                let debugStats = {
+                    total: 0,
+                    hasRechnung: 0,
+                    hasKVA: 0,
+                    noRechnung: 0,
+                    statusAbgeschlossen: 0,
+                    statusFertig: 0,
+                    matchesFilter: 0
+                };
+
                 snapshot.forEach(doc => {
                     const f = doc.data();
+                    debugStats.total++;
+
+                    // 🔍 DEBUG: Log each vehicle's relevant fields
+                    console.log(`🔍 [DEBUG] Fahrzeug ${doc.id}:`, {
+                        kennzeichen: f.kennzeichen,
+                        status: f.status,
+                        prozessStatus: f.prozessStatus,
+                        hasRechnung: !!f.rechnung,
+                        hasKVA: !!f.kva,
+                        kvaType: typeof f.kva
+                    });
 
                     // ✅ Lade Fahrzeuge MIT Rechnung
                     if (f.rechnung) {
+                        debugStats.hasRechnung++;
+                        debugStats.matchesFilter++;
+                        console.log(`✅ [DEBUG] Fahrzeug ${doc.id} hat Rechnung → wird geladen`);
                         allRechnungen.push({
                             fahrzeugId: doc.id,
                             hasRechnung: true,
@@ -548,13 +575,35 @@
                     // 🆕 2025-11-11: Lade auch Fahrzeuge OHNE Rechnung, aber mit KVA + Status fertig/abgeholt/abgeschlossen
                     // 🔧 2025-11-18 (FIX #8): Added "abgeschlossen" status - vehicles after Abnahme were excluded from table
                     else if (!f.rechnung && f.kva && (f.prozessStatus === 'fertig' || f.prozessStatus === 'abgeschlossen' || f.status === 'abgeholt' || f.status === 'abgeschlossen')) {
+                        debugStats.matchesFilter++;
+                        console.log(`✅ [DEBUG] Fahrzeug ${doc.id} ohne Rechnung aber mit KVA + Status → wird geladen`);
                         allRechnungen.push({
                             fahrzeugId: doc.id,
                             hasRechnung: false,
                             ...f
                         });
+                    } else {
+                        // 🔍 DEBUG: Log why vehicle was filtered out
+                        const reasons = [];
+                        if (f.rechnung) reasons.push('hat bereits Rechnung');
+                        if (!f.kva) reasons.push('keine KVA');
+                        if (f.prozessStatus !== 'fertig' && f.prozessStatus !== 'abgeschlossen' && f.status !== 'abgeholt' && f.status !== 'abgeschlossen') {
+                            reasons.push(`Status nicht passend (prozessStatus: ${f.prozessStatus}, status: ${f.status})`);
+                        }
+                        console.log(`❌ [DEBUG] Fahrzeug ${doc.id} wird ausgefiltert: ${reasons.join(', ')}`);
                     }
+
+                    // Update debug stats
+                    if (f.rechnung) debugStats.hasRechnung++;
+                    if (!f.rechnung) debugStats.noRechnung++;
+                    if (f.kva) debugStats.hasKVA++;
+                    if (f.prozessStatus === 'abgeschlossen' || f.status === 'abgeschlossen') debugStats.statusAbgeschlossen++;
+                    if (f.prozessStatus === 'fertig') debugStats.statusFertig++;
                 });
+
+                // 🔍 DEBUG: Summary statistics
+                console.log('🔍 [DEBUG] Zusammenfassung:', debugStats);
+                console.log(`🔍 [DEBUG] Geladene Fahrzeuge in Tabelle: ${allRechnungen.length}`);
 
                 // Sortierung: Fahrzeuge MIT Rechnung nach Erstelldatum, OHNE Rechnung nach Fahrzeug-Datum
                 allRechnungen.sort((a, b) => {
