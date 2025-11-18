@@ -5975,6 +5975,96 @@
         // ✅ FIX 19: CASCADE DELETE DEBUG FUNCTIONS entfernt
         // (addDebugLog, renderDebugPanel, toggleDebugPanel, clearDebugLog)
 
+        /**
+         * ✅ FIX #41 (2025-11-19): Create Bestellungen from Entwurf pipeline
+         * Pattern 30: Silent Data Loss - bestellungen must be transferred when accepting Entwurf
+         * Mirrors: annahme.html autoConvertErsatzteileToBestellungen() (Lines 5060-5149)
+         *
+         * @param {Array} bestellungen - Array of bestellung objects from anfrage.pdfImport.bestellungen
+         * @param {string} kennzeichen - Vehicle license plate
+         * @param {string} fahrzeugId - Vehicle ID for linking bestellungen to vehicle
+         * @returns {number} Number of bestellungen created
+         */
+        async function createBestellungenFromEntwurf(bestellungen, kennzeichen, fahrzeugId) {
+            if (!bestellungen || bestellungen.length === 0) {
+                console.log('ℹ️ Keine Bestellungen für Übertragung aus Entwurf');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`🔄 ENTWURF-PIPELINE: Übertrage ${bestellungen.length} Bestellungen...`);
+
+            const userName = localStorage.getItem('userName') || 'Partner';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let bestellungenCreated = 0;
+
+            for (const bestellung of bestellungen) {
+                try {
+                    // Generate unique ID
+                    const bestellungId = 'best_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    // Create bestellung document (mirrors annahme.html structure)
+                    const bestellungData = {
+                        id: bestellungId,
+                        etn: bestellung.etn || '',
+                        benennung: bestellung.benennung || bestellung.teil || '',
+                        menge: bestellung.menge || bestellung.anzahl || 1,
+                        einzelpreis: parseFloat(bestellung.einzelpreis) || 0,
+                        gesamtpreis: parseFloat(bestellung.gesamtpreis) || 0,
+                        status: 'bestellt',
+                        bestelltVon: userName,
+                        bestelltAm: new Date().toISOString(),
+                        werkstattId: werkstattId,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        fahrzeugId: String(fahrzeugId),  // CRITICAL: String type for query consistency
+                        kennzeichen: kennzeichen,
+                        source: 'entwurf-auto',  // Mark as created from Entwurf pipeline
+                        sourceRequestId: null,
+
+                        // Extended fields (2025-11-11)
+                        preisGeschaetzt: parseFloat(bestellung.einzelpreis) || 0,
+                        preisTatsaechlich: null,
+                        voraussichtlicheAnkunft: null,
+                        lieferant: {
+                            name: '',
+                            kontakt: '',
+                            bestellnummer: ''
+                        },
+                        notizen: ''
+                    };
+
+                    const docRef = window.getCollection('bestellungen').doc(bestellungId);
+                    batch.set(docRef, bestellungData);
+
+                    bestellungenCreated++;
+                    console.log(`   ✅ Bestellung erstellt: ${bestellung.etn || 'N/A'} - ${bestellung.benennung || bestellung.teil}`);
+
+                } catch (error) {
+                    console.error(`   ❌ Fehler beim Erstellen von Bestellung:`, bestellung, error);
+                }
+            }
+
+            // Batch commit
+            if (bestellungenCreated > 0) {
+                try {
+                    await batch.commit();
+                    console.log(`✅ ENTWURF-PIPELINE: ${bestellungenCreated} Bestellungen automatisch erstellt`);
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern der Entwurf-Bestellungen:', error);
+                    return 0;
+                }
+            } else {
+                console.log('ℹ️ ENTWURF-PIPELINE: Keine Bestellungen erstellt');
+            }
+
+            return bestellungenCreated;
+        }
+
         async function annehmenKVA(anfrageId, event) {
             event?.stopPropagation();
 
@@ -6239,6 +6329,28 @@
                     });
 
                     console.log('✅ Transaction committed successfully!');
+
+                    // ✅ FIX #41 (2025-11-19): Create Bestellungen documents from Entwurf pipeline
+                    // AFTER transaction succeeds, create individual bestellungen docs
+                    // This ensures kanban.html can query them via fahrzeugId
+                    if (anfrage.pdfImport?.bestellungen && anfrage.pdfImport.bestellungen.length > 0) {
+                        try {
+                            console.log('📦 ENTWURF-PIPELINE: Erstelle Bestellungen-Dokumente...');
+                            const bestellungenCount = await createBestellungenFromEntwurf(
+                                anfrage.pdfImport.bestellungen,
+                                anfrage.kennzeichen,
+                                fahrzeugData.id
+                            );
+                            console.log(`✅ ${bestellungenCount} Bestellungen erfolgreich übertragen`);
+                        } catch (bestellungenError) {
+                            // Non-blocking error - log but continue with vehicle creation
+                            console.error('⚠️ Fehler beim Übertragen von Bestellungen (non-blocking):', bestellungenError);
+                            console.warn('   → Fahrzeug wurde erfolgreich erstellt, aber Bestellungen fehlen!');
+                            console.warn('   → Bitte Bestellungen manuell nachtragen.');
+                        }
+                    } else {
+                        console.log('ℹ️ Keine Bestellungen zum Übertragen (pdfImport?.bestellungen leer)');
+                    }
                 } catch (transactionError) {
                     console.error('❌ TRANSACTION FEHLGESCHLAGEN!', transactionError);
                     console.error('   Error Message:', transactionError.message);
@@ -6822,6 +6934,13 @@
 
                 // ✅ FIX #18: Kalkulations-Daten preservation (Optional - für Audit)
                 kalkulationData: anfrage.kalkulationData || null,
+
+                // ✅ FIX #41 (2025-11-19): Bestellungen from Entwurf pipeline
+                // Pattern 30: Silent Data Loss - bestellungen must be transferred when accepting Entwurf
+                // Mirrors Ersatzteile fix (Nov 17, commit d97dffb) + KVA object transfer (Line 6821)
+                ...(anfrage.pdfImport?.bestellungen && anfrage.pdfImport.bestellungen.length > 0 && {
+                    bestellungenFromEntwurf: anfrage.pdfImport.bestellungen  // Preserve for reference
+                }),
 
                 notizen: anfrage.angebotDetails?.serviceBeschreibung ||  // ✅ FIX #14: Angebot description
                          anfrage.schadenBeschreibung ||
