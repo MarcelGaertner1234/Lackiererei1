@@ -423,6 +423,48 @@
                 }
             }
 
+            // 🆕 BUGFIX 2025-11-18 (FIX #6): werkstattId Race Condition
+            // Ensure werkstattId is initialized before calling loadRechnungen()
+            // Root Cause: firebaseReady fires before auth-manager.js sets werkstattId
+            // Solution: Explicit initialization from authManager or localStorage fallback
+            if (!window.werkstattId) {
+                console.warn('⚠️ [RECHNUNGEN] werkstattId not yet initialized, attempting to set...');
+
+                // Try authManager first (mitarbeiter login)
+                if (window.authManager) {
+                    const currentUser = window.authManager.getCurrentUser();
+                    if (currentUser?.werkstattId) {
+                        window.werkstattId = currentUser.werkstattId;
+                        console.log('✅ [RECHNUNGEN] werkstattId set from authManager:', window.werkstattId);
+                    }
+                }
+
+                // Fallback to localStorage (werkstatt login)
+                if (!window.werkstattId) {
+                    const storedUser = localStorage.getItem('currentUser');
+                    if (storedUser) {
+                        try {
+                            const userData = JSON.parse(storedUser);
+                            if (userData.werkstattId) {
+                                window.werkstattId = userData.werkstattId;
+                                console.log('✅ [RECHNUNGEN] werkstattId set from localStorage:', window.werkstattId);
+                            }
+                        } catch (e) {
+                            console.error('❌ [RECHNUNGEN] Failed to parse localStorage currentUser:', e);
+                        }
+                    }
+                }
+
+                // Final verification
+                if (!window.werkstattId) {
+                    console.error('❌ [RECHNUNGEN] werkstattId still not available after all attempts!');
+                    alert('Fehler: Werkstatt-ID konnte nicht geladen werden. Bitte erneut einloggen.');
+                    return; // Stop execution
+                }
+            } else {
+                console.log('✅ [RECHNUNGEN] werkstattId already initialized:', window.werkstattId);
+            }
+
             feather.replace();
             await loadRechnungen();
         });
