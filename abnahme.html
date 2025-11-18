@@ -1347,8 +1347,28 @@
 
                     await localFirebaseApp.savePhotosToFirestore(currentVehicle.id, nachherPhotos, 'nachher');
 
-                    const dataForFirestore = { ...abnahmeData };
+                    // ============================================
+                    // 🛡️ FIRESTORE FIX: Remove undefined values (Firestore doesn't allow them)
+                    // Problem: Some fields in abnahmeData may be undefined (e.g., serviceData, kalkulationData)
+                    // Firestore Rules: null ✅, missing fields ✅, undefined ❌ FORBIDDEN
+                    // Solution: Filter out all undefined values before Firestore update
+                    // ============================================
+                    const dataForFirestore = Object.fromEntries(
+                        Object.entries(abnahmeData)
+                            .filter(([key, value]) => value !== undefined)
+                    );
+
+                    // Remove non-Firestore fields
                     delete dataForFirestore.nachherPhotos;
+
+                    // DEBUG: Log which fields were filtered out due to undefined
+                    const undefinedFields = Object.entries(abnahmeData)
+                        .filter(([key, value]) => value === undefined)
+                        .map(([key]) => key);
+                    if (undefinedFields.length > 0) {
+                        console.warn('⚠️ [ABNAHME] Gefilterte undefined Fields:', undefinedFields.join(', '));
+                        console.warn('💡 Diese Felder werden aus dem Firestore-Update ausgelassen (Firestore erlaubt keine undefined values)');
+                    }
 
                     await localFirebaseApp.updateFahrzeug(currentVehicle.id, dataForFirestore);
                     console.log('✅ Status in Firestore aktualisiert');
