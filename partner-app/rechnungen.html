@@ -901,6 +901,8 @@
         // PDF DOWNLOAD (✅ Full Implementation with Multi-Service Support)
         // ========================================
 
+        // 🔧 2025-11-18: KOMPLETT ÜBERARBEITETE PDF-GENERATION
+        // Professionelles Layout mit MwSt, IBAN, rechtlichen Angaben
         async function downloadPDF(fahrzeugId) {
             try {
                 // 1. Load complete fahrzeug data
@@ -920,57 +922,90 @@
                     return;
                 }
 
-                // 2. Generate PDF with jsPDF
+                // 2. Load Settings (Steuer, Bank, Rechtliches)
+                const settings = window.settingsManager?.getCurrentSettings();
+                const steuer = settings?.steuer || {};
+                const bank = settings?.bank || {};
+                const rechtliches = settings?.rechtliches || {};
+                const rechnungsConfig = settings?.rechnungsConfig || {};
+                const profil = settings?.profil || {};
+
+                // 3. Generate PDF with jsPDF
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF();
 
                 let y = 20;
 
-                // Header - Company Info
+                // ========================================
+                // HEADER - Company Info
+                // ========================================
                 doc.setFont(undefined, 'bold');
                 doc.setFontSize(16);
-                doc.text('Auto-Lackierzentrum Mosbach', 20, y);
+                doc.text(profil.name || 'Auto-Lackierzentrum Mosbach', 20, y);
                 y += 7;
-                doc.setFontSize(10);
+                doc.setFontSize(9);
                 doc.setFont(undefined, 'normal');
-                doc.text('Musterstraße 123 • 74821 Mosbach', 20, y);
-                y += 5;
-                doc.text('Tel: +49 6261 12345 • info@auto-lackierzentrum.de', 20, y);
-                y += 15;
-
-                // Invoice Number & Date
-                doc.setFont(undefined, 'bold');
-                doc.setFontSize(18);
-                doc.text(`RECHNUNG ${rechnung.rechnungsnummer}`, 20, y);
+                doc.text(profil.adresse || 'Musterstraße 1, 74821 Mosbach', 20, y);
+                y += 4;
+                doc.text(`Tel: ${profil.telefon || '+49 6261 123456'} • ${profil.email || 'info@auto-lackierzentrum.de'}`, 20, y);
+                y += 4;
+                // Steuernummer ODER USt-IdNr
+                if (steuer.steuernummer) {
+                    doc.text(`Steuernummer: ${steuer.steuernummer}`, 20, y);
+                    y += 4;
+                } else if (steuer.ustIdNr) {
+                    doc.text(`USt-IdNr: ${steuer.ustIdNr}`, 20, y);
+                    y += 4;
+                }
                 y += 10;
 
+                // ========================================
+                // ZWEISPALTEN-LAYOUT: Rechnungsempfänger + Metadaten
+                // ========================================
+                const startY = y;
+
+                // Linke Spalte: Rechnungsempfänger
+                doc.setFont(undefined, 'bold');
                 doc.setFontSize(10);
-                doc.setFont(undefined, 'normal');
-                doc.text(`Rechnungsdatum: ${rechnung.erstelltAm.toDate().toLocaleDateString('de-DE')}`, 20, y);
-                y += 5;
-                doc.text(`Fällig am: ${rechnung.faelligAm.toDate().toLocaleDateString('de-DE')}`, 20, y);
-                y += 5;
-                doc.text(`Status: ${rechnung.zahlungsstatus === 'bezahlt' ? '✅ Bezahlt' : '⏳ Offen'}`, 20, y);
-                y += 15;
-
-                // Customer Info
-                doc.setFont(undefined, 'bold');
-                doc.text('Kunde:', 20, y);
+                doc.text('Rechnungsempfänger:', 20, y);
                 y += 5;
                 doc.setFont(undefined, 'normal');
+                doc.setFontSize(9);
                 doc.text(fahrzeug.partnerName || 'Partner', 20, y);
-                y += 5;
+                y += 4;
                 doc.text(fahrzeug.kundenEmail || '', 20, y);
-                y += 15;
 
-                // Vehicle Info
+                // Rechte Spalte: Rechnungs-Metadaten
+                let rightY = startY;
                 doc.setFont(undefined, 'bold');
+                doc.setFontSize(14);
+                doc.text(`RECHNUNG ${rechnung.rechnungsnummer}`, 120, rightY);
+                rightY += 8;
+                doc.setFont(undefined, 'normal');
+                doc.setFontSize(9);
+                doc.text(`Rechnungsdatum: ${rechnung.erstelltAm.toDate().toLocaleDateString('de-DE')}`, 120, rightY);
+                rightY += 4;
+                // Leistungszeitraum (optional, falls vorhanden)
+                if (fahrzeug.abnahmeDatum) {
+                    doc.text(`Leistungszeitraum: ${fahrzeug.abnahmeDatum}`, 120, rightY);
+                    rightY += 4;
+                }
+                doc.text(`Fällig am: ${rechnung.faelligAm.toDate().toLocaleDateString('de-DE')}`, 120, rightY);
+
+                y = Math.max(y, rightY) + 10;
+
+                // ========================================
+                // FAHRZEUG-INFO
+                // ========================================
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(10);
                 doc.text('Fahrzeug:', 20, y);
                 y += 5;
                 doc.setFont(undefined, 'normal');
+                doc.setFontSize(9);
                 const fahrzeugInfo = `${fahrzeug.marke || ''} ${fahrzeug.modell || ''} (${fahrzeug.kennzeichen || fahrzeug.auftragsnummer || 'k.A.'})`;
                 doc.text(fahrzeugInfo, 20, y);
-                y += 15;
+                y += 10;
 
                 // 🆕 LINE ITEMS - Multi-Service Breakdown
                 doc.setFillColor(33, 150, 243);
@@ -1069,31 +1104,146 @@
                     y += 10;
                 }
 
-                // Totals
+                // ========================================
+                // MWST-AUFSCHLÜSSELUNG & TOTALS
+                // ========================================
                 y += 10;
                 doc.setDrawColor(200, 200, 200);
                 doc.line(15, y, 195, y);
                 y += 7;
 
                 doc.setFont(undefined, 'normal');
-                doc.setFontSize(11);
-                doc.text('Brutto:', 140, y);
-                doc.text(rechnung.bruttoBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 6;
+                doc.setFontSize(10);
 
-                doc.text(`Rabatt (${rechnung.rabattProzent}%):`, 140, y);
-                doc.setTextColor(34, 197, 94);  // Green
-                doc.text('-' + rechnung.rabattBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
-                doc.setTextColor(0, 0, 0);
-                y += 10;
+                // MwSt-Berechnung (von Brutto → Netto + MwSt)
+                const mwstSatz = steuer.mwstSatz || 19;
+                const nettoBetrag = rechnung.nettoBetrag;
+                const bruttoVorRabatt = rechnung.bruttoBetrag;
 
+                // Wenn Rabatt vorhanden, erst Brutto-Rabatt zeigen
+                if (rechnung.rabattBetrag > 0) {
+                    doc.text('Brutto:', 140, y);
+                    doc.text(bruttoVorRabatt.toFixed(2) + ' €', 185, y, { align: 'right' });
+                    y += 5;
+                    doc.text(`Rabatt (${rechnung.rabattProzent}%):`, 140, y);
+                    doc.setTextColor(34, 197, 94);
+                    doc.text('-' + rechnung.rabattBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                    doc.setTextColor(0, 0, 0);
+                    y += 5;
+                }
+
+                // Netto (ohne MwSt)
+                const nettoOhneMwst = nettoBetrag / (1 + mwstSatz / 100);
+                const mwstBetrag = nettoBetrag - nettoOhneMwst;
+
+                doc.text('Netto:', 140, y);
+                doc.text(nettoOhneMwst.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 5;
+
+                // Kleinunternehmer-Hinweis ODER MwSt
+                if (steuer.kleinunternehmer) {
+                    doc.setFontSize(8);
+                    doc.text('Gemäß §19 UStG wird keine', 140, y);
+                    y += 4;
+                    doc.text('Umsatzsteuer berechnet', 140, y);
+                    y += 6;
+                    doc.setFontSize(10);
+                } else {
+                    doc.text(`${mwstSatz}% MwSt:`, 140, y);
+                    doc.text(mwstBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                    y += 7;
+                }
+
+                // Gesamt-Betrag (grüne Box)
                 doc.setFillColor(76, 175, 80);
                 doc.rect(135, y - 5, 60, 10, 'F');
                 doc.setTextColor(255, 255, 255);
                 doc.setFont(undefined, 'bold');
-                doc.setFontSize(14);
+                doc.setFontSize(12);
                 doc.text('GESAMT:', 140, y);
-                doc.text(rechnung.nettoBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                doc.text(nettoBetrag.toFixed(2) + ' €', 185, y, { align: 'right' });
+                doc.setTextColor(0, 0, 0);
+                y += 15;
+
+                // ========================================
+                // ZAHLUNGSINFORMATIONEN (IBAN-BOX)
+                // ========================================
+                if (bank.iban) {
+                    doc.setFont(undefined, 'bold');
+                    doc.setFontSize(11);
+                    doc.text('ZAHLUNGSINFORMATIONEN', 20, y);
+                    y += 6;
+
+                    doc.setFont(undefined, 'normal');
+                    doc.setFontSize(9);
+                    const zahlungshinweis = rechnungsConfig.zahlungshinweis || 'Zahlbar innerhalb von 14 Tagen ohne Abzug';
+                    doc.text(`Bitte überweisen Sie den Betrag bis ${rechnung.faelligAm.toDate().toLocaleDateString('de-DE')}:`, 20, y);
+                    y += 5;
+                    doc.text(zahlungshinweis, 20, y);
+                    y += 7;
+
+                    doc.setFont(undefined, 'bold');
+                    doc.text('IBAN:', 20, y);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(bank.iban, 45, y);
+                    y += 5;
+
+                    if (bank.bic) {
+                        doc.setFont(undefined, 'bold');
+                        doc.text('BIC:', 20, y);
+                        doc.setFont(undefined, 'normal');
+                        doc.text(bank.bic, 45, y);
+                        y += 5;
+                    }
+
+                    if (bank.bankName) {
+                        doc.setFont(undefined, 'bold');
+                        doc.text('Bank:', 20, y);
+                        doc.setFont(undefined, 'normal');
+                        doc.text(bank.bankName, 45, y);
+                        y += 5;
+                    }
+
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Verwendungszweck:', 20, y);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(rechnung.rechnungsnummer, 60, y);
+                    y += 10;
+                }
+
+                // ========================================
+                // FOOTER - Rechtliche Angaben
+                // ========================================
+                // Positioniere Footer am unteren Rand
+                const footerY = 270;
+                doc.setFontSize(7);
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(100, 100, 100);
+
+                let footerText = profil.name || 'Auto-Lackierzentrum Mosbach';
+
+                if (rechtliches.rechtsform === 'GmbH' || rechtliches.rechtsform === 'UG') {
+                    if (rechtliches.geschaeftsfuehrer) {
+                        footerText += ` ${rechtliches.rechtsform} • Geschäftsführer: ${rechtliches.geschaeftsfuehrer}`;
+                    }
+                    if (rechtliches.handelsregister && rechtliches.registergericht) {
+                        footerText += ` • ${rechtliches.handelsregister}, ${rechtliches.registergericht}`;
+                    }
+                    if (rechtliches.sitz) {
+                        footerText += ` • Sitz: ${rechtliches.sitz}`;
+                    }
+                }
+
+                // Zentriert unten
+                const textWidth = doc.getTextWidth(footerText);
+                const centerX = (210 - textWidth) / 2;
+                doc.text(footerText, centerX, footerY);
+
+                // Footer-Text (optional)
+                if (rechnungsConfig.footerText) {
+                    doc.text(rechnungsConfig.footerText, 105, footerY + 4, { align: 'center' });
+                }
+
                 doc.setTextColor(0, 0, 0);
 
                 // 3. Download as "Rechnung-RE-2025-11-001.pdf"

@@ -79,9 +79,38 @@ const DEFAULT_SETTINGS = {
         backupFrequency: 'weekly',
         analyticsEnabled: true
     },
+    // 🔧 2025-11-18: Steuer-Informationen für rechtskonforme Rechnungen
+    steuer: {
+        steuernummer: '',              // z.B. "12345/67890"
+        ustIdNr: '',                   // z.B. "DE123456789" (Alternative zur Steuernummer)
+        mwstSatz: 19,                  // Standardsteuersatz in Prozent
+        kleinunternehmer: false        // §19 UStG (keine MwSt-Ausweisung)
+    },
+    // 🔧 2025-11-18: Bankverbindung für Zahlungen
+    bank: {
+        iban: '',                      // z.B. "DE89 3704 0044 0532 0130 00"
+        bic: '',                       // z.B. "COBADEFFXXX"
+        bankName: '',                  // z.B. "Commerzbank Mosbach"
+        kontoinhaber: ''               // z.B. "Auto-Lackierzentrum Mosbach GmbH"
+    },
+    // 🔧 2025-11-18: Rechtliche Angaben (für GmbH erforderlich)
+    rechtliches: {
+        rechtsform: '',                // z.B. "GmbH", "Einzelunternehmen", "GbR"
+        geschaeftsfuehrer: '',         // z.B. "Christopher Gärtner"
+        handelsregister: '',           // z.B. "HRB 12345"
+        registergericht: '',           // z.B. "Amtsgericht Mosbach"
+        sitz: ''                       // z.B. "Mosbach"
+    },
+    // 🔧 2025-11-18: Rechnungs-Konfiguration
+    rechnungsConfig: {
+        zahlungsziel: 14,              // Tage bis Zahlung fällig
+        zahlungshinweis: 'Zahlbar innerhalb von 14 Tagen ohne Abzug',
+        verwendungszweckPrefix: 'RE-', // Prefix für Verwendungszweck
+        footerText: 'Vielen Dank für Ihr Vertrauen!'
+    },
     createdAt: null,
     updatedAt: null,
-    version: '1.0.0'
+    version: '1.1.0'  // 🔧 2025-11-18: Version erhöht (neue Felder)
 };
 
 // ============================================
