@@ -1252,6 +1252,22 @@
             currentVehicle.prozessTimestamps.abgeschlossen = timestamp;
 
             // ============================================
+            // 🛡️ CRITICAL FIX: statusHistory Bloat Prevention
+            // Problem: statusHistory contains 30+ entries with embedded base64 photos (80 KB each = 2.4 MB total!)
+            // Firestore update() does MERGE (not REPLACE) → old statusHistory stays in document → 1.03 MB > 1 MB limit!
+            // Solution: Create LIGHT version (keep status + timestamp, REMOVE embedded photos)
+            // Photos are already saved in PDF, so no data loss for documentation!
+            // ============================================
+            const lightStatusHistory = (currentVehicle.statusHistory || []).map(entry => ({
+                status: entry.status,           // ✅ Keep status (wichtig für Audit-Trail)
+                timestamp: entry.timestamp,     // ✅ Keep timestamp
+                notiz: entry.notiz || '',       // ✅ Keep notes
+                // ❌ foto EXCLUDED (das ist der 80 KB Bloat pro Entry!)
+                // ❌ fotoRef EXCLUDED (nicht mehr relevant, Photos in PDF)
+            }));
+            console.log(`📊 [ABNAHME] statusHistory komprimiert: ${currentVehicle.statusHistory?.length || 0} Einträge, ${(currentVehicle.statusHistory?.length || 0) * 80} KB → ${lightStatusHistory.length * 0.3} KB (-${((currentVehicle.statusHistory?.length || 0) * 80 - lightStatusHistory.length * 0.3).toFixed(0)} KB)`);
+
+            // ============================================
             // FIX: Don't spread entire currentVehicle (includes statusHistory with photos = 2+ MB bloat!)
             // Instead: Build abnahmeData with ONLY needed scalar fields (reduces document from 1.02 MB → ~50 KB)
             // ============================================
@@ -1287,10 +1303,11 @@
                 kva: currentVehicle.kva,
                 kalkulationData: currentVehicle.kalkulationData,
 
-                // Status (3 fields) - EXCLUDE statusHistory (bloat!)
+                // Status (4 fields) - statusHistory as LIGHT version (without photos)
                 status: 'abgeschlossen',
                 prozessStatus: 'abgeschlossen',
                 prozessTimestamps: currentVehicle.prozessTimestamps,
+                statusHistory: lightStatusHistory,  // ✅ Light version (~10 KB) statt FULL version (2.4 MB)
 
                 // Partner Portal (7 fields)
                 quelle: currentVehicle.quelle,
