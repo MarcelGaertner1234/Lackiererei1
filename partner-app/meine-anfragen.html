@@ -6104,6 +6104,78 @@
             return bestellungenCreated;
         }
 
+        /**
+         * ✅ FIX #49 (Error #5): Speichert Ersatzteile in zentrale Materialien-DB
+         * Copied from kva-erstellen.html:4030-4095
+         * WICHTIG: Verwendet ECHTE fahrzeugId (nicht anfrageId!)
+         * @param {Array} ersatzteile - Array von Ersatzteil-Objekten
+         * @param {string} fahrzeugId - ECHTE Fahrzeug-ID (fzg_timestamp)
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} kundenname - Name des Kunden
+         * @returns {Promise<number>} Anzahl der gespeicherten Ersatzteile
+         */
+        async function saveErsatzteileToCentralDB(ersatzteile, fahrzeugId, kennzeichen, kundenname) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile zum Speichern');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`🗄️ Speichere ${ersatzteile.length} Ersatzteile in zentrale DB (ersatzteile_${window.werkstattId || 'mosbach'})...`);
+
+            const userName = localStorage.getItem('userName') || 'Admin';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            for (const teil of ersatzteile) {
+                try {
+                    const ersatzteilId = 'et_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    // Zentrale Ersatzteil-Daten
+                    const ersatzteilData = {
+                        id: ersatzteilId,
+                        etn: teil.etn || '',
+                        benennung: teil.benennung || '',
+                        einzelpreis: teil.einzelpreis || 0,
+                        // Referenz-Daten
+                        fahrzeugId: fahrzeugId,  // ✅ ECHTE fahrzeugId (fzg_timestamp)
+                        kennzeichen: kennzeichen,
+                        kundenname: kundenname,
+                        // Meta-Daten
+                        werkstattId: werkstattId,
+                        createdAt: new Date().toISOString(),
+                        createdBy: userName,
+                        // Optional: Anzahl aus diesem spezifischen Auftrag
+                        anzahlInAuftrag: teil.anzahl || 1,
+                        gesamtpreisInAuftrag: teil.gesamtpreis || 0
+                    };
+
+                    // In Batch hinzufügen
+                    const docRef = window.getCollection('ersatzteile').doc(ersatzteilId);
+                    batch.set(docRef, ersatzteilData);
+
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern von Ersatzteil:', teil, error);
+                }
+            }
+
+            // Batch commit
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Ersatzteile erfolgreich in zentraler DB gespeichert`);
+                return successCount;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                return 0;
+            }
+        }
+
         async function annehmenKVA(anfrageId, event) {
             event?.stopPropagation();
 
@@ -6476,6 +6548,29 @@
                     console.log('ℹ️ Keine Fotos vorhanden - Foto-Speicherung wird übersprungen');
                 }
 
+                // 5.3 ERSATZTEILE IN ZENTRALE DB ÜBERTRAGEN (FIX #49 - Error #5)
+                // WICHTIG: Erfolgt NACH Fahrzeug-Erstellung → Verwendet ECHTE fahrzeugId!
+                // Vorher: In kva-erstellen.html (FALSCH - verwendete anfrageId)
+                // Jetzt: Hier in meine-anfragen.html (KORREKT - verwendet fahrzeugData.id)
+                const ersatzteileFromKVA = anfrage.kva?.pdfImport?.editedData?.ersatzteile || [];
+                if (ersatzteileFromKVA.length > 0) {
+                    try {
+                        console.log(`🗄️ [KVA-ANNAHME] Übertrage ${ersatzteileFromKVA.length} Ersatzteile in zentrale DB...`);
+                        const savedCount = await saveErsatzteileToCentralDB(
+                            ersatzteileFromKVA,
+                            fahrzeugData.id,  // ✅ ECHTE fahrzeugId (fzg_timestamp)
+                            anfrage.kennzeichen || anfrage.auftragsnummer || 'k.A.',
+                            anfrage.partnerName || 'Partner'
+                        );
+                        console.log(`✅ ${savedCount} Ersatzteile in Materialien-DB gespeichert (Fahrzeug: ${fahrzeugData.id})`);
+                    } catch (error) {
+                        console.error('❌ Ersatzteile-Transfer fehlgeschlagen (nicht kritisch):', error);
+                        // Continue anyway - Ersatzteile sind in KVA gespeichert
+                    }
+                } else {
+                    console.log('ℹ️ Keine Ersatzteile in KVA vorhanden - Transfer wird übersprungen');
+                }
+
                 // 6. Kalender-Eintrag erstellen (DEAKTIVIERT - nicht benötigt)
                 // HINWEIS: kanban.html nutzt Realtime Listener auf 'fahrzeuge' Collection
                 // Das Fahrzeug erscheint automatisch in kanban.html, sobald es in fahrzeuge Collection erstellt wurde
@@ -6817,16 +6912,24 @@
             // Handle Array (Multi-Service Entwurf) vs String (Single-Service)
             // ✅ BACKWARD COMPATIBILITY: Old requests have serviceTyp='multi-service' + serviceLabels array
             if (Array.isArray(anfrage.serviceTyp)) {
-                // NEW FORMAT: Multi-Service with array serviceTyp
-                serviceTyp = anfrage.serviceTyp[0];  // First service = primary
+                // ✅ FIX #49 (Error #12): Check Array length to avoid treating Array[1] as multi-service
+                if (anfrage.serviceTyp.length === 1) {
+                    // Single-service in Array format (edge case) → normalize to String
+                    serviceTyp = anfrage.serviceTyp[0];
+                    additionalServices = [];  // No additional services
+                    console.log(`✅ Single-Service erkannt (Array[1] format normalized): "${serviceTyp}"`);
+                } else {
+                    // NEW FORMAT: Multi-Service with array serviceTyp (Array[2+])
+                    serviceTyp = anfrage.serviceTyp[0];  // First service = primary
 
-                // ✅ FIX #40: Additional services WITH serviceDetails (like annahme.html Line 6117-6120)
-                additionalServices = anfrage.serviceTyp.slice(1).map(typ => ({
-                    serviceTyp: typ,
-                    serviceDetails: extractServiceDetailsForType(typ, anfrage)  // ← THE MISSING PIECE!
-                }));
+                    // ✅ FIX #40: Additional services WITH serviceDetails (like annahme.html Line 6117-6120)
+                    additionalServices = anfrage.serviceTyp.slice(1).map(typ => ({
+                        serviceTyp: typ,
+                        serviceDetails: extractServiceDetailsForType(typ, anfrage)  // ← THE MISSING PIECE!
+                    }));
 
-                console.log(`✅ Multi-Service erkannt (NEW): Primary="${serviceTyp}", Additional=${additionalServices.length} Services`);
+                    console.log(`✅ Multi-Service erkannt (NEW): Primary="${serviceTyp}", Additional=${additionalServices.length} Services`);
+                }
             } else if (anfrage.serviceTyp === 'multi-service' && Array.isArray(anfrage.serviceLabels)) {
                 // OLD FORMAT BACKWARD COMPATIBILITY (✅ FIX #43): serviceTyp='multi-service' + serviceLabels array
                 // Handles requests created BEFORE commit 1519034
