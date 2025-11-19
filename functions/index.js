@@ -3767,28 +3767,43 @@ exports.sendEntwurfEmail = functions
         );
       }
 
-      // 🚧 TEMPORARY: Skip email sending until SendGrid is configured
-      // SendGrid Free Trial has expired, temporarily bypassing email
-      console.log("⏭️  [TEMP] Email-Versand übersprungen (SendGrid Trial abgelaufen)");
-      console.log("📧 [TEMP] Würde Email senden an:", kundenEmail);
-      console.log("🎯 [TEMP] Kennzeichen:", kennzeichen);
-      console.log("🔗 [TEMP] QR-Code URL:", qrCodeUrl);
+      // ✅ FIX #51 (Issue #6): Entwurf Email Re-Enabled
+      // IMPORTANT: Requires SendGrid API Key configuration in Firebase Functions config
+      // Setup: firebase functions:config:set sendgrid.api_key="YOUR_API_KEY_HERE"
+      // Verify: firebase functions:config:get
+      // Alternative email services: Gmail SMTP, AWS SES, Resend, Mailgun
 
-      // Return success to allow workflow to continue
-      return {
-        success: true,
-        message: "Email übersprungen (Testmodus - SendGrid Trial abgelaufen)",
-        tempDisabled: true,
-        recipient: kundenEmail
-      };
-
-      // TODO: Re-enable email sending after configuring production email service
-      // Options: SendGrid paid plan, Gmail SMTP, AWS SES, Resend, Mailgun
-
-      /* ORIGINAL EMAIL CODE (to be restored later):
       try {
         // Initialize SendGrid
         const apiKey = getSendGridApiKey();
+
+        // Check if API key is configured
+        if (!apiKey || apiKey === "demo-key-not-configured") {
+          console.warn("⚠️ SendGrid API Key not configured - Email wird NICHT versendet!");
+          console.log("📧 [DEMO MODE] Würde Email senden an:", kundenEmail);
+          console.log("🎯 [DEMO MODE] Kennzeichen:", kennzeichen);
+          console.log("🔗 [DEMO MODE] QR-Code URL:", qrCodeUrl);
+
+          // Log to Firestore as "skipped" not "failed"
+          await db.collection("email_logs").add({
+            to: kundenEmail,
+            subject: `Kosten-Voranschlag für ${kennzeichen}`,
+            trigger: "entwurf_email",
+            fahrzeugId: fahrzeugId || null,
+            kennzeichen: kennzeichen,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: "skipped",
+            reason: "SendGrid API Key not configured",
+          });
+
+          return {
+            success: true,
+            message: "Email übersprungen (API Key nicht konfiguriert)",
+            demoMode: true,
+            recipient: kundenEmail
+          };
+        }
+
         sgMail.setApiKey(apiKey);
 
         // Email HTML (inline for MVP)
@@ -3883,7 +3898,6 @@ exports.sendEntwurfEmail = functions
             `Email-Versand fehlgeschlagen: ${error.message}`
         );
       }
-      */
     });
 
 /**

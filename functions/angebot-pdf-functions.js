@@ -220,10 +220,73 @@ function createAngebotHTML(entwurf, werkstattId) {
   const lackierungSumme = lackierung.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
   const materialienSumme = materialien.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
 
-  const nettoSumme = ersatzteileSumme + arbeitslohnSumme + lackierungSumme + materialienSumme;
-  const mwstSatz = 19;
-  const mwstBetrag = nettoSumme * (mwstSatz / 100);
-  const bruttoSumme = nettoSumme + mwstBetrag;
+  let nettoSumme = ersatzteileSumme + arbeitslohnSumme + lackierungSumme + materialienSumme;
+  let mwstSatz = 19;
+  let mwstBetrag = nettoSumme * (mwstSatz / 100);
+  let bruttoSumme = nettoSumme + mwstBetrag;
 
-  return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Angebot - ${entwurf.kennzeichen}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11pt;color:#333}.header{background:#003366;color:white;padding:30px;text-align:center}.header h1{font-size:24pt;margin-bottom:10px}.header p{font-size:12pt}.content{padding:30px}.section{margin-bottom:30px}.section-title{font-size:14pt;font-weight:bold;color:#003366;margin-bottom:15px;border-bottom:2px solid #003366;padding-bottom:5px}.info-grid{display:grid;grid-template-columns:150px 1fr;gap:10px}.info-label{font-weight:bold}table{width:100%;border-collapse:collapse;margin-top:15px}th{background:#003366;color:white;padding:10px;text-align:left;font-weight:bold}td{padding:8px;border-bottom:1px solid #ddd}tr:hover{background:#f9f9f9}.total-row{font-weight:bold;background:#f0f0f0}.summary-box{background:#f5f5f5;padding:20px;border-radius:8px;margin-top:30px}.summary-row{display:flex;justify-content:space-between;padding:8px 0}.summary-label{font-weight:bold}.summary-total{font-size:16pt;font-weight:bold;color:#003366;border-top:2px solid #003366;padding-top:10px}.footer{text-align:center;color:#666;font-size:9pt;margin-top:40px;padding-top:20px;border-top:1px solid #ddd}</style></head><body><div class="header"><h1>Kalkulation & Angebot</h1><p>Auto-Lackierzentrum Mosbach</p></div><div class="content"><div class="section"><div class="section-title">Fahrzeugdaten</div><div class="info-grid"><div class="info-label">Kennzeichen:</div><div>${entwurf.kennzeichen || "N/A"}</div><div class="info-label">Kunde:</div><div>${entwurf.kundenname || "N/A"}</div><div class="info-label">Email:</div><div>${entwurf.kundenEmail || "N/A"}</div><div class="info-label">Telefon:</div><div>${entwurf.telefon || "N/A"}</div><div class="info-label">Fahrzeug:</div><div>${entwurf.marke || ""} ${entwurf.modell || ""}</div><div class="info-label">Baujahr:</div><div>${entwurf.baujahrVon || "N/A"}</div><div class="info-label">KM-Stand:</div><div>${entwurf.kmstand || "N/A"}</div></div></div>${ersatzteile.length > 0 ? `<div class="section"><div class="section-title">Ersatzteile</div><table><thead><tr><th>ETN</th><th>Benennung</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Einzelpreis</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${ersatzteile.map(item => `<tr><td>${item.etn || ""}</td><td>${item.benennung || ""}</td><td style="text-align:right">${item.anzahl || 0}</td><td style="text-align:right">${(item.einzelpreis || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="4" style="text-align:right">Summe Ersatzteile:</td><td style="text-align:right">${ersatzteileSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}${arbeitslohn.length > 0 ? `<div class="section"><div class="section-title">Arbeitslohn</div><table><thead><tr><th>Position</th><th style="text-align:right">Stunden</th><th style="text-align:right">Stundensatz</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${arbeitslohn.map(item => `<tr><td>${item.position || ""}</td><td style="text-align:right">${item.stunden || 0}</td><td style="text-align:right">${(item.stundensatz || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="3" style="text-align:right">Summe Arbeitslohn:</td><td style="text-align:right">${arbeitslohnSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}${lackierung.length > 0 ? `<div class="section"><div class="section-title">Lackierung</div><table><thead><tr><th>Position</th><th style="text-align:right">Stunden</th><th style="text-align:right">Stundensatz</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${lackierung.map(item => `<tr><td>${item.position || ""}</td><td style="text-align:right">${item.stunden || 0}</td><td style="text-align:right">${(item.stundensatz || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="3" style="text-align:right">Summe Lackierung:</td><td style="text-align:right">${lackierungSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}${materialien.length > 0 ? `<div class="section"><div class="section-title">Materialien</div><table><thead><tr><th>Kategorie</th><th>Bezeichnung</th><th style="text-align:right">Menge</th><th style="text-align:right">Einzelpreis</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${materialien.map(item => `<tr><td>${item.kategorie || ""}</td><td>${item.bezeichnung || ""}</td><td style="text-align:right">${item.menge || 0}</td><td style="text-align:right">${(item.einzelpreis || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="4" style="text-align:right">Summe Materialien:</td><td style="text-align:right">${materialienSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}<div class="summary-box"><div class="summary-row"><span class="summary-label">Netto-Summe:</span><span>${nettoSumme.toFixed(2)} €</span></div><div class="summary-row"><span class="summary-label">MwSt. (${mwstSatz}%):</span><span>${mwstBetrag.toFixed(2)} €</span></div><div class="summary-row summary-total"><span>Gesamt-Betrag:</span><span>${bruttoSumme.toFixed(2)} €</span></div></div><div class="footer"><p>Erstellt am: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE")}</p><p>Auto-Lackierzentrum Mosbach - Fahrzeugannahme-System</p></div></div></body></html>`;
+  // ✅ FIX #51 (Issue #4): FALLBACK - Wenn keine kalkulationData → vereinbarterPreis
+  let hasFallback = false;
+  if (nettoSumme === 0 &&
+      ersatzteile.length === 0 &&
+      arbeitslohn.length === 0 &&
+      lackierung.length === 0 &&
+      materialien.length === 0) {
+    console.warn('⚠️ [ANGEBOT PDF] kalkulationData is empty, using fallback to vereinbarterPreis');
+
+    // Fallback Waterfall (wie rechnungen.html)
+    const fallbackPrice =
+      entwurf.vereinbarterPreis ||
+      entwurf.kva?.gesamt ||
+      entwurf.kva?.gesamtpreis ||
+      0;
+
+    if (fallbackPrice > 0) {
+      // Brutto → Netto + MwSt berechnen
+      bruttoSumme = parseFloat(fallbackPrice);
+      nettoSumme = bruttoSumme / (1 + mwstSatz / 100);
+      mwstBetrag = bruttoSumme - nettoSumme;
+      hasFallback = true;
+      console.log(`✅ [ANGEBOT PDF] Using fallback price: ${bruttoSumme.toFixed(2)} € (Brutto)`);
+    } else {
+      console.error('❌ [ANGEBOT PDF] No fallback price available!');
+    }
+  }
+
+  // ✅ FIX #51 (Issue #3): Extract Service Types for Display
+  let serviceNames = [];
+  if (Array.isArray(entwurf.serviceTyp)) {
+    // Multi-Service: Array format
+    serviceNames = entwurf.serviceTyp.map(typ => getServiceDisplayName(typ));
+  } else if (Array.isArray(entwurf.serviceLabels)) {
+    // Fallback: serviceLabels array
+    serviceNames = entwurf.serviceLabels.map(typ => getServiceDisplayName(typ));
+  } else if (entwurf.serviceTyp && typeof entwurf.serviceTyp === 'string') {
+    // Single-Service: String format
+    serviceNames = [getServiceDisplayName(entwurf.serviceTyp)];
+  } else {
+    // No service type found - default
+    serviceNames = ['Nicht angegeben'];
+  }
+
+  // Helper: Convert service ID to display name
+  function getServiceDisplayName(serviceId) {
+    const displayNames = {
+      'lackier': 'Lackierung',
+      'glas': 'Glasschaden',
+      'steinschutz': 'Steinschutzfolie',
+      'aufbereitung': 'Fahrzeugaufbereitung',
+      'reifen': 'Reifen & Räder',
+      'oel': 'Ölwechsel',
+      'inspektionen': 'Inspektionen',
+      'bremsen': 'Bremsenwartung',
+      'batterie': 'Batterie-Service',
+      'klima': 'Klimaanlagen-Service',
+      'tuv': 'TÜV/HU',
+      'abschleppen': 'Abschlepp-Service'
+    };
+    return displayNames[serviceId] || serviceId.charAt(0).toUpperCase() + serviceId.slice(1);
+  }
+
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Angebot - ${entwurf.kennzeichen}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11pt;color:#333}.header{background:#003366;color:white;padding:30px;text-align:center}.header h1{font-size:24pt;margin-bottom:10px}.header p{font-size:12pt}.content{padding:30px}.section{margin-bottom:30px}.section-title{font-size:14pt;font-weight:bold;color:#003366;margin-bottom:15px;border-bottom:2px solid #003366;padding-bottom:5px}.info-grid{display:grid;grid-template-columns:150px 1fr;gap:10px}.info-label{font-weight:bold}.service-badge{display:inline-block;background:#28a745;color:white;padding:8px 15px;margin:5px 5px 5px 0;border-radius:20px;font-weight:bold;font-size:11pt}.warning-box{background:#fff3cd;border:1px solid #ffc107;color:#856404;padding:15px;border-radius:8px;margin:20px 0}table{width:100%;border-collapse:collapse;margin-top:15px}th{background:#003366;color:white;padding:10px;text-align:left;font-weight:bold}td{padding:8px;border-bottom:1px solid #ddd}tr:hover{background:#f9f9f9}.total-row{font-weight:bold;background:#f0f0f0}.summary-box{background:#f5f5f5;padding:20px;border-radius:8px;margin-top:30px}.summary-row{display:flex;justify-content:space-between;padding:8px 0}.summary-label{font-weight:bold}.summary-total{font-size:16pt;font-weight:bold;color:#003366;border-top:2px solid #003366;padding-top:10px}.footer{text-align:center;color:#666;font-size:9pt;margin-top:40px;padding-top:20px;border-top:1px solid #ddd}</style></head><body><div class="header"><h1>Kalkulation & Angebot</h1><p>Auto-Lackierzentrum Mosbach</p></div><div class="content"><div class="section"><div class="section-title">Fahrzeugdaten</div><div class="info-grid"><div class="info-label">Kennzeichen:</div><div>${entwurf.kennzeichen || "N/A"}</div><div class="info-label">Kunde:</div><div>${entwurf.kundenname || "N/A"}</div><div class="info-label">Email:</div><div>${entwurf.kundenEmail || "N/A"}</div><div class="info-label">Telefon:</div><div>${entwurf.telefon || "N/A"}</div><div class="info-label">Fahrzeug:</div><div>${entwurf.marke || ""} ${entwurf.modell || ""}</div><div class="info-label">Baujahr:</div><div>${entwurf.baujahrVon || "N/A"}</div><div class="info-label">KM-Stand:</div><div>${entwurf.kmstand || "N/A"}</div></div></div><div class="section"><div class="section-title">Beauftragte Services</div><div>${serviceNames.map(name => `<span class="service-badge">${name}</span>`).join("")}</div></div>${hasFallback ? `<div class="warning-box"><strong>⚠️ Hinweis:</strong> Detaillierte Kostenaufschlüsselung nicht verfügbar. Das Angebot basiert auf einem vereinbarten Gesamtpreis.</div>` : ""}${!hasFallback && ersatzteile.length > 0 ? `<div class="section"><div class="section-title">Ersatzteile</div><table><thead><tr><th>ETN</th><th>Benennung</th><th style="text-align:right">Anzahl</th><th style="text-align:right">Einzelpreis</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${ersatzteile.map(item => `<tr><td>${item.etn || ""}</td><td>${item.benennung || ""}</td><td style="text-align:right">${item.anzahl || 0}</td><td style="text-align:right">${(item.einzelpreis || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="4" style="text-align:right">Summe Ersatzteile:</td><td style="text-align:right">${ersatzteileSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}${!hasFallback && arbeitslohn.length > 0 ? `<div class="section"><div class="section-title">Arbeitslohn</div><table><thead><tr><th>Position</th><th style="text-align:right">Stunden</th><th style="text-align:right">Stundensatz</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${arbeitslohn.map(item => `<tr><td>${item.position || ""}</td><td style="text-align:right">${item.stunden || 0}</td><td style="text-align:right">${(item.stundensatz || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="3" style="text-align:right">Summe Arbeitslohn:</td><td style="text-align:right">${arbeitslohnSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}${!hasFallback && lackierung.length > 0 ? `<div class="section"><div class="section-title">Lackierung</div><table><thead><tr><th>Position</th><th style="text-align:right">Stunden</th><th style="text-align:right">Stundensatz</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${lackierung.map(item => `<tr><td>${item.position || ""}</td><td style="text-align:right">${item.stunden || 0}</td><td style="text-align:right">${(item.stundensatz || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="3" style="text-align:right">Summe Lackierung:</td><td style="text-align:right">${lackierungSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}${!hasFallback && materialien.length > 0 ? `<div class="section"><div class="section-title">Materialien</div><table><thead><tr><th>Kategorie</th><th>Bezeichnung</th><th style="text-align:right">Menge</th><th style="text-align:right">Einzelpreis</th><th style="text-align:right">Gesamtpreis</th></tr></thead><tbody>${materialien.map(item => `<tr><td>${item.kategorie || ""}</td><td>${item.bezeichnung || ""}</td><td style="text-align:right">${item.menge || 0}</td><td style="text-align:right">${(item.einzelpreis || 0).toFixed(2)} €</td><td style="text-align:right">${(item.gesamtpreis || 0).toFixed(2)} €</td></tr>`).join("")}<tr class="total-row"><td colspan="4" style="text-align:right">Summe Materialien:</td><td style="text-align:right">${materialienSumme.toFixed(2)} €</td></tr></tbody></table></div>` : ""}<div class="summary-box"><div class="summary-row"><span class="summary-label">Netto-Summe:</span><span>${nettoSumme.toFixed(2)} €</span></div><div class="summary-row"><span class="summary-label">MwSt. (${mwstSatz}%):</span><span>${mwstBetrag.toFixed(2)} €</span></div><div class="summary-row summary-total"><span>Gesamt-Betrag:</span><span>${bruttoSumme.toFixed(2)} €</span></div></div><div class="footer"><p>Erstellt am: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE")}</p><p>Auto-Lackierzentrum Mosbach - Fahrzeugannahme-System</p></div></div></body></html>`;
 }

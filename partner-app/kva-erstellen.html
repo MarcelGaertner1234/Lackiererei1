@@ -4131,21 +4131,56 @@
                     };
                 }
 
-                // Get form data
-                const kennzeichen = document.getElementById('kennzeichen').value.trim();
-                const marke = document.getElementById('marke').value.trim();
-                const modell = document.getElementById('modell').value.trim();
-                const kundenName = document.getElementById('kundenName').value.trim();
-                const kundenEmail = document.getElementById('kundenEmail').value.trim();
-                const kundenTelefon = document.getElementById('kundenTelefon').value.trim();
-                const serviceTyp = document.getElementById('serviceTyp').value;
-                const serviceTypName = document.getElementById('serviceTyp').options[document.getElementById('serviceTyp').selectedIndex].text;
-                const gesamtpreis = document.getElementById('gesamtpreis').value.trim();
-                const notizen = document.getElementById('notizen').value.trim();
+                // ✅ FIX #51 (Issue #1): Get data from ANFRAGE, not from non-existent form fields
+                const kennzeichen = anfrage.kennzeichen || 'k.A.';
+                const marke = anfrage.marke || 'k.A.';
+                const modell = anfrage.modell || 'k.A.';
+                const kundenName = anfrage.kundenname || anfrage.partnerName || 'k.A.';
+                const kundenEmail = anfrage.kundenEmail || 'k.A.';
+                const kundenTelefon = anfrage.telefon || 'k.A.';
+
+                // ✅ FIX #51 (Issue #1): Multi-Service Support - Extract service names
+                let serviceNames = [];
+                if (Array.isArray(anfrage.serviceTyp)) {
+                    // Multi-Service: Array format
+                    serviceNames = anfrage.serviceTyp.map(typ => getServiceDisplayName(typ));
+                } else if (Array.isArray(anfrage.serviceLabels)) {
+                    // Fallback: serviceLabels array
+                    serviceNames = anfrage.serviceLabels.map(typ => getServiceDisplayName(typ));
+                } else if (anfrage.serviceTyp && typeof anfrage.serviceTyp === 'string') {
+                    // Single-Service: String format
+                    serviceNames = [getServiceDisplayName(anfrage.serviceTyp)];
+                } else {
+                    // Fallback
+                    serviceNames = ['Service nicht angegeben'];
+                }
+                const serviceTypName = serviceNames.join(', ');
+
+                // Helper: Convert service ID to display name
+                function getServiceDisplayName(serviceId) {
+                    const displayNames = {
+                        'lackier': 'Lackierung',
+                        'glas': 'Glasschaden',
+                        'steinschutz': 'Steinschutzfolie',
+                        'aufbereitung': 'Fahrzeugaufbereitung',
+                        'reifen': 'Reifen & Räder',
+                        'oel': 'Ölwechsel',
+                        'inspektionen': 'Inspektionen',
+                        'bremsen': 'Bremsenwartung',
+                        'batterie': 'Batterie-Service',
+                        'klima': 'Klimaanlagen-Service',
+                        'tuv': 'TÜV/HU',
+                        'abschleppen': 'Abschlepp-Service'
+                    };
+                    return displayNames[serviceId] || serviceId.charAt(0).toUpperCase() + serviceId.slice(1);
+                }
+
+                const gesamtpreis = anfrage.kva?.gesamt || anfrage.kva?.gesamtpreis || 'k.A.';
+                const notizen = anfrage.anmerkungen || '';
 
                 // Validation
-                if (!kennzeichen || !marke || !modell || !kundenName || !serviceTyp || !gesamtpreis) {
-                    alert('❌ Bitte fülle alle Pflichtfelder aus!');
+                if (!anfrage || !kennzeichen || !marke || !modell) {
+                    alert('❌ Anfrage-Daten unvollständig!');
                     return;
                 }
 
@@ -4233,6 +4268,83 @@
                 doc.setFont(undefined, 'normal');
                 doc.text(serviceTypName, 180, y + 5, { align: 'right' });
                 y += 20;
+
+                // ✅ FIX #51 (Issue #5): BREAKDOWN-TABELLE HINZUFÜGEN
+                // Extract breakdown data from form fields
+                const breakdownData = {
+                    ersatzteile: 0,
+                    arbeitslohn: 0,
+                    lackierung: 0,
+                    materialien: 0
+                };
+
+                // Collect all input fields with IDs matching the pattern
+                const allInputs = document.querySelectorAll('input[type="number"]');
+                allInputs.forEach(input => {
+                    const value = parseFloat(input.value) || 0;
+                    if (value === 0) return; // Skip empty fields
+
+                    const fieldId = input.id;
+                    // Pattern: original_serviceTyp_fieldName or zubehoer_serviceTyp_fieldName
+                    // Examples: original_reifen_ersatzteile, zubehoer_lackier_arbeitslohn
+
+                    if (fieldId.includes('_ersatzteile')) {
+                        breakdownData.ersatzteile += value;
+                    } else if (fieldId.includes('_arbeitslohn')) {
+                        breakdownData.arbeitslohn += value;
+                    } else if (fieldId.includes('_lackierung')) {
+                        breakdownData.lackierung += value;
+                    } else if (fieldId.includes('_materialien')) {
+                        breakdownData.materialien += value;
+                    }
+                });
+
+                const breakdownTotal = breakdownData.ersatzteile + breakdownData.arbeitslohn +
+                                      breakdownData.lackierung + breakdownData.materialien;
+
+                // Only show breakdown table if there's data
+                if (breakdownTotal > 0) {
+                    doc.setFontSize(14);
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Kostenaufschlüsselung', 15, y);
+                    y += 10;
+
+                    doc.setFontSize(11);
+                    doc.setFont(undefined, 'normal');
+
+                    if (breakdownData.ersatzteile > 0) {
+                        doc.text('Ersatzteile:', 20, y);
+                        doc.text(breakdownData.ersatzteile.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        y += 7;
+                    }
+                    if (breakdownData.arbeitslohn > 0) {
+                        doc.text('Arbeitslohn:', 20, y);
+                        doc.text(breakdownData.arbeitslohn.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        y += 7;
+                    }
+                    if (breakdownData.lackierung > 0) {
+                        doc.text('Lackierung:', 20, y);
+                        doc.text(breakdownData.lackierung.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        y += 7;
+                    }
+                    if (breakdownData.materialien > 0) {
+                        doc.text('Materialien:', 20, y);
+                        doc.text(breakdownData.materialien.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        y += 7;
+                    }
+
+                    // Separator line
+                    y += 3;
+                    doc.setDrawColor(200, 200, 200);
+                    doc.line(20, y, 195, y);
+                    y += 7;
+
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Zwischensumme:', 20, y);
+                    doc.text(breakdownTotal.toFixed(2) + ' €', 185, y, { align: 'right' });
+                    doc.setFont(undefined, 'normal');
+                    y += 15;
+                }
 
                 // Preis
                 doc.setFillColor(102, 126, 234);
