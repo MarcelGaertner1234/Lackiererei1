@@ -3894,6 +3894,23 @@
 
                     console.log('✅ Multi-Service KVA gespeichert:', anfrageId);
 
+                    // ✅ FIX #48 (Data Leak #4): Ersatzteile → Zentrale Materialien-DB
+                    if (ersatzteileData.length > 0) {
+                        try {
+                            console.log('🗄️ [MULTI-SERVICE] Übertrage Ersatzteile in zentrale DB...');
+                            const savedCount = await saveErsatzteileToCentralDB(
+                                ersatzteileData,
+                                anfrageId,  // Anfrage-ID als Fahrzeug-Referenz
+                                anfrage.kennzeichen || anfrage.auftragsnummer || 'k.A.',
+                                anfrage.partnerName || 'Partner'
+                            );
+                            console.log(`✅ ${savedCount} Ersatzteile in Materialien-DB gespeichert`);
+                        } catch (error) {
+                            console.error('❌ Ersatzteile-Transfer fehlgeschlagen (nicht kritisch):', error);
+                            // Continue anyway - Ersatzteile sind in KVA gespeichert
+                        }
+                    }
+
                     // Success anzeigen
                     document.getElementById('contentArea').style.display = 'none';
                     document.getElementById('successMessage').classList.add('show');
@@ -4001,6 +4018,23 @@
 
                 console.log('✅ Single-Service KVA gespeichert:', anfrageId, 'Varianten:', variantKeys.length, 'Gewählt:', kvaData.gewaehlteVariante);
 
+                // ✅ FIX #48 (Data Leak #4): Ersatzteile → Zentrale Materialien-DB
+                if (ersatzteileData.length > 0) {
+                    try {
+                        console.log('🗄️ [SINGLE-SERVICE] Übertrage Ersatzteile in zentrale DB...');
+                        const savedCount = await saveErsatzteileToCentralDB(
+                            ersatzteileData,
+                            anfrageId,  // Anfrage-ID als Fahrzeug-Referenz
+                            anfrage.kennzeichen || anfrage.auftragsnummer || 'k.A.',
+                            anfrage.partnerName || 'Partner'
+                        );
+                        console.log(`✅ ${savedCount} Ersatzteile in Materialien-DB gespeichert`);
+                    } catch (error) {
+                        console.error('❌ Ersatzteile-Transfer fehlgeschlagen (nicht kritisch):', error);
+                        // Continue anyway - Ersatzteile sind in KVA gespeichert
+                    }
+                }
+
                 // Success anzeigen
                 document.getElementById('contentArea').style.display = 'none';
                 document.getElementById('successMessage').classList.add('show');
@@ -4014,6 +4048,80 @@
                 submitBtn.textContent = '✅ KVA an Partner senden';
             }
         });
+
+        // ============================================
+        // ERSATZTEILE HELPER - Transfer to Central DB
+        // ============================================
+        /**
+         * ✅ FIX #48 (Data Leak #4): Speichert Ersatzteile in zentrale Materialien-DB
+         * Copied from annahme.html:4889-4949
+         * @param {Array} ersatzteile - Array von Ersatzteil-Objekten
+         * @param {string} fahrzeugId - Fahrzeug-ID oder Anfrage-ID
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} kundenname - Name des Kunden
+         * @returns {Promise<number>} Anzahl der gespeicherten Ersatzteile
+         */
+        async function saveErsatzteileToCentralDB(ersatzteile, fahrzeugId, kennzeichen, kundenname) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile zum Speichern');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`🗄️ Speichere ${ersatzteile.length} Ersatzteile in zentrale DB (ersatzteile_${window.werkstattId || 'mosbach'})...`);
+
+            const userName = localStorage.getItem('userName') || 'Admin';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let successCount = 0;
+
+            for (const teil of ersatzteile) {
+                try {
+                    const ersatzteilId = 'et_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    // Zentrale Ersatzteil-Daten
+                    const ersatzteilData = {
+                        id: ersatzteilId,
+                        etn: teil.etn || '',
+                        benennung: teil.benennung || '',
+                        einzelpreis: teil.einzelpreis || 0,
+                        // Referenz-Daten
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: kennzeichen,
+                        kundenname: kundenname,
+                        // Meta-Daten
+                        werkstattId: werkstattId,
+                        createdAt: new Date().toISOString(),
+                        createdBy: userName,
+                        // Optional: Anzahl aus diesem spezifischen Auftrag
+                        anzahlInAuftrag: teil.anzahl || 1,
+                        gesamtpreisInAuftrag: teil.gesamtpreis || 0
+                    };
+
+                    // In Batch hinzufügen
+                    const docRef = window.getCollection('ersatzteile').doc(ersatzteilId);
+                    batch.set(docRef, ersatzteilData);
+
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Speichern von Ersatzteil:', teil, error);
+                }
+            }
+
+            // Batch commit
+            try {
+                await batch.commit();
+                console.log(`✅ ${successCount} Ersatzteile erfolgreich in zentraler DB gespeichert`);
+                return successCount;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                throw error;
+            }
+        }
 
         // ============================================
         // PDF GENERATION - KVA als PDF herunterladen

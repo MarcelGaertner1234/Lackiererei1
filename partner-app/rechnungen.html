@@ -933,20 +933,51 @@
                 }
             }
 
-            // ⚠️ SOURCE 2: KVA breakdown (PARTIAL - category totals only)
+            // ✅ SOURCE 2: KVA breakdown (ADAPTIVE - supports 3 formats)
+            // FIX #48 (Data Leak #3): Smart Aggregation for Multi-Service breakdown
             if (fahrzeug.kva && fahrzeug.kva.breakdown) {
                 const breakdown = fahrzeug.kva.breakdown;
-                console.log('⚠️ [KALKULATION] Using kva.breakdown (category totals, no items)');
-                return {
-                    source: 'kva.breakdown',
-                    quality: 'partial',
-                    data: {
-                        ersatzteile: breakdown.ersatzteile || 0,
-                        arbeitslohn: breakdown.arbeitslohn || 0,
-                        lackierung: breakdown.lackierung || 0,
-                        materialien: breakdown.materialien || 0
-                    }
-                };
+
+                // Format 1: Category-grouped (preferred) - { ersatzteile: 100, arbeitslohn: 200, ... }
+                if (breakdown.ersatzteile !== undefined || breakdown.arbeitslohn !== undefined ||
+                    breakdown.lackierung !== undefined || breakdown.materialien !== undefined) {
+                    console.log('✅ [KALKULATION] Using kva.breakdown (category-grouped format)');
+                    return {
+                        source: 'kva.breakdown (categories)',
+                        quality: 'partial',
+                        data: {
+                            ersatzteile: breakdown.ersatzteile || 0,
+                            arbeitslohn: breakdown.arbeitslohn || 0,
+                            lackierung: breakdown.lackierung || 0,
+                            materialien: breakdown.materialien || 0
+                        }
+                    };
+                }
+
+                // Format 2: Service-grouped (Multi-Service) - { lackier: {gesamt: 500}, reifen: {gesamt: 200} }
+                // Aggregate service totals into "materialien" (best effort)
+                const serviceKeys = Object.keys(breakdown).filter(key =>
+                    breakdown[key] && typeof breakdown[key] === 'object' && breakdown[key].gesamt !== undefined
+                );
+                if (serviceKeys.length > 0) {
+                    console.log('✅ [KALKULATION] Using kva.breakdown (service-grouped format - aggregating)');
+                    const totalFromServices = serviceKeys.reduce((sum, serviceKey) => {
+                        return sum + (breakdown[serviceKey].gesamt || 0);
+                    }, 0);
+                    return {
+                        source: 'kva.breakdown (service-grouped, aggregated)',
+                        quality: 'partial',
+                        data: {
+                            ersatzteile: 0,
+                            arbeitslohn: 0,
+                            lackierung: 0,
+                            materialien: totalFromServices  // All services aggregated
+                        }
+                    };
+                }
+
+                // Format 3: Unknown format - log warning and skip
+                console.warn('⚠️ [KALKULATION] kva.breakdown has unknown format, skipping:', breakdown);
             }
 
             // ⚠️ SOURCE 3: KVA varianten (FALLBACK - flat structure)
