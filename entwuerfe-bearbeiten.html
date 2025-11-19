@@ -2703,7 +2703,7 @@
                 // Step 4: Send Email FIRST (before status change)
                 console.log('📧 Step 4: Email versenden (BEFORE status update)...');
                 const sendEmail = window.functions.httpsCallable('sendEntwurfEmail');
-                await sendEmail({
+                const emailResult = await sendEmail({
                     kundenEmail: email,
                     kundenname: document.getElementById('kundenname').value.trim(),
                     kennzeichen: document.getElementById('kennzeichen').value.trim(),
@@ -2711,7 +2711,13 @@
                     fahrzeugId: currentEntwurfId,
                 });
 
-                console.log('✅ Email versendet');
+                // ✅ PATTERN 31: Check for Demo Mode (SendGrid API Key invalid/missing)
+                if (emailResult.data.demoMode) {
+                    console.warn('⚠️ [DEMO MODE] Email nicht versendet:', emailResult.data.message);
+                    showToast('⚠️ Demo-Modus: Email-Versand übersprungen.\n\nAngebot wird trotzdem erstellt, aber Email wird NICHT versendet.\n\n💡 Tipp: SendGrid API Key in Firebase Secret Manager aktualisieren.', 'warning', 8000);
+                } else {
+                    console.log('✅ Email versendet');
+                }
 
                 // Step 5: Update Entwurf Status ONLY AFTER successful email
                 console.log('📝 Step 5: Entwurf-Status aktualisieren (nach erfolgreicher Email)...');
@@ -2880,12 +2886,29 @@
                     errorMsg += '💡 Tipp: Prüfen Sie die Kunden-Email und versuchen Sie es erneut.';
                 } else if (error.message.includes('Email') || error.message.includes('sendEntwurfEmail')) {
                     errorMsg += '📧 Email konnte nicht versendet werden.\n\n';
-                    errorMsg += 'Mögliche Gründe:\n';
-                    errorMsg += '• Ungültige Email-Adresse\n';
-                    errorMsg += '• SendGrid-Fehler (Trial abgelaufen)\n';
-                    errorMsg += '• Netzwerkproblem\n\n';
-                    errorMsg += '💡 Tipp: Prüfen Sie die Email-Adresse und versuchen Sie es erneut.\n';
-                    errorMsg += '⚠️ Der Entwurf bleibt als "offen" gespeichert.';
+
+                    // ✅ PATTERN 31: Check if it's a SendGrid API Key issue
+                    if (error.message.toLowerCase().includes('unauthorized') ||
+                        error.message.toLowerCase().includes('api key') ||
+                        error.message.toLowerCase().includes('sendgrid')) {
+                        errorMsg += '🔐 SendGrid API Key Problem:\n';
+                        errorMsg += '• API Key ist ungültig oder abgelaufen\n';
+                        errorMsg += '• API Key wurde nicht konfiguriert\n\n';
+                        errorMsg += '💡 Lösung:\n';
+                        errorMsg += '1. Neuen SendGrid API Key erstellen (https://app.sendgrid.com)\n';
+                        errorMsg += '2. In Firebase Secret Manager aktualisieren:\n';
+                        errorMsg += '   firebase functions:secrets:set SENDGRID_API_KEY\n\n';
+                        errorMsg += '⚠️ ACHTUNG: Workflow läuft jetzt im Demo-Modus!\n';
+                        errorMsg += '   → Angebot wird erstellt (OHNE Email-Versand)\n';
+                        errorMsg += '   → Kunde erhält KEINE Email!';
+                    } else {
+                        errorMsg += 'Mögliche Gründe:\n';
+                        errorMsg += '• Ungültige Email-Adresse\n';
+                        errorMsg += '• SendGrid-Fehler (Trial abgelaufen)\n';
+                        errorMsg += '• Netzwerkproblem\n\n';
+                        errorMsg += '💡 Tipp: Prüfen Sie die Email-Adresse und versuchen Sie es erneut.\n';
+                        errorMsg += '⚠️ Der Entwurf bleibt als "offen" gespeichert.';
+                    }
                 } else if (error.message.includes('Token') || error.message.includes('createPartnerAutoLoginToken')) {
                     errorMsg += '🔑 Auto-Login Token konnte nicht erstellt werden.\n\n';
                     errorMsg += `Details: ${error.message}\n\n`;

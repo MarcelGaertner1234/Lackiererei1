@@ -3882,7 +3882,41 @@ exports.sendEntwurfEmail = functions
       } catch (error) {
         console.error("❌ SendGrid error:", error.message);
 
-        // Log error
+        // ✅ PATTERN 31: Graceful Degradation for Invalid API Keys
+        // If "Unauthorized" error → SendGrid API Key is invalid/expired
+        // → Treat like "demo-key-not-configured" and continue workflow
+        if (error.message.toLowerCase().includes("unauthorized") ||
+            error.code === 401 ||
+            (error.response && error.response.status === 401)) {
+          console.warn("⚠️ [GRACEFUL DEGRADATION] SendGrid API Key is INVALID (Unauthorized)");
+          console.log("📧 [DEMO MODE] Email would be sent to:", kundenEmail);
+          console.log("🎯 [DEMO MODE] Kennzeichen:", kennzeichen);
+          console.log("🔗 [DEMO MODE] QR-Code URL:", qrCodeUrl);
+
+          // Log as "skipped" (not "failed") → Workflow continues
+          await db.collection("email_logs").add({
+            to: kundenEmail,
+            subject: `Kosten-Voranschlag für ${kennzeichen}`,
+            trigger: "entwurf_email",
+            fahrzeugId: fahrzeugId || null,
+            kennzeichen: kennzeichen,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: "skipped",
+            reason: "SendGrid API Key is invalid (Unauthorized)",
+            originalError: error.message,
+          });
+
+          // ✅ Return success (workflow continues)
+          return {
+            success: true,
+            message: "Email übersprungen (SendGrid API Key ungültig)",
+            demoMode: true,
+            recipient: kundenEmail,
+            warning: "SendGrid API Key ist ungültig - bitte in Secret Manager aktualisieren"
+          };
+        }
+
+        // Other errors (network, timeout, etc.) → Log as "failed"
         await db.collection("email_logs").add({
           to: kundenEmail,
           subject: `Kosten-Voranschlag für ${kennzeichen}`,
