@@ -6698,8 +6698,9 @@
             console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
 
             // Handle Array (Multi-Service Entwurf) vs String (Single-Service)
+            // ✅ BACKWARD COMPATIBILITY: Old requests have serviceTyp='multi-service' + serviceLabels array
             if (Array.isArray(anfrage.serviceTyp)) {
-                // Multi-Service: Split in Primary + Additional
+                // NEW FORMAT: Multi-Service with array serviceTyp
                 serviceTyp = anfrage.serviceTyp[0];  // First service = primary
 
                 // ✅ FIX #40: Additional services WITH serviceDetails (like annahme.html Line 6117-6120)
@@ -6708,7 +6709,20 @@
                     serviceDetails: extractServiceDetailsForType(typ, anfrage)  // ← THE MISSING PIECE!
                 }));
 
-                console.log(`✅ Multi-Service erkannt: Primary="${serviceTyp}", Additional=${additionalServices.length} Services`);
+                console.log(`✅ Multi-Service erkannt (NEW): Primary="${serviceTyp}", Additional=${additionalServices.length} Services`);
+            } else if (anfrage.serviceTyp === 'multi-service' && Array.isArray(anfrage.serviceLabels)) {
+                // OLD FORMAT BACKWARD COMPATIBILITY (✅ FIX #43): serviceTyp='multi-service' + serviceLabels array
+                // Handles requests created BEFORE commit 1519034
+                serviceTyp = anfrage.serviceLabels[0];  // First service = primary
+
+                // Extract additional services with serviceDetails
+                additionalServices = anfrage.serviceLabels.slice(1).map(typ => ({
+                    serviceTyp: typ,
+                    serviceDetails: extractServiceDetailsForType(typ, anfrage)
+                }));
+
+                console.log(`✅ Multi-Service erkannt (OLD FORMAT - BACKWARD COMPAT): Primary="${serviceTyp}", Additional=${additionalServices.length} Services`);
+                console.log('   📝 Old format detected: serviceLabels array migrated to new format');
             } else {
                 // Single-Service: Normal flow
                 serviceTyp = anfrage.serviceTyp;
