@@ -3770,7 +3770,7 @@
                     const kvaData = {
                         serviceTyp: "multi-service",
                         isMultiService: true,
-                        varianten: { original: {} },  // Bei Multi-Service nur 1 Variante
+                        varianten: {},  // ✅ FIX #48: Dynamisch befüllt (original, zubehoer, partner)
                         breakdown: {},
                         serviceLabels: {},  // Field-Labels für PDF
                         termine: {
@@ -3805,46 +3805,83 @@
                         })
                     };
 
-                    // Für jeden Service: Felder sammeln
-                    anfrage.serviceLabels.forEach(serviceTyp => {
-                        const breakdown = { fields: [], gesamt: 0 };
+                    // ✅ FIX #48 (Data Leak #2): Dynamisch ALLE Varianten sammeln (nicht nur "original")
+                    // 1. Finde alle unique Varianten (aus gesamt_ IDs)
+                    const gesamtElements = document.querySelectorAll('[id^="gesamt_"]');
+                    const allVariantPrefixes = Array.from(gesamtElements)
+                        .map(el => {
+                            // Extract variantType from "gesamt_original_reifen" → "original"
+                            const parts = el.id.split('_');  // ['gesamt', 'original', 'reifen']
+                            return parts.length >= 2 ? parts[1] : null;  // 'original'
+                        })
+                        .filter(Boolean);
+                    const uniqueVariants = [...new Set(allVariantPrefixes)];  // ['original', 'zubehoer', 'partner']
+                    console.log('📦 [MULTI-SERVICE] Gefundene Varianten:', uniqueVariants);
 
-                        // Alle Input-Felder für diesen Service (mit Prefix)
-                        const inputs = document.querySelectorAll(`input[id^="original_${serviceTyp}_"]`);
+                    // 2. Für jede Variante: Sammle Felder von allen Services
+                    uniqueVariants.forEach(variantType => {
+                        kvaData.varianten[variantType] = {};
 
-                        inputs.forEach(input => {
-                            const fullFieldName = input.id.replace('original_', '');  // "reifen_montage"
-                            const value = parseFloat(input.value) || 0;
+                        // Für jeden Service: Felder sammeln
+                        anfrage.serviceLabels.forEach(serviceTyp => {
+                            const breakdown = { fields: [], gesamt: 0 };
 
-                            if (value === 0) return;  // Skip 0€ Felder
+                            // Alle Input-Felder für diese Variante + Service (mit Prefix)
+                            const inputs = document.querySelectorAll(`input[id^="${variantType}_${serviceTyp}_"]`);
 
-                            // In flaches varianten.original Object schreiben
-                            kvaData.varianten.original[fullFieldName] = value;
+                            inputs.forEach(input => {
+                                const fullFieldName = input.id.replace(`${variantType}_`, '');  // "reifen_montage"
+                                const value = parseFloat(input.value) || 0;
 
-                            // In Breakdown tracken
-                            breakdown.fields.push(fullFieldName);
-                            breakdown.gesamt += value;
+                                if (value === 0) return;  // Skip 0€ Felder
 
-                            // Label speichern für PDF
-                            const labelElement = document.querySelector(`label[for="${input.id}"]`);
-                            if (labelElement) {
-                                kvaData.serviceLabels[fullFieldName] = labelElement.textContent.replace(' *', '').trim();
+                                // In flaches varianten Object schreiben
+                                kvaData.varianten[variantType][fullFieldName] = value;
+
+                                // In Breakdown tracken (nur für "original" Variante - backwards compat)
+                                if (variantType === 'original') {
+                                    breakdown.fields.push(fullFieldName);
+                                    breakdown.gesamt += value;
+                                }
+
+                                // Label speichern für PDF (nur einmal)
+                                if (variantType === 'original' && !kvaData.serviceLabels[fullFieldName]) {
+                                    const labelElement = document.querySelector(`label[for="${input.id}"]`);
+                                    if (labelElement) {
+                                        kvaData.serviceLabels[fullFieldName] = labelElement.textContent.replace(' *', '').trim();
+                                    }
+                                }
+                            });
+
+                            // Breakdown für diesen Service speichern (nur für "original")
+                            if (variantType === 'original') {
+                                kvaData.breakdown[serviceTyp] = breakdown;
+                                console.log(`📦 [MULTI-SERVICE] ${serviceTyp}: ${breakdown.gesamt.toFixed(2)} € (${breakdown.fields.length} Felder)`);
                             }
                         });
 
-                        // Breakdown für diesen Service speichern
-                        kvaData.breakdown[serviceTyp] = breakdown;
-                        console.log(`📦 [MULTI-SERVICE] ${serviceTyp}: ${breakdown.gesamt.toFixed(2)} € (${breakdown.fields.length} Felder)`);
+                        // Gesamt-Summe für diese Variante berechnen
+                        kvaData.varianten[variantType].gesamt = Object.values(kvaData.varianten[variantType])
+                            .reduce((sum, val) => typeof val === 'number' ? sum + val : sum, 0);
+
+                        console.log(`💶 [MULTI-SERVICE] ${variantType} gesamt: ${kvaData.varianten[variantType].gesamt.toFixed(2)} €`);
                     });
 
-                    // Gesamt-Summe berechnen
-                    kvaData.varianten.original.gesamt = Object.values(kvaData.breakdown)
-                        .reduce((sum, b) => sum + b.gesamt, 0);
+                    // 3. Auto-select gewaehlteVariante wenn nur 1 Variante vorhanden
+                    if (uniqueVariants.length === 1) {
+                        kvaData.gewaehlteVariante = uniqueVariants[0];
+                        console.log(`🔧 AUTO-FIX: Nur 1 Variante → gewaehlteVariante = "${uniqueVariants[0]}"`);
+                    } else {
+                        // Partner muss wählen (gewaehlteVariante bleibt null bis Partner wählt)
+                        kvaData.gewaehlteVariante = null;
+                        console.log(`✅ ${uniqueVariants.length} Varianten → Partner muss wählen`);
+                    }
 
                     console.log('💾 [MULTI-SERVICE] Speichere KVA:', {
                         services: anfrage.serviceLabels,
+                        varianten: Object.keys(kvaData.varianten),
                         breakdown: kvaData.breakdown,
-                        gesamt: kvaData.varianten.original.gesamt
+                        gewaehlteVariante: kvaData.gewaehlteVariante
                     });
 
                     // KVA speichern
