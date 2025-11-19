@@ -3820,9 +3820,59 @@ firebase firestore:import \
 
 ---
 
-## 📋 Latest Updates (2025-11-17)
+## 📋 Latest Updates (2025-11-19)
 
-### Session 2025-11-17 (Phase 3): Data Loss Bug Hunting - Entwurf → Fahrzeug Mapping
+### Session 2025-11-19 (Phase 12): Data Leak Detection + PDF Verification
+
+**COMPREHENSIVE FIXES (19 Issues, 4 Commits):**
+
+**Fix #48: Multi-Service Data Leaks** (Commits 3f0fe81, 622209a)
+- photoUrls fallback chain, Dynamic variant collection, Smart breakdown aggregation (3 formats), Ersatzteile transfer
+- Files: meine-anfragen.html, kva-erstellen.html, rechnungen.html
+- Patterns: #30 (Transfer Timing), #35 (Smart Aggregation)
+
+**Fix #49: 3 CRITICAL Logic Errors** (Commit 6616065)
+- Ersatzteile timing (anfrageId vs fahrzeugId - DATA LOSS!), Array[1] normalization, Single-service format
+- Files: meine-anfragen.html, multi-service-anfrage.html, kva-erstellen.html
+- Pattern: **#30 - CRITICAL DATA LOSS!**
+
+**Fix #50: 4 Optional Logic Errors** (Commit 70a439a)
+- validateServiceTyp Arrays, Empty variants check, Defensive spreads
+- Files: multi-service-anfrage.html, kva-erstellen.html, anfrage-detail.html
+
+**Fix #51: PDF Verification (6 Issues)** (Commit 4e8ed13)
+- KVA Multi-Service PDF data source, Rechnung PDF fallback, Angebot PDF service names, Angebot PDF fallback, KVA PDF breakdown, Entwurf email re-enable
+- Files: rechnungen.html, angebot-pdf-functions.js, kva-erstellen.html, functions/index.js
+- Pattern: #31 (PDF/Email Failures)
+
+**KEY LEARNINGS:**
+- ALWAYS transfer data AFTER dependent resources created (fahrzeugId after vehicle creation)
+- Array[1] ambiguity: `['lackier']` vs `'lackier'` - normalize to String
+- PDF data source mismatch: Check if page loads from form OR variable
+- Graceful degradation: Log "skipped" not "failed" for missing API keys
+- Smart aggregation: Support multiple data formats (category-grouped, service-grouped, flat)
+
+**NEW ERROR PATTERNS:** Patterns #30 (Transfer Timing), #31 (PDF/Email Failures)
+
+---
+
+### Session 2025-11-18 (Phase 11): Invoice PDF Enhancement + Steuerberater Dashboard
+
+**FIXES (2 Features, 2 Commits):**
+
+**Feature 1: Invoice PDF Complete Calculation Breakdown** (Commit c4b0c37)
+- Waterfall-Logic for Multi-Scenario Data Retrieval (4 sources: kalkulationData, kva.breakdown, kostenAufschluesselung, vereinbarterPreis)
+- Files: partner-app/rechnungen.html (+219 lines)
+- Pattern: #35 (Waterfall-Logic)
+
+**Feature 2: Steuerberater Dashboard Fixes** (Commit 7fa9844)
+- Role permissions (added 'werkstatt' role), Toast API migration (22× showToast → toast)
+- Files: steuerberater-bilanz.html, steuerberater-statistiken.html, steuerberater-kosten.html, steuerberater-export.html
+- Pattern: #36 (Deprecated Toast API)
+
+---
+
+### Session 2025-11-17 (Phase 10): Data Loss Bug Hunting - Entwurf → Fahrzeug Mapping
 
 **CRITICAL BUGS FIXED (9 Bugs):**
 
@@ -3848,7 +3898,7 @@ firebase firestore:import \
 
 ---
 
-_Last Updated: 2025-11-17 by Claude Code (Sonnet 4.5)_
-_Version: 8.4 (Data Loss Bug Hunting - Entwurf → Fahrzeug Mapping Fixes)_
+_Last Updated: 2025-11-19 by Claude Code (Sonnet 4.5)_
+_Version: 8.5 (Data Leak Detection, Logic Errors, PDF Verification - Session 2025-11-19)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
-_Lines: ~3,860_
+_Lines: ~4,150 (+ ~290 lines documentation updates)_
