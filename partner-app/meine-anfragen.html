@@ -4201,11 +4201,18 @@
                 versicherung: 0
             };
 
+            // ✅ FIX #46 (2025-11-19): Count ALL services in multi-service requests
             aktiveAnfragen.forEach(anfrage => {
-                const typ = anfrage.serviceTyp || 'lackier';
-                if (serviceCounts[typ] !== undefined) {
-                    serviceCounts[typ]++;
-                }
+                // Handle Array (multi-service): count all services
+                const services = Array.isArray(anfrage.serviceTyp)
+                    ? anfrage.serviceTyp
+                    : [anfrage.serviceTyp || 'lackier'];
+
+                services.forEach(typ => {
+                    if (serviceCounts[typ] !== undefined) {
+                        serviceCounts[typ]++;
+                    }
+                });
             });
 
             Object.keys(serviceCounts).forEach(typ => {
@@ -4295,7 +4302,11 @@
 
                 // Sammle alle Service-Status
                 const allServiceStatuses = [];
-                const primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
+                // ✅ FIX #46 (2025-11-19): Extract primary service from Array if needed
+                let primaryServiceTyp = anfrage.fahrzeug.serviceTyp || anfrage.serviceTyp;
+                if (Array.isArray(primaryServiceTyp)) {
+                    primaryServiceTyp = primaryServiceTyp[0];
+                }
 
                 // 1. Primary Service Status
                 if (anfrage.fahrzeug.serviceStatuses[primaryServiceTyp]) {
@@ -4378,16 +4389,20 @@
         function renderKanban() {
             // Filter anwenden
             let gefiltert = alleAnfragen.filter(anfrage => {
-                const serviceTyp = anfrage.serviceTyp || 'lackier';
-                // ✅ FIX (2025-11-16): Handle multi-service requests
+                // ✅ FIX #46 (2025-11-19): Handle Array (NEW multi-service format after Fix #45)
                 if (activeFilters.service !== 'alle') {
-                    if (serviceTyp === 'multi-service') {
-                        // Check if filtered service is in serviceLabels array
-                        if (!anfrage.serviceLabels || !anfrage.serviceLabels.includes(activeFilters.service)) {
+                    // Handle Array format (Partner Portal NEW + Entwurf)
+                    if (Array.isArray(anfrage.serviceTyp)) {
+                        if (!anfrage.serviceTyp.includes(activeFilters.service)) {
                             return false;
                         }
-                    } else if (serviceTyp !== activeFilters.service) {
-                        return false;
+                    }
+                    // Handle String format (Single-Service)
+                    else {
+                        const serviceTyp = anfrage.serviceTyp || 'lackier';
+                        if (serviceTyp !== activeFilters.service) {
+                            return false;
+                        }
                     }
                 }
 
@@ -4529,16 +4544,20 @@
         function renderListe() {
             // Filter anwenden (gleiche Logik wie renderKanban)
             let gefiltert = alleAnfragen.filter(anfrage => {
-                const serviceTyp = anfrage.serviceTyp || 'lackier';
-                // ✅ FIX (2025-11-16): Handle multi-service requests
+                // ✅ FIX #46 (2025-11-19): Handle Array (NEW multi-service format after Fix #45)
                 if (activeFilters.service !== 'alle') {
-                    if (serviceTyp === 'multi-service') {
-                        // Check if filtered service is in serviceLabels array
-                        if (!anfrage.serviceLabels || !anfrage.serviceLabels.includes(activeFilters.service)) {
+                    // Handle Array format (Partner Portal NEW + Entwurf)
+                    if (Array.isArray(anfrage.serviceTyp)) {
+                        if (!anfrage.serviceTyp.includes(activeFilters.service)) {
                             return false;
                         }
-                    } else if (serviceTyp !== activeFilters.service) {
-                        return false;
+                    }
+                    // Handle String format (Single-Service)
+                    else {
+                        const serviceTyp = anfrage.serviceTyp || 'lackier';
+                        if (serviceTyp !== activeFilters.service) {
+                            return false;
+                        }
                     }
                 }
 
@@ -4582,16 +4601,20 @@
         function renderKompakt() {
             // Filter anwenden (gleiche Logik wie renderKanban)
             let gefiltert = alleAnfragen.filter(anfrage => {
-                const serviceTyp = anfrage.serviceTyp || 'lackier';
-                // ✅ FIX (2025-11-16): Handle multi-service requests
+                // ✅ FIX #46 (2025-11-19): Handle Array (NEW multi-service format after Fix #45)
                 if (activeFilters.service !== 'alle') {
-                    if (serviceTyp === 'multi-service') {
-                        // Check if filtered service is in serviceLabels array
-                        if (!anfrage.serviceLabels || !anfrage.serviceLabels.includes(activeFilters.service)) {
+                    // Handle Array format (Partner Portal NEW + Entwurf)
+                    if (Array.isArray(anfrage.serviceTyp)) {
+                        if (!anfrage.serviceTyp.includes(activeFilters.service)) {
                             return false;
                         }
-                    } else if (serviceTyp !== activeFilters.service) {
-                        return false;
+                    }
+                    // Handle String format (Single-Service)
+                    else {
+                        const serviceTyp = anfrage.serviceTyp || 'lackier';
+                        if (serviceTyp !== activeFilters.service) {
+                            return false;
+                        }
                     }
                 }
 
@@ -4686,7 +4709,9 @@
         function getServiceDetailsHTML(anfrage) {
             if (!anfrage.serviceTyp || !anfrage.serviceData) return '';
 
-            const serviceType = anfrage.serviceTyp.toLowerCase();
+            // ✅ FIX #46 (2025-11-19): Handle Array (multi-service) vs String (single-service)
+            const primaryService = Array.isArray(anfrage.serviceTyp) ? anfrage.serviceTyp[0] : anfrage.serviceTyp;
+            const serviceType = primaryService.toLowerCase();
             const data = anfrage.serviceData;
 
             // Helper: Capitalize first letter
@@ -4763,8 +4788,9 @@
                 werbebeklebung: { icon: '📢', bg: '#ff5722' }
             };
 
-            // Single-Service only (Multi-Service Feature removed)
-            const serviceData = serviceIcons[anfrage.serviceTyp] || { icon: '📋', bg: '#666' };
+            // ✅ FIX #46 (2025-11-19): Handle Array (multi-service) vs String (single-service)
+            const primaryService = Array.isArray(anfrage.serviceTyp) ? anfrage.serviceTyp[0] : anfrage.serviceTyp;
+            const serviceData = serviceIcons[primaryService] || { icon: '📋', bg: '#666' };
             card.style.borderLeftColor = serviceData.bg;
 
             const datum = new Date(anfrage.timestamp || anfrage.erstelltAm).toLocaleDateString('de-DE', {
@@ -5196,7 +5222,9 @@
                 werbebeklebung: { icon: '📢', bg: '#ff5722', label: 'Werbebeklebung' }
             };
 
-            const serviceData = serviceIcons[anfrage.serviceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+            // ✅ FIX #46 (2025-11-19): Handle Array (multi-service) vs String (single-service)
+            const primaryService = Array.isArray(anfrage.serviceTyp) ? anfrage.serviceTyp[0] : anfrage.serviceTyp;
+            const serviceData = serviceIcons[primaryService] || { icon: '📋', bg: '#666', label: 'Service' };
 
             // Foto-Thumbnails (max 2)
             let fotosHTML = '';
@@ -5301,7 +5329,9 @@
                 werbebeklebung: { icon: '📢', bg: '#ff5722', label: 'Werbebeklebung' }
             };
 
-            const serviceData = serviceIcons[anfrage.serviceTyp] || { icon: '📋', bg: '#666', label: 'Service' };
+            // ✅ FIX #46 (2025-11-19): Handle Array (multi-service) vs String (single-service)
+            const primaryService = Array.isArray(anfrage.serviceTyp) ? anfrage.serviceTyp[0] : anfrage.serviceTyp;
+            const serviceData = serviceIcons[primaryService] || { icon: '📋', bg: '#666', label: 'Service' };
 
             // Foto-Thumbnails (max 2)
             let fotosHTML = '';
@@ -5632,7 +5662,11 @@
             }
 
             // 2. Fallback: prozessStatus (Single-Service / Backwards Compatibility)
-            if (anfrage.fahrzeug?.prozessStatus && anfrage.fahrzeug.serviceTyp === serviceTyp) {
+            // ✅ FIX #46 (2025-11-19): Handle Array comparison
+            const fahrzeugServiceTyp = Array.isArray(anfrage.fahrzeug?.serviceTyp)
+                ? anfrage.fahrzeug.serviceTyp[0]
+                : anfrage.fahrzeug?.serviceTyp;
+            if (anfrage.fahrzeug?.prozessStatus && fahrzeugServiceTyp === serviceTyp) {
                 return anfrage.fahrzeug.prozessStatus;
             }
 
@@ -5741,10 +5775,15 @@
             }
 
             // Bestätigung
+            // ✅ FIX #46 (2025-11-19): Handle Array for multi-service
+            const serviceLabelText = Array.isArray(anfrage.serviceTyp)
+                ? anfrage.serviceTyp.map(t => getServiceLabel(t)).join(' + ')
+                : getServiceLabel(anfrage.serviceTyp);
+
             const bestaetigung = confirm(
                 'Möchten Sie diese Anfrage wirklich stornieren?\\n\\n' +
                 `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
-                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                `Service: ${serviceLabelText}\\n` +
                 `Preis: ${anfrage.kva?.gesamt ? anfrage.kva.gesamt.toFixed(2) + ' €' : 'k.A.'}`
             );
 
@@ -6177,12 +6216,13 @@
 
                 // 3. Kunden registrieren (NEU! - Mit vollen Daten)
                 console.log('👤 Registriere Kunden...');
+                // ✅ FIX #46 (2025-11-19): Reuse serviceLabelText (already handles Arrays)
                 const kundeId = await window.firebaseApp.registriereKundenbesuch({
                     name: anfrage.partnerName || 'Partner',
                     email: anfrage.partnerEmail || '',
                     telefon: anfrage.partnerTelefon || anfrage.telefon || '',
                     partnerId: anfrage.partnerId || '',
-                    notizen: `Partner-Anfrage ${anfrage.id} - Service: ${getServiceLabel(anfrage.serviceTyp)}`
+                    notizen: `Partner-Anfrage ${anfrage.id} - Service: ${serviceLabelText}`
                 });
                 if (kundeId) {
                     console.log('✅ Kunde registriert:', kundeId);
@@ -6534,11 +6574,16 @@
             const grund = prompt('Grund für Ablehnung (optional):', '');
             if (grund === null) return; // User cancelled
 
+            // ✅ FIX #46 (2025-11-19): Handle Array for multi-service
+            const serviceLabelText = Array.isArray(anfrage.serviceTyp)
+                ? anfrage.serviceTyp.map(t => getServiceLabel(t)).join(' + ')
+                : getServiceLabel(anfrage.serviceTyp);
+
             // Bestätigung
             const bestaetigung = confirm(
                 'Möchten Sie dieses Angebot wirklich ablehnen?\\n\\n' +
                 `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
-                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                `Service: ${serviceLabelText}\\n` +
                 (grund ? `\\nGrund: ${grund}` : '') +
                 '\\n\\nDie Werkstatt wird über die Ablehnung informiert.'
             );
@@ -6615,8 +6660,12 @@
             const gueltigeServiceTypen = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev', 'versicherung', 'glas', 'klima', 'dellen', 'folierung', 'steinschutz', 'werbebeklebung'];
             let serviceTyp;
             // ✅ FIX #40: Helper function to extract serviceDetails for a specific service type from flat anfrage object
+            // ✅ FIX #46 (2025-11-19): Extract NESTED serviceData[serviceTyp] for multi-service-anfrage.html
+            // multi-service-anfrage.html stores: serviceData = { lackier: {...}, reifen: {...} } (NESTED)
+            // This function needs: { groesse: '...', art: '...' } (FLAT)
+            // Solution: Extract serviceData[serviceTyp] to get the FLAT object for specific service
             function extractServiceDetailsForType(serviceTyp, anfrage) {
-                const allData = anfrage.serviceDetails || anfrage.serviceData || {};
+                const allData = anfrage.serviceDetails || (anfrage.serviceData?.[serviceTyp]) || {};
                 const details = {};
 
                 switch(serviceTyp) {
