@@ -2361,7 +2361,9 @@
             // SINGLE-SERVICE RENDERING (existing logic)
             // ============================================
             // Fallback auf 'lackier' wenn serviceTyp fehlt oder unbekannt
-            const actualServiceTyp = serviceTyp && SERVICE_TEMPLATES[serviceTyp] ? serviceTyp : 'lackier';
+            // ✅ FIX #47: Extract primary service if Array (defensive)
+            const serviceTypString = Array.isArray(serviceTyp) ? serviceTyp[0] : serviceTyp;
+            const actualServiceTyp = serviceTypString && SERVICE_TEMPLATES[serviceTypString] ? serviceTypString : 'lackier';
             const template = SERVICE_TEMPLATES[actualServiceTyp];
 
             console.log('🎨 [PHASE 2] Rendere KVA-Varianten für Service:', actualServiceTyp, 'ServiceData:', serviceData);
@@ -2653,7 +2655,9 @@
                 versicherung: { title: 'Reparatur-Termin', start: 'Reparatur Start (von)' }
             };
 
-            const label = labels[serviceTyp?.toLowerCase()] || labels.lackier;
+            // ✅ FIX #47: Handle Array serviceTyp (extract primary service)
+            const serviceTypString = Array.isArray(serviceTyp) ? serviceTyp[0] : serviceTyp;
+            const label = labels[serviceTypString?.toLowerCase()] || labels.lackier;
 
             const titleEl = document.getElementById('terminSectionTitle');
             const startLabelEl = document.getElementById('startDatumLabel');
@@ -2693,9 +2697,12 @@
                 // ========================================
                 // 🆕 MULTI-SERVICE DETECTION
                 // ========================================
-                isMultiService = anfrage.serviceTyp === 'multi-service' &&
-                                 anfrage.serviceLabels &&
-                                 anfrage.serviceLabels.length > 1;
+                // ✅ FIX #47: Support Array format from multi-service-anfrage.html
+                isMultiService = (
+                    anfrage.serviceTyp === 'multi-service' ||
+                    Array.isArray(anfrage.serviceTyp) ||
+                    (anfrage.serviceLabels && anfrage.serviceLabels.length > 1)
+                );
 
                 if (isMultiService) {
                     console.log('📦 Multi-Service Anfrage geladen:', anfrage.serviceLabels);
@@ -2715,7 +2722,10 @@
                 contentArea.style.display = 'block';
 
                 // Varianten dynamisch rendern basierend auf Service-Typ
-                const serviceTyp = anfrage.serviceTyp || 'lackierung';
+                // ✅ FIX #47: Extract primary service if Array
+                const serviceTyp = Array.isArray(anfrage.serviceTyp)
+                    ? anfrage.serviceTyp[0]
+                    : (anfrage.serviceTyp || 'lackierung');
                 // 🆕 PHASE 2: Übergebe serviceData statt ersatzteilPraeferenz
                 renderVariantenBoxes(serviceTyp, anfrage.serviceData);
 
@@ -2847,7 +2857,10 @@
                     <div class="label">Schadensbeschreibung:</div>
                     <div class="text">${(() => {
                         // ✅ FIX 3 (2025-11-16): Multi-Service Anmerkungen aggregieren
-                        const isMultiService = anfrage.serviceTyp === 'multi-service' || anfrage.serviceLabels?.length > 1;
+                        // ✅ FIX #47: Add Array.isArray() check
+                        const isMultiService = anfrage.serviceTyp === 'multi-service' ||
+                                               Array.isArray(anfrage.serviceTyp) ||
+                                               anfrage.serviceLabels?.length > 1;
 
                         if (isMultiService && anfrage.serviceData && anfrage.serviceLabels) {
                             const allBeschreibungen = anfrage.serviceLabels
@@ -3034,7 +3047,10 @@
             // SERVICE-SPEZIFISCHE DETAILS ANZEIGEN
             // ============================================
             // ✅ FIX 4 & 5 (2025-11-16): ALLE Services anzeigen bei Multi-Service (nicht nur 1!)
-            const isMultiService = anfrage.serviceTyp === 'multi-service' || anfrage.serviceLabels?.length > 1;
+            // ✅ FIX #47: Add Array.isArray() check
+            const isMultiService = anfrage.serviceTyp === 'multi-service' ||
+                                   Array.isArray(anfrage.serviceTyp) ||
+                                   anfrage.serviceLabels?.length > 1;
 
             if (isMultiService && anfrage.serviceLabels && anfrage.serviceData) {
                 console.log('📦 [MULTI-SERVICE KVA] Zeige Details für', anfrage.serviceLabels.length, 'Services');
@@ -3638,7 +3654,9 @@
                 'glas': '🔍 Glas-Reparatur'
             };
 
-            const label = serviceLabels[serviceTyp?.toLowerCase()] || '🚗 Service';
+            // ✅ FIX #47: Handle Array serviceTyp (extract primary service)
+            const serviceTypString = Array.isArray(serviceTyp) ? serviceTyp[0] : serviceTyp;
+            const label = serviceLabels[serviceTypString?.toLowerCase()] || '🚗 Service';
 
             // Bearbeitungsdauer berechnen (in Tagen)
             const start = new Date(startDatum);
@@ -3847,7 +3865,10 @@
                     // ============================================
                     // SINGLE-SERVICE KVA SPEICHERN
                     // ============================================
-                    const serviceTyp = anfrage.serviceTyp || 'lackierung';
+                    // ✅ FIX #47: Extract primary service if Array (defensive)
+                    const serviceTyp = Array.isArray(anfrage.serviceTyp)
+                        ? anfrage.serviceTyp[0]
+                        : (anfrage.serviceTyp || 'lackierung');
 
                 // Lieferzeit-String für Anzeige generieren (SERVICE-SPEZIFISCH)
                 const startFormatted = new Date(startDatum).toLocaleDateString('de-DE');
