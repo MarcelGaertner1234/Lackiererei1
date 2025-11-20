@@ -3615,46 +3615,117 @@
             // SCHRITT 5: FAHRZEUG ERSTELLEN
             // ========================================
 
+            // ✅ FIX: Race Condition Prevention mit Firestore Transaction
             try {
-                console.log('🚗 Erstelle Fahrzeug aus Partner-Anfrage...');
+                console.log('🚗 Erstelle Fahrzeug aus Partner-Anfrage (mit Transaction)...');
 
-                // Fahrzeug in Firestore speichern
-                const fahrzeugRef = await window.getCollection('fahrzeuge').add(fahrzeugData);
+                // Pre-generate Fahrzeug-ID (required for Transaction)
+                const fahrzeugRef = window.getCollection('fahrzeuge').doc();
+                const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
+                const db = firebase.firestore();
 
-                console.log('✅ Fahrzeug erstellt:', fahrzeugRef.id);
+                // ========================================
+                // ATOMIC TRANSACTION: Dual-Write + Duplicate Check
+                // ========================================
+                await db.runTransaction(async (transaction) => {
+                    console.log('🔒 TRANSACTION START - Atomic Dual-Write');
 
-                // Fotos kopieren (falls vorhanden)
-                if (anfrage.fotos && anfrage.fotos.length > 0) {
-                    console.log(`📸 Kopiere ${anfrage.fotos.length} Fotos...`);
+                    // STEP 1: Optimistic Locking - Read anfrage document (ATOMIC!)
+                    const anfrageDoc = await transaction.get(anfrageRef);
 
-                    const fotosData = {
-                        photos: anfrage.fotos,
-                        count: anfrage.fotos.length,
-                        lastUpdated: Date.now(),
-                        quelle: 'Partner-Portal'
-                    };
+                    if (!anfrageDoc.exists) {
+                        throw new Error('Anfrage nicht gefunden!');
+                    }
 
-                    await window.getCollection('fahrzeuge')
-                        .doc(fahrzeugRef.id)
-                        .collection('fotos')
-                        .doc('vorher')
-                        .set(fotosData);
+                    const currentAnfrage = anfrageDoc.data();
 
-                    console.log('✅ Fotos kopiert');
-                }
+                    // Check: fahrzeugAngelegt flag (verhindert Doppel-Annahme)
+                    if (currentAnfrage.fahrzeugAngelegt === true) {
+                        throw new Error('❌ DUPLIKAT VERHINDERT!\n\nFahrzeug wurde bereits angelegt!\n\nDiese Anfrage hat bereits ein verknüpftes Fahrzeug.');
+                    }
 
-                // Partner-Anfrage aktualisieren
-                await window.getCollection('partnerAnfragen').doc(anfrageId).update({
-                    fahrzeugAngelegt: true,
-                    fahrzeugId: fahrzeugRef.id,
-                    fahrzeugAngelegtAm: new Date().toISOString()
+                    console.log('  ✅ Optimistic Locking: anfrage.fahrzeugAngelegt === false');
+
+                    // STEP 2: Atomic Duplicate Check - Query by partnerAnfrageId
+                    const existingByAnfrageIdQuery = window.getCollection('fahrzeuge')
+                        .where('partnerAnfrageId', '==', anfrageId)
+                        .limit(1);
+
+                    const existingByAnfrageId = await transaction.get(existingByAnfrageIdQuery);
+
+                    if (!existingByAnfrageId.empty) {
+                        const existing = existingByAnfrageId.docs[0];
+                        throw new Error(`❌ DUPLIKAT VERHINDERT!\n\nFahrzeug existiert bereits!\n\nFahrzeug-ID: ${existing.id}\nKennzeichen: ${existing.data().kennzeichen || 'Nicht gesetzt'}`);
+                    }
+
+                    console.log('  ✅ Duplicate Check 1: Keine Fahrzeug mit partnerAnfrageId gefunden');
+
+                    // STEP 3: Atomic Duplicate Check - Query by kennzeichen (if exists)
+                    if (fahrzeugData.kennzeichen) {
+                        const existingByKennzeichenQuery = window.getCollection('fahrzeuge')
+                            .where('kennzeichen', '==', fahrzeugData.kennzeichen.toUpperCase())
+                            .limit(1);
+
+                        const existingByKennzeichen = await transaction.get(existingByKennzeichenQuery);
+
+                        if (!existingByKennzeichen.empty) {
+                            const existing = existingByKennzeichen.docs[0];
+                            throw new Error(`❌ DUPLIKAT VERHINDERT!\n\nFahrzeug mit Kennzeichen "${fahrzeugData.kennzeichen}" existiert bereits!\n\nFahrzeug-ID: ${existing.id}`);
+                        }
+
+                        console.log('  ✅ Duplicate Check 2: Kein Fahrzeug mit Kennzeichen gefunden');
+                    }
+
+                    // STEP 4: Atomic Dual-Write (ALL-OR-NOTHING)
+                    // WRITE 1: Create Fahrzeug
+                    transaction.set(fahrzeugRef, fahrzeugData);
+                    console.log('  📝 Transaction WRITE 1: fahrzeuge.set()');
+
+                    // WRITE 2: Update Anfrage (set fahrzeugAngelegt flag)
+                    transaction.update(anfrageRef, {
+                        fahrzeugAngelegt: true,
+                        fahrzeugId: fahrzeugRef.id,
+                        fahrzeugAngelegtAm: new Date().toISOString()
+                    });
+                    console.log('  📝 Transaction WRITE 2: partnerAnfragen.update()');
+
+                    console.log('🔒 TRANSACTION END - Committing...');
                 });
 
-                console.log('✅ Partner-Anfrage aktualisiert');
+                console.log('✅ TRANSACTION COMMITTED - Fahrzeug erstellt:', fahrzeugRef.id);
+
+                // ========================================
+                // AFTER TRANSACTION: Non-Critical Operations
+                // ========================================
+
+                // Fotos kopieren (falls vorhanden) - NICHT in Transaction (zu groß)
+                if (anfrage.fotos && anfrage.fotos.length > 0) {
+                    try {
+                        console.log(`📸 Kopiere ${anfrage.fotos.length} Fotos (AFTER Transaction)...`);
+
+                        const fotosData = {
+                            photos: anfrage.fotos,
+                            count: anfrage.fotos.length,
+                            lastUpdated: Date.now(),
+                            quelle: 'Partner-Portal'
+                        };
+
+                        await window.getCollection('fahrzeuge')
+                            .doc(fahrzeugRef.id)
+                            .collection('fotos')
+                            .doc('vorher')
+                            .set(fotosData);
+
+                        console.log('✅ Fotos kopiert');
+                    } catch (fotosError) {
+                        console.error('⚠️ Fehler beim Kopieren der Fotos:', fotosError);
+                        // Nicht kritisch - Fahrzeug wurde bereits erstellt
+                    }
+                }
 
                 // Kunde registrieren (CRITICAL!)
                 try {
-                    console.log('👤 Registriere Kunde:', kundeName);
+                    console.log('👤 Registriere Kunde (AFTER Transaction):', kundeName);
                     const kundeId = await firebaseApp.registriereKundenbesuch(kundeName.trim());
                     if (kundeId) {
                         // kundenId im Fahrzeug speichern
@@ -3663,8 +3734,8 @@
                         });
                         console.log('✅ Kunde registriert, ID:', kundeId);
                     }
-                } catch (error) {
-                    console.error('⚠️ Fehler bei Kundenregistrierung:', error);
+                } catch (kundenError) {
+                    console.error('⚠️ Fehler bei Kundenregistrierung:', kundenError);
                     // Nicht kritisch - Fahrzeug wurde bereits erstellt
                 }
 
@@ -3679,9 +3750,20 @@
                 // Seite neu laden
                 loadAnfragen();
 
-            } catch (error) {
-                console.error('❌ Fehler beim Anlegen des Fahrzeugs:', error);
-                alert('❌ Fehler beim Anlegen des Fahrzeugs:\n\n' + error.message);
+            } catch (transactionError) {
+                console.error('❌ TRANSACTION FEHLGESCHLAGEN:', transactionError);
+
+                // User-friendly error message
+                let errorMsg = transactionError.message;
+                if (!errorMsg.includes('❌')) {
+                    errorMsg = '❌ Fehler beim Anlegen des Fahrzeugs:\n\n' + errorMsg;
+                }
+
+                alert(errorMsg);
+
+                // Re-enable button
+                btn.disabled = false;
+                btn.textContent = originalBtnText;
             }
         }
 
