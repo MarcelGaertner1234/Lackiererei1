@@ -32,6 +32,8 @@
     <!-- jsPDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- jsPDF autoTable Plugin for Excel-Style Tables (Nov 21, 2025) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -1482,10 +1484,23 @@
                         }))
                     });
 
+                    // 🖼️ FIX: Nov 21, 2025 - Pattern 37: Convert Photo URLs to Base64 for PDF
+                    console.log('📸 [ABNAHME] Konvertiere Fotos zu Base64 vor PDF-Generierung...');
+                    const vorherPhotosBase64 = vorherPhotos && vorherPhotos.length > 0
+                        ? await convertPhotoUrlsToBase64(vorherPhotos)
+                        : [];
+                    const nachherPhotosBase64 = nachherPhotos && nachherPhotos.length > 0
+                        ? await convertPhotoUrlsToBase64(nachherPhotos)
+                        : [];
+
+                    console.log(`✅ [ABNAHME] Fotos konvertiert: ${vorherPhotosBase64.length} VORHER, ${nachherPhotosBase64.length} NACHHER`);
+
                     const dataForPDF = {
                         ...abnahmeData,
-                        photos: vorherPhotos,
-                        nachherPhotos: nachherPhotos,
+                        photos: vorherPhotos,  // Keep original for reference
+                        photosBase64: vorherPhotosBase64,  // ✅ NEW: Base64 for PDF
+                        nachherPhotos: nachherPhotos,  // Keep original for reference
+                        nachherPhotosBase64: nachherPhotosBase64,  // ✅ NEW: Base64 for PDF
                         prozessFotos: prozessFotos
                     };
                     await createPDF(dataForPDF);
@@ -1594,6 +1609,58 @@
             setTimeout(() => {
                 window.location.href = 'liste.html';
             }, 2000);
+        }
+
+        // 🖼️ PHOTO URL→BASE64 CONVERTER (FIX: Nov 21, 2025 - Pattern 37: Abnahme-PDF Photo Bug)
+        // Converts Firebase Storage URLs to Base64 for jsPDF embedding
+        // COPIED FROM annahme.html Lines 6410-6457 (Pattern 35)
+        async function convertPhotoUrlsToBase64(photoUrls) {
+            if (!photoUrls || photoUrls.length === 0) return [];
+
+            console.log(`🖼️ [ABNAHME-PDF] Konvertiere ${photoUrls.length} Fotos zu Base64...`);
+            const base64Photos = [];
+
+            for (let i = 0; i < photoUrls.length; i++) {
+                const photoUrl = photoUrls[i];
+
+                try {
+                    const base64 = await new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.crossOrigin = 'Anonymous';
+
+                        const timeout = setTimeout(() => {
+                            reject(new Error(`Photo ${i+1} loading timeout`));
+                        }, 10000);  // 10 seconds timeout
+
+                        img.onload = () => {
+                            clearTimeout(timeout);
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/jpeg', 0.9));  // 90% quality
+                        };
+
+                        img.onerror = (error) => {
+                            clearTimeout(timeout);
+                            reject(error);
+                        };
+
+                        img.src = photoUrl;
+                    });
+
+                    base64Photos.push(base64);
+                    console.log(`   ✅ [ABNAHME] Foto ${i+1}/${photoUrls.length} konvertiert`);
+
+                } catch (error) {
+                    console.error(`   ❌ [ABNAHME] Foto ${i+1} konnte nicht geladen werden:`, error);
+                    // Continue with remaining photos (graceful degradation)
+                }
+            }
+
+            console.log(`✅ [ABNAHME] ${base64Photos.length}/${photoUrls.length} Fotos erfolgreich konvertiert`);
+            return base64Photos;
         }
 
         // PDF erstellen
@@ -2149,49 +2216,49 @@
                 }
             }
 
-            // Title
+            // 🎨 EXCEL-STYLE HEADER (FIX: Nov 21, 2025 - Pattern 38: Optimized Header)
+            // Smaller title to prevent text overflow
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(24);
-            doc.text('Fahrzeug-Abnahmeprotokoll', 105, 20, { align: 'center' });
+            doc.setFontSize(18);  // Smaller: 24 → 18
+            doc.setFont(undefined, 'bold');
+            const logoLoaded = settings.profil.logoUrl && settings.profil.logoUrl.startsWith('data:image/');
+            doc.text('Abnahmeprotokoll', logoLoaded ? 115 : 105, 18, { align: logoLoaded ? 'left' : 'center' });
 
             // Werkstatt Name (dynamic from settings)
-            doc.setFontSize(12);
-            doc.text(settings.profil.name, 105, 30, { align: 'center' });
+            doc.setFontSize(10);  // Smaller: 12 → 10
+            doc.setFont(undefined, 'normal');
+            doc.text(settings.profil.name, logoLoaded ? 115 : 105, 26, { align: logoLoaded ? 'left' : 'center' });
 
-            // Daten
+            // 🎨 EXCEL-STYLE KUNDENDATEN TABLE (FIX: Nov 21, 2025 - Pattern 38)
             doc.setTextColor(0, 0, 0);
-            doc.setFontSize(12);
-            let y = 55;
+            let y = 48;
 
-            doc.setFont(undefined, 'bold');
-            doc.text('Annahme:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.datum + ' ' + data.zeit, 60, y);
+            doc.autoTable({
+                startY: y,
+                head: [['KUNDENDATEN', '']],
+                body: [
+                    ['Annahme', data.datum + ' ' + data.zeit],
+                    ['Abnahme', data.abnahmeDatum + ' ' + data.abnahmeZeit],
+                    ['Kennzeichen', data.kennzeichen],
+                    ['Kundenname', data.kundenname],
+                    ['Email', data.kundenEmail || 'Nicht angegeben']
+                ],
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: { fontSize: 10 },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    1: { cellWidth: 130 }
+                },
+                margin: { left: 15, right: 15 }
+            });
 
-            y += 10;
-            doc.setFont(undefined, 'bold');
-            doc.text('Abnahme:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.abnahmeDatum + ' ' + data.abnahmeZeit, 60, y);
-
-            y += 10;
-            doc.setFont(undefined, 'bold');
-            doc.text('Kennzeichen:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kennzeichen, 60, y);
-
-            y += 10;
-            doc.setFont(undefined, 'bold');
-            doc.text('Kundenname:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kundenname, 60, y);
-
-            // Email
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('Email:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kundenEmail || 'Nicht angegeben', 60, y);
+            y = doc.lastAutoTable.finalY + 5;
 
             // SERVICE-TYP Section
             y += 15;
@@ -2375,29 +2442,8 @@
 
             // Fahrzeugdaten
             y += 12;
-            doc.setFillColor(0, 191, 255);
-            doc.rect(15, y - 5, 180, 8, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFont(undefined, 'bold');
-            doc.text('FAHRZEUGDATEN', 20, y);
-
-            y += 10;
-            doc.setTextColor(0, 0, 0);
-            doc.setFont(undefined, 'bold');
-            doc.text('Marke:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.marke, 50, y);
-            doc.setFont(undefined, 'bold');
-            doc.text('Modell:', 110, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.modell, 140, y);
-
-            // Baujahr + KM-Stand
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('Baujahr:', 20, y);
-            doc.setFont(undefined, 'normal');
-
+            // 🎨 EXCEL-STYLE FAHRZEUGDATEN TABLE (FIX: Nov 21, 2025 - Pattern 38)
+            // Prepare Baujahr text
             const baujahrVon = data.baujahrVon || data.baujahr;
             const baujahrBis = data.baujahrBis || data.baujahr;
             let baujahrText = '';
@@ -2414,19 +2460,32 @@
             } else {
                 baujahrText = 'Nicht angegeben';
             }
-            doc.text(baujahrText, 50, y);
 
-            doc.setFont(undefined, 'bold');
-            doc.text('KM-Stand:', 110, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kmstand ? (data.kmstand + ' km') : 'Nicht angegeben', 140, y);
+            doc.autoTable({
+                startY: y,
+                head: [['FAHRZEUGDATEN', '']],
+                body: [
+                    ['Marke / Modell', `${data.marke} ${data.modell}`],
+                    ['Baujahr', baujahrText],
+                    ['KM-Stand', data.kmstand ? (data.kmstand + ' km') : 'Nicht angegeben'],
+                    ['VIN/FIN', data.vin || 'Nicht angegeben']
+                ],
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: { fontSize: 10 },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    1: { cellWidth: 130 }
+                },
+                margin: { left: 15, right: 15 }
+            });
 
-            // VIN/FIN
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('VIN/FIN:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.vin || 'Nicht angegeben', 50, y);
+            y = doc.lastAutoTable.finalY + 5;
 
             // LACKIER-INFO (NUR für Lackierung & Alle Services ODER wenn Lack-Felder ausgefüllt)
             const hasPaintData = data.farbnummer || data.farbname || data.farbvariante;
@@ -2715,26 +2774,10 @@
             doc.text('VORHER-Fotos (Annahme):', 20, y);
             y += 10;
 
-            // ============================================
-            // FIX: Filter out Firebase Storage URLs (jsPDF can't load remote URLs)
-            // Only use base64 DataURL photos (data:image/...)
-            // ============================================
-            const vorherPhotosBase64 = (data.photos || []).filter((photo, idx) => {
-                if (!photo || typeof photo !== 'string') {
-                    console.warn(`⚠️ [PDF] Vorher-Foto ${idx + 1} ist ungültig (nicht string):`, typeof photo);
-                    return false;
-                }
-                if (!photo.startsWith('data:image/')) {
-                    console.warn(`⚠️ [PDF] Vorher-Foto ${idx + 1} ist Firebase Storage URL (wird übersprungen):`, photo.substring(0, 80));
-                    return false;
-                }
-                return true;
-            });
-
-            if (vorherPhotosBase64.length < (data.photos || []).length) {
-                const skipped = (data.photos || []).length - vorherPhotosBase64.length;
-                console.warn(`⚠️ [PDF] ${skipped} Vorher-Foto(s) übersprungen (nicht im base64-Format)`);
-            }
+            // ✅ FIX: Nov 21, 2025 - Pattern 37: Use pre-converted Base64 photos
+            // Photos are converted BEFORE createPDF() using convertPhotoUrlsToBase64()
+            const vorherPhotosBase64 = data.photosBase64 || [];
+            console.log(`📸 [PDF] VORHER-Fotos: ${vorherPhotosBase64.length} Photos (Base64-konvertiert)`);
 
             for (let i = 0; i < vorherPhotosBase64.length; i += 2) {
                 if (y > 240) {
@@ -2864,7 +2907,9 @@
             doc.text('NACHHER-Fotos (Abnahme):', 20, y);
             y += 10;
 
-            const nachherPhotosForPDF = data.nachherPhotos || [];
+            // ✅ FIX: Nov 21, 2025 - Pattern 37: Use pre-converted Base64 photos
+            const nachherPhotosForPDF = data.nachherPhotosBase64 || [];
+            console.log(`📸 [PDF] NACHHER-Fotos: ${nachherPhotosForPDF.length} Photos (Base64-konvertiert)`);
 
             for (let i = 0; i < nachherPhotosForPDF.length; i += 2) {
                 if (y > 240) {
