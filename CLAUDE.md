@@ -97,11 +97,21 @@ git add . && git commit -m "..." && git push origin main
 # Live URL: https://marcelgaertner1234.github.io/Lackiererei1/
 ```
 
-### Firebase Deployment (Functions, Rules)
+### Firebase Deployment (Functions, Rules, Secrets)
 ```bash
-firebase deploy --only functions          # Cloud Functions
-firebase deploy --only firestore:rules    # Security Rules
-firebase deploy --only storage:rules      # Storage Rules
+# BEFORE FIRST DEPLOYMENT: Configure AWS Secrets
+firebase functions:secrets:set AWS_ACCESS_KEY_ID
+firebase functions:secrets:set AWS_SECRET_ACCESS_KEY
+
+# Deploy Cloud Functions (with AWS SES)
+firebase deploy --only functions          # 24 Cloud Functions (~5min)
+
+# Deploy Security Rules
+firebase deploy --only firestore:rules    # Firestore Security Rules
+firebase deploy --only storage:rules      # Storage Security Rules
+
+# Verify Secrets
+firebase functions:secrets:access AWS_ACCESS_KEY_ID --dry-run
 ```
 
 ---
@@ -113,11 +123,12 @@ firebase deploy --only storage:rules      # Storage Rules
 | **Frontend** | Vanilla JS, HTML5, CSS3 | No framework dependencies - fast & simple |
 | **Backend** | Firebase Firestore + Storage | Real-time database + file storage (DSGVO: europe-west3) |
 | **Authentication** | Firebase Auth | 2-stage: Werkstatt selection + Employee login |
-| **Cloud Functions** | Node.js (Firebase Functions) | OpenAI GPT-4, Email notifications, Auto-login tokens |
+| **Cloud Functions** | Node.js 20 (Firebase Functions) | OpenAI GPT-4, AWS SES emails, Auto-login tokens, PDF generation |
+| **Email Service** | AWS SES (eu-central-1) | Transactional emails (replaced SendGrid Nov 2025) |
 | **Testing** | Playwright | Hybrid: 10 Integration + 13 Smoke tests (100% success) |
 | **CI/CD** | GitHub Actions | Auto-deploy to GitHub Pages on push |
 | **AI Services** | OpenAI (GPT-4, Whisper, TTS-1-HD) | Chat widget, Speech-to-Text, Text-to-Speech |
-| **PDF Generation** | jsPDF | Client-side PDF creation for intake/handover docs |
+| **PDF Generation** | jsPDF + Puppeteer | Client-side (jsPDF) + Server-side (Puppeteer) |
 | **Charts** | Chart.js | Financial dashboards for Steuerberater portal |
 
 ---
@@ -181,12 +192,33 @@ firebase deploy --only storage:rules      # Storage Rules
 - **`firebase.json`** - Firebase config + Emulator ports
 
 ### Cloud Functions (`functions/`)
-- **`index.js`** - All Cloud Functions (3200+ lines)
-  - `ensurePartnerAccount` - Create partner Firebase Auth
-  - `createPartnerAutoLoginToken` - Generate QR token for PDF
-  - `validatePartnerAutoLoginToken` - Validate + create custom Firebase token
-  - `monthlyBonusReset` - Scheduled: 1st of month (reset partner bonuses)
-  - `testMonthlyBonusReset` - HTTP endpoint for manual testing
+- **`index.js`** - All Cloud Functions (~4200 lines)
+  - **Email Functions (AWS SES, eu-central-1):**
+    - `sendEntwurfEmail` - Customer Email mit QR-Code Auto-Login
+    - `sendEntwurfBestaetigtNotification` - Akzeptierungs-Benachrichtigung
+    - `sendEntwurfAbgelehntNotification` - Ablehnungs-Benachrichtigung
+    - `sendAngebotPDFToAdmin` - PDF-Angebot Email an Admin
+    - `onStatusChange` - Status-Change Trigger → Email
+    - `onNewPartnerAnfrage` - Partner Anfrage → Email
+    - `onUserApproved` - User Approval → Email
+  - **Authentication:**
+    - `ensurePartnerAccount` - Create partner Firebase Auth
+    - `createPartnerAutoLoginToken` - Generate QR token for PDF (7 days TTL)
+    - `validatePartnerAutoLoginToken` - Validate + create custom Firebase token
+  - **PDF Generation:**
+    - `generateAngebotPDF` - Server-side PDF mit Puppeteer
+  - **Scheduled Jobs:**
+    - `monthlyBonusReset` - Scheduled: 1st of month (reset partner bonuses)
+    - `testMonthlyBonusReset` - HTTP endpoint for manual testing
+    - `cleanupStaleSessions` - Daily cleanup of expired auto-login tokens
+- **`package.json`** - Dependencies:
+  - `@aws-sdk/client-ses@^3.525.0` - AWS SES Email Service (Nov 2025)
+  - `puppeteer-core@^21.11.0` - Server-side PDF generation
+  - `@sparticuz/chromium@^119.0.0` - Chromium for Puppeteer
+  - `openai@^4.75.0` - GPT-4, Whisper, TTS-1-HD
+- **Secrets (Firebase Secret Manager):**
+  - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` - AWS SES credentials
+  - `OPENAI_API_KEY` - OpenAI API access
 
 ### Testing (`tests/`)
 **Integration Tests (`tests/integration/`):**

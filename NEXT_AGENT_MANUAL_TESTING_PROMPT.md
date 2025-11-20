@@ -13,7 +13,265 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ---
 
-## 📊 Latest Session History (2025-11-18)
+## 📊 Latest Session History (2025-11-20)
+
+### Session 2025-11-20 (00:00-01:00 Uhr): AWS SES Migration - SendGrid Replacement (DEPLOYED)
+
+**🎯 USER REQUEST:**
+"SendGrid ist nicht mehr verfügbar (Testversion abgelaufen). Müssen wir auf AWS SES migrieren."
+
+**✅ MIGRATION SUMMARY (Code + AWS Setup, 6 Schritte):**
+
+---
+
+#### **SCHRITT 1: AWS Account Setup (00:00-00:15 Uhr)**
+
+**AWS Account erstellt:**
+- Email: Gaertner-marcel@web.de
+- Region: **eu-central-1 (Frankfurt)** - DSGVO-konform
+- Account Type: Personal
+- Email verifiziert: ✅ Status "Verified"
+
+**Cost Estimate:**
+- Free Tier: 62.000 Emails kostenlos/Jahr
+- Production: €0,10 pro 1.000 Emails → ~€12/Jahr (für 10k Emails)
+
+---
+
+#### **SCHRITT 2: IAM User Erstellung (00:15-00:30 Uhr)**
+
+**❌ FEHLER 1: Invalid IAM Username**
+- **Symptom:** Username "Marcel Gärtner" mit Umlaut/Space → AWS Validation Error
+- **Error Message:** "Username must contain only alphanumeric characters"
+- **Root Cause:** AWS IAM erlaubt KEINE Umlaute/Spaces in Usernamen
+- **Fix:** Username geändert zu **"MarcelGaertner"** (alphanumeric only)
+
+**✅ IAM User erstellt:**
+- Username: **MarcelGaertner**
+- Policy: `AmazonSESFullAccess`
+- Access Type: Programmatic (API Key)
+- Credentials generiert: Access Key ID + Secret Access Key
+
+---
+
+#### **SCHRITT 3: Firebase Secret Manager (00:30-00:35 Uhr)**
+
+**Secrets konfiguriert:**
+```bash
+firebase functions:secrets:set AWS_ACCESS_KEY_ID
+firebase functions:secrets:set AWS_SECRET_ACCESS_KEY
+```
+
+**Verifiziert:**
+```bash
+firebase functions:secrets:access AWS_ACCESS_KEY_ID --dry-run
+# Output: "Secret AWS_ACCESS_KEY_ID exists" ✅
+```
+
+---
+
+#### **SCHRITT 4: Code Migration (00:35-00:45 Uhr)**
+
+**Dependencies:**
+```json
+// REMOVED:
+"@sendgrid/mail": "^7.7.0"
+
+// ADDED:
+"@aws-sdk/client-ses": "^3.525.0"
+```
+
+**Code-Änderungen (functions/index.js):**
+1. **Lines 11:** `const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");`
+2. **Lines 26-29:** Secret Definitions (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+3. **Lines 31-60:** `getAWSSESClient()` Helper-Funktion
+   - Credential Loading from Secret Manager
+   - Sanitization: `.trim()` für Newlines/Whitespace (KRITISCH!)
+   - Validation: Check für invalid characters
+   - SES Client: Region `eu-central-1`
+
+**7 Email-Funktionen migriert:**
+- `sendEntwurfEmail` (Line 3789)
+- `sendEntwurfBestaetigtNotification` (Line 3989)
+- `sendEntwurfAbgelehntNotification` (Line 4065)
+- `sendAngebotPDFToAdmin` (Line 4247)
+- `onStatusChange` (Line 102)
+- `onNewPartnerAnfrage` (Line 270)
+- `onUserApproved` (Line 373)
+
+---
+
+#### **SCHRITT 5: Deployment (00:45-00:50 Uhr)**
+
+**Deployment Command:**
+```bash
+cd "Marketing/06_Digitale_Tools/Fahrzeugannahme_App"
+firebase deploy --only functions
+```
+
+**❌ FEHLER 2: Invalid Header Content**
+- **Symptom:** `Error: Invalid character in header content ["authorization"]`
+- **Root Cause:** Firebase Secret Manager fügt Newlines/Whitespace zu Secrets hinzu
+- **Console Log:**
+  ```
+  AWS_ACCESS_KEY_ID: "AKIA...\n"  # ← Newline am Ende!
+  AWS_SECRET_ACCESS_KEY: "wJalr...\n"
+  ```
+- **Fix:** `.trim()` Sanitization in `getAWSSESClient()` (Lines 40-41)
+  ```javascript
+  accessKeyId = accessKeyId.trim();
+  secretAccessKey = secretAccessKey.trim();
+  ```
+- **Commit:** 45f3bab - "fix(entwurf-email): Graceful degradation für invalid SendGrid API Key (Pattern 31)"
+
+**✅ Deployment Successful:**
+```
+✔  functions[sendEntwurfEmail(europe-west3)] Successful update operation.
+✔  functions[onStatusChange(europe-west3)] Successful update operation.
+✔  functions[onNewPartnerAnfrage(europe-west3)] Successful update operation.
+✔  functions[onUserApproved(europe-west3)] Successful update operation.
+... (23/24 Functions deployed)
+✔  Deploy complete!
+```
+
+---
+
+#### **SCHRITT 6: Email-Test (00:50-01:00 Uhr)**
+
+**Test-Email Versand:**
+1. Entwurf erstellt: `TEST-123`, Kunde "Test Kunde", Email "gaertner-marcel1@web.de"
+2. Email-Versand-Button geklickt
+
+**❌ FEHLER 3: Email Address Not Verified**
+- **Symptom:** Email wird NICHT versendet
+- **Error Message (Cloud Function Logs):**
+  ```
+  MessageRejected: Email address is not verified. The following identities failed the check in region EU-CENTRAL-1: gaertner-marcel1@web.de
+  ```
+- **Root Cause:** AWS SES **Sandbox Mode** (Default nach Account-Erstellung)
+  - ONLY verifizierte Email-Adressen als Empfänger erlaubt
+  - Sender UND Empfänger müssen verifiziert sein
+- **Aktueller Status:**
+  - Sender verifiziert: `Gaertner-marcel@web.de` ✅
+  - Empfänger: `gaertner-marcel1@web.de` ❌ (nicht verifiziert)
+
+**⚠️ AKTUELLER BLOCKER: AWS SES Sandbox Mode**
+- **Rate Limits:** 1 Email/Sekunde, max. 200 Emails/24h
+- **Empfänger:** NUR verifizierte Email-Adressen
+- **NICHT Production-ready!**
+
+---
+
+#### **NÄCHSTER SCHRITT: AWS Production Access beantragen (KRITISCH!)**
+
+**Option A: Production Access (EMPFOHLEN):**
+1. AWS SES Console: https://console.aws.amazon.com/ses/
+2. **Sending Statistics** → **Request Production Access**
+3. Formular ausfüllen:
+   - Use case: "Transactional emails for vehicle intake system (Fahrzeugannahme App)"
+   - Daily volume: 100-500 Emails
+   - Expected bounce rate: < 5%
+   - Compliance: DSGVO (Region eu-central-1)
+4. Submit → **Warte 24-48 Stunden** auf AWS Approval
+
+**Nach Approval:**
+- ✅ Rate Limits: 14 Emails/Sekunde, 50.000 Emails/24h
+- ✅ KEINE Empfänger-Verifikation mehr nötig
+- ✅ Production-ready für echte Kunden
+
+**Option B: Test-Empfänger verifizieren (TEMPORÄR):**
+1. AWS SES Console → **Email Addresses** → **Verify a New Email Address**
+2. Email eingeben (z.B. deine Test-Email)
+3. Verifizierungs-Link klicken (Email-Postfach prüfen)
+4. REPEAT für jede Test-Email
+
+**⚠️ Limitation:** Nur für Tests, NICHT für Production!
+
+---
+
+**🔴 NEUE ERROR PATTERNS:**
+
+**Pattern 37: AWS SES Sandbox Mode (Email Address Not Verified)**
+- **Symptom:** Email wird nicht versendet, Cloud Function Logs zeigen "MessageRejected: Email address is not verified"
+- **Root Cause:** AWS SES Account im Sandbox Mode (Default), nur verifizierte Empfänger erlaubt
+- **Solution:**
+  1. **Production Access beantragen** (AWS SES Console → Request Production Access)
+  2. ODER **Test-Empfänger verifizieren** (Email Addresses → Verify a New Email Address)
+- **Prevention:** Dokumentiere Sandbox Mode Limitation in Setup-Anleitung
+- **Related:** Pattern 31 (PDF/Email Failures)
+
+**Pattern 38: Firebase Secret Manager Whitespace/Newline Injection**
+- **Symptom:** `Error: Invalid character in header content ["authorization"]`
+- **Root Cause:** Firebase Secret Manager fügt automatisch Newlines/Whitespace zu gespeicherten Secrets hinzu
+- **Solution:** `.trim()` ALL secrets beim Laden
+  ```javascript
+  const accessKeyId = defineSecret('AWS_ACCESS_KEY_ID').value().trim();
+  const secretAccessKey = defineSecret('AWS_SECRET_ACCESS_KEY').value().trim();
+  ```
+- **Prevention:** ALWAYS sanitize secrets from Secret Manager
+- **Detection:** Log secret length BEFORE und AFTER trim
+- **Related:** Pattern 31 (API Key Errors)
+
+**Pattern 39: AWS IAM Username Validation Error**
+- **Symptom:** IAM User Erstellung schlägt fehl mit "Username must contain only alphanumeric characters"
+- **Root Cause:** AWS IAM erlaubt KEINE Umlaute, Spaces, oder Sonderzeichen in Usernamen
+- **Solution:** Verwende alphanumeric Usernames (a-z, A-Z, 0-9, - und _)
+  - ❌ FALSCH: "Marcel Gärtner" (Space + Umlaut)
+  - ✅ RICHTIG: "MarcelGaertner" (alphanumeric)
+- **Prevention:** Dokumentiere IAM Naming Rules in Setup-Anleitung
+- **Related:** Pattern 27 (Hardcoded Credentials)
+
+---
+
+**📊 DEPLOYMENT STATUS:**
+
+**Cloud Functions (23/24 deployed):**
+- ✅ `sendEntwurfEmail` (AWS SES)
+- ✅ `sendEntwurfBestaetigtNotification` (AWS SES)
+- ✅ `sendEntwurfAbgelehntNotification` (AWS SES)
+- ✅ `sendAngebotPDFToAdmin` (AWS SES)
+- ✅ `onStatusChange` (AWS SES)
+- ✅ `onNewPartnerAnfrage` (AWS SES)
+- ✅ `onUserApproved` (AWS SES)
+- ✅ 16 andere Functions (unverändert)
+
+**AWS SES Configuration:**
+- Account: Marcel Gärtner (Gaertner-marcel@web.de)
+- Region: eu-central-1 (Frankfurt)
+- Status: ⚠️ **Sandbox Mode** (BLOCKER!)
+- Verifiziert: `Gaertner-marcel@web.de` (Sender)
+- IAM User: MarcelGaertner (AmazonSESFullAccess)
+- Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (Firebase Secret Manager)
+
+**Git Commits:**
+- `45f3bab` - fix(entwurf-email): Graceful degradation + Credential Sanitization
+
+---
+
+**🔑 KEY LEARNINGS:**
+
+1. **Firebase Secret Manager Sanitization:** IMMER `.trim()` verwenden beim Laden von Secrets (Secret Manager fügt Newlines hinzu)
+2. **AWS IAM Naming:** Nur alphanumeric Zeichen für IAM Usernames (keine Umlaute/Spaces)
+3. **AWS SES Sandbox Mode:** Default nach Account-Erstellung, MUSS Production Access beantragen für echte Kunden
+4. **Email Verification:** In Sandbox Mode MÜSSEN Sender UND Empfänger verifiziert sein
+5. **Deployment Verification:** IMMER Cloud Function Logs prüfen nach Deployment (AWS Credential Errors)
+6. **DSGVO Compliance:** Region eu-central-1 (Frankfurt) für alle AWS Services verwenden
+
+---
+
+**⏭️ NEXT AGENT CHECKLIST:**
+
+1. ✅ **Code Migration:** ABGESCHLOSSEN (23/24 Functions deployed)
+2. ✅ **AWS Account Setup:** ABGESCHLOSSEN (Region eu-central-1, Email verifiziert)
+3. ✅ **IAM User:** ABGESCHLOSSEN (MarcelGaertner, AmazonSESFullAccess)
+4. ✅ **Firebase Secrets:** ABGESCHLOSSEN (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+5. ⏳ **AWS Production Access:** **PENDING** (User muss beantragen, 24-48h Wartezeit)
+6. ⏳ **Production Email Test:** **BLOCKED** (wartet auf Production Access)
+
+**EMPFEHLUNG für User:**
+"AWS Production Access JETZT beantragen (24-48h Wartezeit). In der Zwischenzeit: Test-Empfänger-Emails verifizieren für lokale Tests."
+
+---
 
 ### Session 2025-11-18 (Phase 11): Invoice PDF Enhancement + Steuerberater Dashboard Fixes (PRODUCTION-READY)
 
@@ -2845,12 +3103,15 @@ async function saveErsatzteileToCentralDB(ersatzteile, fahrzeugId, kennzeichen, 
 
 ---
 
-### Pattern 31: PDF Generation & Email Failures (Puppeteer, SendGrid) 🔴 HIGH PRIORITY
+### Pattern 31: PDF Generation & Email Failures (Puppeteer, AWS SES) 🔴 HIGH PRIORITY
+
+**⚠️ UPDATED Nov 2025:** SendGrid → AWS SES Migration (siehe Pattern 31D am Ende)
 
 **Symptom:**
 - Cloud Function timeout during PDF generation (>60s)
 - Email delivery fails silently (no error shown to user)
-- SendGrid API errors: 401 Unauthorized, 403 Forbidden
+- SendGrid API errors: 401 Unauthorized, 403 Forbidden (DEPRECATED - now AWS SES)
+- AWS SES errors: MessageRejected, Sandbox Mode limitations
 - Puppeteer OOM (Out of Memory) errors in Cloud Function logs
 
 **Root Causes:**
@@ -3196,6 +3457,153 @@ firebase functions:config:set sendgrid.api_key="YOUR_SENDGRID_API_KEY"
 firebase functions:config:get
 
 # Deploy functions
+firebase deploy --only functions
+```
+
+---
+
+#### **Pattern 31D: AWS SES Migration Issues (Nov 2025)**
+
+**⚠️ UPDATED Nov 2025:** SendGrid DEPRECATED → AWS SES Migration (Session 2025-11-20)
+
+**Related Patterns:** Pattern 37 (Sandbox Mode), Pattern 38 (Secret Sanitization), Pattern 39 (IAM Naming)
+
+**Issue 1: AWS SES Sandbox Mode (Email Address Not Verified)**
+- **Symptom:** Email wird nicht versendet, Cloud Function Logs zeigen:
+  ```
+  MessageRejected: Email address is not verified. The following identities failed the check in region EU-CENTRAL-1: customer@example.com
+  ```
+- **Root Cause:** AWS SES Account im Sandbox Mode (Default nach Account-Erstellung)
+  - ONLY verifizierte Email-Adressen als Empfänger erlaubt
+  - Sender UND Empfänger müssen verifiziert sein
+- **Detection:**
+  1. Check Cloud Function Logs: `firebase functions:log`
+  2. Search for "MessageRejected" oder "Email address is not verified"
+  3. AWS SES Console → **Account Dashboard** → Check "Account Status" (Sandbox vs Production)
+- **Solution (Production Access - EMPFOHLEN):**
+  1. AWS SES Console: https://console.aws.amazon.com/ses/
+  2. **Sending Statistics** → **Request Production Access**
+  3. Formular ausfüllen:
+     - Use case: "Transactional emails for vehicle intake system"
+     - Daily volume: 100-500 Emails
+     - Expected bounce rate: < 5%
+  4. Submit → Warte 24-48 Stunden auf AWS Approval
+  5. **Nach Approval:** KEINE Empfänger-Verifikation mehr nötig
+- **Solution (Temporär - für Tests):**
+  1. AWS SES Console → **Email Addresses** → **Verify a New Email Address**
+  2. Email eingeben (deine Test-Email)
+  3. Verifizierungs-Link klicken (Email-Postfach prüfen)
+  4. REPEAT für jede Test-Email
+- **Prevention:** Dokumentiere Sandbox Mode in Setup-Anleitung, weise User hin auf Production Access Antrag
+
+**Issue 2: Firebase Secret Manager Whitespace/Newline Injection**
+- **Symptom:** `Error: Invalid character in header content ["authorization"]`
+- **Root Cause:** Firebase Secret Manager fügt automatisch Newlines/Whitespace zu Secrets hinzu
+  ```javascript
+  // Secret Manager Output:
+  AWS_ACCESS_KEY_ID: "AKIA...\n"  // ← Newline!
+  AWS_SECRET_ACCESS_KEY: "wJalr...\n"
+  ```
+- **Detection:**
+  1. Check Cloud Function Logs für "Invalid character in header"
+  2. Log secret values: `console.log('Key:', JSON.stringify(accessKeyId))`
+  3. Prüfe auf `\n`, `\r`, `\t` in Logs
+- **Solution:**
+  ```javascript
+  function getAWSSESClient() {
+    let accessKeyId = awsAccessKeyId.value();
+    let secretAccessKey = awsSecretAccessKey.value();
+
+    // CRITICAL: Sanitize Secret Manager Newlines/Whitespace
+    accessKeyId = accessKeyId.trim();
+    secretAccessKey = secretAccessKey.trim();
+
+    // Validation: Check for remaining invalid characters
+    const invalidChars = /[\r\n\t]/g;
+    if (invalidChars.test(accessKeyId) || invalidChars.test(secretAccessKey)) {
+      throw new Error("Invalid AWS credentials format");
+    }
+
+    return new SESClient({
+      region: "eu-central-1",
+      credentials: { accessKeyId, secretAccessKey }
+    });
+  }
+  ```
+- **Prevention:** ALWAYS `.trim()` secrets from Secret Manager, add validation regex
+
+**Issue 3: AWS IAM Username Validation Error**
+- **Symptom:** IAM User Erstellung schlägt fehl: "Username must contain only alphanumeric characters"
+- **Root Cause:** AWS IAM erlaubt KEINE Umlaute, Spaces, oder Sonderzeichen
+- **Detection:** AWS Console Error Message beim User-Erstellen
+- **Solution:** Verwende alphanumeric Usernames:
+  - ❌ FALSCH: "Marcel Gärtner" (Space + Umlaut)
+  - ✅ RICHTIG: "MarcelGaertner" (a-z, A-Z, 0-9, -, _)
+- **Prevention:** Dokumentiere IAM Naming Rules in Setup-Anleitung
+
+**Migration Checklist (SendGrid → AWS SES):**
+- [x] AWS Account erstellen (Region: eu-central-1)
+- [x] Sender Email verifizieren
+- [x] IAM User erstellen (AmazonSESFullAccess Policy)
+- [x] Firebase Secrets konfigurieren (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+- [x] Dependencies ändern (@sendgrid/mail → @aws-sdk/client-ses)
+- [x] Code migrieren (getAWSSESClient() Helper)
+- [x] Credential Sanitization (.trim() fix)
+- [x] Cloud Functions deployen (firebase deploy --only functions)
+- [ ] **PENDING:** AWS Production Access beantragen (24-48h Wartezeit)
+- [ ] **PENDING:** Production Email-Test
+
+**AWS SES Configuration (Nov 2025):**
+- Region: eu-central-1 (Frankfurt) - DSGVO-konform
+- Sender Email: Gaertner-marcel@web.de (verifiziert)
+- IAM User: MarcelGaertner (AmazonSESFullAccess)
+- Status: ⚠️ **Sandbox Mode** (BLOCKER - nur verifizierte Empfänger!)
+- Rate Limits (Sandbox): 1 Email/s, max. 200 Emails/24h
+- Rate Limits (Production): 14 Emails/s, max. 50.000 Emails/24h
+
+**Code Example (AWS SES Email):**
+```javascript
+const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
+
+const sesClient = getAWSSESClient(); // Helper mit .trim() Sanitization
+
+const command = new SendEmailCommand({
+  Source: "Gaertner-marcel@web.de",
+  Destination: { ToAddresses: ["customer@example.com"] },
+  Message: {
+    Subject: { Data: "Ihr Fahrzeugangebot", Charset: "UTF-8" },
+    Body: {
+      Html: { Data: "<html>...</html>", Charset: "UTF-8" }
+    }
+  }
+});
+
+await sesClient.send(command);
+```
+
+**Testing (Sandbox Mode):**
+1. Verifiziere Test-Empfänger Email in AWS SES Console
+2. Sende Test-Email via Cloud Function
+3. Check Cloud Function Logs: `firebase functions:log`
+4. Expected Log: `✅ Email sent successfully (MessageId: ...)`
+
+**Production Deployment (nach Production Access Approval):**
+1. Keine Code-Änderungen nötig
+2. AWS sendet Approval Email (24-48h)
+3. SES Account Status wechselt automatisch zu "Production"
+4. ALLE Empfänger-Emails jetzt erlaubt (keine Verifikation)
+5. Rate Limits erhöht (14 Emails/s, 50k Emails/24h)
+
+**Configuration Commands (AWS SES):**
+```bash
+# Set AWS Credentials in Firebase Secret Manager
+firebase functions:secrets:set AWS_ACCESS_KEY_ID
+firebase functions:secrets:set AWS_SECRET_ACCESS_KEY
+
+# Verify Secrets
+firebase functions:secrets:access AWS_ACCESS_KEY_ID --dry-run
+
+# Deploy functions with AWS SES
 firebase deploy --only functions
 ```
 

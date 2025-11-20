@@ -3,13 +3,13 @@
  * Deployed via GitHub Actions
  *
  * Uses Google Cloud Secret Manager for API Keys (defineSecret)
- * Secrets configured: OPENAI_API_KEY, SENDGRID_API_KEY
+ * Secrets configured: OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
  */
 const functions = require("firebase-functions");
 const { defineSecret } = require("firebase-functions/params");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
-const sgMail = require("@sendgrid/mail");
+const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const { OpenAI } = require("openai");
 const fs = require("fs");
 const path = require("path");
@@ -25,22 +25,38 @@ const db = admin.firestore();
 
 // Define secrets (will be loaded from Google Cloud Secret Manager)
 const openaiApiKey = defineSecret('OPENAI_API_KEY');
-const sendgridApiKey = defineSecret('SENDGRID_API_KEY');
+const awsAccessKeyId = defineSecret('AWS_ACCESS_KEY_ID');
+const awsSecretAccessKey = defineSecret('AWS_SECRET_ACCESS_KEY');
 
-// Helper function: Get and validate SendGrid API Key
-function getSendGridApiKey() {
-  const apiKey = sendgridApiKey.value();
+// Helper function: Get and validate AWS SES Client
+function getAWSSESClient() {
+  let accessKeyId = awsAccessKeyId.value();
+  let secretAccessKey = awsSecretAccessKey.value();
 
-  if (!apiKey) {
-    throw new Error("Missing SENDGRID_API_KEY - run: firebase functions:secrets:set SENDGRID_API_KEY");
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("Missing AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY - run: firebase functions:secrets:set AWS_ACCESS_KEY_ID && firebase functions:secrets:set AWS_SECRET_ACCESS_KEY");
   }
 
-  if (!apiKey.startsWith("SG.")) {
-    console.warn("⚠️ WARNING: SENDGRID_API_KEY startet nicht mit 'SG.' - möglicherweise ungültig!");
+  // Sanitization: Trim whitespace and newlines (Firebase Secret Manager adds these)
+  accessKeyId = accessKeyId.trim();
+  secretAccessKey = secretAccessKey.trim();
+
+  // Validation: Check for invalid characters
+  const invalidChars = /[\r\n\t]/g;
+  if (invalidChars.test(accessKeyId) || invalidChars.test(secretAccessKey)) {
+    console.error("❌ AWS Credentials contain invalid characters (newline/tab)");
+    throw new Error("Invalid AWS credentials format - contains control characters");
   }
 
-  console.log("✅ SendGrid API Key loaded from Secret Manager");
-  return apiKey;
+  console.log("✅ AWS SES Credentials loaded from Secret Manager");
+
+  return new SESClient({
+    region: "eu-central-1", // Frankfurt (DSGVO-konform)
+    credentials: {
+      accessKeyId: accessKeyId,
+      secretAccessKey: secretAccessKey
+    }
+  });
 }
 
 // Helper function: Get and validate OpenAI API Key
@@ -77,8 +93,8 @@ function getOpenAIApiKey() {
   return apiKey;
 }
 
-// Sender Email (MUST be verified in SendGrid!)
-const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
+// Sender Email (MUST be verified in AWS SES!)
+const SENDER_EMAIL = "Gaertner-marcel@web.de"; // MUSS in AWS SES verifiziert werden!
 
 // ============================================
 // FUNCTION 1: Status-Änderung → Email an Kunde
@@ -86,7 +102,7 @@ const SENDER_EMAIL = "Gaertner-marcel@web.de"; // Verifiziert in SendGrid
 exports.onStatusChange = functions
     .region("europe-west3") // Frankfurt für DSGVO
     .runWith({
-      secrets: [sendgridApiKey] // Bind SendGrid API Key from Secret Manager
+      secrets: [awsAccessKeyId, awsSecretAccessKey] // Bind AWS SES Credentials from Secret Manager
     })
     .firestore
     .document("{collectionId}/{vehicleId}") // Collection Group Pattern - fängt ALLE Collections
@@ -182,27 +198,40 @@ exports.onStatusChange = functions
         template = template.replace(new RegExp(`{{${key}}}`, "g"), variables[key]);
       });
 
-      // Initialize SendGrid (lazy - only when needed)
-      const apiKey = getSendGridApiKey();
-      sgMail.setApiKey(apiKey);
-      console.log("✅ SendGrid initialized for status change email");
+      // Initialize AWS SES (lazy - only when needed)
+      const sesClient = getAWSSESClient();
+      console.log("✅ AWS SES initialized for status change email");
 
-      // Send email (use werkstatt email if available and verified in SendGrid)
-      const msg = {
-        to: kundenEmail,
-        from: werkstattEmail, // Dynamic from Settings (fallback to SENDER_EMAIL)
-        subject: `🚗 Status-Update: ${after.kennzeichen} - ${werkstattName}`,
-        html: template,
-      };
+      // Send email via AWS SES (use werkstatt email if available and verified in AWS SES)
+      const subject = `🚗 Status-Update: ${after.kennzeichen} - ${werkstattName}`;
+
+      const sendEmailCommand = new SendEmailCommand({
+        Source: werkstattEmail, // Dynamic from Settings (fallback to SENDER_EMAIL)
+        Destination: {
+          ToAddresses: [kundenEmail]
+        },
+        Message: {
+          Subject: {
+            Data: subject,
+            Charset: 'UTF-8'
+          },
+          Body: {
+            Html: {
+              Data: template,
+              Charset: 'UTF-8'
+            }
+          }
+        }
+      });
 
       try {
-        await sgMail.send(msg);
+        await sesClient.send(sendEmailCommand);
         console.log(`✅ Email sent to: ${kundenEmail}`);
 
         // Log to Firestore
         await db.collection("email_logs").add({
           to: kundenEmail,
-          subject: msg.subject,
+          subject: subject,
           trigger: "status_change",
           vehicleId: vehicleId,
           collectionId: collectionId, // z.B. "fahrzeuge_mosbach"
@@ -211,13 +240,13 @@ exports.onStatusChange = functions
           status: "sent",
         });
       } catch (error) {
-        console.error("❌ SendGrid error:", error.message);
-        console.error("Error details:", error.response ? error.response.body : "No response body");
+        console.error("❌ AWS SES error:", error.message);
+        console.error("Error details:", error.name || "No error name");
 
         // Log error mit mehr Details
         await db.collection("email_logs").add({
           to: kundenEmail,
-          subject: msg.subject,
+          subject: subject,
           trigger: "status_change",
           vehicleId: vehicleId,
           collectionId: collectionId, // z.B. "fahrzeuge_mosbach"
@@ -225,8 +254,7 @@ exports.onStatusChange = functions
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
           status: "failed",
           error: error.message,
-          errorCode: error.code || null,
-          errorResponse: error.response ? JSON.stringify(error.response.body) : null,
+          errorCode: error.name || error.code || null,
         });
 
         // Throw error um Function als "failed" zu markieren
@@ -242,7 +270,7 @@ exports.onStatusChange = functions
 exports.onNewPartnerAnfrage = functions
     .region("europe-west3")
     .runWith({
-      secrets: [sendgridApiKey] // Bind SendGrid API Key from Secret Manager
+      secrets: [awsAccessKeyId, awsSecretAccessKey] // Bind AWS SES Credentials from Secret Manager
     })
     .firestore
     .document("partnerAnfragen/{anfrageId}")
@@ -283,38 +311,51 @@ exports.onNewPartnerAnfrage = functions
         template = template.replace(new RegExp(`{{${key}}}`, "g"), variables[key]);
       });
 
-      // Initialize SendGrid (lazy - only when needed)
-      const apiKey = getSendGridApiKey();
-      sgMail.setApiKey(apiKey);
-      console.log("✅ SendGrid initialized for partner anfrage email");
+      // Initialize AWS SES (lazy - only when needed)
+      const sesClient = getAWSSESClient();
+      console.log("✅ AWS SES initialized for partner anfrage email");
 
       // Send email to all admins
-      const msg = {
-        to: adminEmails,
-        from: SENDER_EMAIL,
-        subject: `🔔 Neue Anfrage von ${anfrage.partnerName}`,
-        html: template,
-      };
+      const subject = `🔔 Neue Anfrage von ${anfrage.partnerName}`;
+
+      const sendEmailCommand = new SendEmailCommand({
+        Source: SENDER_EMAIL,
+        Destination: {
+          ToAddresses: adminEmails
+        },
+        Message: {
+          Subject: {
+            Data: subject,
+            Charset: 'UTF-8'
+          },
+          Body: {
+            Html: {
+              Data: template,
+              Charset: 'UTF-8'
+            }
+          }
+        }
+      });
 
       try {
-        await sgMail.send(msg);
+        await sesClient.send(sendEmailCommand);
         console.log(`✅ Email sent to ${adminEmails.length} admins`);
 
         // Log
         await db.collection("email_logs").add({
           to: adminEmails.join(", "),
-          subject: msg.subject,
+          subject: subject,
           trigger: "new_anfrage",
           anfrageId: context.params.anfrageId,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
           status: "sent",
         });
       } catch (error) {
-        console.error("❌ SendGrid error:", error.message);
+        console.error("❌ AWS SES error:", error.message);
 
         await db.collection("email_logs").add({
           to: adminEmails.join(", "),
-          subject: msg.subject,
+          subject: subject,
           trigger: "new_anfrage",
           anfrageId: context.params.anfrageId,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -332,7 +373,7 @@ exports.onNewPartnerAnfrage = functions
 exports.onUserApproved = functions
     .region("europe-west3")
     .runWith({
-      secrets: [sendgridApiKey] // Bind SendGrid API Key from Secret Manager
+      secrets: [awsAccessKeyId, awsSecretAccessKey] // Bind AWS SES Credentials from Secret Manager
     })
     .firestore
     .document("users/{userId}")
@@ -363,36 +404,49 @@ exports.onUserApproved = functions
       });
 
       // Send email
-      // Initialize SendGrid (lazy - only when needed)
-      const apiKey = getSendGridApiKey();
-      sgMail.setApiKey(apiKey);
-      console.log("✅ SendGrid initialized for user approved email");
+      // Initialize AWS SES (lazy - only when needed)
+      const sesClient = getAWSSESClient();
+      console.log("✅ AWS SES initialized for user approved email");
 
-      const msg = {
-        to: after.email,
-        from: SENDER_EMAIL,
-        subject: "✅ Ihr Account wurde freigeschaltet",
-        html: template,
-      };
+      const subject = "✅ Ihr Account wurde freigeschaltet";
+
+      const sendEmailCommand = new SendEmailCommand({
+        Source: SENDER_EMAIL,
+        Destination: {
+          ToAddresses: [after.email]
+        },
+        Message: {
+          Subject: {
+            Data: subject,
+            Charset: 'UTF-8'
+          },
+          Body: {
+            Html: {
+              Data: template,
+              Charset: 'UTF-8'
+            }
+          }
+        }
+      });
 
       try {
-        await sgMail.send(msg);
+        await sesClient.send(sendEmailCommand);
         console.log(`✅ Welcome email sent to: ${after.email}`);
 
         await db.collection("email_logs").add({
           to: after.email,
-          subject: msg.subject,
+          subject: subject,
           trigger: "user_approved",
           userId: context.params.userId,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
           status: "sent",
         });
       } catch (error) {
-        console.error("❌ SendGrid error:", error.message);
+        console.error("❌ AWS SES error:", error.message);
 
         await db.collection("email_logs").add({
           to: after.email,
-          subject: msg.subject,
+          subject: subject,
           trigger: "user_approved",
           userId: context.params.userId,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3735,7 +3789,7 @@ WICHTIGE REGELN:
 exports.sendEntwurfEmail = functions
     .region("europe-west3")
     .runWith({
-      secrets: [sendgridApiKey]
+      secrets: [awsAccessKeyId, awsSecretAccessKey]
     })
     .https.onCall(async (data, context) => {
       console.log("📧 sendEntwurfEmail called");
@@ -3767,44 +3821,15 @@ exports.sendEntwurfEmail = functions
         );
       }
 
-      // ✅ FIX #51 (Issue #6): Entwurf Email Re-Enabled
-      // IMPORTANT: Requires SendGrid API Key configuration in Firebase Functions config
-      // Setup: firebase functions:config:set sendgrid.api_key="YOUR_API_KEY_HERE"
-      // Verify: firebase functions:config:get
-      // Alternative email services: Gmail SMTP, AWS SES, Resend, Mailgun
+      // ✅ AWS SES Email Integration
+      // IMPORTANT: Requires AWS SES credentials in Firebase Secret Manager
+      // Setup: firebase functions:secrets:set AWS_ACCESS_KEY_ID && firebase functions:secrets:set AWS_SECRET_ACCESS_KEY
+      // Verify: firebase functions:secrets:access AWS_ACCESS_KEY_ID
+      // Domain verification required in AWS SES Console!
 
       try {
-        // Initialize SendGrid
-        const apiKey = getSendGridApiKey();
-
-        // Check if API key is configured
-        if (!apiKey || apiKey === "demo-key-not-configured") {
-          console.warn("⚠️ SendGrid API Key not configured - Email wird NICHT versendet!");
-          console.log("📧 [DEMO MODE] Würde Email senden an:", kundenEmail);
-          console.log("🎯 [DEMO MODE] Kennzeichen:", kennzeichen);
-          console.log("🔗 [DEMO MODE] QR-Code URL:", qrCodeUrl);
-
-          // Log to Firestore as "skipped" not "failed"
-          await db.collection("email_logs").add({
-            to: kundenEmail,
-            subject: `Kosten-Voranschlag für ${kennzeichen}`,
-            trigger: "entwurf_email",
-            fahrzeugId: fahrzeugId || null,
-            kennzeichen: kennzeichen,
-            sentAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: "skipped",
-            reason: "SendGrid API Key not configured",
-          });
-
-          return {
-            success: true,
-            message: "Email übersprungen (API Key nicht konfiguriert)",
-            demoMode: true,
-            recipient: kundenEmail
-          };
-        }
-
-        sgMail.setApiKey(apiKey);
+        // Initialize AWS SES Client
+        const sesClient = getAWSSESClient();
 
         // Email HTML (inline for MVP)
         const emailHtml = `
@@ -3856,16 +3881,28 @@ exports.sendEntwurfEmail = functions
           </html>
         `;
 
-        // Send email
-        const msg = {
-          to: kundenEmail,
-          from: SENDER_EMAIL,
-          subject: `🚗 Ihr Kosten-Voranschlag für ${kennzeichen}`,
-          html: emailHtml,
-        };
+        // Send email via AWS SES
+        const sendEmailCommand = new SendEmailCommand({
+          Source: SENDER_EMAIL,
+          Destination: {
+            ToAddresses: [kundenEmail]
+          },
+          Message: {
+            Subject: {
+              Data: `🚗 Ihr Kosten-Voranschlag für ${kennzeichen}`,
+              Charset: 'UTF-8'
+            },
+            Body: {
+              Html: {
+                Data: emailHtml,
+                Charset: 'UTF-8'
+              }
+            }
+          }
+        });
 
-        await sgMail.send(msg);
-        console.log(`✅ Entwurf-Email sent to: ${kundenEmail}`);
+        await sesClient.send(sendEmailCommand);
+        console.log(`✅ Entwurf-Email sent via AWS SES to: ${kundenEmail}`);
 
         // Log to Firestore
         await db.collection("email_logs").add({
@@ -3880,18 +3917,28 @@ exports.sendEntwurfEmail = functions
 
         return { success: true, message: "Email versendet" };
       } catch (error) {
-        console.error("❌ SendGrid error:", error.message);
+        console.error("❌ AWS SES error:", error.message);
 
-        // ✅ PATTERN 31: Graceful Degradation for Invalid API Keys
-        // If "Unauthorized" error → SendGrid API Key is invalid/expired
-        // → Treat like "demo-key-not-configured" and continue workflow
-        if (error.message.toLowerCase().includes("unauthorized") ||
-            error.code === 401 ||
-            (error.response && error.response.status === 401)) {
-          console.warn("⚠️ [GRACEFUL DEGRADATION] SendGrid API Key is INVALID (Unauthorized)");
+        // ✅ PATTERN 31: Graceful Degradation for AWS SES Errors
+        // Common AWS SES errors:
+        // - MessageRejected: Email address not verified
+        // - InvalidParameterValue: Invalid credentials
+        // - AccessDeniedException: Invalid AWS credentials
+
+        const errorCode = error.name || error.code || '';
+        const errorMessage = error.message || '';
+
+        // Check for credential/verification errors
+        if (errorCode.includes('MessageRejected') ||
+            errorCode.includes('AccessDenied') ||
+            errorCode.includes('InvalidParameterValue') ||
+            errorMessage.toLowerCase().includes('not verified')) {
+
+          console.warn("⚠️ [GRACEFUL DEGRADATION] AWS SES Configuration Error");
           console.log("📧 [DEMO MODE] Email would be sent to:", kundenEmail);
           console.log("🎯 [DEMO MODE] Kennzeichen:", kennzeichen);
           console.log("🔗 [DEMO MODE] QR-Code URL:", qrCodeUrl);
+          console.log("⚠️ [HINT] Check: 1) AWS credentials in Secret Manager, 2) Email verification in AWS SES Console");
 
           // Log as "skipped" (not "failed") → Workflow continues
           await db.collection("email_logs").add({
@@ -3902,17 +3949,17 @@ exports.sendEntwurfEmail = functions
             kennzeichen: kennzeichen,
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
             status: "skipped",
-            reason: "SendGrid API Key is invalid (Unauthorized)",
+            reason: `AWS SES Configuration Error: ${errorCode}`,
             originalError: error.message,
           });
 
           // ✅ Return success (workflow continues)
           return {
             success: true,
-            message: "Email übersprungen (SendGrid API Key ungültig)",
+            message: "Email übersprungen (AWS SES nicht konfiguriert)",
             demoMode: true,
             recipient: kundenEmail,
-            warning: "SendGrid API Key ist ungültig - bitte in Secret Manager aktualisieren"
+            warning: `AWS SES Error: ${errorCode} - Bitte Konfiguration prüfen`
           };
         }
 

@@ -4427,6 +4427,38 @@
 
                         console.log('   ✅ Status-Check OK: Anfrage kann verarbeitet werden');
 
+                        // ✅ FIX Issue #3 (2025-11-20): ATOMIC DUPLICATE CHECK
+                        // Prevents race condition where multiple users accept same KVA simultaneously
+                        console.log('   🔍 ATOMIC DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
+
+                        // Check 1: Auftragsnummer
+                        if (anfrage.auftragsnummer) {
+                            const auftragsnummerQuery = window.getCollection('fahrzeuge')
+                                .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                                .limit(1);
+                            const existingByAuftragsnummer = await transaction.get(auftragsnummerQuery);
+
+                            if (!existingByAuftragsnummer.empty) {
+                                const duplicate = existingByAuftragsnummer.docs[0];
+                                throw new Error(`⚠️ Fahrzeug mit Auftragsnummer "${anfrage.auftragsnummer}" existiert bereits! (ID: ${duplicate.id})`);
+                            }
+                        }
+
+                        // Check 2: Kennzeichen
+                        if (anfrage.kennzeichen) {
+                            const kennzeichenQuery = window.getCollection('fahrzeuge')
+                                .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                                .limit(1);
+                            const existingByKennzeichen = await transaction.get(kennzeichenQuery);
+
+                            if (!existingByKennzeichen.empty) {
+                                const duplicate = existingByKennzeichen.docs[0];
+                                throw new Error(`⚠️ Fahrzeug mit Kennzeichen "${anfrage.kennzeichen}" existiert bereits! (ID: ${duplicate.id})`);
+                            }
+                        }
+
+                        console.log('   ✅ ATOMIC DUPLICATE-CHECK OK: Kein Duplikat gefunden');
+
                         transaction.update(anfrageRef, updateData);
                         transaction.set(fahrzeugRef, dataForFirestore);
 
