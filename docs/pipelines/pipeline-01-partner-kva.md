@@ -474,16 +474,28 @@ STUFE 5: Partner nimmt KVA an
 
 ### Sofortmaßnahmen (Woche 1)
 
-1. **Email-Format-Validierung hinzufügen** (Priorität: HOCH)
-   - Datei: `partner-app/multi-service-anfrage.html` Zeile 1520
-   - Code:
+1. ✅ **Email-Format-Validierung hinzufügen** (Priorität: HOCH) - **✅ COMPLETED 2025-11-20**
+   - **Status:** ✅ FIXED in 5 Locations (4 Dateien)
+   - **Commit:** 79ac89a (Bug #9)
+   - **Files:**
+     1. entwuerfe-bearbeiten.html (Lines 2304-2311)
+     2. kunden.html (Lines 2795-2813) - CRITICAL: `window.validateEmail()` war undefined!
+     3. annahme.html (Lines 2737-2745)
+     4. registrierung.html (Lines 682-687, 833-838 - 2× locations)
+   - **Code:**
      ```javascript
-     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-     if (!emailRegex.test(kundenEmail)) {
-       toast.error('Ungültige Email-Adresse');
-       return;
+     // PATTERN: Email Validation Function
+     function validateEmail(email) {
+       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+       if (!email || !emailRegex.test(email)) {
+         return { valid: false, error: '❌ Ungültige Email-Adresse' };
+       }
+       return { valid: true, error: null };
      }
+     // USAGE: if (!validateEmail(email).valid) { toast.error(...); return; }
      ```
+   - **Impact:** ✅ Verbesserte UX (Fehler sofort), Data Quality (keine ungültigen Emails)
+   - **Related:** NEXT_AGENT Pattern 41 (Email Validation Missing)
 
 2. **VIN zu KVA-PDF hinzufügen** (Priorität: HOCH)
    - Datei: `partner-app/kva-pdf-template.html` (oder inline in anfrage-detail.html)

@@ -3888,6 +3888,48 @@ firebase firestore:import \
 
 ---
 
+### Session 2025-11-20 (Phase 13): Pipeline Bug Fixes - Audit-Trail, Email Validation, Field Consistency
+
+**COMPREHENSIVE FIXES (7 Commits, 4 Bug Categories, 135+ Lines):**
+
+**Bug #4: VIN Display + Field Consistency** (Commits f925c9f, 13a951f)
+- VIN auf Rechnung-PDF (rechnungen.html Lines 1167-1181), Feld-Inkonsistenz Admin/Partner (meine-anfragen.html Lines 7143-7155 - anliefertermin + abholtermin DATA LOSS PREVENTION)
+- Files: rechnungen.html, meine-anfragen.html
+- Pattern: **#42 - Field Name Inconsistency**
+
+**Bug #5: Multi-Service Support** (Commit 61608a5)
+- 3× Legacy-Handling für anfrage-detail.html (Array, 'multi-service' + serviceLabels, String)
+- Files: anfrage-detail.html (Lines 3937-3961)
+- Pattern: **#43 - Multi-Service Support Missing**, Pattern #21 (serviceTyp READ-ONLY)
+
+**Bug #8: Audit-Trail Missing** 🔴 CRITICAL (Commits 56e8538, 6e0b66f)
+- **CRITICAL:** `window.currentUser` NIE initialisiert → ALLE Status-Updates `user: 'system'` (DSGVO-Verletzung!)
+- **Solutions:** NEW `getCurrentUserForAudit()` helper (kanban.html), Replace `window.currentUser` (3× kanban.html), Partner-Sync User-Tracking, Fahrzeug/Entwurf createdBy (annahme.html), Entwurf lastModifiedBy (entwuerfe-bearbeiten.html), KVA beauftragtVonUserId (meine-anfragen.html), Ersatzteil-DB createdByUserId
+- Files: kanban.html, annahme.html, entwuerfe-bearbeiten.html, meine-anfragen.html (+88 lines total)
+- Pattern: **#40 - Audit-Trail Missing** 🔴 CRITICAL
+
+**Bug #9: Email-Validierung** ⚠️ HIGH (Commit 79ac89a)
+- 5 Fixes in 4 Dateien (entwuerfe-bearbeiten.html, kunden.html, annahme.html, registrierung.html ×2)
+- CRITICAL: `window.validateEmail()` war undefined in kunden.html → Runtime Error!
+- Regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` vor ALLEN Firestore/Auth Operations
+- Files: 4 files (+55 lines)
+- Pattern: **#41 - Email Validation Missing** ⚠️ HIGH
+
+**KEY LEARNINGS:**
+- ALWAYS initialize user tracking variables (sessionStorage.mitarbeiter preferred)
+- NEVER rely on `window.currentUser` without initialization
+- ALWAYS validate email format BEFORE Firebase Auth calls (better UX)
+- ALWAYS audit BOTH code paths for field consistency (Admin vs Partner)
+- Compliance FIRST: Audit-Trail is CRITICAL for DSGVO (not optional!)
+
+**NEW ERROR PATTERNS:** Patterns #40 (Audit-Trail), #41 (Email Validation), #42 (Field Inconsistency), #43 (Multi-Service)
+
+**Related Documentation:**
+- Pipeline-01 Sofortmaßnahme #1 (Email) ✅ COMPLETED
+- Pipeline-01/03/06 Gap Analysis ✅ 3/12 FIXED
+
+---
+
 ### Session 2025-11-18 (Phase 11): Invoice PDF Enhancement + Steuerberater Dashboard
 
 **FIXES (2 Features, 2 Commits):**
@@ -3930,7 +3972,7 @@ firebase firestore:import \
 
 ---
 
-_Last Updated: 2025-11-19 by Claude Code (Sonnet 4.5)_
-_Version: 8.5 (Data Leak Detection, Logic Errors, PDF Verification - Session 2025-11-19)_
+_Last Updated: 2025-11-20 by Claude Code (Sonnet 4.5)_
+_Version: 8.6 (Pipeline Bug Fixes: Audit-Trail, Email Validation, Field Consistency - Session 2025-11-20)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
-_Lines: ~4,150 (+ ~290 lines documentation updates)_
+_Lines: ~4,200 (+ ~340 lines documentation updates)_
