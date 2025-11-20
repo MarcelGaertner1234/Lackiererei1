@@ -3059,6 +3059,16 @@
                             annahmeData.partnerPassword = null;
                         }
 
+                        // 🖼️ FIX: Nov 20, 2025 - Pattern 35: Convert Photo URLs to Base64 for PDF
+                        console.log('   e.5) Konvertiere Fotos zu Base64...');
+                        if (annahmeData.photos && annahmeData.photos.length > 0) {
+                            annahmeData.photosBase64 = await convertPhotoUrlsToBase64(annahmeData.photos);
+                            console.log(`   ✅ ${annahmeData.photosBase64.length} Fotos konvertiert`);
+                        } else {
+                            console.log('   ⏭️ Keine Fotos vorhanden');
+                            annahmeData.photosBase64 = [];
+                        }
+
                         console.log('   f) Erstelle PDF...');
                         const pdfBlob = await createPDF(annahmeData);  // FIX 2025-11-13: Capture pdfBlob for upload
                         console.log('   ✅ PDF erstellt');
@@ -4109,8 +4119,8 @@
                     const mechanikProblem = document.getElementById('mechanik-problem')?.value;
                     const mechanikSymptome = document.getElementById('mechanik-symptome')?.value;
                     if (mechanikProblem || mechanikSymptome) {
-                        details.mechanikProblem = mechanikProblem;  // FIX: Nov 17, 2025 - Field-Name Consistency
-                        details.mechanikSymptome = mechanikSymptome;  // FIX: Nov 17, 2025 - Field-Name Consistency
+                        details.problem = mechanikProblem;  // FIX: Nov 20, 2025 - Remove prefix for PDF/Display compatibility (Pattern 34)
+                        details.symptome = mechanikSymptome;  // FIX: Nov 20, 2025 - Remove prefix for PDF/Display compatibility (Pattern 34)
                     }
                     break;
 
@@ -6390,6 +6400,57 @@
                     summeGesamt: parseFloat(document.getElementById('vereinbarterPreis')?.value) || 0
                 }
             };
+        }
+
+        // 🖼️ PHOTO URL→BASE64 CONVERTER (FIX: Nov 20, 2025 - Pattern 35: PDF Photo Bug)
+        // Converts Firebase Storage URLs to Base64 for jsPDF embedding
+        async function convertPhotoUrlsToBase64(photoUrls) {
+            if (!photoUrls || photoUrls.length === 0) return [];
+
+            console.log(`🖼️ Konvertiere ${photoUrls.length} Fotos zu Base64 für PDF...`);
+            const base64Photos = [];
+
+            for (let i = 0; i < photoUrls.length; i++) {
+                const photoUrl = photoUrls[i];
+
+                try {
+                    const base64 = await new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.crossOrigin = 'Anonymous';
+
+                        const timeout = setTimeout(() => {
+                            reject(new Error(`Photo ${i+1} loading timeout`));
+                        }, 10000);  // 10 seconds timeout
+
+                        img.onload = () => {
+                            clearTimeout(timeout);
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/jpeg', 0.9));  // 90% quality
+                        };
+
+                        img.onerror = (error) => {
+                            clearTimeout(timeout);
+                            reject(error);
+                        };
+
+                        img.src = photoUrl;
+                    });
+
+                    base64Photos.push(base64);
+                    console.log(`   ✅ Foto ${i+1}/${photoUrls.length} konvertiert`);
+
+                } catch (error) {
+                    console.error(`   ❌ Foto ${i+1} konnte nicht geladen werden:`, error);
+                    // Continue with remaining photos (graceful degradation)
+                }
+            }
+
+            console.log(`✅ ${base64Photos.length}/${photoUrls.length} Fotos erfolgreich konvertiert`);
+            return base64Photos;
         }
 
         // PDF erstellen (keeping original function)
