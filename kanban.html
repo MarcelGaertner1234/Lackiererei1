@@ -2657,6 +2657,56 @@
         }
 
         /**
+         * 🆕 BUG #8 FIX (2025-11-20): Get current user info for audit trail
+         *
+         * Tries multiple sources in order:
+         * 1. sessionStorage (mitarbeiter login) - PREFERRED
+         * 2. firebase.auth().currentUser - FALLBACK
+         * 3. 'system' - LAST RESORT
+         *
+         * This replaces the broken `window.currentUser` pattern that was never initialized!
+         *
+         * @returns {Object} {user: string, userId: string|null, rolle: string|null, email: string|null}
+         */
+        function getCurrentUserForAudit() {
+            // Try sessionStorage first (mitarbeiter login via Mitarbeiterverwaltung)
+            const mitarbeiterStr = sessionStorage.getItem('mitarbeiter');
+            if (mitarbeiterStr) {
+                try {
+                    const mitarbeiter = JSON.parse(mitarbeiterStr);
+                    return {
+                        user: mitarbeiter.name || mitarbeiter.email || 'system',
+                        userId: mitarbeiter.id || null,
+                        rolle: mitarbeiter.rolle || 'Sonstige',
+                        email: mitarbeiter.email || null
+                    };
+                } catch (e) {
+                    console.error('❌ Fehler beim Parsen von Mitarbeiter-Daten:', e);
+                }
+            }
+
+            // Fallback: Firebase Auth (for Admin/Werkstatt login)
+            const authUser = firebase.auth().currentUser;
+            if (authUser) {
+                return {
+                    user: authUser.displayName || authUser.email || 'system',
+                    userId: authUser.uid || null,
+                    rolle: null,  // Role not available from Firebase Auth alone
+                    email: authUser.email || null
+                };
+            }
+
+            // Last resort (should rarely happen if login works correctly)
+            console.warn('⚠️ getCurrentUserForAudit(): Kein User gefunden! Fallback zu "system"');
+            return {
+                user: 'system',
+                userId: null,
+                rolle: null,
+                email: null
+            };
+        }
+
+        /**
          * Prüft ob Fahrzeug einen Service hat (Primary ODER Additional)
          * @param {Object} fahrzeug - Fahrzeug-Dokument
          * @param {string} serviceTyp - Service-Typ zu prüfen
@@ -4475,6 +4525,9 @@
                 // Mapping: Werkstatt-Status → Partner-Kanban-Status
                 const mappedStatus = mapProzessToStatus(newStatus);
 
+                // 🔧 BUG #8 FIX #2 (2025-11-20): Get user info for Partner-Sync audit
+                const userInfo = getCurrentUserForAudit();
+
                 const updateData = {
                     // ✅ Backwards Compatibility: Nur Primary Service updatet status/prozessStatus
                     ...(serviceTyp === fahrzeugData.serviceTyp && {
@@ -4491,7 +4544,10 @@
                         status: mappedStatus,
                         prozessStatus: newStatus,
                         timestamp: timestamp,
-                        user: 'werkstatt-sync',
+                        user: userInfo.user,  // ✅ FIX: No longer hardcoded 'werkstatt-sync'!
+                        userId: userInfo.userId,  // 🆕 NEW: User-ID für Audit-Trail
+                        rolle: userInfo.rolle,  // 🆕 NEW: Rolle für Compliance
+                        syncedBy: 'werkstatt',  // 🆕 NEW: Flag that this is a sync operation
                         note: `Von Werkstatt synchronisiert (${newStatus} → ${mappedStatus})`
                     }),
 
@@ -4717,10 +4773,15 @@
                 // Update Status für aktuellen Service
                 fahrzeug.serviceStatuses[currentService].status = newStatus;
                 fahrzeug.serviceStatuses[currentService].timestamp = timestamp;
+
+                // 🔧 BUG #8 FIX (2025-11-20): Replace window.currentUser with getCurrentUserForAudit()
+                const userInfo = getCurrentUserForAudit();
                 fahrzeug.serviceStatuses[currentService].statusHistory.push({
                     status: newStatus,
                     timestamp: timestamp,
-                    user: window.currentUser?.email || 'system',
+                    user: userInfo.user,  // ✅ FIX: No longer always 'system'!
+                    userId: userInfo.userId,  // 🆕 NEW: User-ID für Audit-Trail
+                    rolle: userInfo.rolle,  // 🆕 NEW: Rolle für Compliance
                     foto: null,
                     notiz: null
                 });
@@ -4745,6 +4806,9 @@
                     }
                 }
 
+                // 🔧 BUG #8 FIX (2025-11-20): Get user info BEFORE updateData object
+                const userInfo = getCurrentUserForAudit();
+
                 const updateData = {
                     // ✅ Backwards Compatibility: Nur Primary Service updatet prozessStatus
                     ...(currentService === fahrzeug.serviceTyp && {
@@ -4758,7 +4822,9 @@
                     [`serviceStatuses.${currentService}.statusHistory`]: firebase.firestore.FieldValue.arrayUnion({
                         status: newStatus,
                         timestamp: timestamp,
-                        user: window.currentUser?.email || 'system'
+                        user: userInfo.user,  // ✅ FIX: No longer always 'system'!
+                        userId: userInfo.userId,  // 🆕 NEW: User-ID für Audit-Trail
+                        rolle: userInfo.rolle  // 🆕 NEW: Rolle für Compliance
                         // 🔧 PHASE 2 (2025-11-16): Don't set foto/notiz to null
                         // Photos are added separately via updateFahrzeugStatusWithPhoto()
                     }),
@@ -5227,6 +5293,9 @@
                 // WHY: Multi-service timeline reads from serviceStatuses.{service}.statusHistory
                 // SOLUTION: Add photo to all services so it appears in all timelines
                 if (fahrzeug.serviceStatuses && typeof fahrzeug.serviceStatuses === 'object') {
+                    // 🔧 BUG #8 FIX (2025-11-20): Get user info BEFORE loop
+                    const userInfo = getCurrentUserForAudit();
+
                     const allServices = [fahrzeug.serviceTyp];
                     if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
                         fahrzeug.additionalServices.forEach(as => {
@@ -5242,7 +5311,9 @@
                             fahrzeug.serviceStatuses[serviceTyp].statusHistory.push({
                                 status: newStatus,
                                 timestamp: timestamp,
-                                user: window.currentUser?.email || 'system',
+                                user: userInfo.user,  // ✅ FIX: No longer always 'system'!
+                                userId: userInfo.userId,  // 🆕 NEW: User-ID für Audit-Trail
+                                rolle: userInfo.rolle,  // 🆕 NEW: Rolle für Compliance
                                 foto: photoURL,  // ✅ Photo included!
                                 notiz: notiz || null
                             });
