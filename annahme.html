@@ -59,6 +59,9 @@
     <!-- jsPDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- jsPDF autoTable Plugin for Excel-Style Tables (Nov 20, 2025) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
     <!-- PDF.js for PDF Parsing -->
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 
@@ -6512,87 +6515,36 @@
                 }
             }
 
-            // Header text (right side or centered based on whether logo loaded)
+            // 🎨 EXCEL-STYLE HEADER (FIX: Nov 20, 2025 - Pattern 36: Header abgeschnitten)
+            // Kürzerer Text + kleinere Schrift für bessere Lesbarkeit
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(22);
+            doc.setFontSize(18);  // Kleiner: 22 → 18
             doc.setFont(undefined, 'bold');
-            doc.text('Fahrzeug-Annahmeprotokoll', logoLoaded ? 115 : 105, 20, { align: logoLoaded ? 'left' : 'center' });
+            doc.text('Annahmeprotokoll', logoLoaded ? 115 : 105, 18, { align: logoLoaded ? 'left' : 'center' });
 
-            doc.setFontSize(12);
+            doc.setFontSize(10);  // Kleiner: 12 → 10
             doc.setFont(undefined, 'normal');
-            doc.text(werkstattName, logoLoaded ? 115 : 105, 30, { align: logoLoaded ? 'left' : 'center' });
+            doc.text(werkstattName, logoLoaded ? 115 : 105, 26, { align: logoLoaded ? 'left' : 'center' });
+
+            // Datum rechts oben
+            doc.setFontSize(9);
+            doc.text(data.datum, 190, 18, { align: 'right' });
 
             // Add subtle separator line
             doc.setDrawColor(255, 255, 255);
             doc.setLineWidth(0.5);
             doc.line(15, 42, 195, 42);
 
-            // Daten
+            // 🎨 EXCEL-STYLE TABELLEN (FIX: Nov 20, 2025 - Pattern 36)
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(11);
-            let y = 50;
 
-            doc.setFont(undefined, 'bold');
-            doc.text('Datum:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.datum + ' ' + data.zeit, 50, y);
-
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('Kennzeichen:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kennzeichen, 50, y);
-
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('Kundenname:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kundenname, 50, y);
-
-            // Email (immer anzeigen)
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('Email:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kundenEmail || 'Nicht angegeben', 50, y);
-
-            // 🆕 FAHRZEUGDATEN (Moved to top for logical flow - 2025-11-13)
-            y += 15;
-            doc.setFillColor(102, 126, 234);  // Blue
-            doc.roundedRect(15, y - 5, 180, 10, 3, 3, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFont(undefined, 'bold');
-            doc.setFontSize(12);
-            doc.text('[AUTO]  FAHRZEUGDATEN', 20, y + 1);
-
-            y += 10;
-            doc.setTextColor(0, 0, 0);
-            doc.setFontSize(11);
-            doc.setFont(undefined, 'bold');
-            doc.text('Marke:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.marke, 50, y);
-            doc.setFont(undefined, 'bold');
-            doc.text('Modell:', 110, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.modell, 140, y);
-
+            // Baujahr-Logik berechnen (vor Tabelle)
             const baujahrVon = data.baujahrVon || data.baujahr;
             const baujahrBis = data.baujahrBis || data.baujahr;
-
-            // Baujahr + KM-Stand
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('Baujahr:', 20, y);
-            doc.setFont(undefined, 'normal');
-
             let baujahrText = '';
             if (baujahrVon && baujahrBis) {
-                if (baujahrVon === baujahrBis) {
-                    baujahrText = baujahrVon;
-                } else {
-                    baujahrText = baujahrVon + ' - ' + baujahrBis;
-                }
+                baujahrText = (baujahrVon === baujahrBis) ? baujahrVon : `${baujahrVon} - ${baujahrBis}`;
             } else if (baujahrVon) {
                 baujahrText = 'ab ' + baujahrVon;
             } else if (baujahrBis) {
@@ -6600,22 +6552,71 @@
             } else {
                 baujahrText = 'Nicht angegeben';
             }
-            doc.text(baujahrText, 50, y);
 
-            doc.setFont(undefined, 'bold');
-            doc.text('KM-Stand:', 110, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.kmstand ? (data.kmstand + ' km') : 'Nicht angegeben', 140, y);
+            // ┌─────────────────────────────────────────────┐
+            // │ TABELLE 1: KUNDENDATEN                      │
+            // └─────────────────────────────────────────────┘
+            doc.autoTable({
+                startY: 48,
+                head: [['KUNDENDATEN', '']],
+                body: [
+                    ['Datum / Zeit', data.datum + ' ' + data.zeit],
+                    ['Kennzeichen', data.kennzeichen],
+                    ['Kundenname', data.kundenname],
+                    ['Email', data.kundenEmail || 'Nicht angegeben'],
+                    ['Telefon', data.telefon || 'Nicht angegeben']
+                ],
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],  // Dark blue
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: {
+                    fontSize: 10
+                },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    1: { cellWidth: 130 }
+                },
+                margin: { left: 15, right: 15 }
+            });
 
-            // VIN
-            y += 7;
-            doc.setFont(undefined, 'bold');
-            doc.text('VIN/FIN:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.text(data.vin || 'Nicht angegeben', 50, y);
+            // ┌─────────────────────────────────────────────┐
+            // │ TABELLE 2: FAHRZEUGDATEN                    │
+            // └─────────────────────────────────────────────┘
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 5,
+                head: [['FAHRZEUGDATEN', '']],
+                body: [
+                    ['Marke / Modell', `${data.marke} ${data.modell}`],
+                    ['Baujahr', baujahrText],
+                    ['KM-Stand', data.kmstand ? (data.kmstand + ' km') : 'Nicht angegeben'],
+                    ['VIN/FIN', data.vin || 'Nicht angegeben'],
+                    ['Farbe', `${data.farbname || ''} ${data.farbvariante || ''} (${data.farbnummer || 'n/a'})`.trim()]
+                ],
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: {
+                    fontSize: 10
+                },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    1: { cellWidth: 130 }
+                },
+                margin: { left: 15, right: 15 }
+            });
 
-            // 🆕 SERVICE-TYP BADGES (Redesigned 2025-11-13)
-            y += 12;
+            // Y-Position für nächsten Inhalt
+            let y = doc.lastAutoTable.finalY + 10;
+
+            // 🎨 TABELLE 3: SERVICES (Excel-Style - Pattern 36)
             // PDF-safe text labels (emojis don't render in jsPDF)
             const serviceIcons = {
                 'lackierung': '[LACK]',
@@ -6667,28 +6668,55 @@
             };
 
             const serviceTyp = data.serviceTyp || 'lackierung';
-            const color = serviceColors[serviceTyp] || [63, 81, 181];
             const icon = serviceIcons[serviceTyp] || '🔧';
             const label = serviceLabels[serviceTyp] || 'SERVICE';
 
-            // Modern rounded badge instead of plain rectangle
-            doc.setFillColor(color[0], color[1], color[2]);
-            doc.roundedRect(15, y - 5, 180, 12, 3, 3, 'F');  // Rounded corners (radius: 3mm)
-            doc.setTextColor(255, 255, 255);
-            doc.setFont(undefined, 'bold');
-            doc.setFontSize(14);
-            doc.text(icon + '  ' + label, 20, y + 2);
+            // Build service rows for table
+            const serviceRows = [[icon, label + ' (Haupt-Service)']];
 
-            y += 12;
+            // Add additional services to table
+            if (data.additionalServices && Array.isArray(data.additionalServices)
+                && data.additionalServices.length > 0) {
+                data.additionalServices.forEach(addService => {
+                    const addServiceTyp = addService.serviceTyp;
+                    const addIcon = serviceIcons[addServiceTyp] || '[?]';
+                    const addLabel = serviceLabels[addServiceTyp] || 'SERVICE';
+                    serviceRows.push([addIcon, addLabel]);
+                });
+            }
+
+            // ┌─────────────────────────────────────────────┐
+            // │ TABELLE 3: SERVICES (Excel-Style)           │
+            // └─────────────────────────────────────────────┘
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 5,
+                head: [['SERVICE', 'BESCHREIBUNG']],
+                body: serviceRows,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: {
+                    fontSize: 10
+                },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 30, halign: 'center' },
+                    1: { cellWidth: 150 }
+                },
+                margin: { left: 15, right: 15 }
+            });
+
+            // Y-Position für Service-Details (NICHT ÄNDERN - Bug #2 Fix!)
+            let y = doc.lastAutoTable.finalY + 10;
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(11);
 
-            // 🆕 MULTI-SERVICE: Render Additional Services (if present)
+            // 🆕 MULTI-SERVICE: Render Additional Services Details (NICHT ÄNDERN!)
             if (data.additionalServices && Array.isArray(data.additionalServices)
                 && data.additionalServices.length > 0) {
-
-                doc.setFont(undefined, 'bold');
-                doc.text('+ Zusaetzliche Services:', 20, y);
                 doc.setFont(undefined, 'normal');
                 y += 6;
 
