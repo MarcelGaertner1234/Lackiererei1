@@ -6304,72 +6304,9 @@
                     // Trotzdem fortfahren - Fahrzeug ohne Kunden-Verknüpfung erstellen
                 }
 
-                // 4. DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert (CRITICAL!)
-                // Verhindert doppelte Fahrzeuge wenn Transaction beim Flag-Setting fehlschlägt
-                console.log('🔍 DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
-                let existingVehicle = null;
-
-                // Check 1: Auftragsnummer (wenn vorhanden)
-                if (anfrage.auftragsnummer) {
-                    try {
-                        existingVehicle = await window.getCollection('fahrzeuge')
-                            .where('auftragsnummer', '==', anfrage.auftragsnummer)
-                            .limit(1)
-                            .get();
-                        console.log(`   📊 Check Auftragsnummer "${anfrage.auftragsnummer}": ${existingVehicle.size} Treffer`);
-                    } catch (error) {
-                        console.error('❌ Fehler bei Auftragsnummer-Check:', error);
-                    }
-                }
-
-                // Check 2: Kennzeichen (Fallback wenn Auftragsnummer nicht existiert oder keine Treffer)
-                if ((!existingVehicle || existingVehicle.empty) && anfrage.kennzeichen) {
-                    try {
-                        existingVehicle = await window.getCollection('fahrzeuge')
-                            .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
-                            .limit(1)
-                            .get();
-                        console.log(`   📊 Check Kennzeichen "${anfrage.kennzeichen}": ${existingVehicle.size} Treffer`);
-                    } catch (error) {
-                        console.error('❌ Fehler bei Kennzeichen-Check:', error);
-                    }
-                }
-
-                if (existingVehicle && !existingVehicle.empty) {
-                    const vehicle = existingVehicle.docs[0];
-                    console.error('❌ DUPLIKAT VERHINDERT! Fahrzeug existiert bereits:', vehicle.id);
-                    alert('⚠️ Fahrzeug wurde bereits angelegt!\n\n' +
-                        `📦 Fahrzeug-ID: ${vehicle.id}\n` +
-                        `🚗 Kennzeichen: ${vehicle.data().kennzeichen || 'k.A.'}\n` +
-                        `📅 Angelegt am: ${vehicle.data().datum ? new Date(vehicle.data().datum).toLocaleString('de-DE') : 'k.A.'}\n\n` +
-                        `DUPLIKAT VERHINDERT! Das Fahrzeug ist bereits im System.\n\n` +
-                        `Hinweis: Falls fahrzeugAngelegt Flag fehlt, wird es jetzt nachträglich gesetzt.`);
-
-                    // ✅ Nachträglich fahrzeugAngelegt Flag setzen (falls vergessen)
-                    if (!anfrage.fahrzeugAngelegt) {
-                        console.log('🔧 Setze fahrzeugAngelegt Flag nachträglich...');
-                        try {
-                            await window.getCollection('partnerAnfragen').doc(anfrageId).update({
-                                fahrzeugAngelegt: true,
-                                fahrzeugAngelegtAm: vehicle.data().datum || new Date().toISOString(),
-                                fahrzeugId: vehicle.id,
-                                fahrzeugKennzeichen: vehicle.data().kennzeichen
-                            });
-                            console.log('✅ Flag nachträglich gesetzt');
-                        } catch (flagError) {
-                            console.error('❌ Konnte Flag nicht setzen:', flagError);
-                        }
-                    }
-
-                    // Button wieder aktivieren + Transaction abbrechen
-                    if (button) {
-                        button.disabled = false;
-                        button.textContent = originalButtonText || '✅ Annehmen';
-                    }
-                    transactionRunning = false;
-                    return; // Abbruch - Fahrzeug existiert bereits!
-                }
-                console.log('✅ Kein Duplikat gefunden - Fahrzeug kann angelegt werden');
+                // ✅ FIX Issue #3 (2025-11-20): Duplicate Check moved INSIDE Transaction
+                // Old duplicate check (Lines 6307-6372) removed - now handled atomically in transaction
+                console.log('ℹ️ Duplicate-Check wird in Transaction durchgeführt (atomic)');
 
                 // 5. Fahrzeug-Daten vorbereiten (NEUE PIPELINE mit Rabatt-Berechnung!)
                 console.log('📋 Erstelle Fahrzeug-Dokument aus Partner-Anfrage...');
@@ -6433,6 +6370,46 @@
                         }
 
                         console.log('   ✅ Status-Check OK: Anfrage ist noch verfügbar');
+
+                        // ✅ FIX Issue #3 (2025-11-20): ATOMIC DUPLICATE CHECK
+                        // PROBLEM: Duplicate checks waren AUSSERHALB Transaction → Race Condition!
+                        // LÖSUNG: Duplicate checks INSIDE Transaction für Atomizität
+                        console.log('   🔍 ATOMIC DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
+
+                        // Check 1: Auftragsnummer (wenn vorhanden)
+                        if (anfrage.auftragsnummer) {
+                            const auftragsnummerQuery = window.getCollection('fahrzeuge')
+                                .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                                .limit(1);
+                            const existingByAuftragsnummer = await transaction.get(auftragsnummerQuery);
+
+                            if (!existingByAuftragsnummer.empty) {
+                                const duplicate = existingByAuftragsnummer.docs[0];
+                                console.error('   ❌ DUPLIKAT: Auftragsnummer existiert bereits:', duplicate.id);
+                                throw new Error(`⚠️ Fahrzeug mit Auftragsnummer "${anfrage.auftragsnummer}" existiert bereits!\n\n` +
+                                    `📦 Fahrzeug-ID: ${duplicate.id}\n` +
+                                    `🚗 Kennzeichen: ${duplicate.data().kennzeichen || 'k.A.'}\n\n` +
+                                    `DUPLIKAT VERHINDERT!`);
+                            }
+                        }
+
+                        // Check 2: Kennzeichen
+                        if (anfrage.kennzeichen) {
+                            const kennzeichenQuery = window.getCollection('fahrzeuge')
+                                .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                                .limit(1);
+                            const existingByKennzeichen = await transaction.get(kennzeichenQuery);
+
+                            if (!existingByKennzeichen.empty) {
+                                const duplicate = existingByKennzeichen.docs[0];
+                                console.error('   ❌ DUPLIKAT: Kennzeichen existiert bereits:', duplicate.id);
+                                throw new Error(`⚠️ Fahrzeug mit Kennzeichen "${anfrage.kennzeichen}" existiert bereits!\n\n` +
+                                    `📦 Fahrzeug-ID: ${duplicate.id}\n\n` +
+                                    `DUPLIKAT VERHINDERT!`);
+                            }
+                        }
+
+                        console.log('   ✅ ATOMIC DUPLICATE-CHECK OK: Kein Duplikat gefunden');
 
                         // SCHRITT 3: Atomic Write - partnerAnfragen UPDATE + fahrzeuge CREATE
                         transaction.update(anfrageRef, updateData);
@@ -7090,7 +7067,9 @@
                 // WICHTIG: Kennzeichen IMMER in Großbuchstaben für konsistente Suche!
                 kennzeichen: (anfrage.kennzeichen || anfrage.auftragsnummer || '').toUpperCase(),
 
-                // 🔍 DEBUG kundenname (Bug #20 investigation)
+                // 🔍 FIX Issue #2 (2025-11-20): kundenname Fallback Bug
+                // PROBLEM: Fallback zu partnerName → Rechnung zeigt Partner-Firma statt Kundenname
+                // LÖSUNG: Validierung + Separates partnerFirma Feld
                 kundenname: (() => {
                     const debug = {
                         'anfrage.kundenname': anfrage.kundenname,
@@ -7100,17 +7079,25 @@
                         'anfrage.isEntwurf': anfrage.isEntwurf,
                         'anfrage.entwurfStatus': anfrage.entwurfStatus
                     };
-                    console.log('🔍 DEBUG kundenname (Bug #20):', debug);
+                    console.log('🔍 DEBUG kundenname (Issue #2):', debug);
 
-                    // Comprehensive fallback chain (Bug #20)
+                    // ✅ FIX: Comprehensive fallback chain WITHOUT partnerName
                     const result = anfrage.kundenname
                                 || anfrage.angebotDetails?.kundenname
                                 || anfrage.kundendaten?.name
-                                || anfrage.partnerName
-                                || 'Partner';
+                                || null;  // ✅ FIX: NO fallback to partnerName!
+
+                    // ✅ FIX: Validation - kundenname is REQUIRED
+                    if (!result || result.trim() === '') {
+                        throw new Error('❌ kundenname ist Pflichtfeld! Bitte Kundenname in Anfrage angeben.');
+                    }
+
                     console.log('✅ kundenname RESULT:', result);
                     return result;
                 })(),
+
+                // ✅ FIX Issue #2: Add separate partnerFirma field
+                partnerFirma: anfrage.partnerName || '',
                 marke: anfrage.marke || anfrage.serviceData?.fahrzeugdaten?.marke || '',
                 modell: anfrage.modell || anfrage.serviceData?.fahrzeugdaten?.modell || '',
                 baujahrVon: anfrage.baujahrVon || anfrage.baujahr || anfrage.serviceData?.fahrzeugdaten?.baujahr || '',
