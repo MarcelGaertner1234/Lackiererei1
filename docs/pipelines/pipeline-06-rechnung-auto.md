@@ -638,6 +638,45 @@ exports.checkOverdueInvoices = functions
 
 ---
 
+## 📊 Status Update: VIN Display + Field Consistency (2025-11-20)
+
+**Bug #4: VIN Display + Field Consistency** - ✅ **FIXED** (Commits f925c9f, 13a951f)
+
+### Fix #1: VIN auf Rechnung-PDF (Commit f925c9f)
+
+**Problem:**
+- VIN fehlte komplett auf generiertem Rechnung-PDF
+- Wichtige Fahrzeug-Identifikation nicht sichtbar für Kunde/Steuerberater
+
+**Lösung:**
+- VIN-Display hinzugefügt in rechnungen.html (Lines 1167-1181)
+- Waterfall-Logic für VIN-Abruf: `vehicle.vin || vehicle.fahrgestellnummer || 'N/A'`
+
+**Impact:**
+- ✅ Vollständige Fahrzeug-Identifikation auf Rechnung-PDF
+- ✅ Compliance mit Buchhaltungs-Standards
+- ✅ Bessere Nachvollziehbarkeit für Steuerberater
+
+### Fix #2: Feld-Inkonsistenz anliefertermin (Commit 13a951f)
+
+**Problem:**
+- Partner-App nutzte `anliefertermin`, Admin-Seite `abholtermin`
+- Data Loss: Partner-eingegebene Daten gingen verloren bei Admin-Bearbeitung
+
+**Lösung:**
+- Standardisierung auf `anliefertermin` (meine-anfragen.html Lines 7143-7155)
+- Backward-Compatibility: Beide Felder werden gelesen, nur eines geschrieben
+
+**Impact:**
+- ✅ Keine Data Loss mehr bei Admin/Partner-Bearbeitung
+- ✅ Konsistente Feldnamen über beide Apps hinweg
+
+**Siehe:**
+- [Pattern 42: Field Name Inconsistency](../../NEXT_AGENT_MANUAL_TESTING_PROMPT.md#pattern-42)
+- [Session 2025-11-20: Phase 13](../../CLAUDE.md#session-2025-11-20-phase-13)
+
+---
+
 ## 📚 Verwandte Dokumentation
 
 - [Pipeline 3: Entwurf-System](./pipeline-03-entwurf-system.md) (kalkulationData SOURCE 1)
@@ -647,6 +686,6 @@ exports.checkOverdueInvoices = functions
 
 ---
 
-**Letzte Aktualisierung:** 2025-11-19
-**Version:** 1.0
-**Status:** ✅ PRODUKTIONSREIF (Email-Feature blockiert durch SendGrid)
+**Letzte Aktualisierung:** 2025-11-20
+**Version:** 1.1
+**Status:** ✅ PRODUKTIONSREIF (VIN Display + Field Consistency behoben - Email blockiert durch AWS SES Sandbox)

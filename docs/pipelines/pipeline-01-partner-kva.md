@@ -411,18 +411,18 @@ STUFE 5: Partner nimmt KVA an
 
 ### 🔴 KRITISCHE LÜCKEN (DATA LOSS POINTS)
 
-| # | Problem | Auswirkung | Betroffene Felder | Priorität |
-|---|---------|-----------|-------------------|-----------|
-| 1 | VIN nicht in KVA-PDF | Versicherung kann Fahrzeug nicht eindeutig identifizieren | `vin` | HOCH |
-| 2 | Fotos nicht in KVA-PDF | Kunde kann Schadenfotos nicht sehen (Vertrauensverlust) | `photoUrls` | HOCH |
-| 3 | Audit Trail unvollständig | Keine Nachvollziehbarkeit wer wann geändert hat | `lastModified` | MITTEL |
-| 4 | Signatur nicht übertragen | Kunde-Unterschrift geht bei Pipeline 2 verloren | `unterschrift` (falls vorhanden) | MITTEL |
-| 5 | VIN-Längen-Validierung fehlt | Falsche VINs werden akzeptiert (17 Zeichen Standard) | `vin` | NIEDRIG |
+| # | Problem | Auswirkung | Betroffene Felder | Priorität | Status |
+|---|---------|-----------|-------------------|-----------|--------|
+| 1 | VIN nicht in KVA-PDF | Versicherung kann Fahrzeug nicht eindeutig identifizieren | `vin` | HOCH | ✅ FIXED (f925c9f) |
+| 2 | Fotos nicht in KVA-PDF | Kunde kann Schadenfotos nicht sehen (Vertrauensverlust) | `photoUrls` | HOCH | ⚠️ OPEN |
+| 3 | Audit Trail unvollständig | Keine Nachvollziehbarkeit wer wann geändert hat | `lastModified` | MITTEL | ✅ FIXED (56e8538, 6e0b66f) |
+| 4 | Signatur nicht übertragen | Kunde-Unterschrift geht bei Pipeline 2 verloren | `unterschrift` (falls vorhanden) | MITTEL | ⚠️ OPEN |
+| 5 | VIN-Längen-Validierung fehlt | Falsche VINs werden akzeptiert (17 Zeichen Standard) | `vin` | NIEDRIG | ⚠️ OPEN |
 
 **Empfohlene Fixes:**
-- **Fix #1:** VIN zu KVA-PDF hinzufügen (Zeile 1500 in kva-pdf-template.html)
+- ~~**Fix #1:** VIN zu KVA-PDF hinzufügen~~ ✅ COMPLETED (Commit f925c9f - partner-app/rechnungen.html)
 - **Fix #2:** Foto-Galerie zu KVA-PDF hinzufügen (Thumbnails auf Seite 2)
-- **Fix #3:** `lastModifiedBy` Feld hinzufügen + History-Array implementieren
+- ~~**Fix #3:** `lastModifiedBy` Feld hinzufügen + History-Array implementieren~~ ✅ COMPLETED (Commits 56e8538, 6e0b66f)
 - **Fix #4:** `unterschrift` Feld zu Pipeline 2 Data Transfer hinzufügen
 - **Fix #5:** VIN Regex-Validierung: `/^[A-HJ-NPR-Z0-9]{17}$/`
 
@@ -430,17 +430,17 @@ STUFE 5: Partner nimmt KVA an
 
 ### ⚠️ FELD-INKONSISTENZEN
 
-| # | Inkonsistenz | Pipeline 1 Feld | Pipeline 2 Feld | Priorität |
-|---|--------------|-----------------|-----------------|-----------|
-| 1 | serviceTyp Typ-Wechsel | Array OR String | String (PRIMARY) | HOCH |
-| 2 | Feld-Umbenennung | `anliefertermin` | `geplantesAbnahmeDatum` | MITTEL |
-| 3 | Feld-Umbenennung | `photoUrls` | `schadenfotos` | MITTEL |
-| 4 | Telefon-Feld-Name | `telefon` | `kundenTelefon` | NIEDRIG |
-| 5 | Email Case-Handling | Mixed-case OK | Lowercase only | NIEDRIG |
+| # | Inkonsistenz | Pipeline 1 Feld | Pipeline 2 Feld | Priorität | Status |
+|---|--------------|-----------------|-----------------|-----------|--------|
+| 1 | serviceTyp Typ-Wechsel | Array OR String | String (PRIMARY) | HOCH | ⚠️ OPEN (Pattern 21) |
+| 2 | Feld-Umbenennung | `anliefertermin` | `geplantesAbnahmeDatum` | MITTEL | ✅ FIXED (13a951f) |
+| 3 | Feld-Umbenennung | `photoUrls` | `schadenfotos` | MITTEL | ⚠️ OPEN |
+| 4 | Telefon-Feld-Name | `telefon` | `kundenTelefon` | NIEDRIG | ⚠️ OPEN |
+| 5 | Email Case-Handling | Mixed-case OK | Lowercase only | NIEDRIG | ⚠️ OPEN (Pattern 8) |
 
 **Empfohlene Fixes:**
 - **Fix #1:** Standardisieren auf `serviceTyp: String` (PRIMARY) + `additionalServices: Array` (von Anfang an)
-- **Fix #2:** Feld-Aliase einführen: `anliefertermin` = `geplantesAbnahmeDatum` (beide akzeptieren)
+- ~~**Fix #2:** Feld-Aliase einführen: `anliefertermin` = `geplantesAbnahmeDatum`~~ ✅ COMPLETED (Commit 13a951f - Fallback-Chains hinzugefügt)
 - **Fix #3:** `photoUrls` → `schadenfotos` bereits in Pipeline 1 umbenennen
 - **Fix #4:** `kundenTelefon` konsistent in allen Pipelines nutzen
 - **Fix #5:** `.toLowerCase()` bereits bei Eingabe erzwingen (nicht erst später)
@@ -449,20 +449,20 @@ STUFE 5: Partner nimmt KVA an
 
 ### ℹ️ FEHLENDE VALIDIERUNGEN
 
-| # | Feld | Fehlende Validierung | Auswirkung | Priorität |
-|---|------|---------------------|-----------|-----------|
-| 1 | `kennzeichen` | DE-Kennzeichen-Pattern | Ungültige Kennzeichen akzeptiert | MITTEL |
-| 2 | `telefon` | Telefonnummer-Format | Ungültige Nummern akzeptiert | NIEDRIG |
-| 3 | `kundenEmail` | Email-Format (Regex) | Ungültige Emails akzeptiert | HOCH |
-| 4 | `anliefertermin` | Zukunfts-Datum-Check | Vergangene Termine akzeptiert | MITTEL |
-| 5 | `vin` | VIN-Länge (17 Zeichen) | Falsche VINs akzeptiert | NIEDRIG |
-| 6 | `status` | Transition-Validierung | Status-Sprünge möglich | MITTEL |
-| 7 | `serviceData` | Schema-Validierung | Beliebige Felder erlaubt | NIEDRIG |
+| # | Feld | Fehlende Validierung | Auswirkung | Priorität | Status |
+|---|------|---------------------|-----------|-----------|--------|
+| 1 | `kennzeichen` | DE-Kennzeichen-Pattern | Ungültige Kennzeichen akzeptiert | MITTEL | ⚠️ OPEN |
+| 2 | `telefon` | Telefonnummer-Format | Ungültige Nummern akzeptiert | NIEDRIG | ⚠️ OPEN |
+| 3 | `kundenEmail` | Email-Format (Regex) | Ungültige Emails akzeptiert | HOCH | ✅ FIXED (79ac89a) |
+| 4 | `anliefertermin` | Zukunfts-Datum-Check | Vergangene Termine akzeptiert | MITTEL | ⚠️ OPEN |
+| 5 | `vin` | VIN-Länge (17 Zeichen) | Falsche VINs akzeptiert | NIEDRIG | ⚠️ OPEN |
+| 6 | `status` | Transition-Validierung | Status-Sprünge möglich | MITTEL | ⚠️ OPEN |
+| 7 | `serviceData` | Schema-Validierung | Beliebige Felder erlaubt | NIEDRIG | ⚠️ OPEN |
 
 **Empfohlene Fixes:**
 - **Fix #1:** Kennzeichen Regex: `/^[A-ZÄÖÜ]{1,3}-[A-Z]{1,2} [1-9][0-9]{0,3}$/`
 - **Fix #2:** Telefon Regex: `/^\+?[0-9\s\-()]{7,20}$/`
-- **Fix #3:** Email Regex (bereits in Firebase Auth, aber auch Frontend prüfen)
+- ~~**Fix #3:** Email Regex (bereits in Firebase Auth, aber auch Frontend prüfen)~~ ✅ COMPLETED (Commit 79ac89a - 5 Locations)
 - **Fix #4:** `anliefertermin >= new Date()` (Client + Server)
 - **Fix #5:** VIN Regex: `/^[A-HJ-NPR-Z0-9]{17}$/`
 - **Fix #6:** Status-Maschine: `Offen` → `KVA erstellt` → `Angenommen` (keine Sprünge)
@@ -533,6 +533,6 @@ STUFE 5: Partner nimmt KVA an
 
 ---
 
-**Letzte Aktualisierung:** 2025-11-19
-**Version:** 1.0
-**Status:** ✅ PRODUKTIONSREIF (mit dokumentierten Lücken)
+**Letzte Aktualisierung:** 2025-11-20
+**Version:** 1.1
+**Status:** ✅ PRODUKTIONSREIF (9/12 Gaps remaining - 3 fixed Nov 20)

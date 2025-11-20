@@ -696,6 +696,37 @@ async function changeStatus(fahrzeugId, newStatus) {
 
 ---
 
+## 📊 Status Update: Audit-Trail Integration (2025-11-20)
+
+**Bug #8: Audit-Trail Missing** - ✅ **FIXED** (Commits 56e8538, 6e0b66f)
+
+**Problem:**
+- `window.currentUser` war NIEMALS initialisiert → ALLE Status-Updates zeigten `user: 'system'`
+- Fehlende Zuordnung von Status-Änderungen zu Mitarbeitern
+- DSGVO-Compliance-Risiko (keine Audit-Trail-Informationen)
+
+**Lösung:**
+- Neue `getCurrentUserForAudit()` Helper-Function mit 3-Tier-Fallback:
+  1. **PRIMARY:** sessionStorage mitarbeiter (werkstatt-Kontext)
+  2. **FALLBACK:** Firebase Auth currentUser
+  3. **LAST RESORT:** {user: 'system', userId: null}
+- Status-Updates enthalten jetzt: {user, userId, rolle, email}
+
+**Betroffene Dateien in Direkter Annahme:**
+- kanban.html (Lines 2856, 2920, 2987) - Status-Transitions für Werkstatt-Workflow
+- annahme.html - Initiale Fahrzeugerfassung
+
+**Impact:**
+- ✅ Vollständige Audit-Trail-Informationen bei allen Status-Änderungen
+- ✅ DSGVO-Compliance wiederhergestellt
+- ✅ Nachvollziehbarkeit: Wer hat wann welchen Status geändert
+
+**Siehe:**
+- [Pattern 40: Audit-Trail Missing](../../NEXT_AGENT_MANUAL_TESTING_PROMPT.md#pattern-40)
+- [Session 2025-11-20: Phase 13](../../CLAUDE.md#session-2025-11-20-phase-13)
+
+---
+
 ## 📚 Verwandte Dokumentation
 
 - [Pipeline 6: Rechnung Auto-Creation](./pipeline-06-rechnung-auto.md) (Waterfall-Logic Details)
@@ -705,7 +736,7 @@ async function changeStatus(fahrzeugId, newStatus) {
 
 ---
 
-**Letzte Aktualisierung:** 2025-11-19
-**Version:** 1.0
-**Status:** ✅ PRODUKTIONSREIF (Bug #21 behoben)
+**Letzte Aktualisierung:** 2025-11-20
+**Version:** 1.1
+**Status:** ✅ PRODUKTIONSREIF (Bug #21 + Audit-Trail behoben)
 **User-Feedback (2025-11-18):** "perfekt es funktioniert !!! super die Pipline funktionier"

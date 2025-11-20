@@ -714,6 +714,40 @@ if ('serviceWorker' in navigator) {
 
 ---
 
+## 📊 Status Update: Audit-Trail Integration (2025-11-20)
+
+**Bug #8: Audit-Trail Missing** - ✅ **FIXED** (Commits 56e8538, 6e0b66f)
+
+**Problem:**
+- 🔴 **KRITISCH für Status-Sync Pipeline:** `window.currentUser` war NIEMALS initialisiert
+- ALLE Status-Updates zeigten `user: 'system'` → Keine Zuordnung zu Mitarbeitern
+- DSGVO-Compliance-Risiko: Wer hat welchen Status wann geändert?
+
+**Lösung:**
+- Neue `getCurrentUserForAudit()` Helper-Function mit 3-Tier-Fallback:
+  1. **PRIMARY:** sessionStorage mitarbeiter (werkstatt-Kontext)
+  2. **FALLBACK:** Firebase Auth currentUser
+  3. **LAST RESORT:** {user: 'system', userId: null}
+- Status-Updates enthalten jetzt: {user, userId, rolle, email}
+
+**Betroffene Dateien in Status-Sync:**
+- **kanban.html (Lines 2856, 2920, 2987)** - HAUPTBETROFFENER FILE!
+  - Status-Transitions: Offen → In Bearbeitung → Fertig
+  - Alle 3 Status-Wechsel waren betroffen
+  - Jetzt: Vollständige Audit-Trail-Informationen
+
+**Impact auf Status-Sync Pipeline:**
+- ✅ **HÖCHSTE RELEVANZ:** Alle Status-Transitions jetzt nachvollziehbar
+- ✅ DSGVO-Compliance wiederhergestellt
+- ✅ Echtzeit-Status-Sync enthält jetzt User-Informationen
+- ✅ Kanban-Board zeigt korrekte "Zuletzt geändert von"-Informationen
+
+**Siehe:**
+- [Pattern 40: Audit-Trail Missing](../../NEXT_AGENT_MANUAL_TESTING_PROMPT.md#pattern-40)
+- [Session 2025-11-20: Phase 13](../../CLAUDE.md#session-2025-11-20-phase-13)
+
+---
+
 ## 📚 Verwandte Dokumentation
 
 - [Pipeline 2: KVA → Fahrzeug](./pipeline-02-kva-fahrzeug.md) (annehmenKVA Trigger)
@@ -723,6 +757,6 @@ if ('serviceWorker' in navigator) {
 
 ---
 
-**Letzte Aktualisierung:** 2025-11-19
-**Version:** 1.0
-**Status:** ✅ PRODUKTIONSREIF (Atomaritäts-Verbesserung empfohlen)
+**Letzte Aktualisierung:** 2025-11-20
+**Version:** 1.1
+**Status:** ✅ PRODUKTIONSREIF (Audit-Trail behoben - Atomaritäts-Verbesserung empfohlen)
