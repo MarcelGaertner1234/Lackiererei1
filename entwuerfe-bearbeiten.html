@@ -2387,7 +2387,12 @@
 
             console.log(`🗄️ Speichere ${ersatzteile.length} Ersatzteile in zentrale DB (ersatzteile_${window.werkstattId || 'mosbach'})...`);
 
-            const userName = window.currentUser?.name || localStorage.getItem('userName') || 'Büro';
+            // 🔧 BUG #8 FIX #7 (2025-11-20): Use firebase.auth() instead of broken window.currentUser
+            const currentUser = firebase.auth().currentUser;
+            const userName = currentUser?.displayName || currentUser?.email || localStorage.getItem('userName') || 'Büro';
+            const userId = currentUser?.uid || null;
+            const userEmail = currentUser?.email || null;
+
             const werkstattId = window.werkstattId || 'mosbach';
             const batch = window.db.batch();
             let successCount = 0;
@@ -2410,6 +2415,8 @@
                         werkstattId: werkstattId,
                         createdAt: new Date().toISOString(),
                         createdBy: userName,
+                        createdByUserId: userId,  // 🆕 FIX: User-ID für eindeutige Zuordnung
+                        createdByEmail: userEmail,  // 🆕 FIX: Email für Compliance
                         // Optional: Anzahl aus diesem spezifischen Auftrag
                         anzahlInAuftrag: teil.anzahl || 1,
                         gesamtpreisInAuftrag: teil.gesamtpreis || 0
@@ -2776,6 +2783,12 @@
                     // Metadata
                     angebotErstelltAm: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
+
+                    // 🔧 BUG #8 FIX #5 (2025-11-20): Add lastModifiedBy audit trail
+                    lastModifiedBy: firebase.auth().currentUser?.displayName || firebase.auth().currentUser?.email || 'Büro',
+                    lastModifiedByUserId: firebase.auth().currentUser?.uid || null,
+                    lastModifiedByEmail: firebase.auth().currentUser?.email || null,
+                    lastModified: firebase.firestore.FieldValue.serverTimestamp()
                 });
 
                 console.log('✅ Entwurf-Status aktualisiert (Email + Status update komplett)');
