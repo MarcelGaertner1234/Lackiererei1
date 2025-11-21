@@ -2650,6 +2650,95 @@
             }
         };
 
+        // ============================================
+        // BUG #2 FIX: STATUS TRANSITION VALIDATION
+        // ============================================
+
+        /**
+         * Validates if a status transition is allowed for a given service
+         * @param {string} serviceTyp - Service type (e.g., 'lackier', 'tuev', 'reifen')
+         * @param {string} currentStatus - Current status of the vehicle
+         * @param {string} newStatus - Target status to transition to
+         * @returns {Object} {isValid: boolean, reason: string}
+         *
+         * Rules:
+         * 1. Forward-only transitions (no backward jumps)
+         * 2. Max 2 steps forward (prevent excessive skipping)
+         * 3. Special case: "terminiert" can be set from angenommen/neu anytime
+         *
+         * Example:
+         * - Valid: isValidTransition('lackier', 'angenommen', 'vorbereitung') → true
+         * - Invalid: isValidTransition('lackier', 'lackierung', 'angenommen') → false (backward)
+         */
+        function isValidTransition(serviceTyp, currentStatus, newStatus) {
+            // Special case 1: Same status (no transition)
+            if (currentStatus === newStatus) {
+                return { isValid: true, reason: 'Status unverändert' };
+            }
+
+            // Special case 2: "terminiert" can be set from angenommen/neu at any time (scheduling)
+            if (newStatus === 'terminiert' && ['angenommen', 'neu'].includes(currentStatus)) {
+                return { isValid: true, reason: 'Termin kann jederzeit gesetzt werden' };
+            }
+
+            // Get workflow for service type
+            const workflow = processDefinitions[serviceTyp];
+            if (!workflow) {
+                console.error(`❌ isValidTransition: Unknown serviceTyp: ${serviceTyp}`);
+                return {
+                    isValid: false,
+                    reason: `Unbekannter Service-Typ: ${serviceTyp}`
+                };
+            }
+
+            // Extract step IDs from workflow
+            const stepIds = workflow.steps.map(s => s.id);
+            const currentIndex = stepIds.indexOf(currentStatus);
+            const newIndex = stepIds.indexOf(newStatus);
+
+            // Validation Check 1: Both statuses must exist in workflow
+            if (currentIndex === -1) {
+                return {
+                    isValid: false,
+                    reason: `Ungültiger aktueller Status: ${currentStatus}`
+                };
+            }
+            if (newIndex === -1) {
+                return {
+                    isValid: false,
+                    reason: `Ungültiger Ziel-Status: ${newStatus}`
+                };
+            }
+
+            // Validation Check 2: Forward-only transitions (no backward jumps)
+            if (newIndex < currentIndex) {
+                const currentLabel = workflow.steps[currentIndex].label;
+                const newLabel = workflow.steps[newIndex].label;
+                return {
+                    isValid: false,
+                    reason: `Rückwärts-Transition nicht erlaubt: ${currentLabel} → ${newLabel}`
+                };
+            }
+
+            // Validation Check 3: Max 2 steps forward (prevent excessive skipping)
+            const maxJump = 2;  // Allow jumping 1-2 steps (e.g., skip optional steps)
+            if (newIndex - currentIndex > maxJump) {
+                const currentLabel = workflow.steps[currentIndex].label;
+                const newLabel = workflow.steps[newIndex].label;
+                const stepsSkipped = newIndex - currentIndex;
+                return {
+                    isValid: false,
+                    reason: `Zu viele Schritte übersprungen: ${currentLabel} → ${newLabel} (${stepsSkipped} Schritte, max ${maxJump} erlaubt)`
+                };
+            }
+
+            // All checks passed
+            return {
+                isValid: true,
+                reason: 'Gültige Transition'
+            };
+        }
+
         // 🆕 HELPER FUNCTIONS - Multi-Service Status-Tracking (2025-11-13)
         // ================================================================
 
@@ -4468,6 +4557,68 @@
                 if (!fahrzeug) {
                     console.error('Fahrzeug nicht gefunden:', fahrzeugId);
                     return;
+                }
+
+                // ✅ BUG #2 FIX: Validate status transition before update
+                const currentService = getCurrentService() || fahrzeug.serviceTyp;
+                const currentStatus = getServiceStatus(fahrzeug, currentService);
+
+                console.log(`🔍 Status Validation Check:`, {
+                    service: currentService,
+                    from: currentStatus,
+                    to: newStatus
+                });
+
+                const validation = isValidTransition(currentService, currentStatus, newStatus);
+
+                if (!validation.isValid) {
+                    console.warn(`⚠️ Invalid transition blocked: ${validation.reason}`);
+
+                    // Check if user is Admin (can override)
+                    const userRole = sessionStorage.getItem('userRole');
+                    const isAdmin = userRole === 'admin' || userRole === 'werkstatt';
+
+                    if (isAdmin) {
+                        // Admin can override with confirmation
+                        const confirmOverride = confirm(
+                            `⚠️ ADMIN OVERRIDE ERFORDERLICH\n\n` +
+                            `Diese Status-Änderung verstößt gegen den Standard-Workflow:\n\n` +
+                            `Service: ${currentService}\n` +
+                            `Von: ${currentStatus}\n` +
+                            `Nach: ${newStatus}\n\n` +
+                            `Grund: ${validation.reason}\n\n` +
+                            `Möchten Sie diese Änderung trotzdem durchführen?`
+                        );
+
+                        if (!confirmOverride) {
+                            console.log('✋ Admin cancelled override');
+                            if (window.toast) {
+                                window.toast.warning('Status-Änderung abgebrochen');
+                            } else {
+                                showToast('Status-Änderung abgebrochen', 'warning');
+                            }
+                            return;  // Exit function - no update
+                        }
+
+                        console.log('✅ Admin override confirmed - proceeding with update');
+                    } else {
+                        // Non-admin: Block transition
+                        console.error('❌ Transition blocked for non-admin user');
+                        if (window.toast) {
+                            window.toast.error(
+                                `Status-Änderung nicht erlaubt:\n\n${validation.reason}\n\n` +
+                                `💡 Tipp: Bitte folgen Sie dem Standard-Workflow.`
+                            );
+                        } else {
+                            showToast(
+                                `Status-Änderung nicht erlaubt: ${validation.reason}`,
+                                'error'
+                            );
+                        }
+                        return;  // Exit function - no update
+                    }
+                } else {
+                    console.log(`✅ Valid transition: ${validation.reason}`);
                 }
 
                 // Arbeitsschritte die ein Foto benötigen (physische Produktionsschritte)
