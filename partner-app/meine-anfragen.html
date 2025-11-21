@@ -5120,8 +5120,9 @@
             let fotoGalerieHTML = '';
 
             // 🔧 FIX (2025-11-17): BUG #5 - Entwürfe verwenden "photos" statt "fotos"
+            // 🔧 FIX (2025-11-22): BUG #2 - Add photoUrls fallback (field name mismatch)
             // Normalisiere Property-Namen für konsistente Verarbeitung
-            const fotoArray = anfrage.fotos || anfrage.photos || [];
+            const fotoArray = anfrage.fotos || anfrage.photos || anfrage.photoUrls || [];
 
             if (fotoArray && fotoArray.length > 0) {
                 const maxAnzeige = 2;  // ✅ FIX v12: Von 4 auf 2 geändert (User-Request: max 2 Fotos)
@@ -5236,11 +5237,13 @@
             const serviceData = serviceIcons[primaryService] || { icon: '📋', bg: '#666', label: 'Service' };
 
             // Foto-Thumbnails (max 2)
+            // 🔧 FIX (2025-11-22): BUG #2 - Add photoUrls fallback (field name mismatch)
+            const fotoArray = anfrage.fotos || anfrage.photos || anfrage.photoUrls || [];
             let fotosHTML = '';
-            if (anfrage.fotos && anfrage.fotos.length > 0) {
+            if (fotoArray && fotoArray.length > 0) {
                 const maxAnzeige = 2;
-                const fotosZuZeigen = anfrage.fotos.slice(0, maxAnzeige);
-                const restFotos = anfrage.fotos.length - maxAnzeige;
+                const fotosZuZeigen = fotoArray.slice(0, maxAnzeige);
+                const restFotos = fotoArray.length - maxAnzeige;
 
                 const thumbnailsHTML = fotosZuZeigen.map((foto, index) =>
                     `<img src="${foto}" class="foto-thumbnail" onclick="openLightbox('${anfrage.id}', ${index}, event)" alt="Foto ${index + 1}">`
@@ -5343,11 +5346,13 @@
             const serviceData = serviceIcons[primaryService] || { icon: '📋', bg: '#666', label: 'Service' };
 
             // Foto-Thumbnails (max 2)
+            // 🔧 FIX (2025-11-22): BUG #2 - Add photoUrls fallback (field name mismatch)
+            const fotoArray = anfrage.fotos || anfrage.photos || anfrage.photoUrls || [];
             let fotosHTML = '';
-            if (anfrage.fotos && anfrage.fotos.length > 0) {
+            if (fotoArray && fotoArray.length > 0) {
                 const maxAnzeige = 2;
-                const fotosZuZeigen = anfrage.fotos.slice(0, maxAnzeige);
-                const restFotos = anfrage.fotos.length - maxAnzeige;
+                const fotosZuZeigen = fotoArray.slice(0, maxAnzeige);
+                const restFotos = fotoArray.length - maxAnzeige;
 
                 const thumbnailsHTML = fotosZuZeigen.map((foto, index) =>
                     `<img src="${foto}" class="foto-thumbnail" onclick="openLightbox('${anfrage.id}', ${index}, event)" alt="Foto ${index + 1}">`
@@ -7282,26 +7287,30 @@
 
         // Lightbox für Foto-Anzeige
         let currentLightboxAnfrage = null;
+        let currentLightboxFotos = [];  // 🔧 FIX (2025-11-22): BUG #2 - Store normalized foto array
         let currentLightboxIndex = 0;
 
         function openLightbox(anfrageId, startIndex, event) {
             event?.stopPropagation();
 
             const anfrage = alleAnfragen.find(a => String(a.id) === String(anfrageId));
-            if (!anfrage || !anfrage.fotos || anfrage.fotos.length === 0) return;
+            // 🔧 FIX (2025-11-22): BUG #2 - Add photoUrls fallback (field name mismatch)
+            const fotoArray = anfrage?.fotos || anfrage?.photos || anfrage?.photoUrls || [];
+            if (!anfrage || !fotoArray || fotoArray.length === 0) return;
 
             currentLightboxAnfrage = anfrage;
+            currentLightboxFotos = fotoArray;
             currentLightboxIndex = startIndex;
 
             const lightbox = document.getElementById('lightboxOverlay');
             const lightboxImg = document.getElementById('lightboxImage');
 
-            lightboxImg.src = anfrage.fotos[currentLightboxIndex];
+            lightboxImg.src = currentLightboxFotos[currentLightboxIndex];
             lightbox.classList.add('active');
 
             // Navigation Buttons anzeigen/verstecken
-            document.getElementById('lightboxPrev').style.display = anfrage.fotos.length > 1 ? 'flex' : 'none';
-            document.getElementById('lightboxNext').style.display = anfrage.fotos.length > 1 ? 'flex' : 'none';
+            document.getElementById('lightboxPrev').style.display = currentLightboxFotos.length > 1 ? 'flex' : 'none';
+            document.getElementById('lightboxNext').style.display = currentLightboxFotos.length > 1 ? 'flex' : 'none';
         }
 
         function closeLightbox(event) {
@@ -7313,18 +7322,18 @@
 
         function lightboxPrev(event) {
             event?.stopPropagation();
-            if (!currentLightboxAnfrage) return;
+            if (!currentLightboxAnfrage || !currentLightboxFotos.length) return;
 
-            currentLightboxIndex = (currentLightboxIndex - 1 + currentLightboxAnfrage.fotos.length) % currentLightboxAnfrage.fotos.length;
-            document.getElementById('lightboxImage').src = currentLightboxAnfrage.fotos[currentLightboxIndex];
+            currentLightboxIndex = (currentLightboxIndex - 1 + currentLightboxFotos.length) % currentLightboxFotos.length;
+            document.getElementById('lightboxImage').src = currentLightboxFotos[currentLightboxIndex];
         }
 
         function lightboxNext(event) {
             event?.stopPropagation();
-            if (!currentLightboxAnfrage) return;
+            if (!currentLightboxAnfrage || !currentLightboxFotos.length) return;
 
-            currentLightboxIndex = (currentLightboxIndex + 1) % currentLightboxAnfrage.fotos.length;
-            document.getElementById('lightboxImage').src = currentLightboxAnfrage.fotos[currentLightboxIndex];
+            currentLightboxIndex = (currentLightboxIndex + 1) % currentLightboxFotos.length;
+            document.getElementById('lightboxImage').src = currentLightboxFotos[currentLightboxIndex];
         }
 
         function openChat(anfrageId, event) {
