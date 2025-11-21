@@ -116,6 +116,99 @@ firebase functions:secrets:access AWS_ACCESS_KEY_ID --dry-run
 
 ---
 
+## 🏷️ Service Type Standards (Bug #7 Fix - Nov 2025)
+
+**⚠️ CRITICAL:** Service types are used throughout the app for Multi-Service Model, Kanban Status Sync, and Firestore queries. Changes to these values require data migration!
+
+### Canonical Service Type Values (DO NOT CHANGE!)
+
+These 12 values are stored in Firestore and MUST remain unchanged:
+
+```javascript
+// js/service-types.js - Central Registry
+window.SERVICE_TYPES = {
+    LACKIER: 'lackier',           // Lackierung / Karosserie
+    REIFEN: 'reifen',             // Reifen-Service
+    MECHANIK: 'mechanik',         // Mechanik / Reparatur
+    PFLEGE: 'pflege',             // Fahrzeugpflege / Aufbereitung
+    TUEV: 'tuev',                 // TÜV/AU / Hauptuntersuchung
+    VERSICHERUNG: 'versicherung', // Versicherungsschaden / Unfall
+    GLAS: 'glas',                 // Glasreparatur / Steinschlag
+    KLIMA: 'klima',               // Klimaservice
+    DELLEN: 'dellen',             // Dellendrücken / Smart Repair / PDR
+    FOLIERUNG: 'folierung',       // Folierung / Wrap
+    STEINSCHUTZ: 'steinschutz',   // Steinschutzfolie / Lackschutz
+    WERBEBEKLEBUNG: 'werbebeklebung' // Werbebeklebung / Beschriftung
+};
+```
+
+### Auto-Correction & Validation Functions
+
+**ALWAYS use these functions** when handling service types:
+
+```javascript
+// ✅ CORRECT - Normalize & validate (recommended for forms)
+const validatedServiceTyp = window.normalizeAndValidateServiceType(userInput, 'lackier');
+// Handles: typo correction, validation, fallback
+
+// ✅ CORRECT - Normalize only (for existing data)
+const normalized = window.normalizeServiceType('lackierung'); // → 'lackier'
+
+// ✅ CORRECT - Validate only
+const isValid = window.validateServiceType('lackier'); // → true
+
+// ✅ CORRECT - Get display label
+const label = window.getServiceTypeLabel('lackier'); // → '🎨 Lackierung'
+
+// ❌ WRONG - Hardcoded labels
+const label = serviceTyp === 'lackier' ? '🎨 Lackierung' : '...';
+```
+
+### Supported Aliases (Auto-Corrected)
+
+The system auto-corrects these common typos/variations:
+
+| User Input | Auto-Corrects To | Notes |
+|------------|------------------|-------|
+| `'lackierung'`, `'karosserie'` | `'lackier'` | Common German variations |
+| `'smart-repair'`, `'pdr'` | `'dellen'` | Smart Repair / PDR aliases |
+| `'aufbereitung'`, `'detailing'` | `'pflege'` | Fahrzeugpflege variants |
+| `'tüv'`, `'hu'`, `'au'` | `'tuev'` | TÜV/AU variations |
+| `'unfall'`, `'gutachten'` | `'versicherung'` | Insurance-related terms |
+| `'lackschutz'`, `'ppf'` | `'steinschutz'` | Paint protection aliases |
+
+**See `js/service-types.js`** for the complete list of 40+ aliases.
+
+### Integration Points (Where Service Types Are Used)
+
+1. **Multi-Service Model:** `fahrzeug.serviceStatuses.lackier.status`
+2. **Kanban Status Sync:** Maps service-specific stati to Kanban columns
+3. **Firestore Queries:** `.where('serviceTyp', '==', 'lackier')`
+4. **PDF Generation:** Service-specific sections in documents
+5. **Rechnungen System:** Cost breakdown by service type
+6. **Partner Forms:** 12 service request forms set serviceTyp on submission
+
+**⚠️ Breaking Change Risk:** Changing canonical values breaks Multi-Service Model, Kanban workflows, and requires full data migration across 3 collections.
+
+### Quick Reference
+
+```javascript
+// Form submission (12 partner service forms)
+anfrageData.serviceTyp = window.normalizeAndValidateServiceType(anfrageData.serviceTyp, 'glas');
+
+// Display labels (kanban, liste, meine-anfragen)
+const label = window.getServiceTypeLabel(fahrzeug.serviceTyp);
+
+// Validation check
+if (!window.validateServiceType(serviceTyp)) {
+    console.error('Invalid service type!');
+}
+```
+
+**Documentation:** See `js/service-types.js` (380+ lines, 40+ aliases, 12 service configs)
+
+---
+
 ## 🛠️ Technology Stack
 
 | Layer | Technology | Purpose |
