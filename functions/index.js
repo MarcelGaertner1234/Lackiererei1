@@ -4447,3 +4447,62 @@ exports.resetDailyRateLimits = onSchedule(
     }
   }
 );
+
+// ============================================
+// ✅ BUG #2 FIX: GET USER QUOTA (Frontend Display)
+// ============================================
+
+/**
+ * Get current quota for authenticated user
+ * Used by frontend to display remaining quota
+ *
+ * Request:
+ * {
+ *   werkstatt: "mosbach" (optional, defaults to "mosbach")
+ * }
+ *
+ * Response:
+ * {
+ *   success: true,
+ *   aiChat: { used: 10, limit: 200, remaining: 190 },
+ *   whisper: { used: 5, limit: 100, remaining: 95 },
+ *   tts: { used: 3, limit: 100, remaining: 97 },
+ *   pdfVision: { used: 1, limit: 50, remaining: 49 },
+ *   resetAt: "2025-11-22T00:00:00.000Z"
+ * }
+ */
+exports.getQuota = functions
+  .region("europe-west3")
+  .https
+  .onCall(async (data, context) => {
+    try {
+      // Authentication check
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          'unauthenticated',
+          'Nutzer muss eingeloggt sein'
+        );
+      }
+
+      const { werkstatt = "mosbach" } = data;
+      const userId = context.auth.uid;
+
+      console.log(`📊 [getQuota] Request from user ${userId} for werkstatt ${werkstatt}`);
+
+      // Get quota from rate limiter
+      const quota = await rateLimiter.getQuota(userId, werkstatt);
+
+      console.log(`✅ [getQuota] Quota retrieved successfully`);
+
+      return {
+        success: true,
+        ...quota
+      };
+    } catch (error) {
+      console.error("❌ [getQuota] Failed:", error);
+      throw new functions.https.HttpsError(
+        'internal',
+        `Quota-Abfrage fehlgeschlagen: ${error.message}`
+      );
+    }
+  });
