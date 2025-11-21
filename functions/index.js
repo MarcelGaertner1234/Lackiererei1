@@ -246,22 +246,54 @@ exports.onStatusChange = functions
         console.error("❌ AWS SES error:", error.message);
         console.error("Error details:", error.name || "No error name");
 
-        // Log error mit mehr Details
+        // ✅ BUG #3 FIX: Add to retry queue instead of throwing error
+        console.log("📬 Adding email to retry queue (Bug #3 Fix)...");
+
+        // Calculate next retry time (5 minutes from now for first retry)
+        const nextRetryAt = new admin.firestore.Timestamp(
+          admin.firestore.Timestamp.now().seconds + (5 * 60),
+          0
+        );
+
+        // Add to emailRetryQueue for controlled retry logic
+        const queueRef = await db.collection("emailRetryQueue").add({
+          emailData: {
+            source: werkstattEmail,
+            toAddresses: [kundenEmail],
+            subject: subject,
+            htmlBody: template
+          },
+          trigger: "status_change",
+          vehicleId: vehicleId,
+          collectionId: collectionId,
+          werkstatt: werkstatt,
+          status: "pending_retry",
+          retryCount: 0,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          nextRetryAt: nextRetryAt,
+          lastError: error.message,
+          lastErrorCode: error.name || error.code || null
+        });
+
+        console.log(`✅ Email queued for retry (Queue ID: ${queueRef.id})`);
+
+        // Log to email_logs as "queued_for_retry"
         await db.collection("email_logs").add({
           to: kundenEmail,
           subject: subject,
           trigger: "status_change",
           vehicleId: vehicleId,
-          collectionId: collectionId, // z.B. "fahrzeuge_mosbach"
-          werkstatt: werkstatt, // z.B. "mosbach"
+          collectionId: collectionId,
+          werkstatt: werkstatt,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
-          status: "failed",
+          status: "queued_for_retry",
           error: error.message,
           errorCode: error.name || error.code || null,
+          queueId: queueRef.id // Reference to retry queue entry
         });
 
-        // Throw error um Function als "failed" zu markieren
-        throw new Error(`Email sending failed: ${error.message}`);
+        // ✅ DO NOT throw error - prevents duplicate emails from automatic retry
+        console.log("✅ Error handled gracefully - no automatic retry");
       }
 
       return null;
@@ -356,14 +388,43 @@ exports.onNewPartnerAnfrage = functions
       } catch (error) {
         console.error("❌ AWS SES error:", error.message);
 
+        // ✅ BUG #3 FIX: Add to retry queue for each admin email
+        console.log("📬 Adding email to retry queue for admins (Bug #3 Fix)...");
+
+        const nextRetryAt = new admin.firestore.Timestamp(
+          admin.firestore.Timestamp.now().seconds + (5 * 60),
+          0
+        );
+
+        // Note: AWS SES supports multiple ToAddresses, so we queue the entire batch
+        const queueRef = await db.collection("emailRetryQueue").add({
+          emailData: {
+            source: SENDER_EMAIL,
+            toAddresses: adminEmails,
+            subject: subject,
+            htmlBody: template
+          },
+          trigger: "new_anfrage",
+          anfrageId: context.params.anfrageId,
+          status: "pending_retry",
+          retryCount: 0,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          nextRetryAt: nextRetryAt,
+          lastError: error.message,
+          lastErrorCode: error.name || error.code || null
+        });
+
+        console.log(`✅ Email queued for retry (Queue ID: ${queueRef.id})`);
+
         await db.collection("email_logs").add({
           to: adminEmails.join(", "),
           subject: subject,
           trigger: "new_anfrage",
           anfrageId: context.params.anfrageId,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
-          status: "failed",
+          status: "queued_for_retry",
           error: error.message,
+          queueId: queueRef.id
         });
       }
 
@@ -447,14 +508,42 @@ exports.onUserApproved = functions
       } catch (error) {
         console.error("❌ AWS SES error:", error.message);
 
+        // ✅ BUG #3 FIX: Add to retry queue
+        console.log("📬 Adding welcome email to retry queue (Bug #3 Fix)...");
+
+        const nextRetryAt = new admin.firestore.Timestamp(
+          admin.firestore.Timestamp.now().seconds + (5 * 60),
+          0
+        );
+
+        const queueRef = await db.collection("emailRetryQueue").add({
+          emailData: {
+            source: SENDER_EMAIL,
+            toAddresses: [after.email],
+            subject: subject,
+            htmlBody: template
+          },
+          trigger: "user_approved",
+          userId: context.params.userId,
+          status: "pending_retry",
+          retryCount: 0,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          nextRetryAt: nextRetryAt,
+          lastError: error.message,
+          lastErrorCode: error.name || error.code || null
+        });
+
+        console.log(`✅ Email queued for retry (Queue ID: ${queueRef.id})`);
+
         await db.collection("email_logs").add({
           to: after.email,
           subject: subject,
           trigger: "user_approved",
           userId: context.params.userId,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
-          status: "failed",
+          status: "queued_for_retry",
           error: error.message,
+          queueId: queueRef.id
         });
       }
 
@@ -3609,6 +3698,202 @@ exports.cleanupStaleSessions = onSchedule({
   });
 
 // ============================================
+// EMAIL RETRY QUEUE PROCESSOR (Bug #3 Fix - 2025-11-21)
+// Scheduled function to retry failed email sends
+// ============================================
+
+/**
+ * Process Email Retry Queue
+ * - Runs every 5 minutes
+ * - Retries failed emails (max 3 attempts)
+ * - Prevents duplicate emails by using queue system
+ *
+ * Bug #3 Fix: Instead of throwing errors (which causes automatic retries),
+ * failed emails are added to emailRetryQueue for controlled retry logic.
+ */
+exports.processEmailRetryQueue = onSchedule({
+  schedule: 'every 5 minutes',
+  timeZone: 'Europe/Berlin',
+  region: 'europe-west3',
+  memory: '256MiB',
+  timeoutSeconds: 300,
+  secrets: [awsAccessKeyId, awsSecretAccessKey] // Bind AWS SES Credentials
+}, async (event) => {
+  console.log('📧 Starting email retry queue processing...');
+
+  try {
+    // Query pending retries (status="pending_retry", retryCount < 3)
+    const retryQueueSnapshot = await db.collection('emailRetryQueue')
+      .where('status', '==', 'pending_retry')
+      .where('retryCount', '<', 3)
+      .limit(20) // Process max 20 emails per run (prevent timeout)
+      .get();
+
+    if (retryQueueSnapshot.empty) {
+      console.log('✅ No emails to retry');
+      return { success: true, processed: 0 };
+    }
+
+    console.log(`📬 Found ${retryQueueSnapshot.size} emails to retry`);
+
+    // Initialize AWS SES client
+    const sesClient = getAWSSESClient();
+    console.log('✅ AWS SES initialized for retry processing');
+
+    let successCount = 0;
+    let failedCount = 0;
+    let permanentFailCount = 0;
+
+    // Process each email sequentially (avoid rate limiting)
+    for (const queueDoc of retryQueueSnapshot.docs) {
+      const queueData = queueDoc.data();
+      const queueId = queueDoc.id;
+
+      console.log(`📧 Processing retry for queue ID: ${queueId} (attempt ${queueData.retryCount + 1}/3)`);
+
+      try {
+        // Reconstruct SendEmailCommand from queue data
+        const sendEmailCommand = new SendEmailCommand({
+          Source: queueData.emailData.source,
+          Destination: {
+            ToAddresses: queueData.emailData.toAddresses
+          },
+          Message: {
+            Subject: {
+              Data: queueData.emailData.subject,
+              Charset: 'UTF-8'
+            },
+            Body: {
+              Html: {
+                Data: queueData.emailData.htmlBody,
+                Charset: 'UTF-8'
+              }
+            }
+          }
+        });
+
+        // Attempt to send email
+        await sesClient.send(sendEmailCommand);
+        console.log(`✅ Email sent successfully (retry ${queueData.retryCount + 1}): ${queueData.emailData.toAddresses[0]}`);
+
+        // Update queue status to "sent"
+        await queueDoc.ref.update({
+          status: 'sent',
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastRetryAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Log successful send to email_logs
+        await db.collection('email_logs').add({
+          to: queueData.emailData.toAddresses[0],
+          subject: queueData.emailData.subject,
+          trigger: queueData.trigger,
+          vehicleId: queueData.vehicleId || null,
+          collectionId: queueData.collectionId || null,
+          werkstatt: queueData.werkstatt || null,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          status: 'sent',
+          retryCount: queueData.retryCount + 1,
+          queueId: queueId // Reference to retry queue entry
+        });
+
+        successCount++;
+
+      } catch (error) {
+        console.error(`❌ Retry failed for queue ID ${queueId}:`, error.message);
+
+        const newRetryCount = queueData.retryCount + 1;
+
+        if (newRetryCount >= 3) {
+          // Permanent failure after 3 attempts
+          console.error(`❌ PERMANENT FAILURE (3 attempts exhausted) for: ${queueData.emailData.toAddresses[0]}`);
+
+          await queueDoc.ref.update({
+            status: 'failed_permanent',
+            lastRetryAt: admin.firestore.FieldValue.serverTimestamp(),
+            retryCount: newRetryCount,
+            lastError: error.message,
+            lastErrorCode: error.name || error.code || null
+          });
+
+          // Log permanent failure
+          await db.collection('email_logs').add({
+            to: queueData.emailData.toAddresses[0],
+            subject: queueData.emailData.subject,
+            trigger: queueData.trigger,
+            vehicleId: queueData.vehicleId || null,
+            collectionId: queueData.collectionId || null,
+            werkstatt: queueData.werkstatt || null,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'failed_permanent',
+            error: error.message,
+            errorCode: error.name || error.code || null,
+            retryCount: newRetryCount,
+            queueId: queueId
+          });
+
+          permanentFailCount++;
+
+        } else {
+          // Increment retry count and schedule next retry
+          const nextRetryDelay = Math.pow(2, newRetryCount) * 5; // Exponential backoff: 10min, 20min, 40min
+          const nextRetryAt = new admin.firestore.Timestamp(
+            admin.firestore.Timestamp.now().seconds + (nextRetryDelay * 60),
+            0
+          );
+
+          await queueDoc.ref.update({
+            retryCount: newRetryCount,
+            lastRetryAt: admin.firestore.FieldValue.serverTimestamp(),
+            nextRetryAt: nextRetryAt,
+            lastError: error.message,
+            lastErrorCode: error.name || error.code || null
+          });
+
+          console.log(`⏰ Retry scheduled (attempt ${newRetryCount}/3) - next retry in ${nextRetryDelay} minutes`);
+          failedCount++;
+        }
+      }
+
+      // Rate limiting: Wait 100ms between emails to avoid SES throttling
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    const summary = {
+      success: true,
+      processed: retryQueueSnapshot.size,
+      sent: successCount,
+      failed: failedCount,
+      permanentFail: permanentFailCount
+    };
+
+    console.log(`✅ Email retry processing complete: ${JSON.stringify(summary)}`);
+
+    // Log to systemLogs for monitoring
+    await db.collection('systemLogs').add({
+      type: 'email_retry_queue_processed',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      summary: summary
+    });
+
+    return summary;
+
+  } catch (error) {
+    console.error('❌ Email retry queue processing failed:', error);
+
+    // Log error to systemLogs
+    await db.collection('systemLogs').add({
+      type: 'email_retry_queue_error',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      error: error.message,
+      stack: error.stack
+    });
+
+    throw error; // Re-throw to mark function as failed
+  }
+});
+
+// ============================================
 // PDF PARSING WITH OPENAI GPT-4 VISION
 // ============================================
 
@@ -4070,20 +4355,49 @@ exports.sendEntwurfEmail = functions
           };
         }
 
-        // Other errors (network, timeout, etc.) → Log as "failed"
+        // Other errors (network, timeout, etc.) → Add to retry queue
+        console.log("📬 Adding Entwurf email to retry queue (Bug #3 Fix)...");
+
+        const nextRetryAt = new admin.firestore.Timestamp(
+          admin.firestore.Timestamp.now().seconds + (5 * 60),
+          0
+        );
+
+        const queueRef = await db.collection("emailRetryQueue").add({
+          emailData: {
+            source: SENDER_EMAIL,
+            toAddresses: [kundenEmail],
+            subject: `🚗 Ihr Kosten-Voranschlag für ${kennzeichen}`,
+            htmlBody: emailHtml
+          },
+          trigger: "entwurf_email",
+          fahrzeugId: fahrzeugId || null,
+          kennzeichen: kennzeichen,
+          status: "pending_retry",
+          retryCount: 0,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          nextRetryAt: nextRetryAt,
+          lastError: error.message,
+          lastErrorCode: error.name || error.code || null
+        });
+
+        console.log(`✅ Entwurf email queued for retry (Queue ID: ${queueRef.id})`);
+
         await db.collection("email_logs").add({
           to: kundenEmail,
           subject: `Kosten-Voranschlag für ${kennzeichen}`,
           trigger: "entwurf_email",
           fahrzeugId: fahrzeugId || null,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
-          status: "failed",
+          status: "queued_for_retry",
           error: error.message,
+          queueId: queueRef.id
         });
 
+        // ✅ Return error to caller (but email is in retry queue)
         throw new functions.https.HttpsError(
             "internal",
-            `Email-Versand fehlgeschlagen: ${error.message}`
+            `Email-Versand fehlgeschlagen: ${error.message} (Email wurde zur Wiederholung eingereiht)`
         );
       }
     });
