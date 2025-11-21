@@ -3625,11 +3625,22 @@
                 console.log('🔑 Erstelle Auto-Login Token für Partner-Login...');
                 showToast('⏳ Erstelle Partner-Login...', 'info', 2000);
 
-                // Step 1: Ensure Partner Account exists
+                // Step 1: Ensure Partner Account exists (FIX: Nov 21, 2025 - Capture password)
                 const ensurePartnerAccount = window.functions.httpsCallable('ensurePartnerAccount');
-                await ensurePartnerAccount({
+                const partnerResult = await ensurePartnerAccount({
                     email: kundenEmail.toLowerCase(),
                     name: kundenname,
+                    werkstattId: window.werkstattId
+                });
+
+                // Extract password data for PDF (Pattern from Annahme workflow Lines 2915-2945)
+                entwurfData.partnerPassword = partnerResult.data.generatedPassword || null;
+                entwurfData.isNewPartner = partnerResult.data.isNewPartner || false;
+
+                console.log('🔑 Partner Account:', {
+                    email: kundenEmail,
+                    isNew: entwurfData.isNewPartner,
+                    hasPassword: !!entwurfData.partnerPassword
                 });
 
                 // Step 2: Create Auto-Login Token
@@ -3674,7 +3685,8 @@
                 console.log('📄 Generiere PDF mit QR-Code...');
                 showToast('📄 Erstelle PDF...', 'info', 2000);
 
-                await erstelleEntwurfPDF(qrCodeUrl, kennzeichen, kundenname, notizen);
+                // FIX: Nov 21, 2025 - Pass full entwurfData instead of only 4 params
+                await erstelleEntwurfPDF(entwurfData, qrCodeUrl);
 
                 // ============================================
                 // 6. SUCCESS FEEDBACK
@@ -8561,71 +8573,149 @@
         }
 
         // ============================================
-        // ENTWURF-PDF ERSTELLEN (Minimal)
+        // ENTWURF-PDF ERSTELLEN (Excel-Style - FIX: Nov 21, 2025)
+        // Pattern: annahme.html Lines 6518-6710 (Excel-Style Tables)
         // ============================================
-        async function erstelleEntwurfPDF(qrCodeUrl, kennzeichen, kundenname, notizen) {
-            console.log('📄 Erstelle Entwurf-PDF mit QR-Code...');
+        async function erstelleEntwurfPDF(entwurfData, qrCodeUrl) {
+            console.log('📄 Erstelle Entwurf-PDF mit Excel-Style Layout...');
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            // 🎨 HEADER (Professional style)
+            // Load Settings
             const settings = window.settingsManager ? await window.settingsManager.loadSettings() : null;
             const werkstattName = settings?.profil?.name || 'Auto-Lackierzentrum Mosbach';
 
+            // 🎨 HEADER (Professional style)
             doc.setFillColor(0, 51, 102);  // Dark blue
             doc.rect(0, 0, 210, 45, 'F');
 
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(22);
+            doc.setFontSize(18);  // Slightly smaller
             doc.setFont(undefined, 'bold');
-            doc.text('Fahrzeug-Annahme', 105, 20, { align: 'center' });
+            doc.text('Fahrzeug-Annahme', 105, 18, { align: 'center' });
 
-            doc.setFontSize(16);
-            doc.text('⚠️ ENTWURF', 105, 30, { align: 'center' });
+            doc.setFontSize(14);
+            doc.text('⚠️ ENTWURF', 105, 28, { align: 'center' });
 
-            doc.setFontSize(12);
+            doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
-            doc.text(werkstattName, 105, 38, { align: 'center' });
+            doc.text(werkstattName, 105, 36, { align: 'center' });
 
             // Separator line
             doc.setDrawColor(255, 255, 255);
             doc.setLineWidth(0.5);
-            doc.line(15, 42, 195, 42);
+            doc.line(15, 40, 195, 40);
 
-            // 📝 FAHRZEUGDATEN (Minimal)
+            // 🎨 EXCEL-STYLE KUNDENDATEN TABLE
             doc.setTextColor(0, 0, 0);
-            doc.setFontSize(11);
-            let y = 55;
+            let y = 48;
 
-            doc.setFont(undefined, 'bold');
-            doc.setFontSize(13);
-            doc.text('Kennzeichen:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.setFontSize(16);
-            doc.text(kennzeichen, 70, y);
+            doc.autoTable({
+                startY: y,
+                head: [['KUNDENDATEN', '']],
+                body: [
+                    ['Kennzeichen', entwurfData.kennzeichen],
+                    ['Kundenname', entwurfData.kundenname],
+                    ['Email', entwurfData.kundenEmail || 'Nicht angegeben'],
+                    ['Telefon', entwurfData.telefon || 'Nicht angegeben']
+                ],
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: { fontSize: 10 },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    1: { cellWidth: 130 }
+                },
+                margin: { left: 15, right: 15 }
+            });
 
-            y += 12;
-            doc.setFont(undefined, 'bold');
-            doc.setFontSize(13);
-            doc.text('Kundenname:', 20, y);
-            doc.setFont(undefined, 'normal');
-            doc.setFontSize(13);
-            doc.text(kundenname, 70, y);
+            // 🎨 EXCEL-STYLE FAHRZEUGDATEN TABLE
+            y = doc.lastAutoTable.finalY + 5;
 
-            // 📋 NOTIZEN
-            if (notizen) {
-                y += 15;
-                doc.setFont(undefined, 'bold');
-                doc.text('Notizen:', 20, y);
-                y += 7;
-                doc.setFont(undefined, 'normal');
+            doc.autoTable({
+                startY: y,
+                head: [['FAHRZEUGDATEN', '']],
+                body: [
+                    ['Marke / Modell', `${entwurfData.marke || 'Nicht angegeben'} ${entwurfData.modell || ''}`],
+                    ['Baujahr', entwurfData.baujahrVon || 'Nicht angegeben'],
+                    ['KM-Stand', entwurfData.kmstand ? `${entwurfData.kmstand} km` : 'Nicht angegeben'],
+                    ['VIN/FIN', entwurfData.vin || 'Nicht angegeben']
+                ],
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: { fontSize: 10 },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    1: { cellWidth: 130 }
+                },
+                margin: { left: 15, right: 15 }
+            });
 
-                // Text wrapping for notizen
-                const notizenLines = doc.splitTextToSize(notizen, 170);
-                doc.text(notizenLines, 20, y);
-                y += notizenLines.length * 7;
+            // 🎨 EXCEL-STYLE SERVICES TABLE (Multi-Service Support)
+            y = doc.lastAutoTable.finalY + 5;
+
+            const serviceIcons = {
+                'lackierung': '[LACK]', 'lackier': '[LACK]', 'reifen': '[REIF]',
+                'glas': '[GLAS]', 'klima': '[KLIM]', 'dellen': '[DELL]',
+                'mechanik': '[MECH]', 'versicherung': '[VERS]', 'pflege': '[PFLG]',
+                'tuev': '[TUEV]', 'alle': '[ALL]', 'folierung': '[FOLI]',
+                'steinschutz': '[STEIN]', 'werbebeklebung': '[WERB]'
+            };
+            const serviceLabels = {
+                'lackierung': 'LACKIERUNG', 'lackier': 'LACKIERUNG', 'reifen': 'REIFEN-SERVICE',
+                'glas': 'GLAS-REPARATUR', 'klima': 'KLIMA-SERVICE', 'dellen': 'DELLEN-REPARATUR',
+                'mechanik': 'MECHANIK-SERVICE', 'versicherung': 'VERSICHERUNGS-SCHADEN',
+                'pflege': 'FAHRZEUG-PFLEGE', 'tuev': 'TÜV/AU-PRÜFUNG', 'alle': 'ALLE SERVICES',
+                'folierung': 'AUTO-FOLIERUNG', 'steinschutz': 'STEINSCHUTZFOLIE',
+                'werbebeklebung': 'FAHRZEUGBESCHRIFTUNG'
+            };
+
+            const serviceRows = [];
+            // Handle Multi-Service Array (Bug #3 Fix pattern)
+            if (Array.isArray(entwurfData.serviceTyp)) {
+                entwurfData.serviceTyp.forEach(service => {
+                    const icon = serviceIcons[service] || '[?]';
+                    const label = serviceLabels[service] || 'SERVICE';
+                    serviceRows.push([icon, label]);
+                });
+            } else {
+                // Fallback for old format
+                const icon = serviceIcons[entwurfData.serviceTyp] || '[?]';
+                const label = serviceLabels[entwurfData.serviceTyp] || 'SERVICE';
+                serviceRows.push([icon, label]);
             }
+
+            doc.autoTable({
+                startY: y,
+                head: [['SERVICE', 'BESCHREIBUNG']],
+                body: serviceRows,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [0, 51, 102],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 11
+                },
+                bodyStyles: { fontSize: 10 },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 30, halign: 'center' },
+                    1: { cellWidth: 150 }
+                },
+                margin: { left: 15, right: 15 }
+            });
+
+            y = doc.lastAutoTable.finalY + 10;
 
             // 🔲 QR-CODE SECTION
             if (qrCodeUrl) {
@@ -8701,6 +8791,43 @@
                 }
             }
 
+            // 🔑 PASSWORD SECTION (for new partners only - FIX: Nov 21, 2025)
+            if (entwurfData.isNewPartner && entwurfData.partnerPassword) {
+                y += 25;  // Add spacing from QR code (if present)
+
+                if (y > 230) {
+                    doc.addPage();
+                    y = 30;
+                }
+
+                const pwX = 105;  // Centered
+                const pwWidth = 80;  // Box width
+
+                // Yellow highlight box
+                doc.setFillColor(255, 255, 200);
+                doc.roundedRect(pwX - (pwWidth / 2), y - 5, pwWidth, 28, 3, 3, 'F');
+
+                // Password label
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(0, 0, 0);
+                doc.text('🔑 AKTUELLES PASSWORT:', pwX, y, { align: 'center' });
+
+                // Password value (red)
+                doc.setFontSize(12);
+                doc.setTextColor(200, 0, 0);
+                doc.text(entwurfData.partnerPassword, pwX, y + 7, { align: 'center' });
+
+                // Warning
+                doc.setFontSize(8);
+                doc.setTextColor(100, 100, 100);
+                doc.text('⚠️ Passwort muss beim ersten Login geändert werden', pwX, y + 14, { align: 'center' });
+
+                y += 25;  // Update y for footer
+
+                console.log('✅ Passwort erfolgreich im Entwurf-PDF platziert');
+            }
+
             // 📌 FOOTER
             doc.setFontSize(8);
             doc.setTextColor(150, 150, 150);
@@ -8708,7 +8835,7 @@
             doc.text('⚠️ Dies ist ein ENTWURF - noch keine finale Annahme', 105, 285, { align: 'center' });
 
             // Download PDF
-            const filename = `Entwurf_${kennzeichen.replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+            const filename = `Entwurf_${entwurfData.kennzeichen.replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
             doc.save(filename);
 
             console.log('✅ Entwurf-PDF erfolgreich erstellt:', filename);
