@@ -536,6 +536,32 @@ exports.aiAgentExecute = functions
 
         console.log(`🤖 AI Agent Request von User ${userId || "anonym"}: "${message}"`);
 
+        // ============================================
+        // RATE LIMIT CHECK (Bug #2 Phase 2)
+        // ============================================
+        const rateLimitResult = await rateLimiter.checkAndIncrementRateLimit(
+          userId || "anonym",
+          werkstatt,
+          'aiChat'
+        );
+
+        if (!rateLimitResult.allowed) {
+          const resetTime = rateLimitResult.resetAt.toLocaleString('de-DE', {
+            timeZone: 'Europe/Berlin',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          throw new functions.https.HttpsError(
+            'resource-exhausted',
+            `Tageslimit erreicht (${rateLimitResult.limit} Anfragen/Tag). ` +
+            `Bitte versuchen Sie es morgen wieder ab ${resetTime} Uhr. ` +
+            `Sie können weiterhin alle anderen Funktionen der App nutzen.`
+          );
+        }
+
+        console.log(`✅ Rate limit check passed: ${rateLimitResult.remaining}/${rateLimitResult.limit} remaining`);
+
         // Initialize OpenAI (lazy)
         const apiKey = getOpenAIApiKey();
         const openai = new OpenAI({ apiKey });
@@ -1787,7 +1813,7 @@ exports.whisperTranscribe = functions
     .https
     .onCall(async (data, context) => {
       try {
-        const { audio, language = "de" } = data;
+        const { audio, language = "de", werkstatt = "mosbach" } = data;
 
         // Validation
         if (!audio) {
@@ -1815,6 +1841,31 @@ exports.whisperTranscribe = functions
         }
 
         console.log(`📊 Audio size: ${audioSizeMB.toFixed(2)} MB`);
+
+        // ============================================
+        // RATE LIMIT CHECK (Bug #2 Phase 2)
+        // ============================================
+        const rateLimitResult = await rateLimiter.checkAndIncrementRateLimit(
+          userId,
+          werkstatt,
+          'whisper'
+        );
+
+        if (!rateLimitResult.allowed) {
+          const resetTime = rateLimitResult.resetAt.toLocaleString('de-DE', {
+            timeZone: 'Europe/Berlin',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          throw new functions.https.HttpsError(
+            'resource-exhausted',
+            `Tageslimit für Spracherkennung erreicht (${rateLimitResult.limit} Anfragen/Tag). ` +
+            `Bitte versuchen Sie es morgen wieder ab ${resetTime} Uhr.`
+          );
+        }
+
+        console.log(`✅ Rate limit check passed: ${rateLimitResult.remaining}/${rateLimitResult.limit} remaining`);
 
         // Initialize OpenAI
         const apiKey = getOpenAIApiKey();
@@ -1946,8 +1997,11 @@ exports.synthesizeSpeech = functions
           text,
           voice = "fable", // Default: Beste Stimme für Deutsch
           model = "tts-1-hd", // Default: HD Qualität
-          format = "mp3" // Default: MP3 (beste Browser-Kompatibilität)
+          format = "mp3", // Default: MP3 (beste Browser-Kompatibilität)
+          werkstatt = "mosbach"
         } = data;
+
+        const userId = context.auth?.uid || "anonym";
 
         // Validate text
         if (!text || typeof text !== "string" || text.trim() === "") {
@@ -1990,6 +2044,31 @@ exports.synthesizeSpeech = functions
         }
 
         console.log(`✅ Validation passed: ${text.length} chars, voice=${voice}, model=${model}, format=${format}`);
+
+        // ============================================
+        // RATE LIMIT CHECK (Bug #2 Phase 2)
+        // ============================================
+        const rateLimitResult = await rateLimiter.checkAndIncrementRateLimit(
+          userId,
+          werkstatt,
+          'tts'
+        );
+
+        if (!rateLimitResult.allowed) {
+          const resetTime = rateLimitResult.resetAt.toLocaleString('de-DE', {
+            timeZone: 'Europe/Berlin',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          throw new functions.https.HttpsError(
+            'resource-exhausted',
+            `Tageslimit für Text-to-Speech erreicht (${rateLimitResult.limit} Anfragen/Tag). ` +
+            `Bitte versuchen Sie es morgen wieder ab ${resetTime} Uhr.`
+          );
+        }
+
+        console.log(`✅ Rate limit check passed: ${rateLimitResult.remaining}/${rateLimitResult.limit} remaining`);
 
         // ============================================
         // 2. INITIALIZE OPENAI
@@ -3559,7 +3638,7 @@ exports.parseDATPDF = functions
         );
       }
 
-      const { imagesBase64 } = data;
+      const { imagesBase64, werkstatt = "mosbach" } = data;
 
       if (!imagesBase64 || !Array.isArray(imagesBase64) || imagesBase64.length === 0) {
         throw new functions.https.HttpsError(
@@ -3573,6 +3652,31 @@ exports.parseDATPDF = functions
       console.log(`   Pages: ${imagesBase64.length}`);
       const totalSizeKB = imagesBase64.reduce((sum, img) => sum + img.length, 0) / 1024;
       console.log(`   Total Size: ${totalSizeKB.toFixed(2)} KB`);
+
+      // ============================================
+      // RATE LIMIT CHECK (Bug #2 Phase 2)
+      // ============================================
+      const rateLimitResult = await rateLimiter.checkAndIncrementRateLimit(
+        context.auth.uid,
+        werkstatt,
+        'pdfVision'
+      );
+
+      if (!rateLimitResult.allowed) {
+        const resetTime = rateLimitResult.resetAt.toLocaleString('de-DE', {
+          timeZone: 'Europe/Berlin',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        throw new functions.https.HttpsError(
+          'resource-exhausted',
+          `Tageslimit für PDF-Analyse erreicht (${rateLimitResult.limit} Anfragen/Tag). ` +
+          `Bitte versuchen Sie es morgen wieder ab ${resetTime} Uhr.`
+        );
+      }
+
+      console.log(`✅ Rate limit check passed: ${rateLimitResult.remaining}/${rateLimitResult.limit} remaining`);
 
       // Initialize OpenAI with secret
       const apiKey = getOpenAIApiKey();
