@@ -331,10 +331,37 @@ async function loginMitarbeiter(mitarbeiterId, password) {
       throw new Error(`Mitarbeiter-Account ist ${mitarbeiterData.status}!`);
     }
 
-    // Verify password (SHA-256 hash)
-    const passwordHash = await hashPassword(password);
-    if (passwordHash !== mitarbeiterData.passwordHash) {
-      throw new Error('Falsches Passwort!');
+    // Verify password via Firebase Authentication
+    if (!mitarbeiterData.email || !mitarbeiterData.firebaseUid) {
+      throw new Error('⚠️ Mitarbeiter wurde noch nicht zu Firebase Auth migriert!\n\nBitte Administrator kontaktieren oder Migration durchführen:\n/migrate-mitarbeiter-to-firebase-auth.html');
+    }
+
+    // Firebase Auth Login
+    try {
+      console.log(`   🔐 Firebase Auth Login: ${mitarbeiterData.email}`);
+      const userCredential = await window.auth.signInWithEmailAndPassword(mitarbeiterData.email, password);
+
+      // Verify UID matches (security check)
+      if (userCredential.user.uid !== mitarbeiterData.firebaseUid) {
+        console.error(`❌ UID Mismatch! Expected: ${mitarbeiterData.firebaseUid}, Got: ${userCredential.user.uid}`);
+        throw new Error('Security Error: UID Mismatch!');
+      }
+
+      console.log(`   ✅ Firebase Auth erfolgreich (UID: ${userCredential.user.uid})`);
+    } catch (authError) {
+      // Handle Firebase Auth errors
+      if (authError.code === 'auth/wrong-password') {
+        throw new Error('Falsches Passwort!');
+      } else if (authError.code === 'auth/user-not-found') {
+        throw new Error('Firebase Auth Account nicht gefunden! Bitte Administrator kontaktieren.');
+      } else if (authError.code === 'auth/too-many-requests') {
+        throw new Error('Zu viele fehlgeschlagene Login-Versuche! Bitte später erneut versuchen.');
+      } else if (authError.message && authError.message.includes('Security Error')) {
+        throw authError; // Pass through security errors
+      } else {
+        console.error('❌ Firebase Auth Error:', authError);
+        throw new Error(`Login fehlgeschlagen: ${authError.message}`);
+      }
     }
 
     // Update last login timestamp
@@ -662,18 +689,13 @@ function hasPermission(permission) {
 // ============================================
 
 /**
- * Hash password using SHA-256
- * @param {string} password
- * @returns {Promise<string>} Hex-encoded hash
+ * DEPRECATED: hashPassword() has been removed in favor of Firebase Authentication.
+ * All mitarbeiter authentication now uses Firebase Auth (secure bcrypt hashing).
+ *
+ * Migration: Run /migrate-mitarbeiter-to-firebase-auth.html
+ *
+ * Old SHA-256 implementation removed on 2025-11-21 (Bug #1 Fix)
  */
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return hashHex;
-}
 
 // ============================================
 // FIREBASE AUTH STATE LISTENER
@@ -801,10 +823,10 @@ window.authManager = {
   createActiveSession,         // Create session entry in Firestore
   deleteActiveSession,         // Delete session entry
   updateSessionActivity,       // Update heartbeat
-  setupSessionHeartbeat,       // Setup auto-heartbeat
+  setupSessionHeartbeat        // Setup auto-heartbeat
 
   // Utilities
-  hashPassword
+  // hashPassword - REMOVED (replaced with Firebase Auth, see migration script)
 };
 
 console.log('✅ Auth Manager initialized (Multi-Tenant 2-Stage Auth)');

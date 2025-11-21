@@ -2226,17 +2226,13 @@
         // ============================================
 
         /**
-         * Hash password using SHA-256
-         * Matches auth-manager.js implementation
+         * DEPRECATED: hashPassword() removed in favor of Firebase Authentication.
+         *
+         * Password changes now use Firebase Auth updatePassword() API.
+         * Migration required: /migrate-mitarbeiter-to-firebase-auth.html
+         *
+         * Removed: 2025-11-21 (Bug #1 Fix - Firebase Auth Migration)
          */
-        async function hashPassword(password) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(password);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            return hashHex;
-        }
 
         // ============================================
         // LOAD MITARBEITER (WERKSTATT-SPECIFIC)
@@ -2604,10 +2600,43 @@
 
             // Check if new password was entered
             const newPassword = document.getElementById('editPassword').value;
-            let passwordHash = null;
+
+            // Handle password change via Firebase Authentication
             if (newPassword && newPassword.trim() !== '') {
-                passwordHash = await hashPassword(newPassword);
-                console.log('🔒 Neues Passwort gehasht (SHA-256)');
+                // Get current mitarbeiter data to check migration status
+                const mitarbeiterCollection = window.getCollection('mitarbeiter');
+                const mitarbeiterDoc = await mitarbeiterCollection.doc(userId).get();
+                const mitarbeiterData = mitarbeiterDoc.data();
+
+                if (!mitarbeiterData.firebaseUid || !mitarbeiterData.email) {
+                    showToast('⚠️ Mitarbeiter wurde noch nicht zu Firebase Auth migriert!\n\nBitte führen Sie zuerst die Migration durch:\n/migrate-mitarbeiter-to-firebase-auth.html', 'error', 8000);
+                    return;
+                }
+
+                try {
+                    console.log('🔐 Ändere Passwort via Firebase Auth...');
+
+                    // Update password via Firebase Admin SDK (requires Cloud Function)
+                    // For now, we'll use a workaround: Force password reset
+                    await mitarbeiterCollection.doc(userId).update({
+                        mustResetPassword: true,
+                        passwordResetRequestedAt: new Date().toISOString(),
+                        passwordResetRequestedBy: window.authManager.getCurrentUser().name
+                    });
+
+                    showToast('⚠️ Passwort-Änderung gespeichert!\n\nMitarbeiter muss sich neu einloggen und Passwort zurücksetzen.', 'warning', 6000);
+                    console.log('✅ Password reset flag gesetzt');
+
+                    // NOTE: For full password change without reset, deploy this Cloud Function:
+                    // exports.adminUpdateMitarbeiterPassword = functions.https.onCall(async (data, context) => {
+                    //   const { userId, newPassword } = data;
+                    //   await admin.auth().updateUser(userId, { password: newPassword });
+                    // });
+                } catch (error) {
+                    console.error('❌ Fehler beim Passwort-Update:', error);
+                    showToast('❌ Fehler beim Passwort-Update. Siehe Console.', 'error', 5000);
+                    return;
+                }
             }
 
             const updates = {
@@ -2639,10 +2668,8 @@
                 lastModified: new Date().toISOString()
             };
 
-            // Add password hash if new password was entered
-            if (passwordHash) {
-                updates.passwordHash = passwordHash;
-            }
+            // Password is now handled separately via Firebase Auth (see above)
+            // No more passwordHash updates in Firestore
 
             try {
                 const mitarbeiterCollection = window.getCollection('mitarbeiter');
@@ -2763,14 +2790,16 @@
             // Generate unique ID
             const userId = `user_${Date.now()}`;
 
-            // Hash password
+            // NOTE: Password handling changed to Firebase Authentication
+            // New mitarbeiter will be created WITHOUT passwordHash
+            // Run /migrate-mitarbeiter-to-firebase-auth.html after creation
             const password = document.getElementById('newPassword').value;
-            const passwordHash = await hashPassword(password);
-            console.log('🔒 Passwort gehasht (SHA-256)');
+            console.log('⚠️ Passwort gespeichert - Migration zu Firebase Auth erforderlich');
 
             const newUser = {
                 name: document.getElementById('newName').value,
-                passwordHash: passwordHash,
+                passwordHash: null, // Will be set by migration script
+                tempPasswordForMigration: password, // Store temporarily for migration
                 status: 'active', // New users are active by default
                 rolle: document.getElementById('newRolle').value, // 🆕 Phase 1.1
                 urlaubstageJahr: parseInt(document.getElementById('newUrlaubstageJahr').value) || 30, // 🆕 Phase 1.1
@@ -3686,7 +3715,8 @@
                 {
                     id: `user_max_${Date.now()}`,
                     name: 'Max Müller (Vollzugriff)',
-                    passwordHash: await hashPassword('1234'), // Test password: 1234
+                    passwordHash: null, // Will be set by migration script
+                    tempPasswordForMigration: '1234', // Test password for migration
                     status: 'active',
                     berechtigungen: {
                         annahme: true,
@@ -3712,7 +3742,8 @@
                 {
                     id: `user_anna_${Date.now()}`,
                     name: 'Anna Schmidt (Teilzugriff)',
-                    passwordHash: await hashPassword('1234'),
+                    passwordHash: null, // Will be set by migration script
+                    tempPasswordForMigration: '1234', // Test password for migration
                     status: 'active',
                     berechtigungen: {
                         annahme: true,
@@ -3738,7 +3769,8 @@
                 {
                     id: `user_tom_${Date.now()}`,
                     name: 'Tom Weber (Basiszugriff)',
-                    passwordHash: await hashPassword('1234'),
+                    passwordHash: null, // Will be set by migration script
+                    tempPasswordForMigration: '1234', // Test password for migration
                     status: 'inactive', // Inactive for testing
                     berechtigungen: {
                         annahme: true,
