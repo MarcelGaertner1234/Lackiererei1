@@ -4638,9 +4638,45 @@ exports.generateAngebotPDF = functions
         await browser.close();
         console.log("✅ PDF erfolgreich generiert");
 
-        // 5. Convert to Base64
-        const pdfBase64 = pdfBuffer.toString("base64");
+        // 5. Upload PDF to Firebase Storage (NEW: Partner Portal Display)
+        console.log("☁️ Uploading PDF to Firebase Storage...");
+        const bucket = admin.storage().bucket();
+        const timestamp = Date.now();
+        const pdfFileName = `angebote/${werkstattId}/${entwurfId}_${timestamp}.pdf`;
+        const pdfFile = bucket.file(pdfFileName);
+
+        await pdfFile.save(pdfBuffer, {
+          metadata: {
+            contentType: "application/pdf",
+            metadata: {
+              entwurfId: entwurfId,
+              werkstattId: werkstattId,
+              kennzeichen: entwurf.kennzeichen,
+              uploadedAt: new Date().toISOString()
+            }
+          }
+        });
+
+        // Make file publicly accessible (for partner portal)
+        await pdfFile.makePublic();
+
+        // Get public download URL
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${pdfFileName}`;
+        console.log(`✅ PDF uploaded to Storage: ${publicUrl}`);
+
+        // 6. Save PDF URL to Firestore (for partner portal display)
+        console.log("💾 Saving PDF URL to Firestore...");
         const filename = `Angebot_${entwurf.kennzeichen.replace(/\s/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`;
+
+        await db.collection(collectionName).doc(entwurfId).update({
+          angebotPdfUrl: publicUrl,
+          angebotPdfFileName: filename,
+          angebotPdfGeneratedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log("✅ PDF URL saved to Firestore");
+
+        // 7. Convert to Base64 (for email attachment - backward compatibility)
+        const pdfBase64 = pdfBuffer.toString("base64");
 
         console.log(`📦 PDF Größe: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
         console.log(`✅ PDF generiert: ${filename}`);
@@ -4648,7 +4684,8 @@ exports.generateAngebotPDF = functions
         return {
           success: true,
           pdfBase64: pdfBase64,
-          filename: filename
+          filename: filename,
+          pdfUrl: publicUrl  // NEW: For partner portal display
         };
 
       } catch (error) {

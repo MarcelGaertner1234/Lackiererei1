@@ -200,6 +200,67 @@
             border-left: 4px solid rgba(100, 60, 255, 0.6);
         }
 
+        /* 📄 PDF Angebot Viewer Styles (2025-11-22) */
+        .pdf-viewer-section {
+            background: var(--color-surface-elevated);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--color-border);
+            margin-top: 20px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .pdf-viewer-section:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .pdf-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn-pdf {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
+            text-decoration: none;
+        }
+
+        .btn-pdf-primary {
+            background: linear-gradient(135deg, var(--color-primary), #5c3abf);
+            color: white;
+            box-shadow: 0 4px 12px rgba(100, 60, 255, 0.3);
+        }
+
+        .btn-pdf-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(100, 60, 255, 0.4);
+        }
+
+        .btn-pdf-secondary {
+            background: var(--color-surface);
+            color: var(--color-text-primary);
+            border: 2px solid var(--color-border);
+        }
+
+        .btn-pdf-secondary:hover {
+            background: var(--color-surface-elevated);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
         .service-timeline-header {
             padding: 12px 16px;
             color: white;
@@ -2010,6 +2071,35 @@
                                 <div class="value">${anfrage.angebotDetails.erstelltVon}</div>
                             </div>
                             ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 📄 PDF Angebot Display (2025-11-22): Show PDF Angebot if available
+            // Only display when status is 'kva_gesendet' or later (beauftragt, in_arbeit, fertig)
+            const pdfStatuses = ['kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
+            if (anfrage.angebotPdfUrl && pdfStatuses.includes(anfrage.status)) {
+                html += `
+                    <div class="detail-section pdf-viewer-section">
+                        <h2>📄 Ihr Angebot (PDF)</h2>
+                        <p style="color: var(--color-text-secondary); margin-top: 10px; font-size: 14px;">
+                            ${anfrage.angebotPdfFileName || 'Angebot.pdf'}
+                            ${anfrage.angebotPdfGeneratedAt ? `
+                                <br><small style="font-size: 12px;">Erstellt am: ${new Date(anfrage.angebotPdfGeneratedAt.toDate()).toLocaleDateString('de-DE')}
+                                ${new Date(anfrage.angebotPdfGeneratedAt.toDate()).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'})}</small>
+                            ` : ''}
+                        </p>
+                        <div class="pdf-actions">
+                            <button class="btn-pdf btn-pdf-primary" onclick="viewPDF()">
+                                <span>👁️</span>
+                                <span>PDF ansehen</span>
+                            </button>
+                            <a href="${anfrage.angebotPdfUrl}" download="${anfrage.angebotPdfFileName || 'Angebot.pdf'}"
+                               class="btn-pdf btn-pdf-secondary">
+                                <span>📥</span>
+                                <span>PDF herunterladen</span>
+                            </a>
                         </div>
                     </div>
                 `;
@@ -4734,6 +4824,41 @@
             } catch (error) {
                 console.error('❌ BATCH TRANSACTION FEHLGESCHLAGEN:', error);
                 showToast(`❌ Stornierung fehlgeschlagen!\\n\\nFehler: ${error.message}\\n\\nDie Anfrage wurde NICHT storniert (Atomic Rollback).`, 'error');
+            }
+        }
+
+        // ============================================
+        //  📄 PDF ANGEBOT VIEWER (2025-11-22)
+        // ============================================
+
+        /**
+         * Opens the PDF Angebot in a new tab for viewing
+         */
+        function viewPDF() {
+            if (!anfrage || !anfrage.angebotPdfUrl) {
+                console.error('❌ PDF URL nicht verfügbar');
+                toast.error('PDF konnte nicht geladen werden');
+                return;
+            }
+
+            console.log('📄 Opening PDF in new tab:', anfrage.angebotPdfUrl);
+
+            // Open PDF in new tab
+            const pdfWindow = window.open(anfrage.angebotPdfUrl, '_blank');
+
+            if (!pdfWindow) {
+                console.warn('⚠️ Popup blocked - Fallback to download');
+                toast.warning('Popup wurde blockiert. PDF wird heruntergeladen.');
+
+                // Fallback: Download PDF if popup is blocked
+                const a = document.createElement('a');
+                a.href = anfrage.angebotPdfUrl;
+                a.download = anfrage.angebotPdfFileName || 'Angebot.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else {
+                toast.success('PDF wird in neuem Tab geöffnet');
             }
         }
 
