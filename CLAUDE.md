@@ -2597,7 +2597,7 @@ firebase deploy --only firestore  # ✅ Deploys firestore.rules
 
 **Session History:** See [CLAUDE_SESSIONS_ARCHIVE.md](./CLAUDE_SESSIONS_ARCHIVE.md)
 
-**Current Version:** v3.2.1 (Production-Ready, 100% Test Pass Rate, Phase 1 Security Implemented)
+**Current Version:** v3.2.2 (Production-Ready, 100% Test Pass Rate, Phase 1 Security Implemented)
 
 ---
 
@@ -3972,7 +3972,54 @@ firebase firestore:import \
 
 ---
 
-_Last Updated: 2025-11-20 by Claude Code (Sonnet 4.5)_
-_Version: 8.6 (Pipeline Bug Fixes: Audit-Trail, Email Validation, Field Consistency - Session 2025-11-20)_
+### Session 2025-11-21 (Phase 12): Entwurf-PDF Fixes + Dark Mode + Firestore Type Safety
+
+**BUGFIXES (5 Bugs, 4 Commits):**
+
+**Bug #21: Entwurf-PDF QR-Code Overlap + Emoji Encoding** (Commit 686ddea)
+- Problem 1: Password section overlapped QR-Code (Y-position not updated)
+- Problem 2: UTF-8 Emoji → Latin-1 encoding error (& þ Ø=Ý in PDF)
+- Solutions: Y-position update (Lines 8788-8789), Conditional spacing (Line 8800), Emoji → ASCII (Lines 8766, 8818, 8828, 8839)
+- Files: annahme.html (+4 edits)
+- Pattern: #44 (PDF Layout - Y-Position Management), #45 (PDF Emoji Encoding)
+
+**Bug #22: Quick Mode Cloud Function Error** (Commit 01fb36a)
+- Quick Mode: kundenname undefined → 500 Error "Cannot use 'undefined' as Firestore value"
+- Root Cause: ensurePartnerAccount requires name, Quick Mode doesn't show field
+- Solution: Fallback value `kundenname || 'Kunde'` (Line 3632)
+- Files: annahme.html (+1 edit)
+- Pattern: #46 (Quick Mode Validation - Optional Fields)
+
+**Bug #23: Signature Canvas Invisible (Dark Mode)** (Commit 5bc1e48)
+- Static white background → white-on-white strokes in Dark Mode
+- Solution: Theme-aware background `rgba(255,255,255,0.03)` (Line 313)
+- Files: entwuerfe-bearbeiten.html (+1 edit)
+- Pattern: #47 (Dark Mode CSS - Theme-Aware Components)
+
+**Bug #24: Firestore Timestamp Type Error** (Commit 763978c)
+- Partner accepts KVA offer → Error "Expected type 'Vd' (Timestamp), but it was: a custom Pd object (Date)"
+- Root Cause: anfrage.kva.termine.start/ende are Date objects from Cloud Functions
+- Solution: toSafeDate() helper (Lines 6740-6756), Applied to 5 date fields (Lines 7170-7185)
+- Files: meine-anfragen.html (+28 lines)
+- Pattern: #48 (Firestore Type Safety - Date → String Conversion)
+
+**KEY LEARNINGS:**
+- ALWAYS update Y-position after PDF sections (jsPDF.text() doesn't auto-increment)
+- NEVER use Unicode Emoji in PDF (jsPDF only supports Latin-1 in standard fonts)
+- ALWAYS provide fallback values for Cloud Function parameters (prevent undefined errors)
+- ALWAYS use theme-aware CSS (rgba with low opacity, not static colors)
+- ALWAYS convert Date objects to ISO strings before Firestore writes (defensive type safety)
+
+**NEW ERROR PATTERNS:** Patterns #44-48 (PDF Layout, Emoji Encoding, Quick Mode, Dark Mode, Firestore Types)
+
+**Cache Issue Encountered:**
+- User saw old code despite successful deployment → Service Worker cache
+- Temporary solution: Inkognito mode / Manual cache clearing
+- Permanent solution: Bump Service Worker CACHE_VERSION (sw.js Line 6)
+
+---
+
+_Last Updated: 2025-11-21 by Claude Code (Sonnet 4.5)_
+_Version: 8.7 (Entwurf-PDF Fixes, Dark Mode, Firestore Type Safety - Session 2025-11-21)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
-_Lines: ~4,200 (+ ~340 lines documentation updates)_
+_Lines: ~4,100 (+48 lines Session 2025-11-21 documentation)_
