@@ -209,8 +209,12 @@ window.firebaseApp = {
 
   // Helper Functions - CHANGED TO ARROW FUNCTIONS for closure access to `db`
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
-  getAllFahrzeuge: async () => {
-    const snapshot = await window.getCollection('fahrzeuge').get();
+  // ✅ BUG #4 FIX: Added pagination support with optional limit parameter (default: 50)
+  getAllFahrzeuge: async (limit = 50) => {
+    const snapshot = await window.getCollection('fahrzeuge')
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
     return snapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -223,8 +227,12 @@ window.firebaseApp = {
   },
 
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
-  getAllKunden: async () => {
-    const snapshot = await window.getCollection('kunden').get();
+  // ✅ BUG #4 FIX: Added pagination support with optional limit parameter (default: 50)
+  getAllKunden: async (limit = 50) => {
+    const snapshot = await window.getCollection('kunden')
+      .orderBy('name', 'asc')
+      .limit(limit)
+      .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   },
 
@@ -317,8 +325,11 @@ window.firebaseApp = {
   },
 
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
-  listenToFahrzeuge: (callback) => {
+  // ✅ BUG #4 FIX: Added pagination support with optional limit parameter (default: 50)
+  listenToFahrzeuge: (callback, limit = 50) => {
     return window.getCollection('fahrzeuge')
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
       .onSnapshot(snapshot => {
         const fahrzeuge = [];
         snapshot.forEach(doc => {
