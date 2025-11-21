@@ -299,7 +299,7 @@
         // Click Handler
         toast.addEventListener('click', (e) => {
             if (!e.target.classList.contains('toast-close') && !e.target.classList.contains('toast-btn')) {
-                safeNavigate(`meine-anfragen.html#anfrage-${data.anfrageId}`;
+                safeNavigate(`meine-anfragen.html#anfrage-${data.anfrageId}`);
             }
         });
 
@@ -364,7 +364,7 @@
 
     // Global function für Toast-Buttons
     window.openPartnerChat = function(anfrageId) {
-        safeNavigate(`meine-anfragen.html#anfrage-${anfrageId}`;
+        safeNavigate(`meine-anfragen.html#anfrage-${anfrageId}`);
     };
 
     // ========================================
