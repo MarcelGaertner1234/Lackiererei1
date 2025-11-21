@@ -4083,6 +4083,43 @@ firebase firestore:import \
 
 ---
 
+### Session 2025-11-21 (Phase 14): Bug #2 Status Sync + Bug #3 Email Retry + Bug #4 PDF Flags
+
+**COMPREHENSIVE FIXES (3 Bug Fixes, 3 Commits, 4 Files, 648 Lines):**
+
+**Bug #2: Status Sync Validation** (Commit bf067ad) 🔴 CRITICAL
+- Forward-only transitions, Max 2 steps, Special cases (terminiert)
+- isValidTransition() helper (kanban.html Lines 2653-2740)
+- updateFahrzeugStatus() validation (Lines 4562-4622)
+- Admin override with confirmation dialog
+- Files: kanban.html (+151 lines)
+- Pattern: **#50 - Status Transition Validation** 🔴 CRITICAL
+
+**Bug #3 (Email): Email Retry Queue System** (Commit 12cbd94) 🔴 CRITICAL
+- Controlled retry (max 3 attempts, exponential backoff)
+- processEmailRetryQueue Cloud Function (scheduled, every 5min)
+- Modified 4 email functions: onStatusChange, onNewPartnerAnfrage, onUserApproved, sendEntwurfEmail
+- emailRetryQueue_{werkstattId} collection + security rules + index
+- Files: firestore.rules (+13), firestore.indexes.json (+14), functions/index.js (+336)
+- Pattern: **#51 - Email Duplicate Prevention** 🔴 CRITICAL
+
+**Bug #4: PDF Failure Flags** (Commit 2c04a59) ⚠️ MEDIUM
+- Persistent error state tracking (pdfGenerationFailed, pdfEmailSkipped)
+- Frontend retry mechanism (entwuerfe-bearbeiten.html)
+- Admin email skip detection + user notifications
+- Files: functions/index.js (+35), entwuerfe-bearbeiten.html (+127)
+- Pattern: **#52 - PDF Error Recovery UI** ⚠️ MEDIUM
+
+**KEY LEARNINGS:**
+- ALWAYS validate status transitions in workflows (data integrity)
+- NEVER throw errors in email functions without queue system (duplicates!)
+- ALWAYS persist error states to Firestore (user visibility)
+- ALWAYS provide retry mechanisms for transient failures
+
+**NEW ERROR PATTERNS:** Patterns #50-52 (Status Sync, Email Retry, PDF Failures)
+
+---
+
 ### Session 2025-11-18 (Phase 11): Invoice PDF Enhancement + Steuerberater Dashboard
 
 **FIXES (2 Features, 2 Commits):**
@@ -4249,6 +4286,7 @@ function safeNavigate(url, forceCleanup = true) {
 ---
 
 _Last Updated: 2025-11-21 by Claude Code (Sonnet 4.5)_
-_Version: 8.8 (Bug #3: Memory Leak Fix - 133× window.location.href → safeNavigate, Pattern 49)_
+_Version: 8.9 (Bug #2, #3 Email, #4 - Status Sync + Email Retry + PDF Failures, Session Phase 14)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
-_Lines: ~4,250 (+150 lines Bug #3 documentation + Pattern 49)_
+_Lines: ~4,290 (+40 lines Bug #2-4 Session documentation)_
+_**NEW PATTERNS:** See NEXT_AGENT Patterns #50-52 for detailed implementation guides_
