@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
+    <!-- ✅ BUG #5 FIX: Global DEBUG flag for conditional logging -->
+    <script>
+        window.DEBUG = (
+            localStorage.getItem('DEBUG') === 'true' ||
+            window.location.search.includes('debug=true') ||
+            window.location.hostname === 'localhost' ||
+            window.location.port === '8000'
+        );
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anfrage-Details | Partner Portal</title>
@@ -1003,7 +1012,7 @@
                 'pflege', 'kva', 'versicherung', 'sonstiges', 'multi-service'];
 
             // 🔍 DEBUG (2025-11-16): Log anfrage structure to identify multi-service detection issues
-            console.log(`🔍 [NORMALIZE-DEBUG] ${anfrage.id}:`, {
+            if (window.DEBUG) console.log(`🔍 [NORMALIZE-DEBUG] ${anfrage.id}:`, {
                 serviceTyp: anfrage.serviceTyp,
                 hasServiceLabels: !!anfrage.serviceLabels,
                 serviceLabelsLength: anfrage.serviceLabels?.length,
@@ -1147,7 +1156,7 @@
             try {
                 // ✅ NEU: QuickView Mode (Direkt-Zugriff per Fahrzeug-ID + Kennzeichen)
                 if (mode === 'quickview' && kennzeichen) {
-                    console.log('🔍 QuickView Mode aktiviert - Lade Fahrzeug direkt per ID');
+                    if (window.DEBUG) console.log('🔍 QuickView Mode aktiviert - Lade Fahrzeug direkt per ID');
 
                     // ✅ Multi-Collection Search (funktioniert OHNE Login!)
                     // 1. Versuche werkstatt-spezifische Collection (z.B. fahrzeuge_mosbach)
@@ -1196,10 +1205,10 @@
                 }
 
                 // ✅ NORMAL Mode: Load from partnerAnfragen Collection
-                console.log('🔍 [LOAD-DEBUG] START: Loading from partnerAnfragen, anfrageId:', anfrageId);
+                if (window.DEBUG) console.log('🔍 [LOAD-DEBUG] START: Loading from partnerAnfragen, anfrageId:', anfrageId);
                 const doc = await window.getCollection('partnerAnfragen').doc(anfrageId).get();
 
-                console.log('🔍 [LOAD-DEBUG] Firestore doc.get() completed, exists:', doc.exists);
+                if (window.DEBUG) console.log('🔍 [LOAD-DEBUG] Firestore doc.get() completed, exists:', doc.exists);
 
                 if (!doc.exists) {
                     showError('Anfrage nicht gefunden');
@@ -1207,7 +1216,7 @@
                 }
 
                 const data = doc.data();
-                console.log('🔍 [LOAD-DEBUG] Raw anfrage data:', data);
+                if (window.DEBUG) console.log('🔍 [LOAD-DEBUG] Raw anfrage data:', data);
 
                 // ✅ FIX: Ownership-Validierung - Prüfe ob Anfrage dem Partner gehört
                 if (data.partnerId !== partner.partnerId) {
@@ -1223,18 +1232,18 @@
                 console.log('✅ [ANFRAGE-DETAIL] Ownership-Check erfolgreich:', partner.partnerId);
 
                 anfrage = { id: doc.id, ...data };
-                console.log('🔍 [LOAD-DEBUG] anfrage object created with id:', anfrage.id);
+                if (window.DEBUG) console.log('🔍 [LOAD-DEBUG] anfrage object created with id:', anfrage.id);
 
                 // 🆕 PHASE 1.2: Normalisiere anfrage (füge serviceLabels hinzu falls fehlt)
                 anfrage = normalizeAnfrageData(anfrage);
-                console.log('🔍 [LOAD-DEBUG] After normalizeAnfrageData, serviceLabels:', anfrage.serviceLabels);
+                if (window.DEBUG) console.log('🔍 [LOAD-DEBUG] After normalizeAnfrageData, serviceLabels:', anfrage.serviceLabels);
 
                 // NEU: Fahrzeug laden (für Live-Produktionsfortschritt)
                 // CRITICAL: Load asynchronously (non-blocking) to prevent race condition
                 // Detail page must render immediately even if fahrzeug doesn't exist yet
 
                 // FIX #1: Debug Logging für Fahrzeug-Suche
-                console.log('🔍 [FAHRZEUG-LOAD] START: Versuche Fahrzeug zu laden:', {
+                if (window.DEBUG) console.log('🔍 [FAHRZEUG-LOAD] START: Versuche Fahrzeug zu laden:', {
                     anfrageId: anfrageId,
                     hasFahrzeugId: !!anfrage.fahrzeugId,
                     fahrzeugId: anfrage.fahrzeugId || 'LEER!',
@@ -1263,15 +1272,15 @@
 
                 // 🔧 NEW (2025-11-16): PRIORITIZE fahrzeugId (direct document access - fastest!)
                 if (anfrage.fahrzeugId) {
-                    console.log('🔍 [FAHRZEUG-LOAD] Method: fahrzeugId (DIRECT DOC ACCESS)');
+                    if (window.DEBUG) console.log('🔍 [FAHRZEUG-LOAD] Method: fahrzeugId (DIRECT DOC ACCESS)');
                     await loadFahrzeugById(anfrage.fahrzeugId);  // ✅ AWAIT!
                     fahrzeugLoaded = !!anfrage.fahrzeug;
                 } else if (anfrage.kennzeichen) {
-                    console.log('🔍 [FAHRZEUG-LOAD] Method: kennzeichen');
+                    if (window.DEBUG) console.log('🔍 [FAHRZEUG-LOAD] Method: kennzeichen');
                     await loadFahrzeugByKennzeichen(anfrage.kennzeichen);  // ✅ AWAIT!
                     fahrzeugLoaded = !!anfrage.fahrzeug;
                 } else if (anfrage.auftragsnummer) {
-                    console.log('🔍 [FAHRZEUG-LOAD] Method: auftragsnummer');
+                    if (window.DEBUG) console.log('🔍 [FAHRZEUG-LOAD] Method: auftragsnummer');
                     await loadFahrzeugByAuftragsnummer(anfrage.auftragsnummer);  // ✅ AWAIT!
                     fahrzeugLoaded = !!anfrage.fahrzeug;
                 }
@@ -1283,7 +1292,7 @@
                     fahrzeugLoaded = !!anfrage.fahrzeug;
                 }
 
-                console.log('🔍 [FAHRZEUG-LOAD] COMPLETE: fahrzeug loaded?', fahrzeugLoaded, '| has additionalServices?', !!anfrage.fahrzeug?.additionalServices);
+                if (window.DEBUG) console.log('🔍 [FAHRZEUG-LOAD] COMPLETE: fahrzeug loaded?', fahrzeugLoaded, '| has additionalServices?', !!anfrage.fahrzeug?.additionalServices);
 
                 renderAnfrage();  // Now executes AFTER fahrzeug is loaded!
 
@@ -1330,7 +1339,7 @@
                 // Check if user is Werkstatt-Admin (has full access to all vehicles)
                 const isWerkstattAdmin = currentUserEmail.includes('werkstatt');
 
-                console.log('🔍 DEBUG: Lade Fahrzeug mit Query-Rule Compliance:', {
+                if (window.DEBUG) console.log('🔍 DEBUG: Lade Fahrzeug mit Query-Rule Compliance:', {
                     kennzeichen: kennzeichen.toUpperCase(),
                     userEmail: currentUserEmail,
                     isWerkstattAdmin: isWerkstattAdmin
@@ -1368,7 +1377,7 @@
                 }
 
                 // DEBUG: Verify Firestore query
-                console.log('🔍 DEBUG: Fahrzeug-Query Result:', {
+                if (window.DEBUG) console.log('🔍 DEBUG: Fahrzeug-Query Result:', {
                     kennzeichen: kennzeichen,
                     kennzeichenUpperCase: kennzeichen.toUpperCase(),
                     found: !snapshot.empty,
@@ -1381,7 +1390,7 @@
                     console.log('✅ Fahrzeug geladen:', fahrzeugDoc.id, '- Kennzeichen:', kennzeichen);
 
                     // DEBUG: Show loaded fahrzeug data
-                    console.log('🔍 DEBUG: Fahrzeug-Daten:', {
+                    if (window.DEBUG) console.log('🔍 DEBUG: Fahrzeug-Daten:', {
                         id: fahrzeugDoc.id,
                         kennzeichen: fahrzeugDoc.data().kennzeichen,
                         prozessStatus: fahrzeugDoc.data().prozessStatus,
@@ -1448,14 +1457,14 @@
         // FASTEST method - no query needed, just direct document access
         async function loadFahrzeugById(fahrzeugId) {
             try {
-                console.log('🔍 [FAHRZEUG-LOAD] Loading via fahrzeugId (direct doc access):', fahrzeugId);
+                if (window.DEBUG) console.log('🔍 [FAHRZEUG-LOAD] Loading via fahrzeugId (direct doc access):', fahrzeugId);
 
                 const fahrzeugDoc = await window.getCollection('fahrzeuge').doc(String(fahrzeugId)).get();
 
                 if (fahrzeugDoc.exists) {
                     anfrage.fahrzeug = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
                     console.log('✅ [FAHRZEUG-LOAD] Fahrzeug loaded via ID:', fahrzeugDoc.id);
-                    console.log('🔍 [FAHRZEUG-LOAD] Has additionalServices?', !!anfrage.fahrzeug.additionalServices);
+                    if (window.DEBUG) console.log('🔍 [FAHRZEUG-LOAD] Has additionalServices?', !!anfrage.fahrzeug.additionalServices);
 
                     // Re-normalize anfrage with fahrzeug data
                     anfrage = normalizeAnfrageData(anfrage);
@@ -1473,7 +1482,7 @@
         // FIX #2: Fahrzeug per partnerAnfrageId laden (Ultimate Fallback)
         async function loadFahrzeugByPartnerAnfrageId(anfrageId) {
             try {
-                console.log('🔍 DEBUG: Suche Fahrzeug per partnerAnfrageId:', anfrageId);
+                if (window.DEBUG) console.log('🔍 DEBUG: Suche Fahrzeug per partnerAnfrageId:', anfrageId);
 
                 const snapshot = await window.getCollection('fahrzeuge')
                     .where('partnerAnfrageId', '==', anfrageId)
@@ -1481,7 +1490,7 @@
                     .limit(1)
                     .get();
 
-                console.log('🔍 DEBUG: partnerAnfrageId Query Result:', {
+                if (window.DEBUG) console.log('🔍 DEBUG: partnerAnfrageId Query Result:', {
                     anfrageId: anfrageId,
                     found: !snapshot.empty,
                     documentCount: snapshot.size
@@ -1518,7 +1527,7 @@
         // 🆕 BUGFIX 2025-11-05 (FIX #54b): Query-Rule Compliance für Partner-Zugriff
         // 🆕 BUGFIX 2025-11-14 (FIX #56b): Werkstatt-Admin darf alle Fahrzeuge sehen
         function setupLiveFahrzeugUpdates(kennzeichen) {
-            console.log('🔍 DEBUG: setupLiveFahrzeugUpdates() gestartet für kennzeichen:', kennzeichen);
+            if (window.DEBUG) console.log('🔍 DEBUG: setupLiveFahrzeugUpdates() gestartet für kennzeichen:', kennzeichen);
 
             // Alte Listener entfernen falls vorhanden
             if (window.unsubscribeFahrzeug) window.unsubscribeFahrzeug();
@@ -1546,7 +1555,7 @@
                     .limit(1);
             }
 
-            console.log('🔍 DEBUG: Live-Updates Query:', {
+            if (window.DEBUG) console.log('🔍 DEBUG: Live-Updates Query:', {
                 userEmail: currentUserEmail,
                 kennzeichen: kennzeichen.toUpperCase(),
                 isWerkstattAdmin: isWerkstattAdmin
@@ -1557,7 +1566,7 @@
 
             window.unsubscribeFahrzeug = queryRef.onSnapshot((snapshot) => {
                     // DEBUG: onSnapshot triggered
-                    console.log('🔍 DEBUG: onSnapshot triggered:', {
+                    if (window.DEBUG) console.log('🔍 DEBUG: onSnapshot triggered:', {
                         snapshotSize: snapshot.size,
                         isEmpty: snapshot.empty,
                         timestamp: new Date().toISOString()
@@ -1568,7 +1577,7 @@
                         const newData = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
 
                         // DEBUG: Show updated data
-                        console.log('🔍 DEBUG: Fahrzeug onSnapshot Data:', {
+                        if (window.DEBUG) console.log('🔍 DEBUG: Fahrzeug onSnapshot Data:', {
                             fahrzeugId: fahrzeugDoc.id,
                             prozessStatus: fahrzeugDoc.data().prozessStatus,
                             statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0,
@@ -1579,7 +1588,7 @@
                         if (anfrage.fahrzeug &&
                             JSON.stringify(anfrage.fahrzeug.statusHistory) !== JSON.stringify(newData.statusHistory)) {
                             console.log('🔄 Fahrzeug aktualisiert - neue statusHistory');
-                            console.log('🔍 DEBUG: StatusHistory Änderung:', {
+                            if (window.DEBUG) console.log('🔍 DEBUG: StatusHistory Änderung:', {
                                 old: anfrage.fahrzeug.statusHistory,
                                 new: newData.statusHistory
                             });
@@ -1603,7 +1612,7 @@
                                 .where('kennzeichen', '==', kennzeichen.toUpperCase())
                                 .limit(1);
 
-                            console.log('🔍 DEBUG: Live-Updates Fallback Query (kundenEmail):', {
+                            if (window.DEBUG) console.log('🔍 DEBUG: Live-Updates Fallback Query (kundenEmail):', {
                                 userEmail: currentUserEmail,
                                 kennzeichen: kennzeichen.toUpperCase()
                             });
@@ -1614,7 +1623,7 @@
                                     const fahrzeugDoc = snapshot.docs[0];
                                     const newData = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
 
-                                    console.log('🔍 DEBUG: Fahrzeug onSnapshot Data (kundenEmail):', {
+                                    if (window.DEBUG) console.log('🔍 DEBUG: Fahrzeug onSnapshot Data (kundenEmail):', {
                                         fahrzeugId: fahrzeugDoc.id,
                                         prozessStatus: fahrzeugDoc.data().prozessStatus,
                                         statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0
@@ -1652,7 +1661,7 @@
 
         // FIX #5: Live-Updates mit partnerAnfrageId (Fallback wenn kein Kennzeichen)
         function setupLiveFahrzeugUpdatesByPartnerAnfrageId(anfrageId) {
-            console.log('🔍 DEBUG: setupLiveFahrzeugUpdatesByPartnerAnfrageId() gestartet für anfrageId:', anfrageId);
+            if (window.DEBUG) console.log('🔍 DEBUG: setupLiveFahrzeugUpdatesByPartnerAnfrageId() gestartet für anfrageId:', anfrageId);
 
             // Alte Listener entfernen falls vorhanden
             if (window.unsubscribeFahrzeug) window.unsubscribeFahrzeug();
@@ -1662,7 +1671,7 @@
                 .limit(1)
                 .onSnapshot((snapshot) => {
                     // DEBUG: onSnapshot triggered
-                    console.log('🔍 DEBUG: onSnapshot (partnerAnfrageId) triggered:', {
+                    if (window.DEBUG) console.log('🔍 DEBUG: onSnapshot (partnerAnfrageId) triggered:', {
                         snapshotSize: snapshot.size,
                         isEmpty: snapshot.empty,
                         timestamp: new Date().toISOString()
@@ -1673,7 +1682,7 @@
                         const newData = { id: fahrzeugDoc.id, ...fahrzeugDoc.data() };
 
                         // DEBUG: Show updated data
-                        console.log('🔍 DEBUG: Fahrzeug onSnapshot Data (partnerAnfrageId):', {
+                        if (window.DEBUG) console.log('🔍 DEBUG: Fahrzeug onSnapshot Data (partnerAnfrageId):', {
                             fahrzeugId: fahrzeugDoc.id,
                             prozessStatus: fahrzeugDoc.data().prozessStatus,
                             statusHistoryLength: fahrzeugDoc.data().statusHistory?.length || 0,
@@ -1684,7 +1693,7 @@
                         if (anfrage.fahrzeug &&
                             JSON.stringify(anfrage.fahrzeug.statusHistory) !== JSON.stringify(newData.statusHistory)) {
                             console.log('🔄 Fahrzeug aktualisiert - neue statusHistory (partnerAnfrageId)');
-                            console.log('🔍 DEBUG: StatusHistory Änderung:', {
+                            if (window.DEBUG) console.log('🔍 DEBUG: StatusHistory Änderung:', {
                                 old: anfrage.fahrzeug.statusHistory,
                                 new: newData.statusHistory
                             });
@@ -1719,7 +1728,7 @@
                         const newData = { id: doc.id, ...doc.data() };
 
                         // CRITICAL DEBUG RUN #30: Log onSnapshot data to understand button hiding
-                        console.log('🔍 DEBUG onSnapshot triggered:', {
+                        if (window.DEBUG) console.log('🔍 DEBUG onSnapshot triggered:', {
                             oldStatus: anfrage?.status,
                             newStatus: newData.status,
                             oldKVA: anfrage?.kva ? 'yes' : 'no',
@@ -1799,7 +1808,7 @@
 
             // ✅ QUICKVIEW MODE: Info-Banner + Hide Sensitive Data
             if (anfrage.isQuickView) {
-                console.log('🔍 QuickView Mode aktiv - verstecke sensitive Daten');
+                if (window.DEBUG) console.log('🔍 QuickView Mode aktiv - verstecke sensitive Daten');
 
                 // Info-Banner einfügen
                 const contentDiv = document.getElementById('content');
@@ -2016,22 +2025,22 @@
             }
 
             // 🔍 DEBUG LOGGING - Version 26c47c4_debug
-            console.log('🔍 DEBUG renderAnfrage() - Before switch statement');
-            console.log('🔍 serviceTyp:', serviceTyp);
-            console.log('🔍 anfrage.serviceData:', anfrage.serviceData);
-            console.log('🔍 anfrage.serviceDetails:', anfrage.serviceDetails);
-            console.log('🔍 Full anfrage object:', anfrage);
+            if (window.DEBUG) console.log('🔍 DEBUG renderAnfrage() - Before switch statement');
+            if (window.DEBUG) console.log('🔍 serviceTyp:', serviceTyp);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData:', anfrage.serviceData);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails:', anfrage.serviceDetails);
+            if (window.DEBUG) console.log('🔍 Full anfrage object:', anfrage);
 
             // 🆕 MULTI-SERVICE DATA EXTRACTION & NORMALIZATION (2025-11-14)
             // Extract correct data for each service (primary vs additional) and normalize field names
             const servicesToRender = anfrage.serviceLabels || [serviceTyp];
-            console.log('🔍 Services to render:', servicesToRender);
+            if (window.DEBUG) console.log('🔍 Services to render:', servicesToRender);
 
             // Save original serviceData (will be temporarily overwritten per service)
             const originalServiceData = anfrage.serviceData;
 
             servicesToRender.forEach(currentServiceTyp => {
-                console.log(`🔍 Processing service: ${currentServiceTyp}`);
+                if (window.DEBUG) console.log(`🔍 Processing service: ${currentServiceTyp}`);
 
                 // 🔍 CRITICAL: Extract the correct data for THIS specific service
                 let serviceData = null;
@@ -2935,7 +2944,7 @@
             }
 
             // 🔍 DEBUG: Log Berechnung VORHER
-            console.log('🔍 DEBUG Status-Übersicht Berechnung:', {
+            if (window.DEBUG) console.log('🔍 DEBUG Status-Übersicht Berechnung:', {
                 serviceTyp: serviceTyp,
                 currentStatus: currentStatus,
                 mappedStatus: mappedStatus,
@@ -2988,7 +2997,7 @@
                 const statusClass = isCompleted ? 'completed' : isActive ? 'active' : '';
 
                 // 🔍 DEBUG: Log historyEntry to see if foto exists
-                console.log(`🔍 DEBUG Status-Übersicht Step "${step.status}":`, {
+                if (window.DEBUG) console.log(`🔍 DEBUG Status-Übersicht Step "${step.status}":`, {
                     index: index,
                     currentStepIndex: currentStepIndex,
                     partnerStatus: step.status,
@@ -3458,16 +3467,16 @@
 
         function renderFolierungDetails() {
             // 🔍 DEBUG LOGGING
-            console.log('🔍 DEBUG renderFolierungDetails() called');
-            console.log('🔍 anfrage.serviceDetails?.folierungArt:', anfrage.serviceDetails?.folierungArt);
-            console.log('🔍 anfrage.serviceData?.folierungArt:', anfrage.serviceData?.folierungArt);
-            console.log('🔍 anfrage.serviceData?.art:', anfrage.serviceData?.art);
-            console.log('🔍 anfrage.serviceDetails?.folierungMaterial:', anfrage.serviceDetails?.folierungMaterial);
-            console.log('🔍 anfrage.serviceData?.folierungMaterial:', anfrage.serviceData?.folierungMaterial);
-            console.log('🔍 anfrage.serviceData?.material:', anfrage.serviceData?.material);
-            console.log('🔍 anfrage.serviceDetails?.folierungFarbe:', anfrage.serviceDetails?.folierungFarbe);
-            console.log('🔍 anfrage.serviceData?.folierungFarbe:', anfrage.serviceData?.folierungFarbe);
-            console.log('🔍 anfrage.serviceData?.farbe:', anfrage.serviceData?.farbe);
+            if (window.DEBUG) console.log('🔍 DEBUG renderFolierungDetails() called');
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails?.folierungArt:', anfrage.serviceDetails?.folierungArt);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.folierungArt:', anfrage.serviceData?.folierungArt);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.art:', anfrage.serviceData?.art);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails?.folierungMaterial:', anfrage.serviceDetails?.folierungMaterial);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.folierungMaterial:', anfrage.serviceData?.folierungMaterial);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.material:', anfrage.serviceData?.material);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails?.folierungFarbe:', anfrage.serviceDetails?.folierungFarbe);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.folierungFarbe:', anfrage.serviceData?.folierungFarbe);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.farbe:', anfrage.serviceData?.farbe);
 
             const hasAnyData = (anfrage.serviceDetails?.folierungArt || anfrage.serviceData?.folierungArt || anfrage.serviceData?.art ||
                                 anfrage.serviceDetails?.folierungMaterial || anfrage.serviceData?.folierungMaterial || anfrage.serviceData?.material ||
@@ -3475,7 +3484,7 @@
                                 anfrage.serviceDetails?.folierungDesign || anfrage.serviceData?.folierungDesign || anfrage.serviceData?.design ||
                                 anfrage.serviceDetails?.folierungInfo || anfrage.serviceData?.folierungInfo || anfrage.serviceData?.info);
 
-            console.log('🔍 hasAnyData:', hasAnyData);
+            if (window.DEBUG) console.log('🔍 hasAnyData:', hasAnyData);
 
             return `
                 <div class="detail-section">
@@ -3581,20 +3590,20 @@
 
         function renderSteinschutzDetails() {
             // 🔍 DEBUG LOGGING
-            console.log('🔍 DEBUG renderSteinschutzDetails() called');
-            console.log('🔍 anfrage.serviceDetails?.steinschutzUmfang:', anfrage.serviceDetails?.steinschutzUmfang);
-            console.log('🔍 anfrage.serviceData?.steinschutzUmfang:', anfrage.serviceData?.steinschutzUmfang);
-            console.log('🔍 anfrage.serviceData?.umfang:', anfrage.serviceData?.umfang);
-            console.log('🔍 anfrage.serviceDetails?.steinschutzMaterial:', anfrage.serviceDetails?.steinschutzMaterial);
-            console.log('🔍 anfrage.serviceData?.steinschutzMaterial:', anfrage.serviceData?.steinschutzMaterial);
-            console.log('🔍 anfrage.serviceData?.material:', anfrage.serviceData?.material);
+            if (window.DEBUG) console.log('🔍 DEBUG renderSteinschutzDetails() called');
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails?.steinschutzUmfang:', anfrage.serviceDetails?.steinschutzUmfang);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.steinschutzUmfang:', anfrage.serviceData?.steinschutzUmfang);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.umfang:', anfrage.serviceData?.umfang);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails?.steinschutzMaterial:', anfrage.serviceDetails?.steinschutzMaterial);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.steinschutzMaterial:', anfrage.serviceData?.steinschutzMaterial);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.material:', anfrage.serviceData?.material);
 
             const hasAnyData = (anfrage.serviceDetails?.steinschutzUmfang || anfrage.serviceData?.steinschutzUmfang || anfrage.serviceData?.umfang ||
                                 anfrage.serviceDetails?.steinschutzMaterial || anfrage.serviceData?.steinschutzMaterial || anfrage.serviceData?.material ||
                                 anfrage.serviceDetails?.steinschutzBereiche || anfrage.serviceData?.steinschutzBereiche || anfrage.serviceData?.bereiche ||
                                 anfrage.serviceDetails?.steinschutzInfo || anfrage.serviceData?.steinschutzInfo || anfrage.serviceData?.info);
 
-            console.log('🔍 hasAnyData:', hasAnyData);
+            if (window.DEBUG) console.log('🔍 hasAnyData:', hasAnyData);
 
             return `
                 <div class="detail-section">
@@ -3695,13 +3704,13 @@
 
         function renderWerbebeklebungDetails() {
             // 🔍 DEBUG LOGGING
-            console.log('🔍 DEBUG renderWerbebeklebungDetails() called');
-            console.log('🔍 anfrage.serviceDetails?.werbebeklebungUmfang:', anfrage.serviceDetails?.werbebeklebungUmfang);
-            console.log('🔍 anfrage.serviceData?.werbebeklebungUmfang:', anfrage.serviceData?.werbebeklebungUmfang);
-            console.log('🔍 anfrage.serviceData?.umfang:', anfrage.serviceData?.umfang);
-            console.log('🔍 anfrage.serviceDetails?.werbebeklebungMotive:', anfrage.serviceDetails?.werbebeklebungMotive);
-            console.log('🔍 anfrage.serviceData?.werbebeklebungMotive:', anfrage.serviceData?.werbebeklebungMotive);
-            console.log('🔍 anfrage.serviceData?.motive:', anfrage.serviceData?.motive);
+            if (window.DEBUG) console.log('🔍 DEBUG renderWerbebeklebungDetails() called');
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails?.werbebeklebungUmfang:', anfrage.serviceDetails?.werbebeklebungUmfang);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.werbebeklebungUmfang:', anfrage.serviceData?.werbebeklebungUmfang);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.umfang:', anfrage.serviceData?.umfang);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceDetails?.werbebeklebungMotive:', anfrage.serviceDetails?.werbebeklebungMotive);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.werbebeklebungMotive:', anfrage.serviceData?.werbebeklebungMotive);
+            if (window.DEBUG) console.log('🔍 anfrage.serviceData?.motive:', anfrage.serviceData?.motive);
 
             const hasAnyData = (anfrage.serviceDetails?.werbebeklebungUmfang || anfrage.serviceData?.werbebeklebungUmfang || anfrage.serviceData?.umfang ||
                                 anfrage.serviceDetails?.werbebeklebungKomplexitaet || anfrage.serviceData?.werbebeklebungKomplexitaet || anfrage.serviceData?.komplexitaet ||
@@ -3709,7 +3718,7 @@
                                 anfrage.serviceDetails?.werbebeklebungDesign || anfrage.serviceData?.werbebeklebungDesign || anfrage.serviceData?.design ||
                                 anfrage.serviceDetails?.werbebeklebungInfo || anfrage.serviceData?.werbebeklebungInfo || anfrage.serviceData?.info);
 
-            console.log('🔍 hasAnyData:', hasAnyData);
+            if (window.DEBUG) console.log('🔍 hasAnyData:', hasAnyData);
 
             return `
                 <div class="detail-section">
@@ -3919,7 +3928,7 @@
         }
 
         async function prepareFahrzeugData(anfrage, abholtermin) {
-            console.log('🔍 prepareFahrzeugData() gestartet');
+            if (window.DEBUG) console.log('🔍 prepareFahrzeugData() gestartet');
             console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
             console.log('📋 Anfrage kennzeichen:', anfrage.kennzeichen);
             console.log('📋 Anfrage anliefertermin:', anfrage.anliefertermin);
@@ -4010,7 +4019,7 @@
                         'anfrage.isEntwurf': anfrage.isEntwurf,
                         'anfrage.entwurfStatus': anfrage.entwurfStatus
                     };
-                    console.log('🔍 DEBUG kundenname (Bug #20):', debug);
+                    if (window.DEBUG) console.log('🔍 DEBUG kundenname (Bug #20):', debug);
 
                     // Comprehensive fallback chain (Bug #20)
                     const result = anfrage.kundenname
@@ -4344,7 +4353,7 @@
 
                 // 4. DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert (CRITICAL!)
                 // Verhindert doppelte Fahrzeuge wenn Transaction beim Flag-Setting fehlschlägt
-                console.log('🔍 DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
+                if (window.DEBUG) console.log('🔍 DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
                 let existingVehicle = null;
 
                 // Check 1: Auftragsnummer (wenn vorhanden)
@@ -4430,7 +4439,7 @@
                         }
 
                         const currentStatus = anfrageDoc.data().status;
-                        console.log(`   🔍 Status-Check: "${currentStatus}"`);
+                        if (window.DEBUG) console.log(`   🔍 Status-Check: "${currentStatus}"`);
 
                         // ✅ FIX: NUR "kva_gesendet" erlauben!
                         // Status "beauftragt" bedeutet: Fahrzeug wurde bereits angelegt
@@ -4448,7 +4457,7 @@
 
                         // ✅ FIX Issue #3 (2025-11-20): ATOMIC DUPLICATE CHECK
                         // Prevents race condition where multiple users accept same KVA simultaneously
-                        console.log('   🔍 ATOMIC DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
+                        if (window.DEBUG) console.log('   🔍 ATOMIC DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
 
                         // Check 1: Auftragsnummer
                         if (anfrage.auftragsnummer) {
@@ -4500,7 +4509,7 @@
                 }
 
                 // 7. VERIFIKATION
-                console.log('🔍 Verifiziere Firestore-Speicherung...');
+                if (window.DEBUG) console.log('🔍 Verifiziere Firestore-Speicherung...');
                 const verifyDoc = await window.getCollection('fahrzeuge').doc(fahrzeugData.id).get();
                 if (!verifyDoc.exists) {
                     throw new Error('❌ KRITISCHER FEHLER: Fahrzeug wurde NICHT in Firestore gespeichert!');
@@ -4621,7 +4630,7 @@
             const grund = prompt('Grund für Stornierung (optional):') || 'Keine Angabe';
 
             try {
-                console.log('🔍 CASCADE DELETE: Suche Fahrzeug für Atomic Transaction...');
+                if (window.DEBUG) console.log('🔍 CASCADE DELETE: Suche Fahrzeug für Atomic Transaction...');
 
                 // SCHRITT 1: Fahrzeug suchen (READ-ONLY vor Transaction)
                 const kennzeichen = anfrage.kennzeichen || anfrage.auftragsnummer;
@@ -4698,7 +4707,7 @@
                 // AFTER-DELETE CHECK - Bereinige verwaiste Fotos
                 if (fahrzeugId) {
                     try {
-                        console.log('🔍 AFTER-DELETE CHECK: Prüfe auf verwaiste Fotos...');
+                        if (window.DEBUG) console.log('🔍 AFTER-DELETE CHECK: Prüfe auf verwaiste Fotos...');
                         const remainingFotosSnapshot = await window.getCollection('fahrzeuge')
                             .doc(fahrzeugId)
                             .collection('fotos')
