@@ -6736,6 +6736,25 @@
             // 🔧 FIX (2025-11-17): Multi-Service Support (Entwürfe haben Array)
             const gueltigeServiceTypen = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev', 'versicherung', 'glas', 'klima', 'dellen', 'folierung', 'steinschutz', 'werbebeklebung'];
             let serviceTyp;
+
+            // ✅ FIX (Nov 21, 2025): Helper function to safely convert date values to strings
+            // PREVENTS: Firestore error "Expected type 'Vd' (Timestamp), but it was: a custom Pd object (Plain Date)"
+            // USE CASE: anfrage.kva.termine.start/ende might be Date objects from Cloud Function
+            function toSafeDate(value) {
+                if (!value) return null;
+                if (value instanceof Date) {
+                    return value.toISOString().split('T')[0];  // Date Object → 'YYYY-MM-DD'
+                }
+                if (typeof value === 'number') {
+                    return new Date(value).toISOString().split('T')[0];  // Timestamp → 'YYYY-MM-DD'
+                }
+                if (typeof value === 'string') {
+                    return value;  // Already string (no conversion needed)
+                }
+                console.warn('⚠️ toSafeDate: Unexpected type:', typeof value, value);
+                return null;
+            }
+
             // ✅ FIX #40: Helper function to extract serviceDetails for a specific service type from flat anfrage object
             // ✅ FIX #46 (2025-11-19): Extract NESTED serviceData[serviceTyp] for multi-service-anfrage.html
             // multi-service-anfrage.html stores: serviceData = { lackier: {...}, reifen: {...} } (NESTED)
@@ -7147,21 +7166,23 @@
                 // Termine & Planung (KVA-Termine > Kundenwunsch!)
                 // WICHTIG: Wenn KVA existiert, MUSS kva.termine.ende verwendet werden (echter Werkstatt-Termin)
                 // ✅ FIX Bug #4 (2025-11-20): Konsistenz mit admin-anfragen.html
-                anliefertermin: anfrage.kva?.termine?.start || anfrage.anliefertermin || null, // START-Termin (konsistent mit Admin-Pipeline)
-                abholtermin: anfrage.kva?.termine?.ende || null, // ENDE-Termin (DATA LOSS PREVENTION - fehlte vorher!)
+                // ✅ FIX (Nov 21, 2025): toSafeDate() wrapper prevents Firestore "Expected type 'Vd'" error
+                anliefertermin: toSafeDate(anfrage.kva?.termine?.start || anfrage.anliefertermin), // START-Termin (konsistent mit Admin-Pipeline)
+                abholtermin: toSafeDate(anfrage.kva?.termine?.ende), // ENDE-Termin (DATA LOSS PREVENTION - fehlte vorher!)
                 abholzeit: anfrage.kva?.termine?.abholzeit || null,
 
                 // Kalender-Anzeige (Fallback-Chain für UI-Kompatibilität)
-                geplantesAbnahmeDatum: anfrage.angebotDetails?.fertigstellungsdatum ||  // ✅ FIX #15: Angebot finish date
+                // ✅ FIX (Nov 21, 2025): toSafeDate() wrapper prevents Firestore "Expected type 'Vd'" error
+                geplantesAbnahmeDatum: toSafeDate(anfrage.angebotDetails?.fertigstellungsdatum ||  // ✅ FIX #15: Angebot finish date
                                        anfrage.kva?.termine?.ende ||
-                                       anfrage.anliefertermin ||  // Fallback zu Original-Feld
-                                       new Date().toISOString().split('T')[0], // Ultimate Fallback: heute
-                geplantesStartDatum: anfrage.kva?.termine?.start || null, // Backward compatibility (UI nutzt evtl. dieses Feld)
+                                       anfrage.anliefertermin) ||  // Fallback zu Original-Feld
+                                       new Date().toISOString().split('T')[0], // Ultimate Fallback: heute (already string)
+                geplantesStartDatum: toSafeDate(anfrage.kva?.termine?.start), // Backward compatibility (UI nutzt evtl. dieses Feld)
 
                 // Abholung (falls gewünscht)
                 fahrzeugAbholung: anfrage.abholserviceGewuenscht ? 'ja' : 'nein',
                 abholadresse: anfrage.abholadresse || '',
-                abholdatum: abholtermin || '', // Nutze BERECHNETEN Abholtermin (1 Tag vor START, Wochenenden berücksichtigt)
+                abholdatum: toSafeDate(abholtermin) || '', // Nutze BERECHNETEN Abholtermin (1 Tag vor START, Wochenenden berücksichtigt) - ✅ FIX (Nov 21, 2025)
                 // abholzeit wird oben aus kva.termine.abholzeit gesetzt
                 abholnotiz: anfrage.abholnotiz || '',
 
