@@ -265,7 +265,7 @@
         // Click Handler
         toast.addEventListener('click', (e) => {
             if (!e.target.classList.contains('toast-close') && !e.target.classList.contains('toast-btn')) {
-                safeNavigate(`partner-app/admin-anfragen.html#anfrage-${data.anfrageId}`;
+                safeNavigate(`partner-app/admin-anfragen.html#anfrage-${data.anfrageId}`);
             }
         });
 
@@ -330,9 +330,9 @@
     window.openChat = function(anfrageId) {
         const currentPath = window.location.pathname;
         if (currentPath.includes('partner-app/')) {
-            safeNavigate(`admin-anfragen.html#anfrage-${anfrageId}`;
+            safeNavigate(`admin-anfragen.html#anfrage-${anfrageId}`);
         } else {
-            safeNavigate(`partner-app/admin-anfragen.html#anfrage-${anfrageId}`;
+            safeNavigate(`partner-app/admin-anfragen.html#anfrage-${anfrageId}`);
         }
     };
 
