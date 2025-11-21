@@ -262,6 +262,9 @@ Bereit für Migration...
         let mitarbeiterList = [];
         let passwordsMap = new Map();
 
+        // Known workshop IDs (add more as needed: 'heidelberg', 'mannheim', etc.)
+        const KNOWN_WORKSHOPS = ['mosbach'];
+
         // Generate secure password (12 chars: uppercase, lowercase, numbers, special)
         function generateSecurePassword() {
             const uppercase = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // No I, O
@@ -314,53 +317,56 @@ Bereit für Migration...
             mitarbeiterList = [];
 
             try {
-                // Get all collections (mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.)
-                const collectionsSnapshot = await db.listCollections();
-                const mitarbeiterCollections = [];
+                // Build collection names from known workshops
+                const mitarbeiterCollections = KNOWN_WORKSHOPS.map(id => `mitarbeiter_${id}`);
 
-                for (const collection of collectionsSnapshot) {
-                    if (collection.id.startsWith('mitarbeiter_')) {
-                        mitarbeiterCollections.push(collection.id);
-                    }
-                }
-
-                log(`📁 Gefunden: ${mitarbeiterCollections.length} Mitarbeiter-Collections`, 'success');
+                log(`📁 Scanning ${mitarbeiterCollections.length} known workshop${mitarbeiterCollections.length !== 1 ? 's' : ''}: ${KNOWN_WORKSHOPS.join(', ')}`, 'success');
 
                 // Scan each collection
                 for (const collectionName of mitarbeiterCollections) {
                     const werkstattId = collectionName.replace('mitarbeiter_', '');
                     log(`📋 Scanne Collection: ${collectionName}...`);
 
-                    const snapshot = await db.collection(collectionName).get();
+                    try {
+                        const snapshot = await db.collection(collectionName).get();
 
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-
-                        // Skip if already migrated (has firebaseUid)
-                        if (data.firebaseUid) {
-                            log(`⏭️ Überspringe ${doc.id} (bereits migriert)`, 'warning');
-                            document.getElementById('skippedCount').textContent =
-                                parseInt(document.getElementById('skippedCount').textContent) + 1;
-                            return;
+                        if (snapshot.empty) {
+                            log(`⏭️ Collection leer: ${collectionName}`, 'warning');
+                            continue;
                         }
 
-                        // Skip if no passwordHash (no login needed)
-                        if (!data.passwordHash) {
-                            log(`⏭️ Überspringe ${doc.id} (kein Passwort)`, 'warning');
-                            document.getElementById('skippedCount').textContent =
-                                parseInt(document.getElementById('skippedCount').textContent) + 1;
-                            return;
-                        }
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
 
-                        mitarbeiterList.push({
-                            id: doc.id,
-                            name: data.name,
-                            werkstattId: werkstattId,
-                            collectionName: collectionName,
-                            oldPasswordHash: data.passwordHash,
-                            status: data.status
+                            // Skip if already migrated (has firebaseUid)
+                            if (data.firebaseUid) {
+                                log(`⏭️ Überspringe ${doc.id} (bereits migriert)`, 'warning');
+                                document.getElementById('skippedCount').textContent =
+                                    parseInt(document.getElementById('skippedCount').textContent) + 1;
+                                return;
+                            }
+
+                            // Skip if no passwordHash (no login needed)
+                            if (!data.passwordHash) {
+                                log(`⏭️ Überspringe ${doc.id} (kein Passwort)`, 'warning');
+                                document.getElementById('skippedCount').textContent =
+                                    parseInt(document.getElementById('skippedCount').textContent) + 1;
+                                return;
+                            }
+
+                            mitarbeiterList.push({
+                                id: doc.id,
+                                name: data.name,
+                                werkstattId: werkstattId,
+                                collectionName: collectionName,
+                                oldPasswordHash: data.passwordHash,
+                                status: data.status
+                            });
                         });
-                    });
+                    } catch (collectionError) {
+                        // Collection doesn't exist or permission denied - skip it
+                        log(`⏭️ Fehler beim Zugriff auf ${collectionName}: ${collectionError.message}`, 'warning');
+                    }
                 }
 
                 document.getElementById('totalMitarbeiter').textContent = mitarbeiterList.length;
