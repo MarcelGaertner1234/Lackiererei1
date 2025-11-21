@@ -1156,6 +1156,16 @@
                         <i data-feather="send"></i>
                         <span id="sendBtn">Angebot erstellen & versenden</span>
                     </button>
+                    <!-- ✅ BUG #4 FIX: PDF Retry Button (shown only when PDF generation failed) -->
+                    <button
+                        type="button"
+                        id="pdfRetryBtn"
+                        class="btn btn-warning btn-lg"
+                        style="display: none; margin-top: 10px;"
+                        onclick="retryPDFGeneration()">
+                        <i data-feather="refresh-cw"></i>
+                        <span id="retryBtnText">PDF erneut generieren</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -2081,6 +2091,32 @@
                     }
                 }
 
+                // ✅ BUG #4 FIX: Check for PDF generation errors
+                if (currentEntwurf.pdfGenerationFailed) {
+                    const errorMsg = currentEntwurf.pdfGenerationError || 'Unbekannter Fehler';
+                    showToast(
+                        `⚠️ PDF-Generierung fehlgeschlagen:\n\n${errorMsg}\n\n💡 Bitte versuchen Sie es erneut.`,
+                        'error',
+                        10000
+                    );
+
+                    // Show retry button
+                    const retryBtn = document.getElementById('pdfRetryBtn');
+                    if (retryBtn) {
+                        retryBtn.style.display = 'inline-block';
+                    }
+                }
+
+                // ✅ BUG #4 FIX: Check for email skip warning
+                if (currentEntwurf.pdfEmailSkipped) {
+                    const skipReason = currentEntwurf.pdfEmailSkippedReason || 'SendGrid deaktiviert';
+                    showToast(
+                        `ℹ️ Admin-Email wurde übersprungen:\n\n${skipReason}\n\n⚠️ PDF wurde erstellt, aber NICHT per Email versendet.`,
+                        'warning',
+                        8000
+                    );
+                }
+
                 // Show form
                 document.getElementById('formContainer').classList.add('visible');
                 feather.replace();
@@ -2869,7 +2905,7 @@
                 showToast('📧 Sende Email an Admin...', 'info', 3000);
 
                 const sendAdminEmail = window.functions.httpsCallable('sendAngebotPDFToAdmin');
-                await sendAdminEmail({
+                const emailResult = await sendAdminEmail({
                     pdfBase64: pdfResult.data.pdfBase64,
                     filename: pdfResult.data.filename,
                     entwurfId: currentEntwurfId,
@@ -2879,7 +2915,17 @@
                     vereinbarterPreis: document.getElementById('vereinbarterPreis').value
                 });
 
-                console.log('✅ Admin-Email versendet');
+                // ✅ BUG #4 FIX: Check for email skip
+                if (emailResult.data && emailResult.data.emailSkipped) {
+                    console.warn('⚠️ Admin-Email wurde übersprungen (erwartet):', emailResult.data.message);
+                    showToast(
+                        'ℹ️ PDF erstellt, aber Admin-Email übersprungen (SendGrid deaktiviert).\n\n💡 Tipp: Laden Sie das PDF manuell herunter.',
+                        'info',
+                        6000
+                    );
+                } else {
+                    console.log('✅ Admin-Email versendet');
+                }
 
                 // Step 8: Success!
                 sendBtn.innerHTML = '<i data-feather="check"></i> Versendet!';
@@ -2953,6 +2999,83 @@
 
                 showToast(errorMsg, 'error', 10000);
                 document.getElementById('sendBtn').textContent = 'Angebot erstellen & versenden';
+                feather.replace();
+            }
+        }
+
+        // ============================================
+        // BUG #4 FIX: PDF RETRY FUNCTION
+        // ============================================
+
+        /**
+         * Retry PDF Generation after previous failure
+         * Clears error flags and retries generateAngebotPDF Cloud Function
+         */
+        async function retryPDFGeneration() {
+            try {
+                console.log('🔄 === PDF RETRY STARTED ===');
+
+                const retryBtn = document.getElementById('pdfRetryBtn');
+                const retryBtnText = document.getElementById('retryBtnText');
+
+                // Disable button and show loading state
+                retryBtn.disabled = true;
+                retryBtnText.textContent = 'Wird generiert...';
+                feather.replace();
+
+                const werkstattId = window.werkstattId || 'mosbach';
+                const collectionName = `partnerAnfragen_${werkstattId}`;
+
+                if (!currentEntwurfId) {
+                    throw new Error('Kein Entwurf ausgewählt');
+                }
+
+                // Step 1: Clear previous error flags in Firestore
+                console.log('🧹 Clearing error flags...');
+                await window.db.collection(collectionName).doc(currentEntwurfId).update({
+                    pdfGenerationFailed: firebase.firestore.FieldValue.delete(),
+                    pdfGenerationError: firebase.firestore.FieldValue.delete(),
+                    pdfGenerationFailedAt: firebase.firestore.FieldValue.delete()
+                });
+
+                // Step 2: Retry PDF generation
+                console.log('📄 Retrying PDF generation...');
+                const generatePDF = window.functions.httpsCallable('generateAngebotPDF');
+                const pdfResult = await generatePDF({
+                    entwurfId: currentEntwurfId,
+                    werkstattId: werkstattId
+                });
+
+                console.log('✅ PDF retry successful:', pdfResult.data.filename);
+                showToast('✅ PDF erfolgreich generiert!', 'success', 3000);
+
+                // Hide retry button
+                retryBtn.style.display = 'none';
+
+                // Reset button state
+                retryBtn.disabled = false;
+                retryBtnText.textContent = 'PDF erneut generieren';
+                feather.replace();
+
+            } catch (error) {
+                console.error('❌ PDF retry failed:', error);
+
+                let errorMsg = '❌ PDF-Generierung fehlgeschlagen:\n\n';
+
+                if (error.message.includes('PDF') || error.message.includes('generateAngebotPDF')) {
+                    errorMsg += `${error.message}\n\n`;
+                    errorMsg += '💡 Tipp: Prüfen Sie die Kalkulations-Daten und versuchen Sie es erneut.';
+                } else {
+                    errorMsg += `${error.message}`;
+                }
+
+                showToast(errorMsg, 'error', 10000);
+
+                // Re-enable button
+                const retryBtn = document.getElementById('pdfRetryBtn');
+                const retryBtnText = document.getElementById('retryBtnText');
+                retryBtn.disabled = false;
+                retryBtnText.textContent = 'PDF erneut generieren';
                 feather.replace();
             }
         }

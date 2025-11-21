@@ -4649,6 +4649,23 @@ exports.generateAngebotPDF = functions
       } catch (error) {
         console.error("❌ PDF-Generierung fehlgeschlagen:", error);
 
+        // ✅ BUG #4 FIX: Set error flag in Firestore for persistent error state
+        try {
+          const { entwurfId, werkstattId } = data;
+          if (entwurfId && werkstattId) {
+            const collectionName = `partnerAnfragen_${werkstattId}`;
+            await db.collection(collectionName).doc(entwurfId).update({
+              pdfGenerationFailed: true,
+              pdfGenerationError: error.message || 'Unknown error',
+              pdfGenerationFailedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`✅ Error flag set in Firestore: ${entwurfId}`);
+          }
+        } catch (dbError) {
+          // Non-critical error (log but don't throw)
+          console.error('⚠️ Failed to set error flag in Firestore (non-critical):', dbError);
+        }
+
         throw new functions.https.HttpsError(
             "internal",
             `PDF-Generierung fehlgeschlagen: ${error.message}`
@@ -4675,11 +4692,29 @@ exports.sendAngebotPDFToAdmin = functions
       console.log("🎯 Kennzeichen:", data.kennzeichen || "N/A");
       console.log("💰 Preis:", data.vereinbarterPreis || "N/A");
 
+      // ✅ BUG #4 FIX: Set email-skip flag in Firestore (not an error, but expected behavior)
+      try {
+        const { entwurfId, werkstattId } = data;
+        if (entwurfId && werkstattId) {
+          const collectionName = `partnerAnfragen_${werkstattId}`;
+          await db.collection(collectionName).doc(entwurfId).update({
+            pdfEmailSkipped: true,
+            pdfEmailSkippedReason: "SendGrid Trial abgelaufen",
+            pdfEmailSkippedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`✅ Email-skip flag set in Firestore: ${entwurfId}`);
+        }
+      } catch (dbError) {
+        // Non-critical error (log but don't throw)
+        console.error('⚠️ Failed to set email-skip flag in Firestore (non-critical):', dbError);
+      }
+
       // Return success immediately to allow workflow to continue
       return {
         success: true,
         message: "Admin-Email übersprungen (SendGrid Trial abgelaufen)",
         tempDisabled: true,
+        emailSkipped: true,  // ✅ NEW: Explicit flag for frontend to detect skip
         filename: data.filename || "angebot.pdf"
       };
     });
