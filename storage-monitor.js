@@ -177,7 +177,7 @@ class StorageMonitor {
     } else {
       const proceed = confirm(message);
       if (proceed && !window.location.href.includes('liste.html')) {
-        window.location.href = 'liste.html';
+        safeNavigate('liste.html');
       }
     }
   }

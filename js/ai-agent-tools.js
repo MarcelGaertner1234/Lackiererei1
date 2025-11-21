@@ -325,7 +325,7 @@ async function navigateToPage(params) {
         }
 
         // Navigate
-        window.location.href = url;
+        safeNavigate(url);
 
         console.log(`✅ KI-Agent: Navigation zu ${page} (${url})`);
 

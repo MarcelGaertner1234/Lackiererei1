@@ -90,9 +90,9 @@
             // Erkenne aktuellen Pfad und navigiere entsprechend
             const currentPath = window.location.pathname;
             if (currentPath.includes('partner-app/')) {
-                window.location.href = 'admin-anfragen.html';
+                safeNavigate('admin-anfragen.html');
             } else {
-                window.location.href = 'partner-app/admin-anfragen.html';
+                safeNavigate('partner-app/admin-anfragen.html');
             }
         });
 
@@ -265,7 +265,7 @@
         // Click Handler
         toast.addEventListener('click', (e) => {
             if (!e.target.classList.contains('toast-close') && !e.target.classList.contains('toast-btn')) {
-                window.location.href = `partner-app/admin-anfragen.html#anfrage-${data.anfrageId}`;
+                safeNavigate(`partner-app/admin-anfragen.html#anfrage-${data.anfrageId}`;
             }
         });
 
@@ -330,9 +330,9 @@
     window.openChat = function(anfrageId) {
         const currentPath = window.location.pathname;
         if (currentPath.includes('partner-app/')) {
-            window.location.href = `admin-anfragen.html#anfrage-${anfrageId}`;
+            safeNavigate(`admin-anfragen.html#anfrage-${anfrageId}`;
         } else {
-            window.location.href = `partner-app/admin-anfragen.html#anfrage-${anfrageId}`;
+            safeNavigate(`partner-app/admin-anfragen.html#anfrage-${anfrageId}`;
         }
     };
 

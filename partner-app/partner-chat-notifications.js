@@ -74,7 +74,7 @@
         bell.addEventListener('click', () => {
             const currentPath = window.location.pathname;
             if (!currentPath.includes('meine-anfragen.html')) {
-                window.location.href = 'meine-anfragen.html';
+                safeNavigate('meine-anfragen.html');
             } else {
                 // Bereits auf meine-anfragen.html - scroll zu erstem unread
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -299,7 +299,7 @@
         // Click Handler
         toast.addEventListener('click', (e) => {
             if (!e.target.classList.contains('toast-close') && !e.target.classList.contains('toast-btn')) {
-                window.location.href = `meine-anfragen.html#anfrage-${data.anfrageId}`;
+                safeNavigate(`meine-anfragen.html#anfrage-${data.anfrageId}`;
             }
         });
 
@@ -364,7 +364,7 @@
 
     // Global function für Toast-Buttons
     window.openPartnerChat = function(anfrageId) {
-        window.location.href = `meine-anfragen.html#anfrage-${anfrageId}`;
+        safeNavigate(`meine-anfragen.html#anfrage-${anfrageId}`;
     };
 
     // ========================================

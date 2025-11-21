@@ -298,7 +298,7 @@ class MitarbeiterNotificationManager {
         const route = typeRoutes[notification.type];
         if (route) {
             console.log('🔗 Navigating to:', route);
-            window.location.href = route;
+            safeNavigate(route);
         }
     }
 
