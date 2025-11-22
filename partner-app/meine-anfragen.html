@@ -6254,10 +6254,20 @@
                 return data.toISOString();
             }
 
-            // Handle Firestore Timestamps (check BEFORE JSON operations!)
+            // Handle Firestore Timestamp instances (with .toDate() method)
             if (data && typeof data.toDate === 'function') {
                 const isoString = data.toDate().toISOString();
-                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp: ${isoString}`);
+                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp instance: ${isoString}`);
+                return isoString;
+            }
+
+            // 🔧 FIX Bug #5e (2025-11-22): Handle Firestore Timestamp plain objects
+            // PROBLEM: When loaded via ...doc.data(), Timestamps are deserialized to {seconds, nanoseconds}
+            //          WITHOUT .toDate() method → Previous check fails → Plain object persists
+            // SOLUTION: Detect plain Timestamp objects by checking for 'seconds' and 'nanoseconds' properties
+            if (data && typeof data === 'object' && !Array.isArray(data) && 'seconds' in data && 'nanoseconds' in data) {
+                const isoString = new Date(data.seconds * 1000).toISOString();
+                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp plain object: ${isoString}`);
                 return isoString;
             }
 
