@@ -6769,6 +6769,26 @@
                 return null;
             }
 
+            // 🔧 FIX (2025-11-22): Deep sanitize KVA object for Firestore
+            // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kva.termine contains Date objects
+            function sanitizeKvaForFirestore(kva) {
+                if (!kva) return null;
+
+                // Deep clone to avoid mutating original
+                const sanitized = {...kva};
+
+                // Convert Date objects in termine to strings
+                if (sanitized.termine) {
+                    sanitized.termine = {
+                        ...sanitized.termine,
+                        start: toSafeDate(sanitized.termine.start),
+                        ende: toSafeDate(sanitized.termine.ende)
+                    };
+                }
+
+                return sanitized;
+            }
+
             // ✅ FIX #40: Helper function to extract serviceDetails for a specific service type from flat anfrage object
             // ✅ FIX #46 (2025-11-19): Extract NESTED serviceData[serviceTyp] for multi-service-anfrage.html
             // multi-service-anfrage.html stores: serviceData = { lackier: {...}, reifen: {...} } (NESTED)
@@ -7209,7 +7229,8 @@
 
                 // ✅ FIX #2: KVA-Objekt übertragen (für Fallback-Logik in kunden.html)
                 // Benefit: Kunden-Umsatz kann auf kva.varianten zugreifen + Audit Trail
-                kva: anfrage.kva || null,
+                // 🔧 FIX (2025-11-22): Sanitize kva.termine Date objects → Prevents Firestore "Expected type 'Vd'" error
+                kva: sanitizeKvaForFirestore(anfrage.kva),
 
                 // ✅ FIX #18: Kalkulations-Daten preservation (Optional - für Audit)
                 kalkulationData: anfrage.kalkulationData || null,
