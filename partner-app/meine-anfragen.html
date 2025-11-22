@@ -6237,27 +6237,40 @@
             return sanitized;
         }
 
-        // 🔧 FIX (2025-11-22): Deep sanitize kalkulationData object for Firestore
-        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kalkulationData contains Date objects
-        // CRITICAL: This error blocks KVA acceptance transactions
+        // 🔧 FIX Bug #5d (2025-11-22): Recursive Timestamp Sanitization
+        // PROBLEM: JSON.stringify() serializes Firestore Timestamps to plain objects {seconds, nanoseconds}
+        //          BEFORE the replacer sees them, causing toDate() check to ALWAYS FAIL
+        // SOLUTION: Recursive Object Walker that processes Timestamps BEFORE any JSON operations
+        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" (Firestore rejects plain Timestamp objects)
         function sanitizeKalkulationDataForFirestore(data) {
-            if (!data || typeof data !== 'object') return data;
+            if (!data) return data;
 
-            // Deep clone + sanitize using JSON with custom replacer
-            // This handles nested Date objects at ANY depth
-            const sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
-                // Convert Date objects to ISO strings
-                if (value instanceof Date) {
-                    console.log(`🔧 sanitizeKalkulationData: Converting Date at key "${key}": ${value}`);
-                    return value.toISOString();
-                }
-                // Convert Firestore Timestamps to ISO strings
-                if (value && typeof value.toDate === 'function') {
-                    console.log(`🔧 sanitizeKalkulationData: Converting Timestamp at key "${key}"`);
-                    return value.toDate().toISOString();
-                }
-                return value;
-            }));
+            // Handle primitive types
+            if (typeof data !== 'object') return data;
+
+            // Handle Date objects
+            if (data instanceof Date) {
+                console.log(`🔧 [SANITIZE] Converting Date: ${data.toISOString()}`);
+                return data.toISOString();
+            }
+
+            // Handle Firestore Timestamps (check BEFORE JSON operations!)
+            if (data && typeof data.toDate === 'function') {
+                const isoString = data.toDate().toISOString();
+                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp: ${isoString}`);
+                return isoString;
+            }
+
+            // Handle Arrays (recursive)
+            if (Array.isArray(data)) {
+                return data.map(item => sanitizeKalkulationDataForFirestore(item));
+            }
+
+            // Handle Objects (recursive)
+            const sanitized = {};
+            for (const [key, value] of Object.entries(data)) {
+                sanitized[key] = sanitizeKalkulationDataForFirestore(value);
+            }
 
             return sanitized;
         }
@@ -6438,12 +6451,30 @@
                 delete dataForFirestore.photos; // ← KRITISCH: Fotos werden separat gespeichert!
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
 
-                // 🔧 FIX Bug #5a Regression (Nov 22, 2025): Deep sanitize ENTIRE fahrzeugData
+                // 🔧 FIX Bug #5d (Nov 22, 2025): Recursive Deep Sanitization
                 // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" error
-                // PROBLEM: Shallow copy (...fahrzeugData) doesn't convert nested Date objects
-                // SOLUTION: Deep sanitize ALL fields using JSON.stringify/parse replacer
-                console.log('🔧 Deep Sanitize: Konvertiere ALLE Date/Timestamp Objekte → ISO Strings...');
+                // PROBLEM: Firestore Timestamps are custom objects that JSON.stringify() cannot serialize
+                // SOLUTION: Recursive Object Walker that converts Timestamps BEFORE JSON operations
+                console.log('🔧 [BUG #5d] Deep Sanitize: Konvertiere ALLE Date/Timestamp Objekte → ISO Strings...');
+
+                // Debug: Check types BEFORE sanitization
+                console.log('🔍 PRE-SANITIZATION Sample:', {
+                    'kva.termine.start type': typeof dataForFirestore.kva?.termine?.start,
+                    'kva.termine.ende type': typeof dataForFirestore.kva?.termine?.ende,
+                    'has toDate()': typeof dataForFirestore.kva?.termine?.start?.toDate === 'function',
+                    'anliefertermin type': typeof dataForFirestore.anliefertermin
+                });
+
                 dataForFirestore = sanitizeKalkulationDataForFirestore(dataForFirestore);
+
+                // Debug: Check types AFTER sanitization
+                console.log('🔍 POST-SANITIZATION Sample:', {
+                    'kva.termine.start type': typeof dataForFirestore.kva?.termine?.start,
+                    'kva.termine.ende type': typeof dataForFirestore.kva?.termine?.ende,
+                    'is string': typeof dataForFirestore.kva?.termine?.start === 'string',
+                    'anliefertermin type': typeof dataForFirestore.anliefertermin
+                });
+
                 console.log('✅ Deep Sanitization abgeschlossen - dataForFirestore ready for Firestore');
 
                 // 4.2 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
