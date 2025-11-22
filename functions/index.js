@@ -3079,7 +3079,7 @@ exports.ensurePartnerAccount = functions
           const edgeCaseData = {
             id: partnerId,
             email: email,
-            name: kundenname,
+            name: finalName, // FIX: Bug #6b - Use finalName instead of kundenname (Nov 22, 2025)
             werkstattId: werkstattId,
             uid: userRecord.uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3097,7 +3097,7 @@ exports.ensurePartnerAccount = functions
           const edgeCaseUserData = {
             uid: userRecord.uid,
             email: email,
-            name: kundenname,
+            name: finalName, // FIX: Bug #6b - Use finalName instead of kundenname (Nov 22, 2025)
             role: "partner",
             status: "active",
             partnerId: partnerId,
@@ -3123,7 +3123,7 @@ exports.ensurePartnerAccount = functions
           const missingUserData = {
             uid: userRecord.uid,
             email: email,
-            name: kundenname,
+            name: finalName, // FIX: Bug #6b - Use finalName instead of kundenname (Nov 22, 2025)
             role: "partner",
             status: "active",
             partnerId: partnerId,
