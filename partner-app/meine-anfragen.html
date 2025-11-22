@@ -6364,9 +6364,17 @@
                 console.log('🔧 Entferne Fotos aus Fahrzeug-Daten vor Firestore-Speicherung...');
                 // ✅ FIX #48: Add photoUrls fallback for multi-service-anfrage.html (Data Leak #1)
                 const schadenfotos = anfrage.photoUrls || anfrage.schadenfotos || anfrage.photos || []; // Fotos zwischenspeichern
-                const dataForFirestore = {...fahrzeugData};
+                let dataForFirestore = {...fahrzeugData};
                 delete dataForFirestore.photos; // ← KRITISCH: Fotos werden separat gespeichert!
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
+
+                // 🔧 FIX Bug #5a Regression (Nov 22, 2025): Deep sanitize ENTIRE fahrzeugData
+                // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" error
+                // PROBLEM: Shallow copy (...fahrzeugData) doesn't convert nested Date objects
+                // SOLUTION: Deep sanitize ALL fields using JSON.stringify/parse replacer
+                console.log('🔧 Deep Sanitize: Konvertiere ALLE Date/Timestamp Objekte → ISO Strings...');
+                dataForFirestore = sanitizeKalkulationDataForFirestore(dataForFirestore);
+                console.log('✅ Deep Sanitization abgeschlossen - dataForFirestore ready for Firestore');
 
                 // 4.2 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
                 // WICHTIG: Transaction statt Batch für automatische Retry + Status-Re-Check!
