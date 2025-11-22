@@ -6202,18 +6202,60 @@
         // IMPORTANT: These functions MUST be defined BEFORE annehmenKVA()
         // to avoid "ReferenceError: function is not defined"
 
+        // 🔧 FIX Bug #5f (2025-11-22): Enhanced toSafeDate() with Plain Timestamp Object support
+        // PROBLEM: Plain Timestamp objects {seconds, nanoseconds} from ...doc.data() were not detected
+        // SOLUTION: Add check for 'seconds' and 'nanoseconds' properties + Forensic debug logging
         function toSafeDate(value) {
             if (!value) return null;
+
+            // 🔍 FORENSIC DEBUG: Log EVERYTHING about the input value
+            console.log('🔍 [toSafeDate] Input:', {
+                'typeof': typeof value,
+                'constructor': value?.constructor?.name,
+                'instanceof Date': value instanceof Date,
+                'has toDate()': typeof value?.toDate === 'function',
+                'has seconds': value && typeof value === 'object' && 'seconds' in value,
+                'has nanoseconds': value && typeof value === 'object' && 'nanoseconds' in value,
+                'JSON': (() => { try { return JSON.stringify(value); } catch(e) { return `ERROR: ${e.message}`; } })()
+            });
+
+            // Handle Date instances
             if (value instanceof Date) {
-                return value.toISOString().split('T')[0];  // Date Object → 'YYYY-MM-DD'
+                const result = value.toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting Date instance: ${result}`);
+                return result;
             }
+
+            // Handle Firestore Timestamp instances (with .toDate() method)
+            if (value && typeof value.toDate === 'function') {
+                const result = value.toDate().toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting Firestore Timestamp instance: ${result}`);
+                return result;
+            }
+
+            // 🆕 BUG #5f FIX: Handle Plain Firestore Timestamp objects {seconds, nanoseconds}
+            // These are created when loading Firestore data via ...doc.data()
+            if (value && typeof value === 'object' && 'seconds' in value && 'nanoseconds' in value) {
+                const result = new Date(value.seconds * 1000).toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting plain Timestamp object: ${result}`);
+                return result;
+            }
+
+            // Handle Unix timestamps (number)
             if (typeof value === 'number') {
-                return new Date(value).toISOString().split('T')[0];  // Timestamp → 'YYYY-MM-DD'
+                const result = new Date(value).toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting number timestamp: ${result}`);
+                return result;
             }
+
+            // Handle strings (passthrough)
             if (typeof value === 'string') {
-                return value;  // Already string (no conversion needed)
+                console.log(`🔧 [toSafeDate] String passthrough: ${value}`);
+                return value;
             }
-            console.warn('⚠️ toSafeDate: Unexpected type:', typeof value, value);
+
+            // Unrecognized type
+            console.warn('⚠️ [toSafeDate] Unrecognized type, returning null:', typeof value, value);
             return null;
         }
 
@@ -7288,6 +7330,21 @@
                 // WICHTIG: Wenn KVA existiert, MUSS kva.termine.ende verwendet werden (echter Werkstatt-Termin)
                 // ✅ FIX Bug #4 (2025-11-20): Konsistenz mit admin-anfragen.html
                 // ✅ FIX (Nov 21, 2025): toSafeDate() wrapper prevents Firestore "Expected type 'Vd'" error
+
+                // 🔍 FORENSIC DEBUG Bug #5f: Inspect source values BEFORE toSafeDate() conversion
+                (() => {
+                    console.log('🔍 [prepareFahrzeugData] anliefertermin SOURCE VALUES:', {
+                        'anfrage.kva?.termine?.start': anfrage.kva?.termine?.start,
+                        'type (kva.start)': typeof anfrage.kva?.termine?.start,
+                        'anfrage.anliefertermin': anfrage.anliefertermin,
+                        'type (anliefertermin)': typeof anfrage.anliefertermin,
+                        'has seconds (kva.start)': anfrage.kva?.termine?.start && typeof anfrage.kva.termine.start === 'object' && 'seconds' in anfrage.kva.termine.start,
+                        'has seconds (anliefertermin)': anfrage.anliefertermin && typeof anfrage.anliefertermin === 'object' && 'seconds' in anfrage.anliefertermin,
+                        'JSON (kva.start)': anfrage.kva?.termine?.start ? JSON.stringify(anfrage.kva.termine.start) : 'N/A',
+                        'JSON (anliefertermin)': anfrage.anliefertermin ? JSON.stringify(anfrage.anliefertermin) : 'N/A'
+                    });
+                })();
+
                 anliefertermin: toSafeDate(anfrage.kva?.termine?.start || anfrage.anliefertermin), // START-Termin (konsistent mit Admin-Pipeline)
                 abholtermin: toSafeDate(anfrage.kva?.termine?.ende), // ENDE-Termin (DATA LOSS PREVENTION - fehlte vorher!)
                 abholzeit: anfrage.kva?.termine?.abholzeit || null,
