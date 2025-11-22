@@ -4017,6 +4017,135 @@
             return labels[serviceTyp] || 'Service';
         }
 
+        // 🔧 FIX Bug #5h (2025-11-22): Date Sanitization Helper Functions (copied from meine-anfragen.html Lines 6205-6328)
+        // PROBLEM: Same "Expected type 'Vd'" error as Bug #5 (fixed in meine-anfragen.html on Nov 22, Commit 47adbe1)
+        // SOLUTION: Apply identical fix to anfrage-detail.html (duplicate annehmenKVA implementation)
+
+        // 🔧 FIX Bug #5f (2025-11-22): Enhanced toSafeDate() with Plain Timestamp Object support
+        // PROBLEM: Plain Timestamp objects {seconds, nanoseconds} from ...doc.data() were not detected
+        // SOLUTION: Add check for 'seconds' and 'nanoseconds' properties + Forensic debug logging
+        function toSafeDate(value) {
+            if (!value) return null;
+
+            // 🔍 FORENSIC DEBUG: Log EVERYTHING about the input value
+            console.log('🔍 [toSafeDate] Input:', {
+                'typeof': typeof value,
+                'constructor': value?.constructor?.name,
+                'instanceof Date': value instanceof Date,
+                'has toDate()': typeof value?.toDate === 'function',
+                'has seconds': value && typeof value === 'object' && 'seconds' in value,
+                'has nanoseconds': value && typeof value === 'object' && 'nanoseconds' in value,
+                'JSON': (() => { try { return JSON.stringify(value); } catch(e) { return `ERROR: ${e.message}`; } })()
+            });
+
+            // Handle Date instances
+            if (value instanceof Date) {
+                const result = value.toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting Date instance: ${result}`);
+                return result;
+            }
+
+            // Handle Firestore Timestamp instances (with .toDate() method)
+            if (value && typeof value.toDate === 'function') {
+                const result = value.toDate().toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting Firestore Timestamp instance: ${result}`);
+                return result;
+            }
+
+            // 🆕 BUG #5f FIX: Handle Plain Firestore Timestamp objects {seconds, nanoseconds}
+            // These are created when loading Firestore data via ...doc.data()
+            if (value && typeof value === 'object' && 'seconds' in value && 'nanoseconds' in value) {
+                const result = new Date(value.seconds * 1000).toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting plain Timestamp object: ${result}`);
+                return result;
+            }
+
+            // Handle Unix timestamps (number)
+            if (typeof value === 'number') {
+                const result = new Date(value).toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting number timestamp: ${result}`);
+                return result;
+            }
+
+            // Handle strings (passthrough)
+            if (typeof value === 'string') {
+                console.log(`🔧 [toSafeDate] String passthrough: ${value}`);
+                return value;
+            }
+
+            // Unrecognized type
+            console.warn('⚠️ [toSafeDate] Unrecognized type, returning null:', typeof value, value);
+            return null;
+        }
+
+        // 🔧 FIX (2025-11-22): Deep sanitize KVA object for Firestore
+        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kva.termine contains Date objects
+        function sanitizeKvaForFirestore(kva) {
+            if (!kva) return null;
+
+            // Deep clone to avoid mutating original
+            const sanitized = {...kva};
+
+            // Convert Date objects in termine to strings
+            if (sanitized.termine) {
+                sanitized.termine = {
+                    ...sanitized.termine,
+                    start: toSafeDate(sanitized.termine.start),
+                    ende: toSafeDate(sanitized.termine.ende)
+                };
+            }
+
+            return sanitized;
+        }
+
+        // 🔧 FIX Bug #5d (2025-11-22): Recursive Timestamp Sanitization
+        // PROBLEM: JSON.stringify() serializes Firestore Timestamps to plain objects {seconds, nanoseconds}
+        //          BEFORE the replacer sees them, causing toDate() check to ALWAYS FAIL
+        // SOLUTION: Recursive Object Walker that processes Timestamps BEFORE any JSON operations
+        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" (Firestore rejects plain Timestamp objects)
+        function sanitizeKalkulationDataForFirestore(data) {
+            if (!data) return data;
+
+            // Handle primitive types
+            if (typeof data !== 'object') return data;
+
+            // Handle Date objects
+            if (data instanceof Date) {
+                console.log(`🔧 [SANITIZE] Converting Date: ${data.toISOString()}`);
+                return data.toISOString();
+            }
+
+            // Handle Firestore Timestamp instances (with .toDate() method)
+            if (data && typeof data.toDate === 'function') {
+                const isoString = data.toDate().toISOString();
+                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp instance: ${isoString}`);
+                return isoString;
+            }
+
+            // 🔧 FIX Bug #5e (2025-11-22): Handle Firestore Timestamp plain objects
+            // PROBLEM: When loaded via ...doc.data(), Timestamps are deserialized to {seconds, nanoseconds}
+            //          WITHOUT .toDate() method → Previous check fails → Plain object persists
+            // SOLUTION: Detect plain Timestamp objects by checking for 'seconds' and 'nanoseconds' properties
+            if (data && typeof data === 'object' && !Array.isArray(data) && 'seconds' in data && 'nanoseconds' in data) {
+                const isoString = new Date(data.seconds * 1000).toISOString();
+                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp plain object: ${isoString}`);
+                return isoString;
+            }
+
+            // Handle Arrays (recursive)
+            if (Array.isArray(data)) {
+                return data.map(item => sanitizeKalkulationDataForFirestore(item));
+            }
+
+            // Handle Objects (recursive)
+            const sanitized = {};
+            for (const [key, value] of Object.entries(data)) {
+                sanitized[key] = sanitizeKalkulationDataForFirestore(value);
+            }
+
+            return sanitized;
+        }
+
         async function prepareFahrzeugData(anfrage, abholtermin) {
             if (window.DEBUG) console.log('🔍 prepareFahrzeugData() gestartet');
             console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
@@ -4136,12 +4265,12 @@
                 status: 'angenommen',
                 prozessStatus: 'terminiert',
                 serviceData: anfrage.serviceData || {},
-                geplantesAbnahmeDatum: anfrage.kva?.termine?.ende || anliefertermin,
-                geplantesStartDatum: anfrage.kva?.termine?.start || null,
+                geplantesAbnahmeDatum: toSafeDate(anfrage.kva?.termine?.ende || anliefertermin),
+                geplantesStartDatum: toSafeDate(anfrage.kva?.termine?.start),
                 abholzeit: anfrage.kva?.termine?.abholzeit || null,
                 fahrzeugAbholung: anfrage.abholserviceGewuenscht ? 'ja' : 'nein',
                 abholadresse: anfrage.abholadresse || '',
-                abholdatum: anfrage.kva?.termine?.start || abholtermin || '',
+                abholdatum: toSafeDate(anfrage.kva?.termine?.start || abholtermin) || '',
                 abholnotiz: anfrage.abholnotiz || '',
                 vereinbarterPreis: (() => {
                     // CRITICAL FIX: Preis aus KVA-Varianten extrahieren
@@ -4175,7 +4304,7 @@
 
                     return null;
                 })(),
-                kva: anfrage.kva,  // CRITICAL: Komplette KVA-Struktur speichern für Fallback-Preis-Extraktion in liste.html/kunden.html
+                kva: sanitizeKvaForFirestore(anfrage.kva),  // CRITICAL: Komplette KVA-Struktur speichern für Fallback-Preis-Extraktion in liste.html/kunden.html
                 gewaehlteVariante: (() => {
                     // Wenn gewaehlteVariante gesetzt → nutze diese
                     if (anfrage.kva?.gewaehlteVariante) return anfrage.kva.gewaehlteVariante;
@@ -4312,6 +4441,135 @@
                 console.error('❌ Batch-Commit fehlgeschlagen:', error);
                 throw error;
             }
+        }
+
+        // 🔧 FIX Bug #5h (2025-11-22): Date Sanitization Helper Functions (copied from meine-anfragen.html Lines 6205-6328)
+        // PROBLEM: Same "Expected type 'Vd'" error as Bug #5 (fixed in meine-anfragen.html on Nov 22, Commit 47adbe1)
+        // SOLUTION: Apply identical fix to anfrage-detail.html (duplicate annehmenKVA implementation)
+
+        // 🔧 FIX Bug #5f (2025-11-22): Enhanced toSafeDate() with Plain Timestamp Object support
+        // PROBLEM: Plain Timestamp objects {seconds, nanoseconds} from ...doc.data() were not detected
+        // SOLUTION: Add check for 'seconds' and 'nanoseconds' properties + Forensic debug logging
+        function toSafeDate(value) {
+            if (!value) return null;
+
+            // 🔍 FORENSIC DEBUG: Log EVERYTHING about the input value
+            console.log('🔍 [toSafeDate] Input:', {
+                'typeof': typeof value,
+                'constructor': value?.constructor?.name,
+                'instanceof Date': value instanceof Date,
+                'has toDate()': typeof value?.toDate === 'function',
+                'has seconds': value && typeof value === 'object' && 'seconds' in value,
+                'has nanoseconds': value && typeof value === 'object' && 'nanoseconds' in value,
+                'JSON': (() => { try { return JSON.stringify(value); } catch(e) { return `ERROR: ${e.message}`; } })()
+            });
+
+            // Handle Date instances
+            if (value instanceof Date) {
+                const result = value.toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting Date instance: ${result}`);
+                return result;
+            }
+
+            // Handle Firestore Timestamp instances (with .toDate() method)
+            if (value && typeof value.toDate === 'function') {
+                const result = value.toDate().toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting Firestore Timestamp instance: ${result}`);
+                return result;
+            }
+
+            // 🆕 BUG #5f FIX: Handle Plain Firestore Timestamp objects {seconds, nanoseconds}
+            // These are created when loading Firestore data via ...doc.data()
+            if (value && typeof value === 'object' && 'seconds' in value && 'nanoseconds' in value) {
+                const result = new Date(value.seconds * 1000).toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting plain Timestamp object: ${result}`);
+                return result;
+            }
+
+            // Handle Unix timestamps (number)
+            if (typeof value === 'number') {
+                const result = new Date(value).toISOString().split('T')[0];
+                console.log(`🔧 [toSafeDate] Converting number timestamp: ${result}`);
+                return result;
+            }
+
+            // Handle strings (passthrough)
+            if (typeof value === 'string') {
+                console.log(`🔧 [toSafeDate] String passthrough: ${value}`);
+                return value;
+            }
+
+            // Unrecognized type
+            console.warn('⚠️ [toSafeDate] Unrecognized type, returning null:', typeof value, value);
+            return null;
+        }
+
+        // 🔧 FIX (2025-11-22): Deep sanitize KVA object for Firestore
+        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kva.termine contains Date objects
+        function sanitizeKvaForFirestore(kva) {
+            if (!kva) return null;
+
+            // Deep clone to avoid mutating original
+            const sanitized = {...kva};
+
+            // Convert Date objects in termine to strings
+            if (sanitized.termine) {
+                sanitized.termine = {
+                    ...sanitized.termine,
+                    start: toSafeDate(sanitized.termine.start),
+                    ende: toSafeDate(sanitized.termine.ende)
+                };
+            }
+
+            return sanitized;
+        }
+
+        // 🔧 FIX Bug #5d (2025-11-22): Recursive Timestamp Sanitization
+        // PROBLEM: JSON.stringify() serializes Firestore Timestamps to plain objects {seconds, nanoseconds}
+        //          BEFORE the replacer sees them, causing toDate() check to ALWAYS FAIL
+        // SOLUTION: Recursive Object Walker that processes Timestamps BEFORE any JSON operations
+        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" (Firestore rejects plain Timestamp objects)
+        function sanitizeKalkulationDataForFirestore(data) {
+            if (!data) return data;
+
+            // Handle primitive types
+            if (typeof data !== 'object') return data;
+
+            // Handle Date objects
+            if (data instanceof Date) {
+                console.log(`🔧 [SANITIZE] Converting Date: ${data.toISOString()}`);
+                return data.toISOString();
+            }
+
+            // Handle Firestore Timestamp instances (with .toDate() method)
+            if (data && typeof data.toDate === 'function') {
+                const isoString = data.toDate().toISOString();
+                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp instance: ${isoString}`);
+                return isoString;
+            }
+
+            // 🔧 FIX Bug #5e (2025-11-22): Handle Firestore Timestamp plain objects
+            // PROBLEM: When loaded via ...doc.data(), Timestamps are deserialized to {seconds, nanoseconds}
+            //          WITHOUT .toDate() method → Previous check fails → Plain object persists
+            // SOLUTION: Detect plain Timestamp objects by checking for 'seconds' and 'nanoseconds' properties
+            if (data && typeof data === 'object' && !Array.isArray(data) && 'seconds' in data && 'nanoseconds' in data) {
+                const isoString = new Date(data.seconds * 1000).toISOString();
+                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp plain object: ${isoString}`);
+                return isoString;
+            }
+
+            // Handle Arrays (recursive)
+            if (Array.isArray(data)) {
+                return data.map(item => sanitizeKalkulationDataForFirestore(item));
+            }
+
+            // Handle Objects (recursive)
+            const sanitized = {};
+            for (const [key, value] of Object.entries(data)) {
+                sanitized[key] = sanitizeKalkulationDataForFirestore(value);
+            }
+
+            return sanitized;
         }
 
         async function annehmenKVA(anfrageId, event) {
