@@ -4257,6 +4257,7 @@
                 // ========== ENTWURF-STATUS (FIX: Nov 17, 2025 - BUG #3) ==========
                 'offen': 'beauftragt',             // Entwurf offen (Meister → Büro Bearbeitung) → Beauftragt
                 'angebot_erstellt': 'warte_kva',   // Angebot erstellt & versendet → Warte auf Bestätigung
+                'kva_gesendet': 'warte_kva',       // 🔧 FIX (2025-11-22): KVA versendet → Warte auf Bestätigung (defensive mapping)
 
                 // ========== SHARED STAGES (alle 6 Services) ==========
                 'neu': 'beauftragt',               // Neu eingegangen → Beauftragt
@@ -4382,10 +4383,15 @@
             // 1. PRIORITÄT: Single-Service ODER Backwards Compatibility (prozessStatus)
             if (anfrage.fahrzeug?.prozessStatus) {
                 const werkstattStatus = anfrage.fahrzeug.prozessStatus;
-                if (window.DEBUG) console.log(`🔍 getDynamicStatus: ${anfrage.kennzeichen || anfrage.id} - Werkstatt: ${werkstattStatus}`);
+                const mappingFound = statusMapping[werkstattStatus];
+                const mappedStatus = mappingFound || 'beauftragt';
 
-                const mappedStatus = statusMapping[werkstattStatus] || 'beauftragt';
-                console.log(`   → Gemappter Status: ${mappedStatus}`);
+                // 🔧 DEBUG (2025-11-22): Enhanced logging to debug status mapping issue
+                console.log(`🔍 getDynamicStatus: ${anfrage.kennzeichen || anfrage.id} - Werkstatt Status Analysis:`);
+                console.log(`   📌 werkstattStatus: "${werkstattStatus}" (type: ${typeof werkstattStatus})`);
+                console.log(`   📌 statusMapping lookup: ${mappingFound ? `"${mappingFound}" ✅` : 'undefined ❌'}`);
+                console.log(`   → Final Status: "${mappedStatus}" ${mappingFound ? '(mapped)' : '(fallback to "beauftragt")'}`);
+
                 return mappedStatus;
             }
 
@@ -6789,6 +6795,31 @@
                 return sanitized;
             }
 
+            // 🔧 FIX (2025-11-22): Deep sanitize kalkulationData object for Firestore
+            // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kalkulationData contains Date objects
+            // CRITICAL: This error blocks KVA acceptance transactions
+            function sanitizeKalkulationDataForFirestore(data) {
+                if (!data || typeof data !== 'object') return data;
+
+                // Deep clone + sanitize using JSON with custom replacer
+                // This handles nested Date objects at ANY depth
+                const sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
+                    // Convert Date objects to ISO strings
+                    if (value instanceof Date) {
+                        console.log(`🔧 sanitizeKalkulationData: Converting Date at key "${key}": ${value}`);
+                        return value.toISOString();
+                    }
+                    // Convert Firestore Timestamps to ISO strings
+                    if (value && typeof value.toDate === 'function') {
+                        console.log(`🔧 sanitizeKalkulationData: Converting Timestamp at key "${key}"`);
+                        return value.toDate().toISOString();
+                    }
+                    return value;
+                }));
+
+                return sanitized;
+            }
+
             // ✅ FIX #40: Helper function to extract serviceDetails for a specific service type from flat anfrage object
             // ✅ FIX #46 (2025-11-19): Extract NESTED serviceData[serviceTyp] for multi-service-anfrage.html
             // multi-service-anfrage.html stores: serviceData = { lackier: {...}, reifen: {...} } (NESTED)
@@ -7233,7 +7264,9 @@
                 kva: sanitizeKvaForFirestore(anfrage.kva),
 
                 // ✅ FIX #18: Kalkulations-Daten preservation (Optional - für Audit)
-                kalkulationData: anfrage.kalkulationData || null,
+                // 🔧 FIX (2025-11-22): Sanitize kalkulationData to prevent Firestore Date object errors
+                // CRITICAL: kalkulationData may contain nested Date objects from Entwurf/Angebot system
+                kalkulationData: sanitizeKalkulationDataForFirestore(anfrage.kalkulationData) || null,
 
                 // ✅ FIX #41 (2025-11-19): Bestellungen from Entwurf pipeline
                 // Pattern 30: Silent Data Loss - bestellungen must be transferred when accepting Entwurf
