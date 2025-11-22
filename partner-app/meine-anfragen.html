@@ -6196,6 +6196,76 @@
             }
         }
 
+        // ============================================
+        // 🔧 HELPER FUNCTIONS - FIRESTORE DATE SANITIZATION
+        // ============================================
+        // IMPORTANT: These functions MUST be defined BEFORE annehmenKVA()
+        // to avoid "ReferenceError: function is not defined"
+
+        function toSafeDate(value) {
+            if (!value) return null;
+            if (value instanceof Date) {
+                return value.toISOString().split('T')[0];  // Date Object → 'YYYY-MM-DD'
+            }
+            if (typeof value === 'number') {
+                return new Date(value).toISOString().split('T')[0];  // Timestamp → 'YYYY-MM-DD'
+            }
+            if (typeof value === 'string') {
+                return value;  // Already string (no conversion needed)
+            }
+            console.warn('⚠️ toSafeDate: Unexpected type:', typeof value, value);
+            return null;
+        }
+
+        // 🔧 FIX (2025-11-22): Deep sanitize KVA object for Firestore
+        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kva.termine contains Date objects
+        function sanitizeKvaForFirestore(kva) {
+            if (!kva) return null;
+
+            // Deep clone to avoid mutating original
+            const sanitized = {...kva};
+
+            // Convert Date objects in termine to strings
+            if (sanitized.termine) {
+                sanitized.termine = {
+                    ...sanitized.termine,
+                    start: toSafeDate(sanitized.termine.start),
+                    ende: toSafeDate(sanitized.termine.ende)
+                };
+            }
+
+            return sanitized;
+        }
+
+        // 🔧 FIX (2025-11-22): Deep sanitize kalkulationData object for Firestore
+        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kalkulationData contains Date objects
+        // CRITICAL: This error blocks KVA acceptance transactions
+        function sanitizeKalkulationDataForFirestore(data) {
+            if (!data || typeof data !== 'object') return data;
+
+            // Deep clone + sanitize using JSON with custom replacer
+            // This handles nested Date objects at ANY depth
+            const sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
+                // Convert Date objects to ISO strings
+                if (value instanceof Date) {
+                    console.log(`🔧 sanitizeKalkulationData: Converting Date at key "${key}": ${value}`);
+                    return value.toISOString();
+                }
+                // Convert Firestore Timestamps to ISO strings
+                if (value && typeof value.toDate === 'function') {
+                    console.log(`🔧 sanitizeKalkulationData: Converting Timestamp at key "${key}"`);
+                    return value.toDate().toISOString();
+                }
+                return value;
+            }));
+
+            return sanitized;
+        }
+
+        // ============================================
+        // KVA ACCEPTANCE WORKFLOW
+        // ============================================
+
         async function annehmenKVA(anfrageId, event) {
             event?.stopPropagation();
 
@@ -6764,69 +6834,6 @@
             // 🔧 FIX (2025-11-17): Multi-Service Support (Entwürfe haben Array)
             const gueltigeServiceTypen = ['lackier', 'reifen', 'mechanik', 'pflege', 'tuev', 'versicherung', 'glas', 'klima', 'dellen', 'folierung', 'steinschutz', 'werbebeklebung'];
             let serviceTyp;
-
-            // ✅ FIX (Nov 21, 2025): Helper function to safely convert date values to strings
-            // PREVENTS: Firestore error "Expected type 'Vd' (Timestamp), but it was: a custom Pd object (Plain Date)"
-            // USE CASE: anfrage.kva.termine.start/ende might be Date objects from Cloud Function
-            function toSafeDate(value) {
-                if (!value) return null;
-                if (value instanceof Date) {
-                    return value.toISOString().split('T')[0];  // Date Object → 'YYYY-MM-DD'
-                }
-                if (typeof value === 'number') {
-                    return new Date(value).toISOString().split('T')[0];  // Timestamp → 'YYYY-MM-DD'
-                }
-                if (typeof value === 'string') {
-                    return value;  // Already string (no conversion needed)
-                }
-                console.warn('⚠️ toSafeDate: Unexpected type:', typeof value, value);
-                return null;
-            }
-
-            // 🔧 FIX (2025-11-22): Deep sanitize KVA object for Firestore
-            // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kva.termine contains Date objects
-            function sanitizeKvaForFirestore(kva) {
-                if (!kva) return null;
-
-                // Deep clone to avoid mutating original
-                const sanitized = {...kva};
-
-                // Convert Date objects in termine to strings
-                if (sanitized.termine) {
-                    sanitized.termine = {
-                        ...sanitized.termine,
-                        start: toSafeDate(sanitized.termine.start),
-                        ende: toSafeDate(sanitized.termine.ende)
-                    };
-                }
-
-                return sanitized;
-            }
-
-            // 🔧 FIX (2025-11-22): Deep sanitize kalkulationData object for Firestore
-            // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kalkulationData contains Date objects
-            // CRITICAL: This error blocks KVA acceptance transactions
-            function sanitizeKalkulationDataForFirestore(data) {
-                if (!data || typeof data !== 'object') return data;
-
-                // Deep clone + sanitize using JSON with custom replacer
-                // This handles nested Date objects at ANY depth
-                const sanitized = JSON.parse(JSON.stringify(data, (key, value) => {
-                    // Convert Date objects to ISO strings
-                    if (value instanceof Date) {
-                        console.log(`🔧 sanitizeKalkulationData: Converting Date at key "${key}": ${value}`);
-                        return value.toISOString();
-                    }
-                    // Convert Firestore Timestamps to ISO strings
-                    if (value && typeof value.toDate === 'function') {
-                        console.log(`🔧 sanitizeKalkulationData: Converting Timestamp at key "${key}"`);
-                        return value.toDate().toISOString();
-                    }
-                    return value;
-                }));
-
-                return sanitized;
-            }
 
             // ✅ FIX #40: Helper function to extract serviceDetails for a specific service type from flat anfrage object
             // ✅ FIX #46 (2025-11-19): Extract NESTED serviceData[serviceTyp] for multi-service-anfrage.html
