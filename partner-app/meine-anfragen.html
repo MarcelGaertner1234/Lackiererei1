@@ -6208,54 +6208,55 @@
         function toSafeDate(value) {
             if (!value) return null;
 
-            // 🔍 FORENSIC DEBUG: Log EVERYTHING about the input value
-            console.log('🔍 [toSafeDate] Input:', {
-                'typeof': typeof value,
-                'constructor': value?.constructor?.name,
-                'instanceof Date': value instanceof Date,
-                'has toDate()': typeof value?.toDate === 'function',
-                'has seconds': value && typeof value === 'object' && 'seconds' in value,
-                'has nanoseconds': value && typeof value === 'object' && 'nanoseconds' in value,
-                'JSON': (() => { try { return JSON.stringify(value); } catch(e) { return `ERROR: ${e.message}`; } })()
-            });
+            // ✅ FIX Bug #12 (2025-11-23): Return Firestore Timestamp for Transactions
+            // PROBLEM: Transactions require Timestamp objects, not strings/Date instances
+            // SOLUTION: Use firebase.firestore.Timestamp.fromDate() for all conversions
+            // SOURCE: Copied from anfrage-detail.html (Lines 4644-4696) - VERIFIED WORKING VERSION
 
             // Handle Date instances
             if (value instanceof Date) {
-                const result = value.toISOString().split('T')[0];
-                console.log(`🔧 [toSafeDate] Converting Date instance: ${result}`);
-                return result;
+                const timestamp = firebase.firestore.Timestamp.fromDate(value);
+                console.log(`🔧 [toSafeDate] Converting Date to Timestamp:`, timestamp);
+                return timestamp;
             }
 
-            // Handle Firestore Timestamp instances (with .toDate() method)
+            // Handle Firestore Timestamp instances (already correct type - passthrough)
             if (value && typeof value.toDate === 'function') {
-                const result = value.toDate().toISOString().split('T')[0];
-                console.log(`🔧 [toSafeDate] Converting Firestore Timestamp instance: ${result}`);
-                return result;
+                console.log(`🔧 [toSafeDate] Firestore Timestamp (passthrough):`, value);
+                return value;
             }
 
-            // 🆕 BUG #5f FIX: Handle Plain Firestore Timestamp objects {seconds, nanoseconds}
-            // These are created when loading Firestore data via ...doc.data()
+            // Handle Plain Firestore Timestamp objects {seconds, nanoseconds}
+            // ✅ FIX Bug #12: Use fromMillis() for Transaction compatibility
             if (value && typeof value === 'object' && 'seconds' in value && 'nanoseconds' in value) {
-                const result = new Date(value.seconds * 1000).toISOString().split('T')[0];
-                console.log(`🔧 [toSafeDate] Converting plain Timestamp object: ${result}`);
-                return result;
+                const millis = value.seconds * 1000 + Math.floor(value.nanoseconds / 1000000);
+                const timestamp = firebase.firestore.Timestamp.fromMillis(millis);
+                console.log(`🔧 [toSafeDate] Converting plain Timestamp → fromMillis():`, timestamp);
+                return timestamp;
             }
 
             // Handle Unix timestamps (number)
             if (typeof value === 'number') {
-                const result = new Date(value).toISOString().split('T')[0];
-                console.log(`🔧 [toSafeDate] Converting number timestamp: ${result}`);
-                return result;
+                const timestamp = firebase.firestore.Timestamp.fromMillis(value);
+                console.log(`🔧 [toSafeDate] Converting number to Timestamp:`, timestamp);
+                return timestamp;
             }
 
-            // Handle strings (passthrough)
+            // Handle ISO strings (convert to Date, then to Timestamp)
             if (typeof value === 'string') {
-                console.log(`🔧 [toSafeDate] String passthrough: ${value}`);
-                return value;
+                const date = new Date(value);
+                if (!isNaN(date.getTime())) {
+                    const timestamp = firebase.firestore.Timestamp.fromDate(date);
+                    console.log(`🔧 [toSafeDate] Converting string to Timestamp:`, value, '→', timestamp);
+                    return timestamp;
+                } else {
+                    console.warn('⚠️ [toSafeDate] Invalid date string:', value);
+                    return null;
+                }
             }
 
             // Unrecognized type
-            console.warn('⚠️ [toSafeDate] Unrecognized type, returning null:', typeof value, value);
+            console.warn('⚠️ [toSafeDate] Unrecognized type:', typeof value, value);
             return null;
         }
 
@@ -6446,10 +6447,11 @@
 
             try {
                 // 1. Status auf "beauftragt" ändern
+                // ✅ FIX Bug #12 (2025-11-23): Use Firestore Timestamp for Transactions
                 const updateData = {
                     status: 'beauftragt',
                     statusText: 'Beauftragt',
-                    beauftragtAm: new Date().toISOString(),
+                    beauftragtAm: firebase.firestore.Timestamp.now(),  // ✅ Timestamp object (not ISO string)
                     beauftragtVon: partner?.email || partner?.name || partner?.id || 'Unbekannt',
                     // 🔧 BUG #8 FIX #6 (2025-11-20): Add userId for eindeutige Zuordnung
                     beauftragtVonUserId: partner?.id || null,  // 🆕 User-ID für eindeutige Zuordnung
@@ -7194,7 +7196,9 @@
             console.log('✅ Anliefertermin validiert:', anliefertermin);
 
             // EINDEUTIGE ID: Timestamp-basiert (kompatibel mit liste.html/kalender.html)
-            const timestamp = Date.now();
+            // ✅ FIX Bug #12 (2025-11-23): Use Firestore Timestamp for Transactions
+            const firestoreTimestamp = firebase.firestore.Timestamp.now();  // ✅ Timestamp object
+            const timestamp = firestoreTimestamp.toMillis();  // NUMBER for ID generation
             const fahrzeugId = 'fzg_' + timestamp; // z.B. fzg_1728745123456
             const heute = new Date();
 
@@ -7421,18 +7425,19 @@
                 signature: anfrage.signature || null,  // ✅ FIX #17: Preserve Meister signature
 
                 // Prozess-Tracking
+                // ✅ FIX Bug #12 (2025-11-23): Use Firestore Timestamp objects for Transactions
                 prozessTimestamps: {
-                    terminiert: timestamp
+                    terminiert: firestoreTimestamp  // ✅ Timestamp object (not NUMBER)
                 },
                 statusHistory: [
                     {
                         status: 'terminiert',
-                        timestamp: timestamp,
+                        timestamp: firestoreTimestamp,  // ✅ Timestamp object (not NUMBER)
                         foto: null,
                         notiz: 'Partner-Anfrage akzeptiert und terminiert'
                     }
                 ],
-                lastModified: timestamp
+                lastModified: timestamp  // ✅ NUMBER is OK for lastModified (not used in Transaction critical paths)
             };
 
             // DEBUG: Fahrzeug-Daten-Mapping loggen
