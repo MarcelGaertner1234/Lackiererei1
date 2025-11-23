@@ -5062,6 +5062,49 @@
                 const dataForFirestore = sanitizedFahrzeugData;  // ✅ Direct assignment - NO SPREAD!
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
 
+                // 🔍 BUG #5L Phase 5o (2025-11-23): NON-TRANSACTIONAL DUPLICATE CHECK
+                // WHY MOVED BEFORE TRANSACTION:
+                //   - transaction.get() fails when reading vehicles with corrupted Pd Timestamps (from old data)
+                //   - Regular .get() queries are MORE TOLERANT of corrupted Timestamp data
+                //   - Error was: "Expected type 'Vd', but it was: a custom Pd object" during transaction.get()
+                //   - Solution: Use regular Firestore queries BEFORE starting transaction
+                // TRADE-OFF:
+                //   - Small race condition window (2 partners accepting same KVA simultaneously)
+                //   - Acceptable because partner KVA acceptance is rare and not concurrent
+                console.log('🔍 Prüfe Duplikate (non-transactional)...');
+
+                // Check 1: Auftragsnummer (if exists)
+                if (anfrage.auftragsnummer) {
+                    const existingByAuftragsnummer = await window.getCollection('fahrzeuge')
+                        .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                        .where('werkstattId', '==', window.werkstattId)
+                        .limit(1)
+                        .get();
+
+                    if (!existingByAuftragsnummer.empty) {
+                        const duplicate = existingByAuftragsnummer.docs[0];
+                        throw new Error(`⚠️ Fahrzeug mit Auftragsnummer "${anfrage.auftragsnummer}" existiert bereits! (ID: ${duplicate.id})`);
+                    }
+                    console.log('   ✅ Auftragsnummer unique');
+                }
+
+                // Check 2: Kennzeichen (always exists)
+                if (anfrage.kennzeichen) {
+                    const existingByKennzeichen = await window.getCollection('fahrzeuge')
+                        .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                        .where('werkstattId', '==', window.werkstattId)
+                        .limit(1)
+                        .get();
+
+                    if (!existingByKennzeichen.empty) {
+                        const duplicate = existingByKennzeichen.docs[0];
+                        throw new Error(`⚠️ Fahrzeug mit Kennzeichen "${anfrage.kennzeichen}" existiert bereits! (ID: ${duplicate.id})`);
+                    }
+                    console.log('   ✅ Kennzeichen unique');
+                }
+
+                console.log('✅ Keine Duplikate gefunden - Fahrzeug kann angelegt werden');
+
                 // 6. FIRESTORE TRANSACTION (Optimistic Locking)
                 const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
                 const fahrzeugRef = window.getCollection('fahrzeuge').doc(dataForFirestore.id);
@@ -5254,37 +5297,17 @@
 
                         console.log('   ✅ Status-Check OK: Anfrage kann verarbeitet werden');
 
-                        // ✅ FIX Issue #3 (2025-11-20): ATOMIC DUPLICATE CHECK
-                        // Prevents race condition where multiple users accept same KVA simultaneously
-                        if (window.DEBUG) console.log('   🔍 ATOMIC DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
-
-                        // Check 1: Auftragsnummer
-                        if (anfrage.auftragsnummer) {
-                            const auftragsnummerQuery = window.getCollection('fahrzeuge')
-                                .where('auftragsnummer', '==', anfrage.auftragsnummer)
-                                .limit(1);
-                            const existingByAuftragsnummer = await transaction.get(auftragsnummerQuery);
-
-                            if (!existingByAuftragsnummer.empty) {
-                                const duplicate = existingByAuftragsnummer.docs[0];
-                                throw new Error(`⚠️ Fahrzeug mit Auftragsnummer "${anfrage.auftragsnummer}" existiert bereits! (ID: ${duplicate.id})`);
-                            }
-                        }
-
-                        // Check 2: Kennzeichen
-                        if (anfrage.kennzeichen) {
-                            const kennzeichenQuery = window.getCollection('fahrzeuge')
-                                .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
-                                .limit(1);
-                            const existingByKennzeichen = await transaction.get(kennzeichenQuery);
-
-                            if (!existingByKennzeichen.empty) {
-                                const duplicate = existingByKennzeichen.docs[0];
-                                throw new Error(`⚠️ Fahrzeug mit Kennzeichen "${anfrage.kennzeichen}" existiert bereits! (ID: ${duplicate.id})`);
-                            }
-                        }
-
-                        console.log('   ✅ ATOMIC DUPLICATE-CHECK OK: Kein Duplikat gefunden');
+                        // ✅ FIX Bug #5L Phase 5o (2025-11-23): Duplicate checks MOVED BEFORE transaction
+                        // WHY REMOVED FROM TRANSACTION:
+                        //   - transaction.get() was failing with "Expected type 'Vd', but it was: a custom Pd object"
+                        //   - Error occurred when reading OLD vehicles with corrupted Pd Timestamps in kalkulationData
+                        //   - Root cause: Previous KVA acceptances (before Phase 5n) wrote corrupted data to Firestore
+                        //   - Transaction deserializer is STRICTER than regular queries → fails on Pd Timestamps
+                        // NEW APPROACH (Lines 5074-5106):
+                        //   - Use regular .get() queries BEFORE starting transaction
+                        //   - Regular queries are MORE TOLERANT of corrupted legacy data
+                        //   - Trade-off: Small race condition window (acceptable for partner KVA acceptance)
+                        console.log('   🔍 Duplicate-Check bereits durchgeführt (vor Transaction)');
 
                         // 🔍 BUG #5L Phase 5n (2025-11-23): INDIVIDUAL FIELD TESTING INSIDE TRANSACTION
                         // PURPOSE: Test each field individually to pinpoint EXACT problematic field
