@@ -6524,40 +6524,23 @@
                     geplantesAbnahmeDatum: fahrzeugData.geplantesAbnahmeDatum
                 }, null, 2));
 
-                // 4.1 FOTOS AUS FAHRZEUG-DATEN ENTFERNEN (HYBRID-STORAGE)
+                // 4.1 SANITIZE FAHRZEUG-DATEN (Timestamps preservieren!)
+                // ✅ FIX Bug #12 (2025-11-23): Sanitization BEFORE photo removal
+                // WHY: Prevents "Assignment to constant variable" error
+                // PATTERN: Identical to anfrage-detail.html:5057-5064
+                //   - Sanitize FIRST (preserves Timestamp Prototypes)
+                //   - Delete photos from SANITIZED data
+                //   - Direct assignment (NO SPREAD!)
+                const sanitizedFahrzeugData = sanitizeKalkulationDataForFirestore(fahrzeugData);
+                console.log('✅ fahrzeugData sanitized (Timestamps preserved)');
+
+                // 4.2 FOTOS AUS FAHRZEUG-DATEN ENTFERNEN (HYBRID-STORAGE)
                 // Fotos werden NACH der Transaction in Subcollection gespeichert (siehe Schritt 5.2)
-                console.log('🔧 Entferne Fotos aus Fahrzeug-Daten vor Firestore-Speicherung...');
                 // ✅ FIX #48: Add photoUrls fallback for multi-service-anfrage.html (Data Leak #1)
-                const schadenfotos = anfrage.photoUrls || anfrage.schadenfotos || anfrage.photos || []; // Fotos zwischenspeichern
-                delete fahrzeugData.photos;  // ✅ Delete BEFORE assignment (no spread needed)
-                const dataForFirestore = fahrzeugData;  // ✅ Direct assignment - NO SPREAD!
+                const schadenfotos = anfrage.photoUrls || anfrage.schadenfotos || anfrage.fotos || anfrage.photos || [];
+                delete sanitizedFahrzeugData.photos;  // ✅ Delete BEFORE assignment (no spread needed)
+                const dataForFirestore = sanitizedFahrzeugData;  // ✅ Direct assignment - NO SPREAD!
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
-
-                // 🔧 FIX Bug #5d (Nov 22, 2025): Recursive Deep Sanitization
-                // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" error
-                // PROBLEM: Firestore Timestamps are custom objects that JSON.stringify() cannot serialize
-                // SOLUTION: Recursive Object Walker that converts Timestamps BEFORE JSON operations
-                console.log('🔧 [BUG #5d] Deep Sanitize: Konvertiere ALLE Date/Timestamp Objekte → ISO Strings...');
-
-                // Debug: Check types BEFORE sanitization
-                console.log('🔍 PRE-SANITIZATION Sample:', {
-                    'kva.termine.start type': typeof dataForFirestore.kva?.termine?.start,
-                    'kva.termine.ende type': typeof dataForFirestore.kva?.termine?.ende,
-                    'has toDate()': typeof dataForFirestore.kva?.termine?.start?.toDate === 'function',
-                    'anliefertermin type': typeof dataForFirestore.anliefertermin
-                });
-
-                dataForFirestore = sanitizeKalkulationDataForFirestore(dataForFirestore);
-
-                // Debug: Check types AFTER sanitization
-                console.log('🔍 POST-SANITIZATION Sample:', {
-                    'kva.termine.start type': typeof dataForFirestore.kva?.termine?.start,
-                    'kva.termine.ende type': typeof dataForFirestore.kva?.termine?.ende,
-                    'is string': typeof dataForFirestore.kva?.termine?.start === 'string',
-                    'anliefertermin type': typeof dataForFirestore.anliefertermin
-                });
-
-                console.log('✅ Deep Sanitization abgeschlossen - dataForFirestore ready for Firestore');
 
                 // 4.2 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
                 // WICHTIG: Transaction statt Batch für automatische Retry + Status-Re-Check!
