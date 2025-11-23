@@ -6274,11 +6274,26 @@
         //          BEFORE the replacer sees them, causing toDate() check to ALWAYS FAIL
         // SOLUTION: Recursive Object Walker that processes Timestamps BEFORE any JSON operations
         // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" (Firestore rejects plain Timestamp objects)
-        function sanitizeKalkulationDataForFirestore(data) {
+        function sanitizeKalkulationDataForFirestore(data, depth = 0, key = 'root') {
             if (!data) return data;
 
             // Handle primitive types
             if (typeof data !== 'object') return data;
+
+            // 🔍 BUG #12 DIAGNOSTIC: Log EVERY object to understand what's failing
+            if (depth === 0 || (typeof data === 'object' && data.constructor?.name === 'Timestamp')) {
+                console.log(`🔍 [SANITIZE depth=${depth} key="${key}"] Object:`, {
+                    type: typeof data,
+                    constructor: data?.constructor?.name,
+                    isArray: Array.isArray(data),
+                    'instanceof Date': data instanceof Date,
+                    'has toDate()': typeof data?.toDate === 'function',
+                    'has seconds': 'seconds' in data,
+                    'has nanoseconds': 'nanoseconds' in data,
+                    keys: Object.keys(data).slice(0, 10), // First 10 keys
+                    sample: JSON.stringify(data).slice(0, 200) // First 200 chars
+                });
+            }
 
             // Handle Date objects
             if (data instanceof Date) {
@@ -6305,13 +6320,13 @@
 
             // Handle Arrays (recursive)
             if (Array.isArray(data)) {
-                return data.map(item => sanitizeKalkulationDataForFirestore(item));
+                return data.map((item, index) => sanitizeKalkulationDataForFirestore(item, depth + 1, `${key}[${index}]`));
             }
 
             // Handle Objects (recursive)
             const sanitized = {};
-            for (const [key, value] of Object.entries(data)) {
-                sanitized[key] = sanitizeKalkulationDataForFirestore(value);
+            for (const [objKey, value] of Object.entries(data)) {
+                sanitized[objKey] = sanitizeKalkulationDataForFirestore(value, depth + 1, objKey);
             }
 
             return sanitized;
