@@ -4283,7 +4283,11 @@
             console.log('✅ Anliefertermin validiert:', anliefertermin);
 
             // EINDEUTIGE ID: Timestamp-basiert
-            const timestamp = Date.now();
+            // ✅ FIX Bug #5L Phase 5b (2025-11-23): Use Firestore Timestamp instead of NUMBER
+            // PROBLEM: Date.now() returns NUMBER → Firestore Transaction rejects
+            // SOLUTION: Timestamp.now() returns proper Firestore Timestamp object
+            const firestoreTimestamp = firebase.firestore.Timestamp.now();
+            const timestamp = firestoreTimestamp.toMillis();  // NUMBER for ID generation
             const fahrzeugId = 'fzg_' + timestamp;
             const heute = new Date();
 
@@ -4427,17 +4431,17 @@
                 photos: [],
                 // ✅ FIX Bug #5L: signature always null initially → skip (Transaction doesn't accept null objects)
                 prozessTimestamps: {
-                    terminiert: timestamp
+                    terminiert: firestoreTimestamp  // ✅ FIX Bug #5L Phase 5b: Firestore Timestamp object (not NUMBER)
                 },
                 statusHistory: [
                     {
                         status: 'terminiert',
-                        timestamp: timestamp,
-                        foto: null,
+                        timestamp: firestoreTimestamp,  // ✅ FIX Bug #5L Phase 5b: Firestore Timestamp object (not NUMBER)
+                        // foto: null,  ✅ FIX Bug #5L Phase 5b: REMOVED (typeof null === 'object', Firestore rejects)
                         notiz: 'Partner-Anfrage akzeptiert und terminiert'
                     }
                 ],
-                lastModified: timestamp,
+                lastModified: timestamp,  // NUMBER is OK for lastModified (not used in Transaction critical paths)
                 quelle: 'Partner-Portal',  // FIX #38: Add source tracking
                 // ✅ PHASE 1 FIX: Ersatzteile-Daten übertragen (wenn vorhanden)
                 ...(anfrage.pdfImport?.editedData?.ersatzteile && {
