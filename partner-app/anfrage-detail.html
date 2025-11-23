@@ -4922,18 +4922,24 @@
                     fahrzeugData.kundenId = kundeId;
                 }
 
-                // ✅ FIX Bug #5L Phase 5c (2025-11-23): Sanitize BEFORE spreading!
-                // PROBLEM: Spread operator { ...fahrzeugData } serializes Firestore Timestamps
-                //          into plain {seconds, nanoseconds} objects, losing .toDate() method
-                // SOLUTION: Sanitize FIRST to preserve Timestamps, THEN spread
-                // WHY: Sanitizer passthroughs Firestore Timestamps unchanged (defensive depth)
+                // ✅ FIX Bug #5L Phase 5e (2025-11-23): FINAL FIX - Eliminate Spread-Operator!
+                // ROOT CAUSE (discovered via Phase 5d recursive deep-scan):
+                //   - kalkulationData is 100% clean (all numbers/strings) ✅
+                //   - Sanitizer works correctly (3× Timestamps passthrough) ✅
+                //   - BUT: Spread-Operator { ...obj } SERIALIZES Firestore Timestamps! ❌
+                //   - Result: {seconds, nanoseconds} plain objects → Transaction rejects them
+                //
+                // SOLUTION: NO Spread-Operator - use direct assignment
+                //   - Delete photos BEFORE creating dataForFirestore
+                //   - Direct assignment preserves Firestore Timestamp objects
+                //   - Timestamps keep .toDate() method → Transaction accepts them ✅
                 const sanitizedFahrzeugData = sanitizeKalkulationDataForFirestore(fahrzeugData);
-                console.log('✅ fahrzeugData sanitized (Timestamps preserved before spreading)');
+                console.log('✅ fahrzeugData sanitized (Timestamps preserved)');
 
                 // 5. FOTOS entfernen (werden separat gespeichert)
                 const schadenfotos = anfrage.schadenfotos || anfrage.photos || anfrage.fotos || [];
-                const dataForFirestore = { ...sanitizedFahrzeugData };  // ✅ Now spreads SANITIZED data
-                delete dataForFirestore.photos;
+                delete sanitizedFahrzeugData.photos;  // ✅ Delete BEFORE assignment (no spread needed)
+                const dataForFirestore = sanitizedFahrzeugData;  // ✅ Direct assignment - NO SPREAD!
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
 
                 // 6. FIRESTORE TRANSACTION (Optimistic Locking)
