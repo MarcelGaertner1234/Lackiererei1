@@ -4336,19 +4336,36 @@
                     anfrage.kva?.termine?.ende ||
                     anliefertermin) ||
                     new Date().toISOString().split('T')[0],  // Ultimate fallback
-                geplantesStartDatum: toSafeDate(anfrage.kva?.termine?.start),
-                abholtermin: toSafeDate(anfrage.kva?.termine?.ende),  // ✅ FIX Bug #5j: Missing field (END-Termin, DATA LOSS prevention)
-                anliefertermin: toSafeDate(anfrage.kva?.termine?.start || anfrage.anliefertermin),  // ✅ FIX Bug #5j: Missing field (START-Termin, DATA LOSS prevention)
-                abholzeit: anfrage.kva?.termine?.abholzeit || null,
+                // ✅ FIX Bug #5L Phase 4 (2025-11-23): Conditional Spread Pattern for null fields
+                // PROBLEM: Firestore Transactions REJECT null values (typeof null === 'object')
+                // SOLUTION: Only add fields if NOT null (using spread operators)
+                // CRITICAL: These fields contain BUSINESS DATA when KVA exists - must preserve!
+
+                ...((() => {
+                    const datum = toSafeDate(anfrage.kva?.termine?.start);
+                    return datum !== null ? {geplantesStartDatum: datum} : {};
+                })()),
+                ...((() => {
+                    const termin = toSafeDate(anfrage.kva?.termine?.ende);
+                    return termin !== null ? {abholtermin: termin} : {};  // ✅ FIX Bug #5j: Missing field (END-Termin, DATA LOSS prevention)
+                })()),
+                ...((() => {
+                    const termin = toSafeDate(anfrage.kva?.termine?.start || anfrage.anliefertermin);
+                    return termin !== null ? {anliefertermin: termin} : {};  // ✅ FIX Bug #5j: Missing field (START-Termin, DATA LOSS prevention)
+                })()),
+                ...(anfrage.kva?.termine?.abholzeit ? {abholzeit: anfrage.kva.termine.abholzeit} : {}),
+
                 fahrzeugAbholung: anfrage.abholserviceGewuenscht ? 'ja' : 'nein',
                 abholadresse: anfrage.abholadresse || '',
                 abholdatum: toSafeDate(anfrage.kva?.termine?.start || abholtermin) || '',
                 abholnotiz: anfrage.abholnotiz || '',
-                vereinbarterPreis: (() => {
-                    // CRITICAL FIX: Preis aus KVA-Varianten extrahieren
+
+                ...((() => {
+                    // CRITICAL FIX: Preis aus KVA-Varianten extrahieren (REVENUE DATA!)
                     // Priorität 1: Gewählte Variante (wenn gesetzt)
                     if (anfrage.kva?.varianten && anfrage.kva.gewaehlteVariante) {
-                        return parseFloat(anfrage.kva.varianten[anfrage.kva.gewaehlteVariante]?.gesamt) || null;
+                        const preis = parseFloat(anfrage.kva.varianten[anfrage.kva.gewaehlteVariante]?.gesamt);
+                        if (preis) return {vereinbarterPreis: preis};
                     }
 
                     // Priorität 2: Bei nur 1 Variante → automatisch diese nehmen (Fix für Services ohne Auswahl)
@@ -4356,27 +4373,41 @@
                         const variantKeys = Object.keys(anfrage.kva.varianten);
                         if (variantKeys.length === 1) {
                             const singleVariant = variantKeys[0];
-                            console.log(`🔧 AUTO-FIX prepareFahrzeugData: Nur 1 Variante → nehme "${singleVariant}"`);
-                            return parseFloat(anfrage.kva.varianten[singleVariant]?.gesamt) || null;
+                            const preis = parseFloat(anfrage.kva.varianten[singleVariant]?.gesamt);
+                            if (preis) {
+                                console.log(`🔧 AUTO-FIX prepareFahrzeugData: Nur 1 Variante → nehme "${singleVariant}"`);
+                                return {vereinbarterPreis: preis};
+                            }
                         }
                     }
 
                     // Priorität 3: Fallback auf 'original' Variante (Rückwärtskompatibilität)
                     if (anfrage.kva?.varianten?.original) {
-                        return parseFloat(anfrage.kva.varianten.original.gesamt) || null;
+                        const preis = parseFloat(anfrage.kva.varianten.original.gesamt);
+                        if (preis) return {vereinbarterPreis: preis};
                     }
 
                     // Priorität 4: Legacy-Felder (alte KVA-Struktur)
                     if (anfrage.kva?.gesamt) {
-                        return parseFloat(anfrage.kva.gesamt) || null;
+                        const preis = parseFloat(anfrage.kva.gesamt);
+                        if (preis) return {vereinbarterPreis: preis};
                     }
                     if (anfrage.kva?.gesamtpreis) {
-                        return parseFloat(anfrage.kva.gesamtpreis) || null;
+                        const preis = parseFloat(anfrage.kva.gesamtpreis);
+                        if (preis) return {vereinbarterPreis: preis};
                     }
 
-                    return null;
-                })(),
-                kva: sanitizeKvaForFirestore(anfrage.kva),  // CRITICAL: Komplette KVA-Struktur speichern für Fallback-Preis-Extraktion in liste.html/kunden.html
+                    // No KVA data → skip field (Transaction will accept)
+                    return {};
+                })()),
+
+                ...((() => {
+                    const sanitizedKva = sanitizeKvaForFirestore(anfrage.kva);
+                    // CRITICAL: Komplette KVA-Struktur speichern für Fallback-Preis-Extraktion in liste.html/kunden.html
+                    // Only add if KVA exists (not null/empty)
+                    return (sanitizedKva && Object.keys(sanitizedKva).length > 0) ? {kva: sanitizedKva} : {};
+                })()),
+
                 gewaehlteVariante: (() => {
                     // Wenn gewaehlteVariante gesetzt → nutze diese
                     if (anfrage.kva?.gewaehlteVariante) return anfrage.kva.gewaehlteVariante;
@@ -4394,7 +4425,7 @@
                 partnerEmail: anfrage.partnerEmail || '',
                 partnerAnfrageId: anfrage.id,  // ✅ FIX: Standardized field name (was: anfrageId)
                 photos: [],
-                signature: null,
+                // ✅ FIX Bug #5L: signature always null initially → skip (Transaction doesn't accept null objects)
                 prozessTimestamps: {
                     terminiert: timestamp
                 },
