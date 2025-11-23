@@ -4182,7 +4182,16 @@
             // Handle Objects (recursive)
             const sanitized = {};
             for (const [key, value] of Object.entries(data)) {
-                sanitized[key] = sanitizeKalkulationDataForFirestore(value);
+                const sanitizedValue = sanitizeKalkulationDataForFirestore(value);
+
+                // ✅ FIX Bug #5L Phase 2 (2025-11-23): Skip null/undefined values
+                // PROBLEM: null values cause "Expected type 'Vd'" error in Transactions
+                // SOLUTION: Don't add null/undefined fields to sanitized object (effectively deletes them)
+                if (sanitizedValue !== null && sanitizedValue !== undefined) {
+                    sanitized[key] = sanitizedValue;
+                } else {
+                    console.log(`🧹 [SANITIZE] Removing null/undefined field: ${key}`);
+                }
             }
 
             return sanitized;
@@ -4614,7 +4623,16 @@
             // Handle Objects (recursive)
             const sanitized = {};
             for (const [key, value] of Object.entries(data)) {
-                sanitized[key] = sanitizeKalkulationDataForFirestore(value);
+                const sanitizedValue = sanitizeKalkulationDataForFirestore(value);
+
+                // ✅ FIX Bug #5L Phase 2 (2025-11-23): Skip null/undefined values
+                // PROBLEM: null values cause "Expected type 'Vd'" error in Transactions
+                // SOLUTION: Don't add null/undefined fields to sanitized object (effectively deletes them)
+                if (sanitizedValue !== null && sanitizedValue !== undefined) {
+                    sanitized[key] = sanitizedValue;
+                } else {
+                    console.log(`🧹 [SANITIZE] Removing null/undefined field: ${key}`);
+                }
             }
 
             return sanitized;
@@ -4867,37 +4885,8 @@
 
                 console.log('🔍 [DEBUG] === BUG #5L TRANSACTION DEBUG END ===');
 
-                // ✅ FIX Bug #5L (2025-11-23): CLEANUP NULL/INVALID OBJECTS
-                // PROBLEM: 4 fields contain null/invalid objects that cause "Expected type 'Vd'" error
-                // SOLUTION: Delete these fields BEFORE transaction if they're not valid Timestamps
-                console.log('🧹 [CLEANUP] Checking for problematic null/invalid fields...');
-
-                const problematicFields = ['geplantesStartDatum', 'abholtermin', 'anliefertermin', 'abholzeit'];
-                let cleanedCount = 0;
-
-                problematicFields.forEach(field => {
-                    if (field in dataForFirestore) {
-                        const value = dataForFirestore[field];
-
-                        // Delete if: null, undefined, OR not a valid Firestore Timestamp
-                        const isValidTimestamp = value && typeof value.toDate === 'function';
-
-                        if (!isValidTimestamp) {
-                            console.log(`🧹 [CLEANUP] Deleting invalid field "${field}":`, {
-                                type: typeof value,
-                                value: value,
-                                isNull: value === null,
-                                isUndefined: value === undefined
-                            });
-                            delete dataForFirestore[field];
-                            cleanedCount++;
-                        } else {
-                            console.log(`✅ [CLEANUP] Field "${field}" is valid Timestamp (keeping)`);
-                        }
-                    }
-                });
-
-                console.log(`🧹 [CLEANUP] Cleaned ${cleanedCount} fields. dataForFirestore ready for Transaction.`);
+                // ✅ FIX Bug #5L Phase 2 (2025-11-23): Null cleanup now handled by sanitizeKalkulationDataForFirestore()
+                // Hardcoded cleanup code removed - function now recursively removes all null/undefined values
 
                 try {
                     await db.runTransaction(async (transaction) => {
