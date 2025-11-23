@@ -4867,6 +4867,38 @@
 
                 console.log('🔍 [DEBUG] === BUG #5L TRANSACTION DEBUG END ===');
 
+                // ✅ FIX Bug #5L (2025-11-23): CLEANUP NULL/INVALID OBJECTS
+                // PROBLEM: 4 fields contain null/invalid objects that cause "Expected type 'Vd'" error
+                // SOLUTION: Delete these fields BEFORE transaction if they're not valid Timestamps
+                console.log('🧹 [CLEANUP] Checking for problematic null/invalid fields...');
+
+                const problematicFields = ['geplantesStartDatum', 'abholtermin', 'anliefertermin', 'abholzeit'];
+                let cleanedCount = 0;
+
+                problematicFields.forEach(field => {
+                    if (field in dataForFirestore) {
+                        const value = dataForFirestore[field];
+
+                        // Delete if: null, undefined, OR not a valid Firestore Timestamp
+                        const isValidTimestamp = value && typeof value.toDate === 'function';
+
+                        if (!isValidTimestamp) {
+                            console.log(`🧹 [CLEANUP] Deleting invalid field "${field}":`, {
+                                type: typeof value,
+                                value: value,
+                                isNull: value === null,
+                                isUndefined: value === undefined
+                            });
+                            delete dataForFirestore[field];
+                            cleanedCount++;
+                        } else {
+                            console.log(`✅ [CLEANUP] Field "${field}" is valid Timestamp (keeping)`);
+                        }
+                    }
+                });
+
+                console.log(`🧹 [CLEANUP] Cleaned ${cleanedCount} fields. dataForFirestore ready for Transaction.`);
+
                 try {
                     await db.runTransaction(async (transaction) => {
                         const anfrageDoc = await transaction.get(anfrageRef);
