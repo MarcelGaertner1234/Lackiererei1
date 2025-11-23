@@ -4120,6 +4120,61 @@
             return null;
         }
 
+        // 🔍 BUG #5L Phase 5n (2025-11-23): Advanced Debugging - Field Validator
+        // PURPOSE: Validate Firestore field compatibility BEFORE Transaction
+        // DETECTS: Pd objects (Plain with seconds) vs Vd objects (Valid Firestore Timestamps)
+        // RETURNS: Detailed validation object with icon, reason, and type analysis
+        function validateFirestoreField(fieldName, value) {
+            const result = {
+                fieldName: fieldName,
+                type: typeof value,
+                isNull: value === null,
+                isUndefined: value === undefined,
+                isArray: Array.isArray(value),
+                isDate: value instanceof Date,
+                isTimestamp: false,
+                isVdTimestamp: false,
+                isPdTimestamp: false,
+                hasToDateMethod: false,
+                hasSeconds: false,
+                constructorName: null,
+                valid: true,
+                icon: '✅',
+                reason: 'OK'
+            };
+
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                result.hasToDateMethod = typeof value.toDate === 'function';
+                result.hasSeconds = 'seconds' in value;
+                result.constructorName = value.constructor?.name || 'Unknown';
+
+                // Check if it's a Firestore Timestamp
+                if (result.hasToDateMethod && result.hasSeconds) {
+                    result.isTimestamp = true;
+
+                    // Check if it's a REAL Firestore Timestamp (Vd) or Plain Object (Pd)
+                    if (result.constructorName === 'Timestamp' || result.constructorName === 'ti') {
+                        result.isVdTimestamp = true;
+                        result.icon = '✅';
+                        result.reason = 'Valid Firestore Timestamp (Vd)';
+                    } else {
+                        result.isPdTimestamp = true;
+                        result.valid = false;
+                        result.icon = '❌';
+                        result.reason = `INVALID Pd Timestamp! Constructor: ${result.constructorName}`;
+                    }
+                } else if (result.hasSeconds && !result.hasToDateMethod) {
+                    // Plain object with seconds but no .toDate() method
+                    result.isPdTimestamp = true;
+                    result.valid = false;
+                    result.icon = '❌';
+                    result.reason = 'Plain object with seconds field - MISSING .toDate() method!';
+                }
+            }
+
+            return result;
+        }
+
         // ✅ FIX Bug #5L Phase 5j (2025-11-23): Eliminate Spread Operators
         // PROBLEM: { ...kva } serializes Firestore Timestamps to Plain {seconds, nanoseconds} objects
         // ROOT CAUSE: Spread operators create shallow copies that strip Prototype methods (.toDate())
@@ -4639,6 +4694,61 @@
             return null;
         }
 
+        // 🔍 BUG #5L Phase 5n (2025-11-23): Advanced Debugging - Field Validator
+        // PURPOSE: Validate Firestore field compatibility BEFORE Transaction
+        // DETECTS: Pd objects (Plain with seconds) vs Vd objects (Valid Firestore Timestamps)
+        // RETURNS: Detailed validation object with icon, reason, and type analysis
+        function validateFirestoreField(fieldName, value) {
+            const result = {
+                fieldName: fieldName,
+                type: typeof value,
+                isNull: value === null,
+                isUndefined: value === undefined,
+                isArray: Array.isArray(value),
+                isDate: value instanceof Date,
+                isTimestamp: false,
+                isVdTimestamp: false,
+                isPdTimestamp: false,
+                hasToDateMethod: false,
+                hasSeconds: false,
+                constructorName: null,
+                valid: true,
+                icon: '✅',
+                reason: 'OK'
+            };
+
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                result.hasToDateMethod = typeof value.toDate === 'function';
+                result.hasSeconds = 'seconds' in value;
+                result.constructorName = value.constructor?.name || 'Unknown';
+
+                // Check if it's a Firestore Timestamp
+                if (result.hasToDateMethod && result.hasSeconds) {
+                    result.isTimestamp = true;
+
+                    // Check if it's a REAL Firestore Timestamp (Vd) or Plain Object (Pd)
+                    if (result.constructorName === 'Timestamp' || result.constructorName === 'ti') {
+                        result.isVdTimestamp = true;
+                        result.icon = '✅';
+                        result.reason = 'Valid Firestore Timestamp (Vd)';
+                    } else {
+                        result.isPdTimestamp = true;
+                        result.valid = false;
+                        result.icon = '❌';
+                        result.reason = `INVALID Pd Timestamp! Constructor: ${result.constructorName}`;
+                    }
+                } else if (result.hasSeconds && !result.hasToDateMethod) {
+                    // Plain object with seconds but no .toDate() method
+                    result.isPdTimestamp = true;
+                    result.valid = false;
+                    result.icon = '❌';
+                    result.reason = 'Plain object with seconds field - MISSING .toDate() method!';
+                }
+            }
+
+            return result;
+        }
+
         // ✅ FIX Bug #5L Phase 5j (2025-11-23): Eliminate Spread Operators
         // PROBLEM: { ...kva } serializes Firestore Timestamps to Plain {seconds, nanoseconds} objects
         // ROOT CAUSE: Spread operators create shallow copies that strip Prototype methods (.toDate())
@@ -4958,44 +5068,45 @@
 
                 console.log('🔒 Starte Transaction mit Optimistic Locking...');
 
-                // 🔍 DEBUG Bug #5L: Deep Field Type Inspection
-                // GOAL: Find the EXACT field causing "Expected type 'Vd', but it was: a custom Pd object"
-                console.log('🔍 [DEBUG] === BUG #5L TRANSACTION DEBUG START ===');
-                console.log('🔍 [DEBUG] sanitizeKalkulationDataForFirestore exists?', typeof sanitizeKalkulationDataForFirestore);
+                // 🔍 BUG #5L Phase 5n (2025-11-23): ADVANCED DEBUGGING - Field-by-Field Validation
+                // REPLACES: Problematic Object.entries() debug code (caused Timestamp serialization!)
+                // USES: validateFirestoreField() helper to detect Pd vs Vd Timestamps
+                console.log('🔍 [FIELD-VALIDATOR] === VALIDATING updateData ===');
+                let updateDataHasErrors = false;
+                for (const key in updateData) {
+                    if (!updateData.hasOwnProperty(key)) continue;
+                    const value = updateData[key];  // ✅ Direct access - NO serialization!
+                    const validation = validateFirestoreField(key, value);
+                    console.log(`   ${validation.icon} ${key}:`, validation);
+                    if (!validation.valid) {
+                        updateDataHasErrors = true;
+                        console.error(`   ❌ PROBLEMATIC FIELD: ${key} - ${validation.reason}`);
+                    }
+                }
 
-                // Inspect updateData
-                console.log('🔍 [DEBUG] updateData fields:');
-                Object.entries(updateData).forEach(([key, value]) => {
-                    const type = typeof value;
-                    const isDate = value instanceof Date;
-                    const isTimestamp = value && typeof value.toDate === 'function';
-                    const hasSeconds = value && typeof value === 'object' && 'seconds' in value;
-                    console.log(`  - ${key}:`, {
-                        type,
-                        isDate,
-                        isTimestamp,
-                        hasSeconds,
-                        value: (isDate || isTimestamp || hasSeconds) ? value : (type === 'object' ? '[OBJECT]' : value)
-                    });
-                });
+                console.log('🔍 [FIELD-VALIDATOR] === VALIDATING dataForFirestore (top-level) ===');
+                let dataForFirestoreHasErrors = false;
+                for (const key in dataForFirestore) {
+                    if (!dataForFirestore.hasOwnProperty(key)) continue;
+                    const value = dataForFirestore[key];  // ✅ Direct access - NO serialization!
+                    const validation = validateFirestoreField(key, value);
 
-                // Inspect dataForFirestore (top-level fields)
-                console.log('🔍 [DEBUG] dataForFirestore fields:');
-                Object.entries(dataForFirestore).forEach(([key, value]) => {
-                    const type = typeof value;
-                    const isDate = value instanceof Date;
-                    const isTimestamp = value && typeof value.toDate === 'function';
-                    const hasSeconds = value && typeof value === 'object' && 'seconds' in value;
-                    console.log(`  - ${key}:`, {
-                        type,
-                        isDate,
-                        isTimestamp,
-                        hasSeconds,
-                        value: (isDate || isTimestamp || hasSeconds) ? value : (type === 'object' ? '[OBJECT]' : value)
-                    });
-                });
+                    // Only show Timestamps and problematic fields (reduce noise)
+                    if (validation.isTimestamp || !validation.valid || value === null || value === undefined) {
+                        console.log(`   ${validation.icon} ${key}:`, validation);
+                    }
 
-                console.log('🔍 [DEBUG] === BUG #5L TRANSACTION DEBUG END ===');
+                    if (!validation.valid) {
+                        dataForFirestoreHasErrors = true;
+                        console.error(`   ❌ PROBLEMATIC FIELD: ${key} - ${validation.reason}`);
+                    }
+                }
+
+                if (updateDataHasErrors || dataForFirestoreHasErrors) {
+                    console.error('❌ [FIELD-VALIDATOR] VALIDATION FAILED - See errors above!');
+                } else {
+                    console.log('✅ [FIELD-VALIDATOR] All fields validated successfully!');
+                }
 
                 // 🔍 BUG #5L PHASE 5a (2025-11-23): DEEP DIAGNOSTIC - Stop Guessing, Start Seeing!
                 // PROBLEM: 4 failed fix attempts (Phases 1-4) because we guessed the root cause
@@ -5175,6 +5286,26 @@
 
                         console.log('   ✅ ATOMIC DUPLICATE-CHECK OK: Kein Duplikat gefunden');
 
+                        // 🔍 BUG #5L Phase 5n (2025-11-23): INDIVIDUAL FIELD TESTING INSIDE TRANSACTION
+                        // PURPOSE: Test each field individually to pinpoint EXACT problematic field
+                        console.log('🧪 [FIELD-TEST] Testing updateData fields individually...');
+                        for (const key in updateData) {
+                            if (!updateData.hasOwnProperty(key)) continue;
+                            const validation = validateFirestoreField(key, updateData[key]);
+                            if (!validation.valid) {
+                                console.error(`   ❌ PROBLEMATIC FIELD IN updateData: ${key}`, validation);
+                            }
+                        }
+
+                        console.log('🧪 [FIELD-TEST] Testing dataForFirestore Timestamp fields...');
+                        for (const key in dataForFirestore) {
+                            if (!dataForFirestore.hasOwnProperty(key)) continue;
+                            const validation = validateFirestoreField(key, dataForFirestore[key]);
+                            if (validation.isTimestamp && !validation.valid) {
+                                console.error(`   ❌ PROBLEMATIC TIMESTAMP IN dataForFirestore: ${key}`, validation);
+                            }
+                        }
+
                         transaction.update(anfrageRef, updateData);  // ✅ FIX Bug #5L Phase 5L: Skip sanitize - updateData is SAFE by design (4 fields: Strings + 1 Firestore Timestamp), avoid Object.entries() serialization!
                         transaction.set(fahrzeugRef, dataForFirestore);  // ✅ FIX Bug #5L Phase 5k: Already sanitized at Line 4928, avoid double-sanitize serialization!
 
@@ -5183,6 +5314,18 @@
 
                     console.log('✅ Transaction committed successfully!');
                 } catch (transactionError) {
+                    // 🔍 BUG #5L Phase 5n (2025-11-23): ADVANCED ERROR LOGGING
+                    // PURPOSE: Provide detailed stack trace and error analysis for debugging
+                    console.error('❌ [TRANSACTION ERROR] === DETAILED ERROR ANALYSIS START ===');
+                    console.error('   Error Name:', transactionError.name);
+                    console.error('   Error Message:', transactionError.message);
+                    console.error('   Error Code:', transactionError.code || 'N/A');
+                    console.error('   Error Type:', typeof transactionError);
+                    console.error('   Error Constructor:', transactionError.constructor?.name || 'Unknown');
+                    console.error('   Stack Trace:', transactionError.stack);
+                    console.error('   Full Error Object:', transactionError);
+                    console.error('❌ [TRANSACTION ERROR] === DETAILED ERROR ANALYSIS END ===');
+
                     console.error('❌ TRANSACTION FEHLGESCHLAGEN!', transactionError);
                     let errorMsg = 'Anfrage-Annahme fehlgeschlagen!\\n\\n';
 
