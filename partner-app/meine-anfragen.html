@@ -6259,24 +6259,14 @@
             return null;
         }
 
-        // 🔧 FIX (2025-11-22): Deep sanitize KVA object for Firestore
-        // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" when kva.termine contains Date objects
+        // ✅ FIX Bug #5L Phase 5j (2025-11-23): Eliminate Spread Operators
+        // PROBLEM: { ...kva } serializes Firestore Timestamps to Plain {seconds, nanoseconds} objects
+        // ROOT CAUSE: Spread operators create shallow copies that strip Prototype methods (.toDate())
+        // SOLUTION: Use existing sanitizeKalkulationDataForFirestore() which processes recursively without spread
+        // RESULT: All Timestamps preserved OR converted from Plain objects via fromMillis()
         function sanitizeKvaForFirestore(kva) {
             if (!kva) return null;
-
-            // Deep clone to avoid mutating original
-            const sanitized = {...kva};
-
-            // Convert Date objects in termine to strings
-            if (sanitized.termine) {
-                sanitized.termine = {
-                    ...sanitized.termine,
-                    start: toSafeDate(sanitized.termine.start),
-                    ende: toSafeDate(sanitized.termine.ende)
-                };
-            }
-
-            return sanitized;
+            return sanitizeKalkulationDataForFirestore(kva);
         }
 
         // 🔧 FIX Bug #5d (2025-11-22): Recursive Timestamp Sanitization
