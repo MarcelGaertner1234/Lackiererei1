@@ -5023,6 +5023,49 @@
                     console.warn('⚠️ [PHASE-5] prozessTimestamps is not an object!', dataForFirestore.prozessTimestamps);
                 }
 
+                // 🔍 BUG #5L PHASE 5d (2025-11-23): RECURSIVE Deep Diagnostic Helper
+                // PROBLEM: Phase 5a-5c only scanned TOP-LEVEL of kalkulationData, missed nested fields
+                // SOLUTION: Recursive function to scan ALL levels (arbeitslohn.stundenlohn, ersatzteile[0].preis, etc.)
+                function deepInspectObject(obj, path = '', depth = 0, maxDepth = 10) {
+                    if (depth > maxDepth) {
+                        console.warn(`⚠️ [PHASE-5d] Max depth ${maxDepth} reached at ${path}`);
+                        return;
+                    }
+                    if (!obj || typeof obj !== 'object') return;
+
+                    Object.entries(obj).forEach(([key, value]) => {
+                        const fullPath = path ? `${path}.${key}` : key;
+                        const type = typeof value;
+                        const isNull = value === null;
+                        const isUndefined = value === undefined;
+                        const isArray = Array.isArray(value);
+                        const constructor = value?.constructor?.name || 'N/A';
+
+                        // Log EVERY field at ALL levels
+                        console.log(`  🔍 ${fullPath}:`, {
+                            type,
+                            isNull,
+                            isUndefined,
+                            isArray,
+                            constructor,
+                            value: (isNull || isUndefined || type === 'function') ? value :
+                                   (type === 'object' && !isArray) ? '[OBJECT]' : value
+                        });
+
+                        // Recurse into objects and arrays
+                        if (value && type === 'object' && !isNull) {
+                            if (isArray) {
+                                value.forEach((item, index) => {
+                                    console.log(`  🔍 ${fullPath}[${index}] (array element):`, {type: typeof item, constructor: item?.constructor?.name || 'N/A'});
+                                    deepInspectObject(item, `${fullPath}[${index}]`, depth + 1, maxDepth);
+                                });
+                            } else {
+                                deepInspectObject(value, fullPath, depth + 1, maxDepth);
+                            }
+                        }
+                    });
+                }
+
                 // 3. serviceData - Nested object (already sanitized, but let's verify)
                 console.log('🔍 [PHASE-5] serviceData keys:', Object.keys(dataForFirestore.serviceData || {}));
                 if (dataForFirestore.serviceData && typeof dataForFirestore.serviceData === 'object') {
@@ -5039,21 +5082,19 @@
                     }
                 }
 
-                // 4. kalkulationData - Nested object (already sanitized, but let's verify)
-                console.log('🔍 [PHASE-5] kalkulationData keys:', Object.keys(dataForFirestore.kalkulationData || {}));
+                // 4. kalkulationData - RECURSIVE DEEP SCAN (ALL nested levels)
+                // 🔍 BUG #5L PHASE 5d (2025-11-23): Replace shallow scan with RECURSIVE scan
+                // OLD: Only scanned TOP-LEVEL keys (arbeitslohn, lackierung, etc.)
+                // NEW: Scans ALL levels (arbeitslohn.stundenlohn, ersatzteile[0].preis, etc.)
+                console.log('🔍 [PHASE-5d] === kalkulationData RECURSIVE DEEP SCAN START ===');
+                console.log('🔍 [PHASE-5d] Top-level keys:', Object.keys(dataForFirestore.kalkulationData || {}));
                 if (dataForFirestore.kalkulationData && typeof dataForFirestore.kalkulationData === 'object') {
-                    const suspiciousFields = [];
-                    Object.entries(dataForFirestore.kalkulationData).forEach(([key, value]) => {
-                        if (value === null || (typeof value === 'object' && value?.constructor?.name && !['Object', 'Array'].includes(value.constructor.name))) {
-                            suspiciousFields.push({key, type: typeof value, constructor: value?.constructor?.name, value});
-                        }
-                    });
-                    if (suspiciousFields.length > 0) {
-                        console.warn('⚠️ [PHASE-5] Suspicious fields in kalkulationData:', suspiciousFields);
-                    } else {
-                        console.log('✅ [PHASE-5] kalkulationData looks clean (no null/special objects)');
-                    }
+                    deepInspectObject(dataForFirestore.kalkulationData, 'kalkulationData');
+                    console.log('✅ [PHASE-5d] kalkulationData recursive scan complete - Check logs above for EXACT problematic field');
+                } else {
+                    console.warn('⚠️ [PHASE-5d] kalkulationData is missing or not an object!', dataForFirestore.kalkulationData);
                 }
+                console.log('🔍 [PHASE-5d] === kalkulationData RECURSIVE DEEP SCAN END ===');
 
                 console.log('🔍 [PHASE-5] === ARRAY/OBJECT DEEP INSPECTION END ===');
                 console.log('🔍 [PHASE-5] If you see NULL, NUMBER timestamps, or special constructors → That\'s the Pd object!');
