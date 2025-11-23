@@ -6274,59 +6274,82 @@
         //          BEFORE the replacer sees them, causing toDate() check to ALWAYS FAIL
         // SOLUTION: Recursive Object Walker that processes Timestamps BEFORE any JSON operations
         // PREVENTS: "Expected type 'Vd', but it was: a custom Pd object" (Firestore rejects plain Timestamp objects)
-        function sanitizeKalkulationDataForFirestore(data, depth = 0, key = 'root') {
+        function sanitizeKalkulationDataForFirestore(data) {
             if (!data) return data;
 
             // Handle primitive types
             if (typeof data !== 'object') return data;
 
-            // 🔍 BUG #12 DIAGNOSTIC: Log EVERY object to understand what's failing
-            if (depth === 0 || (typeof data === 'object' && data.constructor?.name === 'Timestamp')) {
-                console.log(`🔍 [SANITIZE depth=${depth} key="${key}"] Object:`, {
-                    type: typeof data,
-                    constructor: data?.constructor?.name,
-                    isArray: Array.isArray(data),
-                    'instanceof Date': data instanceof Date,
-                    'has toDate()': typeof data?.toDate === 'function',
-                    'has seconds': 'seconds' in data,
-                    'has nanoseconds': 'nanoseconds' in data,
-                    keys: Object.keys(data).slice(0, 10), // First 10 keys
-                    sample: JSON.stringify(data).slice(0, 200) // First 200 chars
-                });
-            }
+            // ✅ FIX Bug #12 (2025-11-23): Return Firestore Timestamps for Transaction compatibility
+            // PROBLEM: Transactions require Timestamp objects, NOT ISO strings
+            // SOLUTION: Convert Date → Timestamp, preserve existing Timestamps (passthrough)
+            // SOURCE: Copied from anfrage-detail.html (Lines 4768-4848) - VERIFIED WORKING VERSION
 
-            // Handle Date objects
+            // Handle Date objects - Convert to Firestore Timestamp
             if (data instanceof Date) {
-                console.log(`🔧 [SANITIZE] Converting Date: ${data.toISOString()}`);
-                return data.toISOString();
+                const timestamp = firebase.firestore.Timestamp.fromDate(data);
+                console.log(`🔧 [SANITIZE] Converting Date to Timestamp:`, timestamp);
+                return timestamp;
             }
 
-            // Handle Firestore Timestamp instances (with .toDate() method)
+            // ✅ PRESERVE Firestore Timestamps (passthrough)
             if (data && typeof data.toDate === 'function') {
-                const isoString = data.toDate().toISOString();
-                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp instance: ${isoString}`);
-                return isoString;
+                console.log(`🔧 [SANITIZE] Firestore Timestamp (passthrough):`, data);
+                return data;  // ✅ Keep as Timestamp!
             }
 
-            // 🔧 FIX Bug #5e (2025-11-22): Handle Firestore Timestamp plain objects
-            // PROBLEM: When loaded via ...doc.data(), Timestamps are deserialized to {seconds, nanoseconds}
-            //          WITHOUT .toDate() method → Previous check fails → Plain object persists
-            // SOLUTION: Detect plain Timestamp objects by checking for 'seconds' and 'nanoseconds' properties
+            // Handle Firestore Timestamp plain objects {seconds, nanoseconds}
+            // ✅ FIX Bug #12: Use fromMillis() instead of new Timestamp()
+            // PROBLEM: new Timestamp() creates "custom Pd object" → Transaction rejects with "Expected type 'Vd'"
+            // SOLUTION: fromMillis() creates "native Vd object" → Transaction accepts it
             if (data && typeof data === 'object' && !Array.isArray(data) && 'seconds' in data && 'nanoseconds' in data) {
-                const isoString = new Date(data.seconds * 1000).toISOString();
-                console.log(`🔧 [SANITIZE] Converting Firestore Timestamp plain object: ${isoString}`);
-                return isoString;
+                const millis = data.seconds * 1000 + Math.floor(data.nanoseconds / 1000000);
+                const timestamp = firebase.firestore.Timestamp.fromMillis(millis);
+                console.log(`🔧 [SANITIZE] Converting plain Timestamp object → fromMillis():`, timestamp);
+                return timestamp;
             }
 
             // Handle Arrays (recursive)
             if (Array.isArray(data)) {
-                return data.map((item, index) => sanitizeKalkulationDataForFirestore(item, depth + 1, `${key}[${index}]`));
+                return data.map(item => sanitizeKalkulationDataForFirestore(item));
             }
 
             // Handle Objects (recursive)
+            // ✅ FIX Bug #12: Replace Object.entries() with for...in
+            // PROBLEM: Object.entries() SERIALIZES Firestore Timestamps to Plain {seconds, nanoseconds} objects
+            //          → Loses .toDate() Prototype method → fromMillis() reconstruction creates "Pd object" → Transaction rejects
+            // ROOT CAUSE: Object.entries() creates "new ordinary objects" per ECMA-262 spec, WITHOUT custom Prototypes
+            // SOLUTION: for...in with direct property access (data[key]) preserves Prototype methods → Timestamps remain "Vd objects"
             const sanitized = {};
-            for (const [objKey, value] of Object.entries(data)) {
-                sanitized[objKey] = sanitizeKalkulationDataForFirestore(value, depth + 1, objKey);
+            for (const key in data) {
+                if (!data.hasOwnProperty(key)) continue;  // Skip inherited properties
+
+                const value = data[key];  // ✅ Direct property access - NO serialization!
+                const sanitizedValue = sanitizeKalkulationDataForFirestore(value);
+
+                // ✅ FIX Bug #12: Skip null/undefined/empty objects
+                // PROBLEM: null values AND empty objects {} cause "Expected type 'Vd'" error in Transactions
+                // SOLUTION: Don't add invalid fields to sanitized object (effectively deletes them)
+
+                // Check if this is an invalid empty object
+                const isInvalidObject = (
+                    sanitizedValue !== null &&
+                    sanitizedValue !== undefined &&
+                    typeof sanitizedValue === 'object' &&
+                    !Array.isArray(sanitizedValue) &&
+                    !sanitizedValue.toDate && // Not a Firestore Timestamp
+                    !('seconds' in sanitizedValue) && // Not a plain Timestamp object {seconds, nanoseconds}
+                    Object.keys(sanitizedValue).length === 0 // Empty object {}
+                );
+
+                if (sanitizedValue !== null && sanitizedValue !== undefined && !isInvalidObject) {
+                    sanitized[key] = sanitizedValue;
+                } else {
+                    const reason = sanitizedValue === null ? 'null' :
+                        sanitizedValue === undefined ? 'undefined' :
+                            'empty object {}';
+                    console.log(`🧹 [SANITIZE] Removing ${reason} field: ${key}`);
+                }
             }
 
             return sanitized;
