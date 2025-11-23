@@ -6542,7 +6542,50 @@
                 const dataForFirestore = sanitizedFahrzeugData;  // ✅ Direct assignment - NO SPREAD!
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
 
-                // 4.2 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
+                // 🔍 BUG #5L Phase 5o (2025-11-23): NON-TRANSACTIONAL DUPLICATE CHECK
+                // WHY MOVED BEFORE TRANSACTION:
+                //   - transaction.get() fails when reading vehicles with corrupted Pd Timestamps (from old data)
+                //   - Regular .get() queries are MORE TOLERANT of corrupted Timestamp data
+                //   - Error was: "Expected type 'Vd', but it was: a custom Pd object" during transaction.get()
+                //   - Solution: Use regular Firestore queries BEFORE starting transaction
+                // TRADE-OFF:
+                //   - Small race condition window (2 partners accepting same KVA simultaneously)
+                //   - Acceptable because partner KVA acceptance is rare and not concurrent
+                console.log('🔍 Prüfe Duplikate (non-transactional)...');
+
+                // Check 1: Auftragsnummer (if exists)
+                if (anfrage.auftragsnummer) {
+                    const existingByAuftragsnummer = await window.getCollection('fahrzeuge')
+                        .where('auftragsnummer', '==', anfrage.auftragsnummer)
+                        .where('werkstattId', '==', window.werkstattId)
+                        .limit(1)
+                        .get();
+
+                    if (!existingByAuftragsnummer.empty) {
+                        const duplicate = existingByAuftragsnummer.docs[0];
+                        throw new Error(`⚠️ Fahrzeug mit Auftragsnummer "${anfrage.auftragsnummer}" existiert bereits! (ID: ${duplicate.id})`);
+                    }
+                    console.log('   ✅ Auftragsnummer unique');
+                }
+
+                // Check 2: Kennzeichen (always exists)
+                if (anfrage.kennzeichen) {
+                    const existingByKennzeichen = await window.getCollection('fahrzeuge')
+                        .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
+                        .where('werkstattId', '==', window.werkstattId)
+                        .limit(1)
+                        .get();
+
+                    if (!existingByKennzeichen.empty) {
+                        const duplicate = existingByKennzeichen.docs[0];
+                        throw new Error(`⚠️ Fahrzeug mit Kennzeichen "${anfrage.kennzeichen}" existiert bereits! (ID: ${duplicate.id})`);
+                    }
+                    console.log('   ✅ Kennzeichen unique');
+                }
+
+                console.log('✅ Keine Duplikate gefunden - Fahrzeug kann angelegt werden');
+
+                // 4.3 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
                 // WICHTIG: Transaction statt Batch für automatische Retry + Status-Re-Check!
                 const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
                 const fahrzeugRef = window.getCollection('fahrzeuge').doc(dataForFirestore.id);
@@ -6569,47 +6612,8 @@
 
                         console.log('   ✅ Status-Check OK: Anfrage ist noch verfügbar');
 
-                        // ✅ FIX Issue #3 (2025-11-20): ATOMIC DUPLICATE CHECK
-                        // PROBLEM: Duplicate checks waren AUSSERHALB Transaction → Race Condition!
-                        // LÖSUNG: Duplicate checks INSIDE Transaction für Atomizität
-                        console.log('   🔍 ATOMIC DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert...');
-
-                        // Check 1: Auftragsnummer (wenn vorhanden)
-                        if (anfrage.auftragsnummer) {
-                            const auftragsnummerQuery = window.getCollection('fahrzeuge')
-                                .where('auftragsnummer', '==', anfrage.auftragsnummer)
-                                .limit(1);
-                            const existingByAuftragsnummer = await transaction.get(auftragsnummerQuery);
-
-                            if (!existingByAuftragsnummer.empty) {
-                                const duplicate = existingByAuftragsnummer.docs[0];
-                                console.error('   ❌ DUPLIKAT: Auftragsnummer existiert bereits:', duplicate.id);
-                                throw new Error(`⚠️ Fahrzeug mit Auftragsnummer "${anfrage.auftragsnummer}" existiert bereits!\n\n` +
-                                    `📦 Fahrzeug-ID: ${duplicate.id}\n` +
-                                    `🚗 Kennzeichen: ${duplicate.data().kennzeichen || 'k.A.'}\n\n` +
-                                    `DUPLIKAT VERHINDERT!`);
-                            }
-                        }
-
-                        // Check 2: Kennzeichen
-                        if (anfrage.kennzeichen) {
-                            const kennzeichenQuery = window.getCollection('fahrzeuge')
-                                .where('kennzeichen', '==', anfrage.kennzeichen.toUpperCase())
-                                .limit(1);
-                            const existingByKennzeichen = await transaction.get(kennzeichenQuery);
-
-                            if (!existingByKennzeichen.empty) {
-                                const duplicate = existingByKennzeichen.docs[0];
-                                console.error('   ❌ DUPLIKAT: Kennzeichen existiert bereits:', duplicate.id);
-                                throw new Error(`⚠️ Fahrzeug mit Kennzeichen "${anfrage.kennzeichen}" existiert bereits!\n\n` +
-                                    `📦 Fahrzeug-ID: ${duplicate.id}\n\n` +
-                                    `DUPLIKAT VERHINDERT!`);
-                            }
-                        }
-
-                        console.log('   ✅ ATOMIC DUPLICATE-CHECK OK: Kein Duplikat gefunden');
-
-                        // SCHRITT 3: Atomic Write - partnerAnfragen UPDATE + fahrzeuge CREATE
+                        // SCHRITT 2: Atomic Write - partnerAnfragen UPDATE + fahrzeuge CREATE
+                        // NOTE: Duplicate-Check erfolgte bereits VOR Transaction (non-transactional)
                         transaction.update(anfrageRef, updateData);
                         transaction.set(fahrzeugRef, dataForFirestore);
 
