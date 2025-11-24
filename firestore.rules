@@ -105,22 +105,22 @@ service cloud.firestore {
     //
     // Strategy: Evaluate bonus rules FIRST, before ANY other wildcard patterns
 
-    // 1. HARDCODED MOSBACH COLLECTION (most specific - checked first)
-    match /bonusAuszahlungen_mosbach/{bonusId} {
-      allow read, write: if true;  // 🚨 ULTRA-PERMISSIVE for debugging
-    }
-
-    // 2. MULTI-TENANT PATTERN (bonusAuszahlungen_mosbach, bonusAuszahlungen_heidelberg, etc.)
+    // MULTI-TENANT BONUS COLLECTIONS (bonusAuszahlungen_mosbach, bonusAuszahlungen_heidelberg, etc.)
+    // 🔒 SECURED: Role-based access control (Bug #3 Fix - Nov 2025)
     match /{bonusCollection}/{bonusId} {
-      // Ultra-permissive for debugging - allows ALL operations on bonus collections
-      allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*');
+      // Admin: Full read/write access (Bonus-Verwaltung)
+      allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*') && isAdmin();
 
-      // Admin/Mitarbeiter/Partner specific rules (currently redundant due to above rule)
-      // Will be re-enabled after debugging is complete:
-      // allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*') && isAdmin();
-      // allow read: if bonusCollection.matches('bonusAuszahlungen_.*') && isMitarbeiter() && isActive();
-      // allow read: if bonusCollection.matches('bonusAuszahlungen_.*') && request.auth != null
-      //             && resource.data.partnerEmail == request.auth.token.email;
+      // Mitarbeiter: Read-only access
+      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
+                  && isMitarbeiter() && isActive();
+
+      // Partner: Read own bonuses + Create new
+      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
+                  && request.auth != null
+                  && resource.data.partnerEmail == request.auth.token.email;
+      allow create: if bonusCollection.matches('bonusAuszahlungen_.*')
+                    && request.auth != null;
     }
 
     // ============================================
