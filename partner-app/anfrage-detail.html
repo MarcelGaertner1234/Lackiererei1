@@ -4272,10 +4272,18 @@
             return sanitized;
         }
 
-        async function prepareFahrzeugData(anfrage, abholtermin) {
+        /**
+         * ✅ FIX #5 (Bug #16, 2025-11-24): Added 3rd parameter for signature consistency with meine-anfragen.html
+         * @param {Object} anfrage - Partner-Anfrage Objekt
+         * @param {string} abholtermin - Abhol-Termin (ISO-Date)
+         * @param {Array} allAnfragen - Alle Anfragen für Rabatt-Berechnung (optional, default: [])
+         * @returns {Object} Fahrzeug-Daten bereit für Firestore
+         */
+        async function prepareFahrzeugData(anfrage, abholtermin, allAnfragen = []) {
             if (window.DEBUG) console.log('🔍 prepareFahrzeugData() gestartet');
             console.log('📋 Anfrage serviceTyp:', anfrage.serviceTyp);
             console.log('📋 Anfrage kennzeichen:', anfrage.kennzeichen);
+            console.log('📋 allAnfragen length:', allAnfragen.length); // ✅ FIX #5: Log for debugging
             console.log('📋 Anfrage anliefertermin:', anfrage.anliefertermin);
 
             // VALIDIERUNG 1: Kennzeichen/Auftragsnummer erforderlich
@@ -4899,10 +4907,15 @@
                 ? anfrage.angebotDetails.preis.toFixed(2) + ' €'
                 : (anfrage.kva?.gesamt ? anfrage.kva.gesamt.toFixed(2) + ' €' : 'k.A.');
 
+            // ✅ FIX #2 (Bug #16, 2025-11-24): Multi-Service Support in Confirmation Dialog
+            const serviceLabelText = Array.isArray(anfrage.serviceTyp)
+                ? anfrage.serviceTyp.map(t => getServiceLabel(t)).join(' + ')
+                : getServiceLabel(anfrage.serviceTyp);
+
             const bestaetigung = confirm(
                 'Möchten Sie dieses Angebot annehmen?\\n\\n' +
                 `Auftragsnummer: ${anfrage.auftragsnummer || anfrage.kennzeichen}\\n` +
-                `Service: ${getServiceLabel(anfrage.serviceTyp)}\\n` +
+                `Service: ${serviceLabelText}\\n` +
                 `Anliefertermin: ${anlieferterminText}\\n` +
                 `Preis: ${preisText}`
             );
@@ -4911,14 +4924,40 @@
                 return;
             }
 
+            // ✅ FIX #1 (Bug #16, 2025-11-24): CRITICAL - Button disablen um Doppel-Klicks zu verhindern!
+            const button = event?.currentTarget;
+            let originalButtonText = '';
+            if (button) {
+                originalButtonText = button.textContent;
+                button.disabled = true;
+                button.textContent = '⏳ Wird beauftragt...';
+                console.log('🔒 Button disabled - verhindert Doppel-Klicks');
+            } else {
+                console.warn('⚠️ Button nicht gefunden (event.currentTarget fehlt) - Doppel-Klick-Schutz funktioniert nicht!');
+            }
+
+            // ✅ FIX #1 (Bug #16, 2025-11-24): Transaction-Status setzen (beforeunload Handler)
+            transactionRunning = true;
+            console.log('🔒 Transaction gestartet - beforeunload Handler aktiv');
+
             try {
                 // 1. Status auf "beauftragt" ändern
                 const updateData = {
                     status: 'beauftragt',
                     statusText: 'Beauftragt',
                     beauftragtAm: firebase.firestore.Timestamp.now(),  // ✅ FIX Bug #5L Phase 5h (2025-11-23): Firestore Timestamp instead of ISO String for Transaction
-                    beauftragtVon: anfrage.partnerEmail || anfrage.partnerName || 'Partner'
+                    beauftragtVon: anfrage.partnerEmail || anfrage.partnerName || anfrage.partnerId || 'Unbekannt',
+                    // ✅ FIX #3 (Bug #16, 2025-11-24): Enhanced User Tracking for Audit Trail
+                    beauftragtVonUserId: anfrage.partnerId || null,  // 🆕 User-ID für eindeutige Zuordnung
+                    beauftragtVonEmail: anfrage.partnerEmail || null,  // 🆕 Email für Compliance
+                    beauftragtVonName: anfrage.partnerName || null    // 🆕 Name für UI-Anzeige
                 };
+
+                // ✅ FIX #3 (Bug #16, 2025-11-24): ENTWURF-SYSTEM - Status Update wenn Entwurf bestätigt
+                if (anfrage.isEntwurf) {
+                    updateData.entwurfStatus = 'bestaetigt';
+                    console.log('✅ Entwurf wird bestätigt (entwurfStatus → bestaetigt)');
+                }
 
                 // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vor START, Wochenenden berücksichtigen)
                 let abholtermin = null;
@@ -4961,17 +5000,20 @@
                 }
                 console.error('🔍 RUN #28 DEBUG: End of diagnostic');
 
+                // ✅ FIX #4 (Bug #16, 2025-11-24): Reuse serviceLabelText (already handles Arrays)
                 const kundeId = await window.firebaseApp.registriereKundenbesuch({
                     name: anfrage.partnerName || 'Partner',
                     email: anfrage.partnerEmail || '',
                     telefon: anfrage.partnerTelefon || anfrage.telefon || '',
                     partnerId: anfrage.partnerId || '',
-                    notizen: `Partner-Anfrage ${anfrage.id} - Service: ${getServiceLabel(anfrage.serviceTyp)}`
+                    notizen: `Partner-Anfrage ${anfrage.id} - Service: ${serviceLabelText}`
                 });
                 if (kundeId) {
                     console.log('✅ Kunde registriert:', kundeId);
                 } else {
                     console.error('❌ FEHLER: Kunde wurde NICHT erstellt!');
+                    showToast('⚠️ WARNUNG: Kunde konnte nicht registriert werden!\n\nBitte Console öffnen (F12) und Screenshot senden.', 'error');
+                    // Trotzdem fortfahren - Fahrzeug ohne Kunden-Verknüpfung erstellen
                 }
 
                 // 4. DUPLICATE-CHECK: Prüfe ob Fahrzeug bereits existiert (CRITICAL!)
@@ -5038,7 +5080,8 @@
 
                 // 5. Fahrzeug-Daten vorbereiten
                 console.log('📋 Erstelle Fahrzeug-Dokument aus Partner-Anfrage...');
-                const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin);
+                // ✅ FIX #5 (Bug #16, 2025-11-24): Pass empty array as 3rd param (no multi-request discounts in detail view)
+                const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin, []);
                 if (kundeId) {
                     fahrzeugData.kundenId = kundeId;
                 }
