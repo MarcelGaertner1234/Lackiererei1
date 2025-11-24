@@ -130,15 +130,16 @@ exports.sendAngebotPDFToAdmin = functions
         const { pdfBase64, filename, werkstattId, kennzeichen, kundenname, vereinbarterPreis } = data;
 
         // 2. Load Admin Email from Settings
+        // ✅ BUG #5 FIX: Korrektes Multi-Tenant Collection Pattern
         console.log(`🔍 Lade Admin-Email für Werkstatt: ${werkstattId}`);
-        const settingsDoc = await db.collection("settings").doc(werkstattId).get();
+        const settingsDoc = await db.collection(`einstellungen_${werkstattId}`).doc('config').get();
 
         let adminEmail = "info@auto-lackierzentrum.de"; // Fallback
-        if (settingsDoc.exists && settingsDoc.data().adminEmail) {
-          adminEmail = settingsDoc.data().adminEmail;
+        if (settingsDoc.exists && settingsDoc.data().profil?.email) {
+          adminEmail = settingsDoc.data().profil.email;
           console.log(`✅ Admin-Email gefunden: ${adminEmail}`);
         } else {
-          console.warn(`⚠️ Keine Admin-Email in settings/${werkstattId} → Fallback: ${adminEmail}`);
+          console.warn(`⚠️ Keine Admin-Email in einstellungen_${werkstattId}/config → Fallback: ${adminEmail}`);
         }
 
         // 3. Initialize SendGrid

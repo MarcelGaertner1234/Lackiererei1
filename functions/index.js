@@ -4602,8 +4602,9 @@ exports.generateAngebotPDF = functions
         console.log("✅ Entwurf geladen:", entwurf.kennzeichen);
 
         // 2.5. Load Werkstatt Settings for Logo
-        const settingsDoc = await db.collection("settings").doc(werkstattId).get();
-        const logoData = settingsDoc.exists && settingsDoc.data().logoUrl ? settingsDoc.data().logoUrl : null;
+        // ✅ BUG #5 FIX: Korrektes Multi-Tenant Collection Pattern
+        const settingsDoc = await db.collection(`einstellungen_${werkstattId}`).doc('config').get();
+        const logoData = settingsDoc.exists && settingsDoc.data().profil?.logoUrl ? settingsDoc.data().profil.logoUrl : null;
         console.log(`📷 Logo ${logoData ? "gefunden" : "nicht gefunden"} für Werkstatt: ${werkstattId}`);
 
         // 3. Create HTML Template
