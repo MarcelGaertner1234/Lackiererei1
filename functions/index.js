@@ -338,7 +338,7 @@ exports.onNewPartnerAnfrage = functions
         kennzeichen: anfrage.kennzeichen || "k.A.",
         marke: anfrage.marke || "k.A.",
         modell: anfrage.modell || "",
-        createdAt: new Date(anfrage.timestamp).toLocaleString("de-DE"),
+        createdAt: (anfrage.timestamp?.toDate?.() || new Date(anfrage.timestamp || Date.now())).toLocaleString("de-DE"),
         anfrageLink: `https://marcelgaertner1234.github.io/Lackiererei1/partner-app/anfrage-detail.html?id=${context.params.anfrageId}`,
       };
 
