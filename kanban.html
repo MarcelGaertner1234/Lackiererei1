@@ -3187,7 +3187,18 @@
                         // Root Causes:
                         //   1. additionalServices stored as Object instead of Array → hasService() fails
                         //   2. Primary service duplicated in additionalServices → Logical corruption
+                        //   3. additionalServices is undefined (Firestore serialization omits empty arrays) → BUG #13 (2025-11-24)
                         let needsFirestoreUpdate = false;
+
+                        // Fix #0: Initialize if missing (BUG #13 FIX - 2025-11-24)
+                        // CRITICAL: Firestore's JavaScript SDK sometimes omits empty arrays during .data() serialization
+                        // When additionalServices: [] is stored, .data() may return additionalServices: undefined
+                        // This causes hasService() to fail → vehicles get filtered out from Kanban
+                        if (!f.additionalServices) {
+                            console.warn(`🔧 DATA RESCUE [${f.kennzeichen}]: additionalServices is undefined → Initialize to [] (BUG #13 FIX)`);
+                            f.additionalServices = [];
+                            needsFirestoreUpdate = true;
+                        }
 
                         // Fix #1: Convert Object → Array
                         if (f.additionalServices && !Array.isArray(f.additionalServices)) {
