@@ -6196,6 +6196,91 @@
             }
         }
 
+        /**
+         * ✅ NEW FUNCTION (Bug #17, 2025-11-24): Erstellt Bestellungen aus Ersatzteilen
+         * PROBLEM: Kanban zeigt nur bestellungen collection → Ersatzteile werden nicht angezeigt
+         * LÖSUNG: Konvertiere Ersatzteile-Format zu Bestellungen-Format
+         * @param {Array} ersatzteile - Ersatzteile aus KVA
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} fahrzeugId - Fahrzeug-ID
+         * @returns {Promise<number>} Anzahl erstellter Bestellungen
+         */
+        async function createBestellungenFromErsatzteile(ersatzteile, kennzeichen, fahrzeugId) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile für Bestellungen-Konvertierung');
+                return 0;
+            }
+
+            if (!window.db) {
+                console.error('❌ Firebase nicht initialisiert');
+                return 0;
+            }
+
+            console.log(`🔄 KVA-PIPELINE: Konvertiere ${ersatzteile.length} Ersatzteile → Bestellungen...`);
+
+            const userName = localStorage.getItem('userName') || 'Partner';
+            const werkstattId = window.werkstattId || 'mosbach';
+            const batch = window.db.batch();
+            let bestellungenCreated = 0;
+
+            for (const teil of ersatzteile) {
+                try {
+                    const bestellungId = 'best_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                    // Convert ersatzteil format → bestellung format (mirrors annahme.html structure)
+                    const bestellungData = {
+                        id: bestellungId,
+                        etn: teil.etn || '',
+                        benennung: teil.benennung || '',
+                        menge: teil.anzahl || 1,  // ersatzteil uses 'anzahl'
+                        einzelpreis: parseFloat(teil.einzelpreis) || 0,
+                        gesamtpreis: parseFloat(teil.gesamtpreis) || 0,
+                        status: 'bestellt',
+                        bestelltVon: userName,
+                        bestelltAm: new Date().toISOString(),
+                        werkstattId: werkstattId,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        fahrzeugId: String(fahrzeugId),  // CRITICAL: String type for query consistency
+                        kennzeichen: kennzeichen,
+                        source: 'kva-auto',  // Mark as created from KVA pipeline
+                        sourceRequestId: null,
+
+                        // Extended fields (2025-11-11)
+                        preisGeschaetzt: parseFloat(teil.einzelpreis) || 0,
+                        lieferantName: null,
+                        lieferantId: null,
+                        bestellnummer: null,
+                        lieferdatum: null,
+                        angeliefertAm: null,
+                        angeliefertVon: null,
+                        notizen: `Automatisch erstellt aus KVA-Ersatzteil`,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    };
+
+                    // Add to batch
+                    const docRef = window.getCollection('bestellungen').doc(bestellungId);
+                    batch.set(docRef, bestellungData);
+
+                    bestellungenCreated++;
+                    console.log(`   ✅ Bestellung ${bestellungenCreated}: ${bestellungData.benennung} (ETN: ${bestellungData.etn})`);
+
+                } catch (error) {
+                    console.error('❌ Fehler bei Bestellung-Erstellung:', teil, error);
+                }
+            }
+
+            // Commit batch
+            try {
+                await batch.commit();
+                console.log(`✅ ${bestellungenCreated} Bestellungen erfolgreich erstellt (Quelle: KVA-Ersatzteile)`);
+                return bestellungenCreated;
+            } catch (error) {
+                console.error('❌ Batch-Commit fehlgeschlagen:', error);
+                return 0;
+            }
+        }
+
         // ============================================
         // 🔧 HELPER FUNCTIONS - FIRESTORE DATE SANITIZATION
         // ============================================
@@ -6748,6 +6833,24 @@
                     }
                 } else {
                     console.log('ℹ️ Keine Ersatzteile in KVA vorhanden - Transfer wird übersprungen');
+                }
+
+                // 5.4 ✅ FIX Bug #17 (2025-11-24): CREATE BESTELLUNGEN FROM ERSATZTEILE
+                // PROBLEM: Kanban queries 'bestellungen' but ersatzteile are saved to 'ersatzteile' collection
+                // SOLUTION: Convert ersatzteile to bestellungen format for Kanban display
+                if (ersatzteileFromKVA.length > 0) {
+                    try {
+                        console.log(`📦 [KVA-ANNAHME] Erstelle ${ersatzteileFromKVA.length} Bestellungen aus Ersatzteilen für Kanban...`);
+                        const bestellungenCount = await createBestellungenFromErsatzteile(
+                            ersatzteileFromKVA,
+                            anfrage.kennzeichen || anfrage.auftragsnummer || 'k.A.',
+                            fahrzeugData.id
+                        );
+                        console.log(`✅ ${bestellungenCount} Bestellungen für Kanban erstellt (Fahrzeug: ${fahrzeugData.id})`);
+                    } catch (error) {
+                        console.error('❌ Bestellungen-Erstellung fehlgeschlagen (nicht kritisch):', error);
+                        // Continue anyway - Ersatzteile sind in ersatzteile collection gespeichert
+                    }
                 }
 
                 // 6. Kalender-Eintrag erstellen (DEAKTIVIERT - nicht benötigt)
