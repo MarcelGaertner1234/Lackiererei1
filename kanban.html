@@ -2044,6 +2044,37 @@
             return { isValid: true, sanitizedName };
         };
 
+        // ============================================
+        // 🆕 FIX Bug #15 (2025-11-24): FIRESTORE TIMESTAMP HELPER
+        // ============================================
+        /**
+         * Converts Firestore Timestamp to JavaScript Date and formats for display
+         * Handles BOTH Firestore Timestamp objects AND legacy string/number formats
+         * @param {firebase.firestore.Timestamp|string|number|Date} timestamp - The timestamp to format
+         * @returns {string|null} Formatted date string in German locale (e.g. "24.11.2025") or null
+         */
+        window.formatFirestoreDate = function(timestamp) {
+            if (!timestamp) return null;
+
+            // Case 1: Firestore Timestamp object (has .toDate() method)
+            if (typeof timestamp.toDate === 'function') {
+                return timestamp.toDate().toLocaleDateString('de-DE');
+            }
+
+            // Case 2: Already a Date object
+            if (timestamp instanceof Date) {
+                return timestamp.toLocaleDateString('de-DE');
+            }
+
+            // Case 3: String or Number (legacy format)
+            try {
+                return new Date(timestamp).toLocaleDateString('de-DE');
+            } catch (error) {
+                console.error('❌ [formatFirestoreDate] Invalid timestamp:', timestamp, error);
+                return null;
+            }
+        };
+
         /**
          * Setup event listeners for AI Agent actions
          * Note: kanban.html already has Firestore realtime listeners,
@@ -3703,7 +3734,12 @@
             const heute = new Date();
             heute.setHours(0, 0, 0, 0);
 
-            const abnahme = new Date(fahrzeug.geplantesAbnahmeDatum);
+            // ✅ FIX Bug #15 (2025-11-24): Handle Firestore Timestamp objects
+            let abnahmeDate = fahrzeug.geplantesAbnahmeDatum;
+            if (typeof abnahmeDate.toDate === 'function') {
+                abnahmeDate = abnahmeDate.toDate();  // Firestore Timestamp → Date
+            }
+            const abnahme = new Date(abnahmeDate);
             abnahme.setHours(0, 0, 0, 0);
 
             const diffTime = abnahme - heute;
@@ -4096,8 +4132,9 @@
             let abholungBadge = '';
             const showAbholungBadge = (fahrzeug.prozessStatus !== 'bereit' && fahrzeug.prozessStatus !== 'fertig' && fahrzeug.prozessStatus !== 'abholbereit');
             if (showAbholungBadge && fahrzeug.fahrzeugAbholung === 'ja') {
+                // ✅ FIX Bug #15 (2025-11-24): Use formatFirestoreDate() for Timestamp compatibility
                 const abholdatumText = fahrzeug.abholdatum
-                    ? new Date(fahrzeug.abholdatum).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                    ? formatFirestoreDate(fahrzeug.abholdatum)
                     : 'Termin offen';
                 const abholzeitText = fahrzeug.abholzeit ? ` um ${fahrzeug.abholzeit} Uhr` : '';
 
@@ -6119,7 +6156,8 @@
                         info.push(`📍 ${serviceDetails.abholadresse}`);
                     }
                     if (serviceDetails.abholdatum) {
-                        info.push(`📅 ${new Date(serviceDetails.abholdatum).toLocaleDateString('de-DE')}`);
+                        // ✅ FIX Bug #15 (2025-11-24): Timestamp compatibility
+                        info.push(`📅 ${formatFirestoreDate(serviceDetails.abholdatum)}`);
                     }
                     break;
 
@@ -6271,7 +6309,7 @@
                     }
                     if (serviceData.marke) html += formatField('Reifenmarke', serviceData.marke);
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6307,7 +6345,7 @@
                         html += formatField('Service-Art', artLabels[serviceData.art] || serviceData.art);
                     }
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6345,7 +6383,7 @@
                         html += formatField('Service-Art', artLabels[serviceData.art] || serviceData.art);
                     }
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6375,7 +6413,7 @@
 
                     // Partner-spezifische Felder (FIX 2025-11-12)
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6414,7 +6452,7 @@
                         html += formatField('Kategorie', kategorieLabels[serviceData.kategorie] || serviceData.kategorie);
                     }
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6440,14 +6478,14 @@
                     if (serviceData.schadensnummer) html += formatField('Schadensnummer', serviceData.schadensnummer);
                     if (serviceData.versicherung) html += formatField('Versicherung', serviceData.versicherung);
                     if (serviceData.schadendatum) {
-                        const datum = new Date(serviceData.schadendatum).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.schadendatum); // ✅ FIX Bug #15
                         html += formatField('Schadendatum', datum);
                     }
                     if (serviceData.unfallhergang) html += formatField('Unfallhergang', serviceData.unfallhergang);
 
                     // Partner-spezifische Felder (FIX 2025-11-12)
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6484,7 +6522,7 @@
                         html += formatField('Pflege-Art', pflegeLabels[serviceData.pflegeart] || serviceData.pflegeart);
                     }
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6517,7 +6555,7 @@
 
                     // Partner-spezifische Felder (FIX 2025-11-12)
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6566,7 +6604,7 @@
 
                     // Partner-spezifische Felder (FIX 2025-11-12)
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6610,7 +6648,7 @@
 
                     // Partner-spezifische Felder (FIX 2025-11-12)
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6648,7 +6686,7 @@
 
                     // Partner-spezifische Felder (FIX 2025-11-12)
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6688,7 +6726,7 @@
                     }
                     if (serviceData.lackierBereiche) html += formatField('Zu lackierende Bereiche', serviceData.lackierBereiche);
                     if (serviceData.anliefertermin) {
-                        const datum = new Date(serviceData.anliefertermin).toLocaleDateString('de-DE');
+                        const datum = formatFirestoreDate(serviceData.anliefertermin); // ✅ FIX Bug #15
                         html += formatField('Anliefertermin', datum);
                     }
                     if (serviceData.dringlichkeitLabel) {
@@ -6816,7 +6854,9 @@
 
             if (window.DEBUG) console.log('🔍 DEBUG statusHTML:', statusHTML);
             document.getElementById('detail-status').innerHTML = statusHTML;
-            document.getElementById('detail-termin').textContent = fahrzeug.geplantesAbnahmeDatum ? `📅 ${new Date(fahrzeug.geplantesAbnahmeDatum).toLocaleDateString('de-DE')}` : 'Kein Termin';
+            // ✅ FIX Bug #15 (2025-11-24): Use formatFirestoreDate() helper for Timestamp compatibility
+            document.getElementById('detail-termin').textContent = fahrzeug.geplantesAbnahmeDatum ?
+                `📅 ${formatFirestoreDate(fahrzeug.geplantesAbnahmeDatum)}` : 'Kein Termin';
 
             // Service-Übersicht generieren (FIX 2025-11-12: Multi-Service Display)
             let servicesOverview = getServiceLabelWithIcon(fahrzeug.serviceTyp);
