@@ -170,16 +170,18 @@ async function checkAndIncrementRateLimit(userId, werkstattId, type) {
     } catch (error) {
         console.error('❌ [rate-limiter] Transaction failed:', error);
 
-        // CRITICAL: On transaction failure, ALLOW request (fail-open)
-        // Reason: Better to have extra costs than block legitimate users
-        console.warn('⚠️ [rate-limiter] Failing open due to transaction error');
+        // CRITICAL: On transaction failure, BLOCK request (fail-closed)
+        // Reason: Protect against OpenAI cost explosion during Firestore outages
+        // User-Decision: 2025-11-25 - Prioritize cost protection over UX
+        console.error('🔒 [rate-limiter] Failing CLOSED to protect OpenAI costs');
 
         return {
-            allowed: true,
-            remaining: DEFAULT_LIMITS[`${type}Daily`],
+            allowed: false,
+            remaining: 0,
             limit: DEFAULT_LIMITS[`${type}Daily`],
             resetAt: getNextMidnightUTC(),
-            error: error.message
+            error: 'Rate limit check failed. Please try again.',
+            failedClosed: true
         };
     }
 }
