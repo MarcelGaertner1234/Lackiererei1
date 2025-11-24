@@ -14,6 +14,37 @@
             window.location.hostname === 'localhost' ||
             window.location.port === '8000'
         );
+
+        // ============================================
+        // 🆕 FIX Bug #15b (2025-11-24): FIRESTORE TIMESTAMP HELPER FOR PDF
+        // ============================================
+        /**
+         * Converts Firestore Timestamp to JavaScript Date and formats for display in PDF
+         * Handles BOTH Firestore Timestamp objects AND legacy string/number formats
+         * @param {firebase.firestore.Timestamp|string|number|Date} timestamp - The timestamp to format
+         * @returns {string|null} Formatted date string in German locale (e.g. "24.11.2025") or null
+         */
+        window.formatFirestoreDate = function(timestamp) {
+            if (!timestamp) return null;
+
+            // Case 1: Firestore Timestamp object (has .toDate() method)
+            if (typeof timestamp.toDate === 'function') {
+                return timestamp.toDate().toLocaleDateString('de-DE');
+            }
+
+            // Case 2: Already a Date object
+            if (timestamp instanceof Date) {
+                return timestamp.toLocaleDateString('de-DE');
+            }
+
+            // Case 3: String or Number (legacy format)
+            try {
+                return new Date(timestamp).toLocaleDateString('de-DE');
+            } catch (error) {
+                console.error('❌ [formatFirestoreDate] Invalid timestamp:', timestamp, error);
+                return null;
+            }
+        };
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -1978,7 +2009,7 @@
                             doc.setFont(undefined, 'bold');
                             doc.text('Schadendatum:', 20, y);
                             doc.setFont(undefined, 'normal');
-                            const schadenDatum = new Date(serviceDetails.schadendatum).toLocaleDateString('de-DE');
+                            const schadenDatum = formatFirestoreDate(serviceDetails.schadendatum); // ✅ FIX Bug #15b
                             doc.text(schadenDatum, 70, y);
                             y += 7;
                         }
@@ -2385,7 +2416,7 @@
             doc.text('Geplante Abnahme:', 20, y);
             doc.setFont(undefined, 'normal');
             const geplantFormatted = data.geplantesAbnahmeDatum
-                ? new Date(data.geplantesAbnahmeDatum).toLocaleDateString('de-DE')
+                ? formatFirestoreDate(data.geplantesAbnahmeDatum) // ✅ FIX Bug #15b (PRIMARY BUG - "Invalid Date" in PDF)
                 : 'Nicht angegeben';
             doc.text(geplantFormatted, 70, y);
 
@@ -2424,7 +2455,7 @@
                     doc.setFont(undefined, 'normal');
                     let abholText = '';
                     if (data.abholdatum) {
-                        abholText = new Date(data.abholdatum).toLocaleDateString('de-DE');
+                        abholText = formatFirestoreDate(data.abholdatum); // ✅ FIX Bug #15b
                     }
                     if (data.abholzeit) {
                         abholText += (abholText ? ' um ' : '') + data.abholzeit + ' Uhr';
@@ -2857,8 +2888,10 @@
                     // Linke Spalte
                     const leftEntry = prozessFotos[i];
                     const leftStatusName = statusNames[leftEntry.status] || leftEntry.status.toUpperCase();
-                    const leftDate = new Date(leftEntry.timestamp).toLocaleDateString('de-DE');
-                    const leftTime = new Date(leftEntry.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                    // ✅ FIX Bug #15b: Handle Firestore Timestamp for date/time display
+                    const leftTimestamp = leftEntry.timestamp?.toDate ? leftEntry.timestamp.toDate() : new Date(leftEntry.timestamp);
+                    const leftDate = leftTimestamp.toLocaleDateString('de-DE');
+                    const leftTime = leftTimestamp.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
                     // Status + Datum über Foto (links)
                     doc.setFont(undefined, 'bold');
@@ -2883,8 +2916,10 @@
                     if (i + 1 < prozessFotos.length) {
                         const rightEntry = prozessFotos[i + 1];
                         const rightStatusName = statusNames[rightEntry.status] || rightEntry.status.toUpperCase();
-                        const rightDate = new Date(rightEntry.timestamp).toLocaleDateString('de-DE');
-                        const rightTime = new Date(rightEntry.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                        // ✅ FIX Bug #15b: Handle Firestore Timestamp for date/time display
+                        const rightTimestamp = rightEntry.timestamp?.toDate ? rightEntry.timestamp.toDate() : new Date(rightEntry.timestamp);
+                        const rightDate = rightTimestamp.toLocaleDateString('de-DE');
+                        const rightTime = rightTimestamp.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
                         // Status + Datum über Foto (rechts)
                         doc.setFont(undefined, 'bold');
