@@ -109,17 +109,17 @@ service cloud.firestore {
     // 🔒 SECURED: Role-based access control (Bug #3 Fix - Nov 2025)
     match /{bonusCollection}/{bonusId} {
       // Admin: Full read/write access (Bonus-Verwaltung)
-      allow read, write: if bonusCollection.matches('bonusAuszahlungen_.*') && isAdmin();
+      allow read, write: if bonusCollection.matches('bonusAuszahlungen_.+') && isAdmin();
 
       // Mitarbeiter: Read-only access
-      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
+      allow read: if bonusCollection.matches('bonusAuszahlungen_.+')
                   && isMitarbeiter() && isActive();
 
       // Partner: Read own bonuses + Create new
-      allow read: if bonusCollection.matches('bonusAuszahlungen_.*')
+      allow read: if bonusCollection.matches('bonusAuszahlungen_.+')
                   && request.auth != null
                   && resource.data.partnerEmail == request.auth.token.email;
-      allow create: if bonusCollection.matches('bonusAuszahlungen_.*')
+      allow create: if bonusCollection.matches('bonusAuszahlungen_.+')
                     && request.auth != null;
     }
 
@@ -133,11 +133,11 @@ service cloud.firestore {
     match /{guidelinesCollection}/{guidelineId} {
       // Read: All authenticated users can read guidelines
       allow read: if isAuthenticated()
-                  && guidelinesCollection.matches('guidelines_.*');
+                  && guidelinesCollection.matches('guidelines_.+');
 
       // Create/Update/Delete: Only admins and werkstatt users
       allow create, update, delete: if isAdmin()
-                  && guidelinesCollection.matches('guidelines_.*')
+                  && guidelinesCollection.matches('guidelines_.+')
                   && request.resource.data.keys().hasAll([
                       'title', 'category', 'content', 'createdBy', 'createdAt'
                   ]);
@@ -147,18 +147,18 @@ service cloud.firestore {
     match /{announcementsCollection}/{announcementId} {
       // Read: All authenticated users can read announcements
       allow read: if isAuthenticated()
-                  && announcementsCollection.matches('announcements_.*');
+                  && announcementsCollection.matches('announcements_.+');
 
       // Create/Update/Delete: Only admins and werkstatt users
       allow create, update, delete: if isAdmin()
-                  && announcementsCollection.matches('announcements_.*')
+                  && announcementsCollection.matches('announcements_.+')
                   && request.resource.data.keys().hasAll([
                       'title', 'category', 'content', 'author', 'timestamp'
                   ]);
 
       // Update reactions and comments: All authenticated users
       allow update: if isAuthenticated()
-                  && announcementsCollection.matches('announcements_.*')
+                  && announcementsCollection.matches('announcements_.+')
                   && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'comments', 'readBy']));
     }
 
@@ -166,27 +166,27 @@ service cloud.firestore {
     match /{handoversCollection}/{handoverId} {
       // Read: All authenticated users can read handovers
       allow read: if isAuthenticated()
-                  && handoversCollection.matches('shift_handovers_.*');
+                  && handoversCollection.matches('shift_handovers_.+');
 
       // Create: Employees creating their own handovers
       allow create: if isAuthenticated()
-                  && handoversCollection.matches('shift_handovers_.*')
+                  && handoversCollection.matches('shift_handovers_.+')
                   && request.resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId;
 
       // Update/Delete: Only admins can edit/delete handovers
       allow update, delete: if isAdmin()
-                  && handoversCollection.matches('shift_handovers_.*');
+                  && handoversCollection.matches('shift_handovers_.+');
     }
 
     // 4. CATEGORIES COLLECTION (Custom Categories for Guidelines & Announcements)
     match /{categoriesCollection}/{categoryId} {
       // Read: All authenticated users can read categories
       allow read: if isAuthenticated()
-                  && categoriesCollection.matches('categories_.*');
+                  && categoriesCollection.matches('categories_.+');
 
       // Create/Update/Delete: Only admins can manage categories
       allow create, update, delete: if isAdmin()
-                  && categoriesCollection.matches('categories_.*')
+                  && categoriesCollection.matches('categories_.+')
                   && request.resource.data.keys().hasAll([
                       'name', 'emoji', 'color', 'type', 'isDefault', 'createdAt', 'createdBy'
                   ]);
@@ -200,7 +200,7 @@ service cloud.firestore {
 
     match /{activeSessionsCollection}/{sessionId} {
       // Pattern match for activeSessions_* collections
-      allow create: if activeSessionsCollection.matches('activeSessions_.*')
+      allow create: if activeSessionsCollection.matches('activeSessions_.+')
                     && isAuthenticated()
                     && request.resource.data.werkstattId == activeSessionsCollection.split('_')[1]
                     && request.resource.data.status == 'active'
@@ -210,12 +210,12 @@ service cloud.firestore {
                     ]);
 
       // Mitarbeiter can update their own session (heartbeat)
-      allow update: if activeSessionsCollection.matches('activeSessions_.*')
+      allow update: if activeSessionsCollection.matches('activeSessions_.+')
                     && isAuthenticated()
                     && resource.data.mitarbeiterId == request.auth.uid;
 
       // Mitarbeiter can delete their own session (logout)
-      allow delete: if activeSessionsCollection.matches('activeSessions_.*')
+      allow delete: if activeSessionsCollection.matches('activeSessions_.+')
                     && isAuthenticated()
                     && resource.data.mitarbeiterId == request.auth.uid;
 
@@ -223,7 +223,7 @@ service cloud.firestore {
       // Werkstatt & Admin can read all sessions (for monitoring dashboard)
       // CRITICAL: Uses request.auth.token (Custom Claims) instead of get()
       // to avoid "Missing or insufficient permissions" during query evaluation
-      allow read: if activeSessionsCollection.matches('activeSessions_.*')
+      allow read: if activeSessionsCollection.matches('activeSessions_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -242,7 +242,7 @@ service cloud.firestore {
     match /{serviceSessionsCollection}/{sessionId} {
       // Mitarbeiter can create their own service sessions
       // VALIDATION: Ensures werkstattId matches, mitarbeiterId is current user, status is 'active'
-      allow create: if serviceSessionsCollection.matches('serviceSessions_.*')
+      allow create: if serviceSessionsCollection.matches('serviceSessions_.+')
                     && isAuthenticated()
                     && request.resource.data.werkstattId == serviceSessionsCollection.split('_')[1]
                     && request.resource.data.mitarbeiterId == request.auth.uid
@@ -253,19 +253,19 @@ service cloud.firestore {
                     ]);
 
       // Mitarbeiter can read/update their own sessions
-      allow read, update: if serviceSessionsCollection.matches('serviceSessions_.*')
+      allow read, update: if serviceSessionsCollection.matches('serviceSessions_.+')
                           && isAuthenticated()
                           && resource.data.mitarbeiterId == request.auth.uid;
 
       // Mitarbeiter can delete their own sessions (logout)
-      allow delete: if serviceSessionsCollection.matches('serviceSessions_.*')
+      allow delete: if serviceSessionsCollection.matches('serviceSessions_.+')
                     && isAuthenticated()
                     && resource.data.mitarbeiterId == request.auth.uid;
 
       // 🆕 Use Custom Claims for query-compatible access check
       // Werkstatt & Admin can read all sessions (for monitoring dashboard)
       // CRITICAL: Uses request.auth.token (Custom Claims) instead of get()
-      allow read: if serviceSessionsCollection.matches('serviceSessions_.*')
+      allow read: if serviceSessionsCollection.matches('serviceSessions_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -285,7 +285,7 @@ service cloud.firestore {
       // Mitarbeiter can create their own vacation requests
       // VALIDATION: Ensures werkstattId matches, mitarbeiterId is current user, status is 'pending'
       // Uses Custom Claims mitarbeiterId (2-Stage Auth: Werkstatt Login → Mitarbeiter Selection)
-      allow create: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+      allow create: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.+')
                     && isAuthenticated()
                     && isMitarbeiter()
                     && isActive()
@@ -299,14 +299,14 @@ service cloud.firestore {
 
       // Mitarbeiter can read their own requests
       // Uses Custom Claims mitarbeiterId (2-Stage Auth: Werkstatt Login → Mitarbeiter Selection)
-      allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+      allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.+')
                   && isAuthenticated()
                   && isMitarbeiter()
                   && resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId;
 
       // Werkstatt & Admin can read all requests (for admin panel)
       // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
-      allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+      allow read: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -320,7 +320,7 @@ service cloud.firestore {
       // Admin can update requests (approve/reject)
       // VALIDATION: Only status, bearbeitetVon, bearbeitetAm, ablehnungsgrund can be changed
       // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
-      allow update: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+      allow update: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -340,13 +340,13 @@ service cloud.firestore {
 
       // Mitarbeiter can delete their own pending requests
       // USES CUSTOM CLAIMS: request.auth.token.selectedMitarbeiterId
-      allow delete: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+      allow delete: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.+')
                     && isAuthenticated()
                     && resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
                     && resource.data.status == 'pending';
 
       // Admin can delete any request
-      allow delete: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.*')
+      allow delete: if urlaubsAnfragenCollection.matches('urlaubsAnfragen_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -363,7 +363,7 @@ service cloud.firestore {
 
     match /{schichtTypenCollection}/{schichtTypId} {
       // Admin/Werkstatt: Full access (CRUD)
-      allow create, read, update, delete: if schichtTypenCollection.matches('schichtTypen_.*')
+      allow create, read, update, delete: if schichtTypenCollection.matches('schichtTypen_.+')
                                           && isAuthenticated()
                                           && (
                                             request.auth.token.role == 'werkstatt'
@@ -372,7 +372,7 @@ service cloud.firestore {
                                           );
 
       // Mitarbeiter: Read-only (können Schicht-Typen sehen)
-      allow read: if schichtTypenCollection.matches('schichtTypen_.*')
+      allow read: if schichtTypenCollection.matches('schichtTypen_.+')
                   && isMitarbeiter()
                   && isActive();
     }
@@ -386,7 +386,7 @@ service cloud.firestore {
     match /{schichtenCollection}/{schichtId} {
       // Admin/Werkstatt: Full access (CRUD)
       // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
-      allow create, read, update, delete: if schichtenCollection.matches('schichten_.*')
+      allow create, read, update, delete: if schichtenCollection.matches('schichten_.+')
                                           && isAuthenticated()
                                           && (
                                             request.auth.token.role == 'werkstatt'
@@ -400,7 +400,7 @@ service cloud.firestore {
       // RELAXED: Allow werkstatt OR mitarbeiter role to read all schichten
       // This allows SessionStorage-based mitarbeiter sessions (without Custom Claims)
       // to still access schichten via werkstatt role
-      allow read: if schichtenCollection.matches('schichten_.*')
+      allow read: if schichtenCollection.matches('schichten_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -417,7 +417,7 @@ service cloud.firestore {
     match /{schichtWuenscheCollection}/{wunschId} {
       // Mitarbeiter: Create own wünsche
       // VALIDATION: werkstattId match, mitarbeiterId is current user, status is 'pending'
-      allow create: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+      allow create: if schichtWuenscheCollection.matches('schichtWuensche_.+')
                     && isAuthenticated()
                     && isMitarbeiter()
                     && isActive()
@@ -430,14 +430,14 @@ service cloud.firestore {
                     ]);
 
       // Mitarbeiter: Read own wünsche
-      allow read: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+      allow read: if schichtWuenscheCollection.matches('schichtWuensche_.+')
                   && isMitarbeiter()
                   && isActive()
                   && resource.data.mitarbeiterId == request.auth.uid;
 
       // Admin/Werkstatt: Read all wünsche from their werkstatt
       // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
-      allow read: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+      allow read: if schichtWuenscheCollection.matches('schichtWuensche_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -452,7 +452,7 @@ service cloud.firestore {
       // Admin/Werkstatt: Update wünsche (accept/reject)
       // VALIDATION: Only status, bearbeitetAm can be changed
       // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
-      allow update: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+      allow update: if schichtWuenscheCollection.matches('schichtWuensche_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -471,14 +471,14 @@ service cloud.firestore {
                     );
 
       // Mitarbeiter: Delete own pending wünsche
-      allow delete: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+      allow delete: if schichtWuenscheCollection.matches('schichtWuensche_.+')
                     && isMitarbeiter()
                     && isActive()
                     && resource.data.mitarbeiterId == request.auth.uid
                     && resource.data.status == 'pending';
 
       // Admin: Delete any wunsch
-      allow delete: if schichtWuenscheCollection.matches('schichtWuensche_.*')
+      allow delete: if schichtWuenscheCollection.matches('schichtWuensche_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -497,7 +497,7 @@ service cloud.firestore {
       // Mitarbeiter: Create tausch-anfrage
       // RELAXED: Allows werkstatt role (for SessionStorage-based mitarbeiter login)
       // Custom Claims check is optional (only if setMitarbeiterClaims was called)
-      allow create: if schichtTauscheCollection.matches('schichtTausche_.*')
+      allow create: if schichtTauscheCollection.matches('schichtTausche_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -513,7 +513,7 @@ service cloud.firestore {
 
       // Mitarbeiter: Read own tausch-anfragen (mitarbeiter1 or mitarbeiter2)
       // RELAXED: Uses Custom Claims mitarbeiterId if available, otherwise allows all from same werkstatt
-      allow read: if schichtTauscheCollection.matches('schichtTausche_.*')
+      allow read: if schichtTauscheCollection.matches('schichtTausche_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -524,7 +524,7 @@ service cloud.firestore {
                   );
 
       // Admin/Werkstatt: Read all tausch-anfragen
-      allow read: if schichtTauscheCollection.matches('schichtTausche_.*')
+      allow read: if schichtTauscheCollection.matches('schichtTausche_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -535,7 +535,7 @@ service cloud.firestore {
       // Admin/Werkstatt: Update tausch-anfragen (approve/reject)
       // VALIDATION: Only status, bearbeitetAm can be changed
       // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
-      allow update: if schichtTauscheCollection.matches('schichtTausche_.*')
+      allow update: if schichtTauscheCollection.matches('schichtTausche_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -555,7 +555,7 @@ service cloud.firestore {
 
       // Mitarbeiter: Delete own pending tausch-anfragen
       // RELAXED: Allows deletion from same werkstatt if status is pending
-      allow delete: if schichtTauscheCollection.matches('schichtTausche_.*')
+      allow delete: if schichtTauscheCollection.matches('schichtTausche_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -565,7 +565,7 @@ service cloud.firestore {
                     && resource.data.status == 'pending';
 
       // Admin: Delete any tausch-anfrage
-      allow delete: if schichtTauscheCollection.matches('schichtTausche_.*')
+      allow delete: if schichtTauscheCollection.matches('schichtTausche_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -582,7 +582,7 @@ service cloud.firestore {
 
     match /{bereicheCollection}/{bereichId} {
       // Admin/Werkstatt: Full access (CRUD)
-      allow create, read, update, delete: if bereicheCollection.matches('bereiche_.*')
+      allow create, read, update, delete: if bereicheCollection.matches('bereiche_.+')
                                           && isAuthenticated()
                                           && (
                                             request.auth.token.role == 'werkstatt'
@@ -591,7 +591,7 @@ service cloud.firestore {
                                           );
 
       // Mitarbeiter: Read-only (können Bereiche sehen)
-      allow read: if bereicheCollection.matches('bereiche_.*')
+      allow read: if bereicheCollection.matches('bereiche_.+')
                   && isMitarbeiter()
                   && isActive();
     }
@@ -605,7 +605,7 @@ service cloud.firestore {
     match /{stundennachweiselCollection}/{nachweisId} {
       // Mitarbeiter can create their own hour records (status='draft')
       // USES CUSTOM CLAIMS: request.auth.token.selectedMitarbeiterId
-      allow create: if stundennachweiselCollection.matches('stundennachweise_.*')
+      allow create: if stundennachweiselCollection.matches('stundennachweise_.+')
                     && isAuthenticated()
                     && request.auth.token.selectedMitarbeiterId != null
                     && request.resource.data.werkstattId == stundennachweiselCollection.split('_')[1]
@@ -617,13 +617,13 @@ service cloud.firestore {
 
       // Mitarbeiter can read their own records
       // USES CUSTOM CLAIMS: request.auth.token.selectedMitarbeiterId
-      allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+      allow read: if stundennachweiselCollection.matches('stundennachweise_.+')
                   && isAuthenticated()
                   && request.auth.token.selectedMitarbeiterId != null
                   && resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId;
 
       // Admin/Werkstatt can read all records (for admin panel)
-      allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+      allow read: if stundennachweiselCollection.matches('stundennachweise_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -632,7 +632,7 @@ service cloud.firestore {
                   );
 
       // Admin/Werkstatt can delete records
-      allow delete: if stundennachweiselCollection.matches('stundennachweise_.*')
+      allow delete: if stundennachweiselCollection.matches('stundennachweise_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -644,7 +644,7 @@ service cloud.firestore {
       match /anmerkungen/{anmerkungId} {
         // Mitarbeiter can create anmerkungen for their own records
         // Parent document check: Ensure the stundennachweis belongs to the mitarbeiter
-        allow create: if stundennachweiselCollection.matches('stundennachweise_.*')
+        allow create: if stundennachweiselCollection.matches('stundennachweise_.+')
                       && isAuthenticated()
                       && request.auth.token.selectedMitarbeiterId != null
                       && get(/databases/$(database)/documents/$(stundennachweiselCollection)/$(nachweisId)).data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
@@ -653,13 +653,13 @@ service cloud.firestore {
                       ]);
 
         // Mitarbeiter can read anmerkungen for their own records
-        allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+        allow read: if stundennachweiselCollection.matches('stundennachweise_.+')
                     && isAuthenticated()
                     && request.auth.token.selectedMitarbeiterId != null
                     && get(/databases/$(database)/documents/$(stundennachweiselCollection)/$(nachweisId)).data.mitarbeiterId == request.auth.token.selectedMitarbeiterId;
 
         // Admin/Werkstatt can read all anmerkungen
-        allow read: if stundennachweiselCollection.matches('stundennachweise_.*')
+        allow read: if stundennachweiselCollection.matches('stundennachweise_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'
@@ -668,13 +668,13 @@ service cloud.firestore {
                     );
 
         // Mitarbeiter can delete their own anmerkungen
-        allow delete: if stundennachweiselCollection.matches('stundennachweise_.*')
+        allow delete: if stundennachweiselCollection.matches('stundennachweise_.+')
                       && isAuthenticated()
                       && request.auth.token.selectedMitarbeiterId != null
                       && get(/databases/$(database)/documents/$(stundennachweiselCollection)/$(nachweisId)).data.mitarbeiterId == request.auth.token.selectedMitarbeiterId;
 
         // Admin/Werkstatt can delete any anmerkungen
-        allow delete: if stundennachweiselCollection.matches('stundennachweise_.*')
+        allow delete: if stundennachweiselCollection.matches('stundennachweise_.+')
                       && isAuthenticated()
                       && (
                         request.auth.token.role == 'werkstatt'
@@ -949,24 +949,24 @@ service cloud.firestore {
       // Problem: isAdmin() → getUserRole() → get(.../users/...) → "Property role is undefined"
       // Solution: E2E authenticated users can read ALL fahrzeuge without role checks
       allow read: if request.auth != null
-                  && fahrzeugeCollection.matches('fahrzeuge_.*');
+                  && fahrzeugeCollection.matches('fahrzeuge_.+');
 
       // 🆕 2025-11-11: Steuerberater Read-Only Access (für Bilanz-Dashboard)
       // Security: Read-only for financial reports, NO write access
       // Access: All vehicles (completed & in-progress) for revenue calculations
-      allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
+      allow read: if fahrzeugeCollection.matches('fahrzeuge_.+')
                   && isSteuerberater()
                   && isActive();
 
       // Production Rule: Werkstatt & Mitarbeiter mit Rollenchecks
       // 🆕 2025-11-11: Includes 'rechnung' object updates (only Admin/Werkstatt can modify invoices)
-      allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
+      allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.+')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 
       // 🆕 BUGFIX 2025-11-04 (FIX #26, #33): Partners können ihre eigenen Fahrzeuge lesen
       // Security: Email-basiert (Direct Matching only - Cross-Collection-Check entfernt)
       // Removed komplexen partnerId Fallback der zu Permission Errors führte
-      allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
+      allow read: if fahrzeugeCollection.matches('fahrzeuge_.+')
                   && request.auth != null
                   && (
                     resource.data.partnerEmail == request.auth.token.email
@@ -975,7 +975,7 @@ service cloud.firestore {
 
       // 🆕 BUGFIX 2025-11-06: Partners können Fahrzeuge erstellen (für KVA-Annahme)
       // Security: Partner kann nur Fahrzeuge mit seiner eigenen Email erstellen
-      allow create: if fahrzeugeCollection.matches('fahrzeuge_.*')
+      allow create: if fahrzeugeCollection.matches('fahrzeuge_.+')
                     && isPartner()
                     && isActive()
                     && (
@@ -985,18 +985,18 @@ service cloud.firestore {
 
       // 🆕 BUGFIX 2025-11-06: Partners können Fahrzeuge abfragen (für Duplicate-Check + loadFahrzeugByAuftragsnummer)
       // Security: Bestehende READ-Regel (Zeile 329-334) filtert Ergebnisse auf eigene Fahrzeuge
-      allow list: if fahrzeugeCollection.matches('fahrzeuge_.*')
+      allow list: if fahrzeugeCollection.matches('fahrzeuge_.+')
                   && isPartner()
                   && isActive();
 
       // Subcollections: Fotos
       match /fotos/{photoId} {
-        allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.*')
+        allow read, write: if fahrzeugeCollection.matches('fahrzeuge_.+')
                            && (isAdmin() || (isMitarbeiter() && isActive()));
 
         // 🆕 BUGFIX 2025-11-04 (v2): Partners können Fotos ihrer eigenen Fahrzeuge lesen
         // Security: Email-basiert (kein Custom Claims check mehr)
-        allow read: if fahrzeugeCollection.matches('fahrzeuge_.*')
+        allow read: if fahrzeugeCollection.matches('fahrzeuge_.+')
                     && request.auth != null
                     && (
                       get(/databases/$(database)/documents/$(fahrzeugeCollection)/$(vehicleId)).data.partnerEmail == request.auth.token.email
@@ -1005,7 +1005,7 @@ service cloud.firestore {
 
         // 🆕 BUGFIX 2025-11-05: Partners können Fotos ihrer eigenen Fahrzeuge hochladen
         // Security: Email-basiert + isPartner() + isActive() checks
-        allow write: if fahrzeugeCollection.matches('fahrzeuge_.*')
+        allow write: if fahrzeugeCollection.matches('fahrzeuge_.+')
                      && isPartner()
                      && isActive()
                      && (
@@ -1022,33 +1022,33 @@ service cloud.firestore {
       // Problem: isAdmin() → getUserRole() → get(.../users/...) → "Property role is undefined"
       // Solution: E2E authenticated users can read ALL kunden without role checks
       allow read: if request.auth != null
-                  && kundenCollection.matches('kunden_.*');
+                  && kundenCollection.matches('kunden_.+');
 
       // 🆕 2025-11-11: Steuerberater can read customer data (für Umsatz-Analysen)
-      allow read: if kundenCollection.matches('kunden_.*')
+      allow read: if kundenCollection.matches('kunden_.+')
                   && isSteuerberater()
                   && isActive();
 
       // Production Rule: Werkstatt & Mitarbeiter mit Rollenchecks
-      allow read, write: if kundenCollection.matches('kunden_.*')
+      allow read, write: if kundenCollection.matches('kunden_.+')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 
       // 🆕 BUGFIX 2025-11-06: Partners können Kunden erstellen (für KVA-Annahme)
       // Security: Partner kann nur Kunden mit seiner eigenen Email erstellen
-      allow create: if kundenCollection.matches('kunden_.*')
+      allow create: if kundenCollection.matches('kunden_.+')
                     && isPartner()
                     && isActive()
                     && request.resource.data.email == request.auth.token.email;
 
       // 🆕 BUGFIX 2025-11-06: Partners können Kunden-Queries machen (für registriereKundenbesuch)
       // Security: Query erlaubt, aber nur Kunden mit Partner-Email werden zurückgegeben
-      allow list: if kundenCollection.matches('kunden_.*')
+      allow list: if kundenCollection.matches('kunden_.+')
                   && isPartner()
                   && isActive();
 
       // 🆕 BUGFIX 2025-11-06: Partners können eigene Kunden updaten (für Besuchs-Registrierung)
       // Security: Email-basierte Validierung - Partner kann nur Kunden mit seiner Email updaten
-      allow update: if kundenCollection.matches('kunden_.*')
+      allow update: if kundenCollection.matches('kunden_.+')
                     && isPartner()
                     && isActive()
                     && resource.data.email == request.auth.token.email
@@ -1057,17 +1057,17 @@ service cloud.firestore {
 
     // Mitarbeiter Collections: mitarbeiter_mosbach, mitarbeiter_heidelberg, etc.
     match /{mitarbeiterCollection}/{mitarbeiterId} {
-      allow read, write: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
+      allow read, write: if mitarbeiterCollection.matches('mitarbeiter_.+') && isAdmin();
 
       // 🆕 2025-11-11: Steuerberater can read employee data (für Lohnkosten-Berechnungen)
-      allow read: if mitarbeiterCollection.matches('mitarbeiter_.*')
+      allow read: if mitarbeiterCollection.matches('mitarbeiter_.+')
                   && isSteuerberater()
                   && isActive();
 
       // RELAXED: Allow werkstatt OR mitarbeiter role to read all mitarbeiter
       // This allows SessionStorage-based mitarbeiter sessions (without Custom Claims)
       // to still load team data via werkstatt role
-      allow read: if mitarbeiterCollection.matches('mitarbeiter_.*')
+      allow read: if mitarbeiterCollection.matches('mitarbeiter_.+')
                   && isAuthenticated()
                   && (
                     request.auth.token.role == 'werkstatt'
@@ -1078,7 +1078,7 @@ service cloud.firestore {
       // Required for Mitarbeiter-Login flow (auth-manager.js:341)
       // Security: Only lastLogin field can be modified, nothing else
       // Uses Custom Claims (Priority 1) or Firestore fallback (Priority 2)
-      allow update: if mitarbeiterCollection.matches('mitarbeiter_.*')
+      allow update: if mitarbeiterCollection.matches('mitarbeiter_.+')
                     && isAuthenticated()
                     && (
                       request.auth.token.role == 'werkstatt'  // Custom Claims (Priority 1)
@@ -1086,12 +1086,12 @@ service cloud.firestore {
                     )
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin']);
 
-      allow create, delete: if mitarbeiterCollection.matches('mitarbeiter_.*') && isAdmin();
+      allow create, delete: if mitarbeiterCollection.matches('mitarbeiter_.+') && isAdmin();
 
       // 🆕 Allow werkstatt accounts to create _init placeholder during setup
       // This is needed because setup-werkstatt.html auto-logs in as the NEW account
       // Only allows creation of the special _init document, not actual mitarbeiter records
-      allow create: if mitarbeiterCollection.matches('mitarbeiter_.*')
+      allow create: if mitarbeiterCollection.matches('mitarbeiter_.+')
                     && mitarbeiterId == '_init'
                     && isAuthenticated()
                     && request.resource.data.keys().hasOnly(['info', 'createdAt']);
@@ -1099,14 +1099,14 @@ service cloud.firestore {
 
     // Kalender Collections: kalender_mosbach, kalender_heidelberg, etc.
     match /{kalenderCollection}/{terminId} {
-      allow read, write: if kalenderCollection.matches('kalender_.*')
+      allow read, write: if kalenderCollection.matches('kalender_.+')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
-      allow read: if kalenderCollection.matches('kalender_.*') && isPartner() && isActive() && isOwner(resource.data.partnerId);
+      allow read: if kalenderCollection.matches('kalender_.+') && isPartner() && isActive() && isOwner(resource.data.partnerId);
     }
 
     // Material Requests Collections: materialRequests_mosbach, etc.
     match /{materialCollection}/{requestId} {
-      allow read, write: if materialCollection.matches('materialRequests_.*')
+      allow read, write: if materialCollection.matches('materialRequests_.+')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
     }
 
@@ -1131,18 +1131,18 @@ service cloud.firestore {
 
     match /{bestellungenCollection}/{bestellungId} {
       // Admins: Full access (alle Felder inkl. Preis-Änderungen)
-      allow read, write: if bestellungenCollection.matches('bestellungen_.*')
+      allow read, write: if bestellungenCollection.matches('bestellungen_.+')
                          && isAdmin();
 
       // Mitarbeiter: Read + Create (können Bestellungen aufgeben)
-      allow read, create: if bestellungenCollection.matches('bestellungen_.*')
+      allow read, create: if bestellungenCollection.matches('bestellungen_.+')
                           && isMitarbeiter()
                           && isActive();
 
       // Mitarbeiter: Update für operationale Felder (OHNE Preis-Felder)
       // Erlaubt: Status, Lieferant, Ankunftsdatum, Notizen
       // Verboten: preisTatsaechlich, preisGeschaetzt, einzelpreis, gesamtpreis
-      allow update: if bestellungenCollection.matches('bestellungen_.*')
+      allow update: if bestellungenCollection.matches('bestellungen_.+')
                     && isMitarbeiter()
                     && isActive()
                     && request.resource.data.diff(resource.data)
@@ -1183,18 +1183,18 @@ service cloud.firestore {
 
     // Einstellungen Collections: einstellungen_mosbach, etc.
     match /{einstellungenCollection}/{docId} {
-      allow read, write: if einstellungenCollection.matches('einstellungen_.*') && isAdmin();
-      allow read: if einstellungenCollection.matches('einstellungen_.*') && isMitarbeiter() && isActive();
+      allow read, write: if einstellungenCollection.matches('einstellungen_.+') && isAdmin();
+      allow read: if einstellungenCollection.matches('einstellungen_.+') && isMitarbeiter() && isActive();
     }
 
     // Partners Collections: partners_mosbach, partners_heidelberg, etc.
     match /{partnersCollection}/{partnerId} {
       // Admins & Mitarbeiter: Full access
-      allow read, write: if partnersCollection.matches('partners_.*')
+      allow read, write: if partnersCollection.matches('partners_.+')
                          && (isAdmin() || (isMitarbeiter() && isActive()));
 
       // Partners: Can read ONLY their own document
-      allow read: if partnersCollection.matches('partners_.*')
+      allow read: if partnersCollection.matches('partners_.+')
                   && isPartner()
                   && isActive()
                   && isOwner(partnerId);
@@ -1202,7 +1202,7 @@ service cloud.firestore {
       // Partners: Can update password/bonus + settings-fields (profil, benachrichtigungen)
       // 🆕 BUGFIX 2025-11-06: Added bonus-related fields für KVA-Annahme
       // 🆕 BUGFIX 2025-11-11: Added profil, benachrichtigungen, lastModifiedAt für Partner Settings
-      allow update: if partnersCollection.matches('partners_.*')
+      allow update: if partnersCollection.matches('partners_.+')
                     && isPartner()
                     && isActive()
                     && isOwner(partnerId)
@@ -1245,8 +1245,8 @@ service cloud.firestore {
 
     // Werkstatt-specific Chat Notifications: chatNotifications_mosbach, etc.
     match /{chatCollection}/{docId} {
-      allow read, write: if chatCollection.matches('chatNotifications_.*') && isAdmin();
-      allow read: if chatCollection.matches('chatNotifications_.*') && isMitarbeiter() && isActive();
+      allow read, write: if chatCollection.matches('chatNotifications_.+') && isAdmin();
+      allow read: if chatCollection.matches('chatNotifications_.+') && isMitarbeiter() && isActive();
     }
 
     // ============================================
@@ -1295,18 +1295,18 @@ service cloud.firestore {
 
     match /{anfrageCollection}/{anfrageId} {
       // Admins: Full access to all werkstätten anfragen
-      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+      allow read, write: if anfrageCollection.matches('partnerAnfragen_.+')
                          && (isAdmin());
 
       // Mitarbeiter: Full access to werkstatt-specific anfragen
-      allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+      allow read, write: if anfrageCollection.matches('partnerAnfragen_.+')
                          && ((isMitarbeiter() && isActive()));
 
       // Partners: Can create and read their own anfragen
-      allow create: if anfrageCollection.matches('partnerAnfragen_.*')
+      allow create: if anfrageCollection.matches('partnerAnfragen_.+')
                     && isPartner() && isActive();
 
-      allow read: if anfrageCollection.matches('partnerAnfragen_.*')
+      allow read: if anfrageCollection.matches('partnerAnfragen_.+')
                   && isPartner() && isActive()
                   && (
                     isOwner(resource.data.partnerId)  // Direct document reads by partnerId
@@ -1315,7 +1315,7 @@ service cloud.firestore {
 
       // 🆕 BUGFIX 2025-11-06: Partners können ihre eigenen Anfragen updaten (für KVA-Annahme)
       // Security: Partner kann nur seine eigenen Anfragen updaten (partnerEmail match)
-      allow update: if anfrageCollection.matches('partnerAnfragen_.*')
+      allow update: if anfrageCollection.matches('partnerAnfragen_.+')
                     && isPartner()
                     && isActive()
                     && (
@@ -1326,14 +1326,14 @@ service cloud.firestore {
       // Subcollection: Chat Messages
       match /chat/{messageId} {
         // Admins: Full access
-        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*') && isAdmin();
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.+') && isAdmin();
 
         // Mitarbeiter: Full access
-        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.+')
                            && isMitarbeiter() && isActive();
 
         // Partner: Can read/write messages in their own anfragen
-        allow read, write: if anfrageCollection.matches('partnerAnfragen_.*')
+        allow read, write: if anfrageCollection.matches('partnerAnfragen_.+')
                            && isPartner() && isActive()
                            && isOwner(get(/databases/$(database)/documents/$(anfrageCollection)/$(anfrageId)).data.partnerId);
       }
@@ -1346,26 +1346,26 @@ service cloud.firestore {
 
     match /{notificationsCollection}/{notificationId} {
       // Admins: Full access to all werkstätten notifications
-      allow read, write: if notificationsCollection.matches('mitarbeiterNotifications_.*') && isAdmin();
+      allow read, write: if notificationsCollection.matches('mitarbeiterNotifications_.+') && isAdmin();
 
       // Mitarbeiter: Can read and update their own notifications
       // Read: All notifications for this employee
       // Update: Mark as read, archive, etc.
-      allow read: if notificationsCollection.matches('mitarbeiterNotifications_.*')
+      allow read: if notificationsCollection.matches('mitarbeiterNotifications_.+')
                   && isMitarbeiter() && isActive()
                   && resource.data.mitarbeiterId == request.auth.uid;
 
-      allow update: if notificationsCollection.matches('mitarbeiterNotifications_.*')
+      allow update: if notificationsCollection.matches('mitarbeiterNotifications_.+')
                     && isMitarbeiter() && isActive()
                     && resource.data.mitarbeiterId == request.auth.uid
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'readAt']);
 
       // Cloud Functions: Can create new notifications (no auth context)
       // IMPORTANT: Cloud Functions run without authentication context
-      allow create: if notificationsCollection.matches('mitarbeiterNotifications_.*'); // Cloud Functions will validate
+      allow create: if notificationsCollection.matches('mitarbeiterNotifications_.+'); // Cloud Functions will validate
 
       // Delete: Only admins (cleanup old notifications)
-      allow delete: if notificationsCollection.matches('mitarbeiterNotifications_.*') && isAdmin();
+      allow delete: if notificationsCollection.matches('mitarbeiterNotifications_.+') && isAdmin();
     }
 
     // ============================================
@@ -1483,16 +1483,16 @@ service cloud.firestore {
       // ============================================
 
       // Admins can read all time tracking records
-      allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
+      allow read: if zeiterfassungCollection.matches('zeiterfassung_.+')
                   && isAdmin();
 
       // 🆕 2025-11-11: Steuerberater can read all time tracking (für Lohnkosten-Analysen)
-      allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
+      allow read: if zeiterfassungCollection.matches('zeiterfassung_.+')
                   && isSteuerberater()
                   && isActive();
 
       // Employees can read ONLY their own records
-      allow read: if zeiterfassungCollection.matches('zeiterfassung_.*')
+      allow read: if zeiterfassungCollection.matches('zeiterfassung_.+')
                   && isAuthenticated()
                   && request.auth.token.selectedMitarbeiterId != null
                   && resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
@@ -1503,7 +1503,7 @@ service cloud.firestore {
       // ============================================
 
       // Employees can create ONLY their own time tracking record
-      allow create: if zeiterfassungCollection.matches('zeiterfassung_.*')
+      allow create: if zeiterfassungCollection.matches('zeiterfassung_.+')
                     && isAuthenticated()
                     && request.auth.token.selectedMitarbeiterId != null
                     && request.resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
@@ -1517,7 +1517,7 @@ service cloud.firestore {
       // ============================================
 
       // Employees can update ONLY their own records AND only if status != "completed"
-      allow update: if zeiterfassungCollection.matches('zeiterfassung_.*')
+      allow update: if zeiterfassungCollection.matches('zeiterfassung_.+')
                     && isAuthenticated()
                     && request.auth.token.selectedMitarbeiterId != null
                     && resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId
@@ -1527,7 +1527,7 @@ service cloud.firestore {
                     && request.resource.data.datum == resource.data.datum;  // Can't change date
 
       // Admins can always update (e.g., to fix mistakes)
-      allow update: if zeiterfassungCollection.matches('zeiterfassung_.*')
+      allow update: if zeiterfassungCollection.matches('zeiterfassung_.+')
                     && isAdmin();
 
       // ============================================
@@ -1535,7 +1535,7 @@ service cloud.firestore {
       // ============================================
 
       // Only admins can delete time tracking records
-      allow delete: if zeiterfassungCollection.matches('zeiterfassung_.*')
+      allow delete: if zeiterfassungCollection.matches('zeiterfassung_.+')
                     && isAdmin();
     }
 
@@ -1561,11 +1561,11 @@ service cloud.firestore {
       // ============================================
 
       // Admin/Werkstatt: Full read access
-      allow read: if countersCollection.matches('counters_.*')
+      allow read: if countersCollection.matches('counters_.+')
                   && isAdmin();
 
       // Mitarbeiter (Active): Read-only access
-      allow read: if countersCollection.matches('counters_.*')
+      allow read: if countersCollection.matches('counters_.+')
                   && isMitarbeiter()
                   && isActive();
 
@@ -1575,11 +1575,11 @@ service cloud.firestore {
 
       // Admin/Werkstatt: Full write access for counter updates
       // Used for incrementing invoice numbers via Firestore Transactions
-      allow create, update: if countersCollection.matches('counters_.*')
+      allow create, update: if countersCollection.matches('counters_.+')
                             && isAdmin();
 
       // Delete: Only admins (rarely needed, but available for cleanup)
-      allow delete: if countersCollection.matches('counters_.*')
+      allow delete: if countersCollection.matches('counters_.+')
                     && isAdmin();
     }
 
