@@ -4605,6 +4605,29 @@ exports.generateAngebotPDF = functions
         );
       }
 
+      // ✅ BUG #10 FIX: Rollen-Prüfung (Cross-Tenant-Schutz)
+      const userRole = context.auth.token?.role;
+      const userWerkstattId = context.auth.token?.werkstattId;
+
+      if (userRole !== "werkstatt") {
+        console.error(`❌ Unauthorized role: ${userRole} tried to generate PDF`);
+        throw new functions.https.HttpsError(
+            "permission-denied",
+            "Nur Werkstatt-Admins dürfen Angebots-PDFs generieren"
+        );
+      }
+
+      // ✅ BUG #10 FIX: Werkstatt-ID-Prüfung
+      if (userWerkstattId !== data.werkstattId) {
+        console.error(`❌ Cross-tenant attempt: ${userWerkstattId} tried to access ${data.werkstattId}`);
+        throw new functions.https.HttpsError(
+            "permission-denied",
+            "Zugriff auf andere Werkstätten nicht erlaubt"
+        );
+      }
+
+      console.log(`✅ Auth verified: ${userRole} / ${userWerkstattId}`);
+
       try {
         // 1. Validation
         if (!data.entwurfId || !data.werkstattId) {
