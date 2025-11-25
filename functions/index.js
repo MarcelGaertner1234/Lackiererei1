@@ -100,6 +100,33 @@ function getOpenAIApiKey() {
 const SENDER_EMAIL = "Gaertner-marcel@web.de"; // MUSS in AWS SES verifiziert werden!
 
 // ============================================
+// HELPER: Get All Active Werkstätten (BUG #8 FIX)
+// ============================================
+
+/**
+ * Get all active werkstatt IDs dynamically from users collection
+ * Used by scheduled functions to process ALL werkstätten
+ *
+ * @returns {Promise<string[]>} Array of werkstattIds
+ */
+async function getActiveWerkstaetten() {
+  const usersSnapshot = await db.collection('users')
+    .where('role', '==', 'werkstatt')
+    .get();
+
+  const werkstaetten = [];
+  for (const userDoc of usersSnapshot.docs) {
+    const werkstattId = userDoc.data().werkstattId;
+    if (werkstattId) {
+      werkstaetten.push(werkstattId);
+    }
+  }
+
+  console.log(`📍 Found ${werkstaetten.length} active werkstätten: ${werkstaetten.join(', ') || '(none)'}`);
+  return werkstaetten;
+}
+
+// ============================================
 // FUNCTION 1: Status-Änderung → Email an Kunde
 // ============================================
 exports.onStatusChange = functions
@@ -2484,9 +2511,12 @@ exports.materialOrderOverdue = functions
         today.setHours(0, 0, 0, 0); // Start of today
         const todayTimestamp = admin.firestore.Timestamp.fromDate(today);
 
-        // Get all werkstätten (we need to check each one)
-        // For now, hardcoded to mosbach (can be extended to query users collection)
-        const werkstaetten = ["mosbach"]; // TODO: Query from users collection where role='werkstatt'
+        // ✅ BUG #8 FIX: Get all werkstätten dynamically
+        const werkstaetten = await getActiveWerkstaetten();
+        if (werkstaetten.length === 0) {
+          console.log("⚠️ No active werkstätten found - skipping check");
+          return { success: true, totalNotifications: 0 };
+        }
 
         let totalNotifications = 0;
 
@@ -4809,9 +4839,12 @@ exports.resetDailyRateLimits = onSchedule(
     console.log("🕛 [resetDailyRateLimits] Daily rate limit reset started");
 
     try {
-      // List of werkstätten to reset (hardcoded for now)
-      // TODO: Fetch dynamically from settings collection
-      const werkstaetten = ["mosbach", "heilbronn", "sinsheim"];
+      // ✅ BUG #8 FIX: Get all werkstätten dynamically
+      const werkstaetten = await getActiveWerkstaetten();
+      if (werkstaetten.length === 0) {
+        console.log("⚠️ [resetDailyRateLimits] No active werkstätten found");
+        return { success: true, totalResets: 0, timestamp: new Date().toISOString() };
+      }
 
       let totalResets = 0;
 
