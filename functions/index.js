@@ -4361,7 +4361,7 @@ exports.sendEntwurfEmail = functions
         // Log to Firestore
         await db.collection("email_logs").add({
           to: kundenEmail,
-          subject: msg.subject,
+          subject: subject,
           trigger: "entwurf_email",
           fahrzeugId: fahrzeugId || null,
           kennzeichen: kennzeichen,
