@@ -1208,6 +1208,13 @@
     <!-- PROBLEM: safeNavigate() called in onclick handlers (Lines 1112, 2163, 2174, 2184) but not defined -->
     <!-- SOLUTION: Load listener-registry.js which defines window.safeNavigate -->
     <script src="listener-registry.js"></script>
+
+    <!-- jsPDF für Lohnabrechnung PDF-Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- Lohnabrechnung Module -->
+    <script src="js/lohnberechnung.js"></script>
+    <script src="js/lohnabrechnung-pdf.js"></script>
 </head>
 <body class="has-ai-features">
     <!-- 🌓 THEME TOGGLE BUTTON - Fixed Top-Right -->
@@ -1950,7 +1957,10 @@
                     </div> <!-- End Tab 4: Bankverbindung -->
 
                     <!-- Buttons -->
-                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                        <button type="button" onclick="erstelleLohnabrechnungFuerMitarbeiter()" class="btn" style="background: linear-gradient(135deg, #27ae60, #2ecc71); color: white;">
+                            💰 Lohnabrechnung
+                        </button>
                         <button type="button" onclick="deleteMitarbeiter()" class="btn btn-danger">
                             🗑️ Löschen
                         </button>
@@ -3190,6 +3200,142 @@
             } catch (error) {
                 console.error('❌ Fehler beim Speichern:', error);
                 showToast('❌ Fehler beim Speichern. Siehe Console für Details.', 'error', 5000);
+            }
+        }
+
+        // ============================================
+        // LOHNABRECHNUNG FUNCTIONS
+        // ============================================
+
+        /**
+         * Erstellt Lohnabrechnung für den aktuell geöffneten Mitarbeiter
+         * Öffnet einen Auswahl-Dialog für Monat/Jahr
+         */
+        async function erstelleLohnabrechnungFuerMitarbeiter() {
+            const userId = document.getElementById('editId').value;
+            const user = mitarbeiterList.find(u => String(u.id) === String(userId));
+
+            if (!user) {
+                showToast('❌ Mitarbeiter nicht gefunden!', 'error', 3000);
+                return;
+            }
+
+            // Prüfen ob Lohnberechnung-Modul geladen ist
+            if (!window.Lohnberechnung || !window.LohnabrechnungPDF) {
+                showToast('❌ Lohnabrechnung-Module nicht geladen! Bitte Seite neu laden.', 'error', 5000);
+                return;
+            }
+
+            // Prüfen ob notwendige Daten vorhanden sind
+            if (!user.stundenlohn && !user.monatsgehalt) {
+                showToast('⚠️ Bitte erst Vergütung (Stundenlohn/Monatsgehalt) im Tab "Lohn & Steuer" eintragen!', 'warning', 5000);
+                switchEditTab('lohn');
+                return;
+            }
+
+            // Monat/Jahr Auswahl
+            const heute = new Date();
+            const aktuellerMonat = heute.getMonth() + 1;
+            const aktuellesJahr = heute.getFullYear();
+
+            // Simple Prompt für Monat (später kann ein Modal erstellt werden)
+            const monatInput = prompt(
+                `Für welchen Monat soll die Lohnabrechnung erstellt werden?\n\n` +
+                `Format: MM/YYYY (z.B. ${String(aktuellerMonat).padStart(2, '0')}/${aktuellesJahr})\n\n` +
+                `Leer lassen für aktuellen Monat:`,
+                `${String(aktuellerMonat).padStart(2, '0')}/${aktuellesJahr}`
+            );
+
+            if (monatInput === null) return; // Abgebrochen
+
+            let monat, jahr;
+            if (monatInput.trim() === '') {
+                monat = aktuellerMonat;
+                jahr = aktuellesJahr;
+            } else {
+                const parts = monatInput.split('/');
+                monat = parseInt(parts[0], 10);
+                jahr = parseInt(parts[1], 10);
+
+                if (isNaN(monat) || isNaN(jahr) || monat < 1 || monat > 12) {
+                    showToast('❌ Ungültiges Format! Bitte MM/YYYY eingeben.', 'error', 3000);
+                    return;
+                }
+            }
+
+            showToast(`💰 Berechne Lohnabrechnung für ${user.name}...`, 'info', 2000);
+
+            try {
+                // 1. Zeiterfassung für den Monat laden (optional)
+                let zeiterfassung = null;
+                try {
+                    const zeiterfassungCollection = window.getCollection('zeiterfassung');
+                    const startDatum = `${jahr}-${String(monat).padStart(2, '0')}-01`;
+                    const endDatum = monat === 12
+                        ? `${jahr + 1}-01-01`
+                        : `${jahr}-${String(monat + 1).padStart(2, '0')}-01`;
+
+                    const zeitSnapshot = await zeiterfassungCollection
+                        .where('mitarbeiterId', '==', userId)
+                        .where('datum', '>=', startDatum)
+                        .where('datum', '<', endDatum)
+                        .get();
+
+                    if (!zeitSnapshot.empty) {
+                        let gesamtStunden = 0;
+                        zeitSnapshot.forEach(doc => {
+                            const data = doc.data();
+                            gesamtStunden += parseFloat(data.stunden) || 0;
+                        });
+                        zeiterfassung = { gesamtStunden };
+                        console.log(`📊 Zeiterfassung geladen: ${gesamtStunden} Stunden`);
+                    }
+                } catch (zeitError) {
+                    console.warn('⚠️ Zeiterfassung konnte nicht geladen werden:', zeitError);
+                }
+
+                // 2. Lohnabrechnung berechnen
+                const abrechnung = await window.Lohnberechnung.berechne(user, monat, jahr, zeiterfassung);
+
+                // 3. Werkstatt-Daten laden
+                let werkstatt = {
+                    name: 'Auto-Lackierzentrum Mosbach',
+                    strasse: 'Pfalzgraf-Otto-Str. 34',
+                    plz: '74821',
+                    ort: 'Mosbach',
+                    telefon: '06261-8929866'
+                };
+
+                try {
+                    const settingsDoc = await db.collection('settings').doc('werkstatt').get();
+                    if (settingsDoc.exists) {
+                        werkstatt = { ...werkstatt, ...settingsDoc.data() };
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Werkstatt-Einstellungen nicht gefunden, nutze Defaults');
+                }
+
+                // 4. PDF generieren und öffnen
+                await window.LohnabrechnungPDF.oeffnen(abrechnung, werkstatt);
+
+                // 5. Abrechnung in Firestore speichern
+                const lohnabrechnungenCollection = window.getCollection('lohnabrechnungen');
+                const docId = `${userId}_${jahr}_${String(monat).padStart(2, '0')}`;
+
+                await lohnabrechnungenCollection.doc(docId).set({
+                    ...abrechnung,
+                    werkstattId: window.werkstattId,
+                    createdAt: new Date().toISOString(),
+                    createdBy: window.authManager?.getCurrentUser()?.name || 'System'
+                });
+
+                showToast(`✅ Lohnabrechnung für ${window.LohnabrechnungPDF.MONATSNAMEN[monat - 1]} ${jahr} erstellt!`, 'success', 4000);
+
+                console.log('✅ Lohnabrechnung erstellt und gespeichert:', docId);
+
+            } catch (error) {
+                console.error('❌ Fehler bei Lohnabrechnung:', error);
+                showToast(`❌ Fehler: ${error.message}`, 'error', 5000);
             }
         }
 
