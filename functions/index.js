@@ -112,6 +112,7 @@ const SENDER_EMAIL = "Gaertner-marcel@web.de"; // MUSS in AWS SES verifiziert we
 async function getActiveWerkstaetten() {
   const usersSnapshot = await db.collection('users')
     .where('role', '==', 'werkstatt')
+    .where('status', '==', 'active')
     .get();
 
   const werkstaetten = [];
@@ -329,22 +330,34 @@ exports.onStatusChange = functions
 // ============================================
 // FUNCTION 2: Neue Partner-Anfrage → Email an Werkstatt
 // ============================================
+// BUG #2 FIX: Changed from global "partnerAnfragen" to Multi-Tenant Collection Group Pattern
 exports.onNewPartnerAnfrage = functions
     .region("europe-west3")
     .runWith({
       secrets: [awsAccessKeyId, awsSecretAccessKey] // Bind AWS SES Credentials from Secret Manager
     })
     .firestore
-    .document("partnerAnfragen/{anfrageId}")
+    .document("{collectionId}/{anfrageId}")  // Collection Group Pattern - fängt ALLE Collections
     .onCreate(async (snap, context) => {
+      const collectionId = context.params.collectionId;
+
+      // FILTER: Nur partnerAnfragen_* Collections verarbeiten (Multi-Tenant)
+      if (!collectionId.startsWith("partnerAnfragen_")) {
+        return null;
+      }
+
+      // Werkstatt-ID aus Collection-Name extrahieren (z.B. "partnerAnfragen_mosbach" → "mosbach")
+      const werkstattId = collectionId.replace("partnerAnfragen_", "");
+
       const anfrage = snap.data();
 
-      console.log(`📧 New partner anfrage: ${anfrage.kennzeichen}`);
+      console.log(`📧 New partner anfrage in ${collectionId}: ${anfrage.kennzeichen}`);
 
-      // Get werkstatt admin emails
+      // Get werkstatt admin emails - NUR für diese Werkstatt!
       const adminsSnapshot = await db.collection("users")
           .where("role", "in", ["admin", "superadmin"])
           .where("status", "==", "active")
+          .where("werkstattId", "==", werkstattId)
           .get();
 
       const adminEmails = adminsSnapshot.docs.map((doc) => doc.data().email);
@@ -648,6 +661,25 @@ exports.aiAgentExecute = functions
 
         if (!message) {
           throw new functions.https.HttpsError("invalid-argument", "Message ist erforderlich");
+        }
+
+        // ============================================
+        // BUG #3 FIX: werkstattId Validation
+        // ============================================
+        // Validiere dass der User zur angegebenen Werkstatt gehört
+        if (context.auth && context.auth.uid) {
+          const userDoc = await db.collection('users').doc(context.auth.uid).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            const userWerkstatt = userData.werkstattId;
+            if (userWerkstatt && userWerkstatt !== werkstatt) {
+              console.error(`⚠️ werkstattId mismatch: User ${context.auth.uid} (${userWerkstatt}) tried to access ${werkstatt}`);
+              throw new functions.https.HttpsError(
+                "permission-denied",
+                `Zugriff verweigert: Sie haben keine Berechtigung für Werkstatt "${werkstatt}"`
+              );
+            }
+          }
         }
 
         console.log(`🤖 AI Agent Request von User ${userId || "anonym"}: "${message}"`);
