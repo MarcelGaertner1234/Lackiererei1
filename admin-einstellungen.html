@@ -729,6 +729,10 @@
                     <i data-feather="dollar-sign" style="width: 16px; height: 16px;"></i>
                     Steuer & Bank
                 </button>
+                <button class="tab" data-tab="services" onclick="switchTab('services')">
+                    <i data-feather="tool" style="width: 16px; height: 16px;"></i>
+                    Services
+                </button>
             </div>
         </div>
 
@@ -1545,6 +1549,69 @@
                 </button>
             </div>
         </div>
+
+        <!-- Section 9: Services (Aktivierte Leistungen) -->
+        <div id="section-services" class="content-section">
+            <div class="card">
+                <h2 class="card-title">
+                    <i data-feather="tool"></i>
+                    Aktivierte Services
+                </h2>
+                <p class="card-description">
+                    Wählen Sie aus, welche Services Ihre Werkstatt anbietet. Deaktivierte Services werden überall ausgeblendet:
+                    im Partner-Portal, in Dropdowns und Kanban-Tabs.
+                </p>
+
+                <div class="alert alert-info" style="margin-bottom: var(--space-5);">
+                    <i data-feather="info"></i>
+                    <div>
+                        <strong>Hinweis:</strong> Bestehende Fahrzeuge mit deaktivierten Services bleiben sichtbar.
+                        Nur neue Anfragen und Auswahlmöglichkeiten werden eingeschränkt.
+                    </div>
+                </div>
+
+                <div id="serviceToggles" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-3);">
+                    <!-- Services werden dynamisch geladen -->
+                    <div style="text-align: center; padding: var(--space-6); color: var(--color-text-tertiary);">
+                        <i data-feather="loader" style="animation: spin 1s linear infinite;"></i>
+                        <p>Lade Services...</p>
+                    </div>
+                </div>
+
+                <div class="btn-group" style="margin-top: var(--space-5);">
+                    <button class="btn btn-secondary" onclick="selectAllServices(true)">
+                        <i data-feather="check-square"></i>
+                        Alle aktivieren
+                    </button>
+                    <button class="btn btn-secondary" onclick="selectAllServices(false)">
+                        <i data-feather="square"></i>
+                        Alle deaktivieren
+                    </button>
+                    <button class="btn btn-primary" onclick="saveServiceSettings()">
+                        <i data-feather="save"></i>
+                        Services speichern
+                    </button>
+                </div>
+            </div>
+
+            <!-- Statistik-Karte -->
+            <div class="card">
+                <h2 class="card-title">
+                    <i data-feather="bar-chart-2"></i>
+                    Service-Statistik
+                </h2>
+                <div id="serviceStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-4);">
+                    <div class="stat-box" style="background: var(--color-surface-hover); padding: var(--space-4); border-radius: var(--radius-lg); text-align: center;">
+                        <div id="activeServicesCount" style="font-size: 32px; font-weight: 700; color: var(--color-success);">12</div>
+                        <div style="font-size: 14px; color: var(--color-text-secondary);">Aktive Services</div>
+                    </div>
+                    <div class="stat-box" style="background: var(--color-surface-hover); padding: var(--space-4); border-radius: var(--radius-lg); text-align: center;">
+                        <div id="inactiveServicesCount" style="font-size: 32px; font-weight: 700; color: var(--color-text-tertiary);">0</div>
+                        <div style="font-size: 14px; color: var(--color-text-secondary);">Deaktivierte Services</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Firebase SDK -->
@@ -1562,6 +1629,9 @@
 
     <!-- Settings Manager -->
     <script src="js/settings-manager.js?v=fix002"></script>
+
+    <!-- Service Types Registry (für aktivierte Services) -->
+    <script src="js/service-types.js"></script>
 
     <!-- KI-Chat-Assistent -->
     <div id="aiChatWidget"></div>
@@ -1834,6 +1904,9 @@
                     document.getElementById('footerText').value = currentSettings.rechnungsConfig.footerText || 'Vielen Dank für Ihr Vertrauen!';
                 }
 
+                // 🔧 2025-11-25: Load enabled services
+                loadServiceToggles();
+
                 showAlert('✅ Einstellungen geladen', 'success');
                 console.log('✅ Einstellungen geladen');
             } catch (error) {
@@ -1930,9 +2003,15 @@
                         verwendungszweckPrefix: 'RE-',
                         footerText: document.getElementById('footerText').value
                     },
+                    // 🔧 2025-11-25: Aktivierte Services
+                    enabledServices: currentSettings.enabledServices || {
+                        lackier: true, reifen: true, mechanik: true, pflege: true,
+                        tuev: true, versicherung: true, glas: true, klima: true,
+                        dellen: true, folierung: true, steinschutz: true, werbebeklebung: true
+                    },
                     createdAt: currentSettings.createdAt,
                     updatedAt: new Date().toISOString(),
-                    version: '1.1.0'  // 🔧 2025-11-18: Version erhöht (neue Felder)
+                    version: '1.2.0'  // 🔧 2025-11-25: enabledServices für Service-Konfiguration
                 };
 
                 const success = await window.settingsManager.saveSettings(settings);
@@ -2430,6 +2509,144 @@
 
             if (typeof feather !== 'undefined') {
                 feather.replace();
+            }
+        }
+
+        // ============================================
+        // SERVICE CONFIGURATION (2025-11-25)
+        // ============================================
+
+        /**
+         * Load service toggles dynamically from SERVICE_TYPE_CONFIG
+         */
+        function loadServiceToggles() {
+            const container = document.getElementById('serviceToggles');
+            if (!container) return;
+
+            // Check if SERVICE_TYPE_CONFIG is available
+            if (!window.SERVICE_TYPE_CONFIG) {
+                console.error('❌ SERVICE_TYPE_CONFIG nicht verfügbar');
+                container.innerHTML = '<p style="color: var(--color-error);">Fehler: Service-Konfiguration nicht geladen</p>';
+                return;
+            }
+
+            // Get current enabledServices from settings (default: all enabled)
+            const enabledServices = currentSettings?.enabledServices || {};
+
+            // Generate toggle HTML for each service
+            let html = '';
+            Object.entries(window.SERVICE_TYPE_CONFIG).forEach(([key, config]) => {
+                // Default: enabled (true) unless explicitly set to false
+                const isEnabled = enabledServices[key] !== false;
+
+                html += `
+                    <div class="toggle-group" data-service="${key}">
+                        <div>
+                            <span class="toggle-label">${config.icon} ${config.displayName}</span>
+                            <p style="font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px;">
+                                ${config.description}
+                            </p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="service-${key}" ${isEnabled ? 'checked' : ''} onchange="updateServiceStats()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+
+            // Re-render Feather icons
+            if (typeof feather !== 'undefined') {
+                feather.replace();
+            }
+
+            // Update statistics
+            updateServiceStats();
+
+            console.log('✅ Service-Toggles geladen');
+        }
+
+        /**
+         * Update service statistics display
+         */
+        function updateServiceStats() {
+            const activeCount = document.querySelectorAll('#serviceToggles input[type="checkbox"]:checked').length;
+            const totalCount = Object.keys(window.SERVICE_TYPE_CONFIG || {}).length;
+            const inactiveCount = totalCount - activeCount;
+
+            const activeEl = document.getElementById('activeServicesCount');
+            const inactiveEl = document.getElementById('inactiveServicesCount');
+
+            if (activeEl) activeEl.textContent = activeCount;
+            if (inactiveEl) inactiveEl.textContent = inactiveCount;
+        }
+
+        /**
+         * Select/Deselect all services
+         * @param {boolean} selectAll - true to select all, false to deselect all
+         */
+        function selectAllServices(selectAll) {
+            const checkboxes = document.querySelectorAll('#serviceToggles input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = selectAll;
+            });
+            updateServiceStats();
+
+            if (selectAll) {
+                showAlert('✅ Alle Services aktiviert (noch nicht gespeichert)', 'info');
+            } else {
+                showAlert('⚠️ Alle Services deaktiviert (noch nicht gespeichert)', 'warning');
+            }
+        }
+
+        /**
+         * Save service settings to Firestore
+         */
+        async function saveServiceSettings() {
+            try {
+                console.log('💾 Speichere Service-Einstellungen...');
+                showAlert('Speichere Services...', 'info');
+
+                // Collect enabled services from checkboxes
+                const enabledServices = {};
+                Object.keys(window.SERVICE_TYPE_CONFIG || {}).forEach(key => {
+                    const checkbox = document.getElementById(`service-${key}`);
+                    enabledServices[key] = checkbox ? checkbox.checked : true;
+                });
+
+                // Count enabled services
+                const enabledCount = Object.values(enabledServices).filter(v => v).length;
+
+                // Warn if all services disabled
+                if (enabledCount === 0) {
+                    if (!confirm('⚠️ WARNUNG: Alle Services sind deaktiviert!\n\nDies bedeutet, dass keine neuen Anfragen erstellt werden können.\n\nTrotzdem speichern?')) {
+                        showAlert('⚠️ Abgebrochen', 'warning');
+                        return;
+                    }
+                }
+
+                // Update section in Firestore
+                const success = await window.settingsManager.updateSection('enabledServices', enabledServices);
+
+                if (success) {
+                    // Update local cache
+                    currentSettings.enabledServices = enabledServices;
+
+                    // Invalidate service cache (so other pages reload)
+                    if (typeof window.invalidateServiceCache === 'function') {
+                        window.invalidateServiceCache();
+                    }
+
+                    showAlert(`✅ ${enabledCount} von 12 Services aktiviert`, 'success');
+                    console.log('✅ Service-Einstellungen gespeichert:', enabledServices);
+                } else {
+                    showAlert('❌ Fehler beim Speichern', 'danger');
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern der Services:', error);
+                showAlert('Fehler: ' + error.message, 'danger');
             }
         }
 

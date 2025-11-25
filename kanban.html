@@ -1976,6 +1976,7 @@
     <!-- Auth Manager für Multi-Tenant Support -->
     <script src="js/auth-manager.js"></script>
     <script src="js/settings-manager.js"></script>
+    <script src="js/service-types.js"></script>
     <script src="js/permissions-helper.js"></script>
 
     <!-- Event System für Real-Time Updates (Phase 3) -->
@@ -2519,6 +2520,40 @@
         // firebaseApp is provided by firebase-config.js as window.firebaseApp
         let currentProcess = 'alle'; // Aktuell gewählter Prozess (synchronisiert mit Dropdown Line 817)
         let unsubscribeListener = null; // Realtime Listener cleanup function
+
+        // 🔧 2025-11-25: Filter disabled services from process dropdown
+        function filterDisabledProcesses(enabledServices) {
+            console.log('🔧 [KANBAN] Filtere deaktivierte Prozesse:', enabledServices);
+
+            const dropdown = document.getElementById('processSelect');
+            if (!dropdown) return;
+
+            Array.from(dropdown.options).forEach(option => {
+                const serviceKey = option.value;
+                // Skip "alle" option
+                if (serviceKey === 'alle') return;
+
+                // Hide option if explicitly disabled (false)
+                if (enabledServices[serviceKey] === false) {
+                    option.style.display = 'none';
+                    option.disabled = true;
+                    console.log(`   ❌ Prozess: ${serviceKey} ausgeblendet`);
+                }
+            });
+
+            // If current selection is disabled, switch to "alle"
+            const currentValue = dropdown.value;
+            if (currentValue !== 'alle' && enabledServices[currentValue] === false) {
+                dropdown.value = 'alle';
+                currentProcess = 'alle';
+                renderKanbanBoard();
+                console.log('   🔄 Prozess: Wechsel zu "alle"');
+            }
+
+            // Count remaining visible services
+            const enabledCount = Object.values(enabledServices).filter(v => v !== false).length;
+            console.log(`✅ [KANBAN] ${enabledCount}/12 Prozesse aktiv`);
+        }
 
         // Prozess-Definitionen (Service-spezifische Schritte)
         const processDefinitions = {
@@ -3076,6 +3111,11 @@
                                 }
 
                                 console.log('✅ [KANBAN] Werkstatt-Branding geladen:', settings.profil.name);
+                            }
+
+                            // 🔧 2025-11-25: Filter disabled services from process dropdown
+                            if (settings?.enabledServices) {
+                                filterDisabledProcesses(settings.enabledServices);
                             }
                         } catch (error) {
                             console.warn('⚠️ [KANBAN] Werkstatt-Branding konnte nicht geladen werden:', error);

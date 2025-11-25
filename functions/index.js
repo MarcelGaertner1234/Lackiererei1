@@ -623,6 +623,13 @@ function getServiceLabel(serviceTyp) {
     "pflege": "Fahrzeugpflege",
     "tuev": "TÜV/AU",
     "versicherung": "Versicherung",
+    // 🔧 2025-11-25: 6 fehlende Services hinzugefügt
+    "glas": "Glas-Reparatur",
+    "klima": "Klima-Service",
+    "dellen": "Dellen-Drückung",
+    "folierung": "Fahrzeugfolierung",
+    "steinschutz": "Steinschutzfolie",
+    "werbebeklebung": "Fahrzeugbeschriftung",
   };
   return labels[serviceTyp] || serviceTyp;
 }
@@ -1247,7 +1254,14 @@ async function executeCreateFahrzeug(params, werkstatt) {
       "mechanik": "neu",
       "pflege": "neu",
       "tuev": "neu",
-      "versicherung": "neu"
+      "versicherung": "neu",
+      // 🔧 2025-11-25: 6 fehlende Services
+      "glas": "neu",
+      "klima": "neu",
+      "dellen": "neu",
+      "folierung": "neu",
+      "steinschutz": "neu",
+      "werbebeklebung": "neu"
     };
     return initialStatus[serviceTyp] || "neu";
   }
@@ -1905,7 +1919,10 @@ async function executeGetStatistiken(params, werkstatt) {
 
     // Service-Typ Verteilung (nur wenn kein Service-Filter)
     if (!serviceTyp) {
-      const serviceTypen = ["Lackierung", "Reifen", "Mechanik", "Pflege", "TÜV", "Versicherung"];
+      const serviceTypen = [
+        "Lackierung", "Reifen", "Mechanik", "Pflege", "TÜV", "Versicherung",
+        "Glas", "Klima", "Dellen", "Steinschutz", "Folierung", "Werbebeklebung"
+      ];
       serviceTypen.forEach(typ => {
         stats.service_verteilung[typ] = filteredFahrzeuge.filter(f => f.serviceTyp === typ).length;
       });

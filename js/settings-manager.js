@@ -108,9 +108,25 @@ const DEFAULT_SETTINGS = {
         verwendungszweckPrefix: 'RE-', // Prefix für Verwendungszweck
         footerText: 'Vielen Dank für Ihr Vertrauen!'
     },
+    // 🔧 2025-11-25: Aktivierte Services (Werkstatt-Service-Konfiguration)
+    // Default: alle 12 Services aktiviert - Werkstatt kann einzelne deaktivieren
+    enabledServices: {
+        lackier: true,          // Lackierung
+        reifen: true,           // Reifen & Räder
+        mechanik: true,         // Mechanik
+        pflege: true,           // Fahrzeugpflege
+        tuev: true,             // TÜV/HU/AU
+        versicherung: true,     // Versicherungsschäden
+        glas: true,             // Glasreparatur
+        klima: true,            // Klimaservice
+        dellen: true,           // Dellenentfernung (PDR)
+        folierung: true,        // Fahrzeugfolierung
+        steinschutz: true,      // Steinschlagschutz
+        werbebeklebung: true    // Werbebeklebung
+    },
     createdAt: null,
     updatedAt: null,
-    version: '1.1.0'  // 🔧 2025-11-18: Version erhöht (neue Felder)
+    version: '1.2.0'  // 🔧 2025-11-25: enabledServices für Service-Konfiguration
 };
 
 // ============================================

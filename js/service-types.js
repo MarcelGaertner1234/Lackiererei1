@@ -378,6 +378,160 @@ window.normalizeAndValidateServiceType = function(input, fallbackDefault = 'lack
 };
 
 // ============================================================================
+// ENABLED SERVICES MANAGEMENT (Werkstatt-Service-Konfiguration)
+// ============================================================================
+
+/**
+ * Cache for enabled services (performance optimization)
+ * @private
+ */
+let _enabledServicesCache = null;
+let _enabledServicesCacheTime = 0;
+const ENABLED_SERVICES_CACHE_TTL = 60000; // 1 Minute Cache TTL
+
+/**
+ * Get list of enabled services for current werkstatt
+ * Uses caching for performance (1 minute TTL)
+ *
+ * @returns {Promise<Array<string>>} - Array of enabled service type keys
+ *
+ * @example
+ * const enabled = await getEnabledServices();
+ * // → ['lackier', 'reifen', 'mechanik'] (only enabled ones)
+ */
+window.getEnabledServices = async function() {
+    // Cache prüfen
+    if (_enabledServicesCache && (Date.now() - _enabledServicesCacheTime) < ENABLED_SERVICES_CACHE_TTL) {
+        return _enabledServicesCache;
+    }
+
+    try {
+        // Warte auf Settings Manager
+        if (!window.settingsManager) {
+            console.warn('⚠️ [getEnabledServices] Settings Manager nicht verfügbar, alle Services aktiviert');
+            return Object.values(window.SERVICE_TYPES);
+        }
+
+        const settings = await window.settingsManager.loadSettings();
+        const enabledServices = settings?.enabledServices || {};
+
+        // Filter: Nur Services mit enabled=true (default = true wenn nicht explizit false)
+        _enabledServicesCache = Object.values(window.SERVICE_TYPES)
+            .filter(serviceTyp => enabledServices[serviceTyp] !== false);
+
+        _enabledServicesCacheTime = Date.now();
+
+        if (window.DEBUG) {
+            console.log('✅ [getEnabledServices] Cache aktualisiert:', _enabledServicesCache);
+        }
+
+        return _enabledServicesCache;
+    } catch (error) {
+        console.error('❌ [getEnabledServices] Fehler:', error);
+        // Fallback: Alle Services aktiviert
+        return Object.values(window.SERVICE_TYPES);
+    }
+};
+
+/**
+ * Check if a specific service is enabled for current werkstatt
+ *
+ * @param {string} serviceTyp - Service type to check (canonical value)
+ * @returns {Promise<boolean>} - True if enabled, false if disabled
+ *
+ * @example
+ * const isEnabled = await isServiceEnabled('folierung');
+ * if (!isEnabled) {
+ *     toast.error('Service nicht verfügbar');
+ *     safeNavigate('service-auswahl.html');
+ * }
+ */
+window.isServiceEnabled = async function(serviceTyp) {
+    if (!serviceTyp) return false;
+
+    const enabled = await window.getEnabledServices();
+    return enabled.includes(serviceTyp);
+};
+
+/**
+ * Get all service types that are enabled, with full config data
+ *
+ * @returns {Promise<Array<Object>>} - Array of enabled service type configs
+ *
+ * @example
+ * const services = await getEnabledServiceConfigs();
+ * services.forEach(s => console.log(s.label)); // → '🎨 Lackierung', etc.
+ */
+window.getEnabledServiceConfigs = async function() {
+    const enabled = await window.getEnabledServices();
+
+    return Object.entries(window.SERVICE_TYPE_CONFIG)
+        .filter(([key]) => enabled.includes(key))
+        .map(([key, config]) => ({ ...config, key }))
+        .sort((a, b) => a.priority - b.priority);
+};
+
+/**
+ * Invalidate enabled services cache
+ * Call this when settings are changed (especially enabledServices)
+ *
+ * @example
+ * // Nach dem Speichern von Einstellungen:
+ * await settingsManager.saveSettings(newSettings);
+ * invalidateServiceCache();
+ */
+window.invalidateServiceCache = function() {
+    _enabledServicesCache = null;
+    _enabledServicesCacheTime = 0;
+    if (window.DEBUG) {
+        console.log('🔄 [invalidateServiceCache] Enabled Services Cache geleert');
+    }
+};
+
+/**
+ * Check service availability and redirect if disabled
+ * Use at the start of service-specific forms
+ *
+ * @param {string} serviceTyp - Service type to check
+ * @param {string} redirectUrl - URL to redirect to if disabled (default: 'service-auswahl.html')
+ * @returns {Promise<boolean>} - True if enabled (safe to continue), false if redirected
+ *
+ * @example
+ * // Am Anfang von mechanik-anfrage.html:
+ * if (!await checkServiceAvailability('mechanik')) return;
+ */
+window.checkServiceAvailability = async function(serviceTyp, redirectUrl = 'service-auswahl.html') {
+    const isEnabled = await window.isServiceEnabled(serviceTyp);
+
+    if (!isEnabled) {
+        const config = window.getServiceTypeConfig(serviceTyp);
+        const serviceName = config ? config.displayName : serviceTyp;
+
+        console.warn(`⚠️ [checkServiceAvailability] Service "${serviceName}" ist deaktiviert`);
+
+        // Toast anzeigen wenn verfügbar
+        if (window.toast && typeof window.toast.error === 'function') {
+            window.toast.error(`Service "${serviceName}" ist für diese Werkstatt nicht verfügbar`);
+        } else if (typeof showToast === 'function') {
+            showToast(`Service "${serviceName}" ist für diese Werkstatt nicht verfügbar`, 'error');
+        }
+
+        // Redirect mit safeNavigate wenn verfügbar, sonst location.href
+        setTimeout(() => {
+            if (typeof safeNavigate === 'function') {
+                safeNavigate(redirectUrl);
+            } else {
+                window.location.href = redirectUrl;
+            }
+        }, 1500);
+
+        return false;
+    }
+
+    return true;
+};
+
+// ============================================================================
 // INITIALIZATION
 // ============================================================================
 
@@ -385,6 +539,7 @@ if (window.DEBUG) {
     console.log('✅ [service-types.js] Service Type Registry loaded', {
         canonicalTypes: Object.keys(window.SERVICE_TYPES).length,
         aliases: Object.keys(window.SERVICE_TYPE_ALIASES).length,
-        configs: Object.keys(window.SERVICE_TYPE_CONFIG).length
+        configs: Object.keys(window.SERVICE_TYPE_CONFIG).length,
+        enabledServicesHelpers: ['getEnabledServices', 'isServiceEnabled', 'getEnabledServiceConfigs', 'invalidateServiceCache', 'checkServiceAvailability']
     });
 }
