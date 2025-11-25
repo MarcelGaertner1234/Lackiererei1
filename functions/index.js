@@ -4628,6 +4628,8 @@ exports.generateAngebotPDF = functions
 
       console.log(`✅ Auth verified: ${userRole} / ${userWerkstattId}`);
 
+      // ✅ BUG #18 FIX: Declare browser outside try for finally cleanup
+      let browser;
       try {
         // 1. Validation
         if (!data.entwurfId || !data.werkstattId) {
@@ -4668,7 +4670,7 @@ exports.generateAngebotPDF = functions
         const puppeteer = require("puppeteer-core");
         const chromium = require("@sparticuz/chromium");
 
-        const browser = await puppeteer.launch({
+        browser = await puppeteer.launch({
           args: chromium.args,
           defaultViewport: chromium.defaultViewport,
           executablePath: await chromium.executablePath(),
@@ -4690,6 +4692,7 @@ exports.generateAngebotPDF = functions
         });
 
         await browser.close();
+        browser = null;  // Prevent double-close in finally block
         console.log("✅ PDF erfolgreich generiert");
 
         // 5. Upload PDF to Firebase Storage (NEW: Partner Portal Display)
@@ -4766,6 +4769,16 @@ exports.generateAngebotPDF = functions
             "internal",
             `PDF-Generierung fehlgeschlagen: ${error.message}`
         );
+      } finally {
+        // ✅ BUG #18 FIX: Ensure browser is always closed to prevent memory leaks
+        if (browser) {
+          try {
+            await browser.close();
+            console.log("🧹 Browser cleanup: closed successfully");
+          } catch (closeError) {
+            console.error("⚠️ Browser cleanup failed (non-critical):", closeError);
+          }
+        }
       }
     });
 
