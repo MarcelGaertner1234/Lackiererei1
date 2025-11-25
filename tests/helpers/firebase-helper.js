@@ -281,9 +281,10 @@ async function createVehicleDirectly(page, vehicleData) {
       status: 'angenommen',
       prozessStatus: 'angenommen',
 
-      // Timestamps
+      // Timestamps - CRITICAL: Use 'createdAt' (not 'erstelltAm') for getAllFahrzeuge() orderBy()
       annahmeDatum: new Date().toISOString(),
       erstelltAm: new Date().toISOString(),
+      createdAt: Date.now(),  // CRITICAL: Required for getAllFahrzeuge() orderBy('createdAt', 'desc')
 
       // Required fields (placeholder values for integration tests)
       farbnummer: data.farbnummer || 'LC9Z',
@@ -433,22 +434,44 @@ async function loginAsTestAdmin(page) {
 
     // Step 2: Set admin role in Firestore /users collection
     // Using merge: true to allow repeated calls (e.g., in beforeEach hooks)
+    // CRITICAL FIX: Security Rules need this document to exist BEFORE any operations
     await page.evaluate(async (uid) => {
       const db = window.firebaseApp.db();
 
       try {
         // Use merge: true so this works even if user document already exists
-        await db.collection('users').doc(uid).set({
+        // CRITICAL FIX: Security Rules use getUserStatus() which checks 'status' field (NOT 'isActive')
+        // Also need 'status: active' for isActive() helper function
+        const userData = {
           uid: uid,
           email: 'admin@test.de',
           role: 'admin',
           werkstattId: 'mosbach',
-          isActive: true,
+          status: 'active',  // CRITICAL: Security Rules expect 'status' field
+          isActive: true,    // Keep for backward compatibility
           updatedAt: new Date().toISOString(),
           displayName: 'E2E Test Admin'
-        }, { merge: true });
+        };
 
+        // Write user document
+        await db.collection('users').doc(uid).set(userData, { merge: true });
         console.log('✅ Firestore: Admin role set in /users collection');
+
+        // CRITICAL: Wait for Firestore to index the document (emulator timing)
+        // This delay ensures Security Rules can find the user document
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Verify the document was written correctly
+        const verifyDoc = await db.collection('users').doc(uid).get();
+        if (!verifyDoc.exists) {
+          throw new Error('User document was not created!');
+        }
+        const verifyData = verifyDoc.data();
+        if (verifyData.role !== 'admin') {
+          throw new Error(`User role is '${verifyData.role}' instead of 'admin'!`);
+        }
+        console.log('✅ Firestore: User document verified - role:', verifyData.role);
+
         return true;
       } catch (error) {
         console.error('❌ Firestore write failed:', error.message);

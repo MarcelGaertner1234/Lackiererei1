@@ -44,7 +44,7 @@ NEXT_AGENT_MANUAL_TESTING_PROMPT.md
 cd "Marketing/06_Digitale_Tools/Fahrzeugannahme_App"
 
 # STEP 2: Run tests FIRST (MANDATORY!)
-npm run test:all  # Expected: 23/23 tests passed (100%)
+npm run test:all  # Expected: 49/49 tests passed (100%)
 
 # STEP 3: If 100% pass → Proceed with changes
 # STEP 4: After changes → Run tests again
@@ -68,8 +68,8 @@ npm run test:all  # Expected: 23/23 tests passed (100%)
 
 ### Testing (ALWAYS run before coding!)
 ```bash
-npm run test:all          # ✅ REQUIRED: 23 Hybrid Tests (~46s, 100% pass rate)
-npm run test:integration  # 10 Integration tests (Firestore-based, ~2s each)
+npm run test:all          # ✅ REQUIRED: 49 Hybrid Tests (~1.5min, 100% pass rate)
+npm run test:integration  # 36 Integration tests (Firestore-based, ~2s each)
 npm run test:smoke        # 13 Smoke tests (UI accessibility)
 npm run test:headed       # Run with browser UI visible
 npm run test:ui           # Interactive Playwright UI mode
@@ -478,7 +478,7 @@ Dokumentierte Fehler-Patterns mit Lösungen (basierend auf 15+ Debugging-Session
 
 ### 1. Testing (NON-NEGOTIABLE)
 ```bash
-npm run test:all  # MUST show 23/23 passed (100%)
+npm run test:all  # MUST show 49/49 passed (100%)
 ```
 - [ ] All tests pass (100% success rate)
 - [ ] No console errors during test run
@@ -2335,7 +2335,7 @@ curl -I https://marcelgaertner1234.github.io/Lackiererei1/
 **1. Before Making Changes:**
 ```bash
 cd "Marketing/06_Digitale_Tools/Fahrzeugannahme_App"
-npm run test:all  # ✅ MUST pass 23/23 tests
+npm run test:all  # ✅ MUST pass 49/49 tests
 ```
 ❌ **If tests fail:** Fix the app BEFORE making new changes!
 
@@ -2355,7 +2355,7 @@ npm run test:all  # ✅ MUST pass 23/23 tests
 
 **4. Before Committing:**
 ```bash
-npm run test:all  # ✅ MUST still pass 23/23 tests
+npm run test:all  # ✅ MUST still pass 49/49 tests
 git add .
 git commit -m "type: description
 
@@ -2921,7 +2921,7 @@ function safeNavigate(url, forceCleanup = true) {
 
 **Testing:**
 - Manual verification: DevTools → Memory → Heap Snapshots (before/after 50 navigations)
-- All 23 tests pass (23/23 - 100% pass rate maintained)
+- All 49 tests pass (49/49 - 100% pass rate maintained)
 - Page transitions stable (200ms), no memory growth
 
 **Deployment:**
@@ -3354,7 +3354,7 @@ _(Old detailed file tree removed to avoid duplication - see top of document for 
 
 #### **Integration Tests ausführen:**
 ```bash
-# Alle Integration Tests (10 Tests)
+# Alle Integration Tests (36 Tests)
 npm run test:integration
 
 # Einzelner Test
@@ -3398,7 +3398,7 @@ npm run test:all
 
 ### 📊 Test Coverage Status (Nov 2025)
 
-**✅ GETESTET (23 Tests - 100% Pass Rate):**
+**✅ GETESTET (49 Tests - 100% Pass Rate):**
 - Vehicle Creation & Customer Registration
 - Status Updates (Kanban Drag & Drop)
 - Multi-Tenant Isolation
@@ -3430,7 +3430,7 @@ npm run test:all
 4. **Smoke Test:** Steuerberater Dashboard Page Loading
 5. **Smoke Test:** Ersatzteil Modal Visibility & Fields
 
-**Total Test Coverage:** ~40% (23 Tests für ~15 Core Features, 15+ Features ohne Tests)
+**Total Test Coverage:** ~55% (49 Tests für ~20 Core Features, 10+ Features ohne Tests)
 
 ---
 
