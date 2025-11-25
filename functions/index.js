@@ -5016,3 +5016,597 @@ exports.getQuota = functions
       );
     }
   });
+
+// ============================================
+// LOHNABRECHNUNG-SYSTEM: Automatische Monatliche Abrechnung
+// ============================================
+
+/**
+ * LOHN-KONSTANTEN 2025 (Server-seitig)
+ * Gespiegelt von js/lohnberechnung.js
+ */
+const LOHN_KONSTANTEN_2025 = {
+  bbg: { kvPv: 5512.50, rvAv: 7550.00 },
+  beitraege: { kv: 7.3, rv: 9.3, av: 1.3, pv: 1.7, pvKinderlos: 0.6 },
+  geringfuegig: { minijobGrenze: 538, midijobGrenze: 2000 },
+  kirchensteuerSatz: {
+    BW: 8, BY: 8, BE: 9, BB: 9, HB: 9, HH: 9, HE: 9, MV: 9,
+    NI: 9, NW: 9, RP: 9, SL: 9, SN: 9, ST: 9, SH: 9, TH: 9
+  }
+};
+
+const MONATSNAMEN = [
+  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
+];
+
+/**
+ * Berechnet Lohnsteuer (vereinfachte Fallback-Berechnung)
+ */
+function berechneLohnsteuerServer(brutto, steuerklasse, kinderfreibetraege = 0) {
+  const jahresBrutto = brutto * 12;
+  const grundfreibetrag = 12084;
+  const kinderfreibetragProKind = 9312;
+  const gesamtKinderfreibetrag = kinderfreibetraege * kinderfreibetragProKind;
+
+  let zvE = steuerklasse === '6'
+    ? jahresBrutto - gesamtKinderfreibetrag
+    : jahresBrutto - grundfreibetrag - gesamtKinderfreibetrag;
+
+  if (zvE <= 0) return 0;
+
+  const steuerklassenModifikator = {
+    '1': 1.0, '2': 0.85, '3': 0.65, '4': 1.0, '5': 1.35, '6': 1.15
+  };
+
+  let steuer = 0;
+  if (zvE <= 17005) {
+    const y = (zvE - 12084) / 10000;
+    steuer = (932.30 * y + 1400) * y;
+  } else if (zvE <= 66760) {
+    const z = (zvE - 17005) / 10000;
+    steuer = (176.64 * z + 2397) * z + 1015.13;
+  } else if (zvE <= 277826) {
+    steuer = 0.42 * zvE - 10636.31;
+  } else {
+    steuer = 0.45 * zvE - 18971.10;
+  }
+
+  steuer *= steuerklassenModifikator[steuerklasse] || 1.0;
+  return Math.round((steuer / 12) * 100) / 100;
+}
+
+/**
+ * Berechnet Sozialversicherung (AN-Anteil)
+ */
+function berechneSVServer(brutto, svStatus, krankenversicherung, kvZusatzbeitrag, kinderlos, alter) {
+  const bbg = LOHN_KONSTANTEN_2025.bbg;
+  const beitraege = LOHN_KONSTANTEN_2025.beitraege;
+
+  if (svStatus === 'befreit' || svStatus === 'minijob') {
+    return { kv: 0, rv: 0, av: 0, pv: 0, gesamt: 0 };
+  }
+
+  const kvBasis = Math.min(brutto, bbg.kvPv);
+  const rvBasis = Math.min(brutto, bbg.rvAv);
+
+  let kv = 0, rv = 0, av = 0, pv = 0;
+
+  // KV
+  if (krankenversicherung === 'gkv') {
+    kv = kvBasis * (beitraege.kv / 100);
+    kv += kvBasis * ((kvZusatzbeitrag || 1.7) / 2 / 100);
+  }
+
+  // RV (außer Werkstudent)
+  if (svStatus !== 'rentner') {
+    rv = rvBasis * (beitraege.rv / 100);
+  }
+
+  // AV (außer Werkstudent und Rentner)
+  if (svStatus !== 'werkstudent' && svStatus !== 'rentner') {
+    av = rvBasis * (beitraege.av / 100);
+  }
+
+  // PV
+  if (svStatus !== 'werkstudent') {
+    let pvSatz = beitraege.pv;
+    if (kinderlos && alter >= 23) pvSatz += beitraege.pvKinderlos;
+    pv = kvBasis * (pvSatz / 100);
+  }
+
+  // Midijob-Reduktion
+  if (svStatus === 'midijob') {
+    const faktor = (brutto - 538) / (2000 - 538);
+    kv *= faktor; rv *= faktor; av *= faktor; pv *= faktor;
+  }
+
+  return {
+    kv: Math.round(kv * 100) / 100,
+    rv: Math.round(rv * 100) / 100,
+    av: Math.round(av * 100) / 100,
+    pv: Math.round(pv * 100) / 100,
+    gesamt: Math.round((kv + rv + av + pv) * 100) / 100
+  };
+}
+
+/**
+ * Berechnet komplette Lohnabrechnung serverseitig
+ */
+function berechneLohnabrechnungServer(mitarbeiter, monat, jahr, zeiterfassung) {
+  // Brutto ermitteln
+  let brutto = 0;
+  let arbeitsstunden = 0;
+  const sollstunden = (mitarbeiter.wochenarbeitsstunden || 40) * 4.33;
+
+  if (mitarbeiter.verguetungsart === 'stundenlohn') {
+    arbeitsstunden = zeiterfassung?.gesamtStunden || sollstunden;
+    brutto = arbeitsstunden * (mitarbeiter.stundenlohn || 0);
+  } else {
+    brutto = mitarbeiter.monatsgehalt || 0;
+    arbeitsstunden = sollstunden;
+  }
+
+  brutto = Math.round(brutto * 100) / 100;
+
+  // Steuern
+  const lohnsteuer = berechneLohnsteuerServer(
+    brutto,
+    mitarbeiter.steuerklasse || '1',
+    parseFloat(mitarbeiter.kinderfreibetraege) || 0
+  );
+
+  const soli = lohnsteuer > 1510.83 ? Math.round(lohnsteuer * 0.055 * 100) / 100 : 0;
+
+  const kistSatz = LOHN_KONSTANTEN_2025.kirchensteuerSatz[mitarbeiter.bundesland] || 9;
+  const kirchensteuer = mitarbeiter.kirchensteuer !== 'keine'
+    ? Math.round(lohnsteuer * (kistSatz / 100) * 100) / 100
+    : 0;
+
+  // Alter berechnen
+  const alter = mitarbeiter.geburtsdatum
+    ? Math.floor((new Date() - new Date(mitarbeiter.geburtsdatum)) / (365.25 * 24 * 60 * 60 * 1000))
+    : 30;
+
+  // Sozialversicherung
+  const sv = berechneSVServer(
+    brutto,
+    mitarbeiter.svStatus || 'normal',
+    mitarbeiter.krankenversicherung || 'gkv',
+    mitarbeiter.kvZusatzbeitrag || 1.7,
+    mitarbeiter.kinderlos || false,
+    alter
+  );
+
+  // Netto
+  const abzuegeGesamt = lohnsteuer + soli + kirchensteuer + sv.gesamt;
+  const netto = Math.round((brutto - abzuegeGesamt) * 100) / 100;
+
+  return {
+    mitarbeiterId: mitarbeiter.id,
+    mitarbeiterName: mitarbeiter.name,
+    monat, jahr,
+    abrechnungsDatum: new Date().toISOString(),
+    arbeitszeit: {
+      sollstunden: Math.round(sollstunden * 100) / 100,
+      iststunden: Math.round(arbeitsstunden * 100) / 100,
+      differenz: Math.round((arbeitsstunden - sollstunden) * 100) / 100
+    },
+    brutto: { grundgehalt: brutto, zulagen: 0, zuschlaege: 0, gesamt: brutto },
+    steuern: {
+      lohnsteuer, solidaritaetszuschlag: soli, kirchensteuer,
+      gesamt: Math.round((lohnsteuer + soli + kirchensteuer) * 100) / 100
+    },
+    sozialversicherung: {
+      krankenversicherung: sv.kv,
+      rentenversicherung: sv.rv,
+      arbeitslosenversicherung: sv.av,
+      pflegeversicherung: sv.pv,
+      gesamt: sv.gesamt
+    },
+    abzuege: {
+      steuern: Math.round((lohnsteuer + soli + kirchensteuer) * 100) / 100,
+      sozialversicherung: sv.gesamt,
+      gesamt: Math.round(abzuegeGesamt * 100) / 100
+    },
+    netto,
+    stammdaten: {
+      steuerklasse: mitarbeiter.steuerklasse || '1',
+      kirchensteuer: mitarbeiter.kirchensteuer || 'keine',
+      bundesland: mitarbeiter.bundesland || 'BW',
+      svStatus: mitarbeiter.svStatus || 'normal',
+      krankenversicherung: mitarbeiter.krankenversicherung || 'gkv',
+      verguetungsart: mitarbeiter.verguetungsart || 'monatsgehalt'
+    },
+    bankverbindung: {
+      iban: mitarbeiter.iban || '',
+      bic: mitarbeiter.bic || '',
+      bank: mitarbeiter.bankName || '',
+      kontoinhaber: mitarbeiter.kontoinhaber || mitarbeiter.name
+    }
+  };
+}
+
+/**
+ * Generiert HTML für Lohnabrechnung-Email
+ */
+function generateLohnEmailHTML(abrechnung, werkstattName) {
+  const monatName = MONATSNAMEN[abrechnung.monat - 1];
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #2980b9; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+    .content { background: #f5f5f5; padding: 20px; border-radius: 0 0 8px 8px; }
+    .summary { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }
+    .row { display: flex; justify-content: space-between; margin: 8px 0; }
+    .label { color: #666; }
+    .value { font-weight: bold; }
+    .netto { font-size: 24px; color: #27ae60; }
+    .footer { margin-top: 20px; font-size: 12px; color: #999; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 style="margin:0;">💰 Lohnabrechnung</h1>
+    <p style="margin:5px 0 0 0;">${monatName} ${abrechnung.jahr}</p>
+  </div>
+
+  <div class="content">
+    <p>Hallo ${abrechnung.mitarbeiterName},</p>
+    <p>anbei Ihre Lohnabrechnung für ${monatName} ${abrechnung.jahr}.</p>
+
+    <div class="summary">
+      <div class="row">
+        <span class="label">Brutto:</span>
+        <span class="value">${abrechnung.brutto.gesamt.toFixed(2)} €</span>
+      </div>
+      <div class="row">
+        <span class="label">- Steuern:</span>
+        <span class="value">${abrechnung.steuern.gesamt.toFixed(2)} €</span>
+      </div>
+      <div class="row">
+        <span class="label">- Sozialversicherung:</span>
+        <span class="value">${abrechnung.sozialversicherung.gesamt.toFixed(2)} €</span>
+      </div>
+      <hr style="border:none;border-top:1px solid #ddd;margin:10px 0;">
+      <div class="row">
+        <span class="label" style="font-size:18px;">Netto-Auszahlung:</span>
+        <span class="value netto">${abrechnung.netto.toFixed(2)} €</span>
+      </div>
+    </div>
+
+    <p>Die Überweisung erfolgt auf Ihr Konto:</p>
+    <p><strong>IBAN:</strong> ${abrechnung.bankverbindung.iban || 'Nicht hinterlegt'}</p>
+
+    <p style="color:#666;font-size:14px;">
+      Die detaillierte Lohnabrechnung finden Sie in Ihrem Mitarbeiter-Portal.
+    </p>
+  </div>
+
+  <div class="footer">
+    <p>${werkstattName}</p>
+    <p>Diese E-Mail wurde automatisch generiert.</p>
+  </div>
+</body>
+</html>
+`;
+}
+
+/**
+ * SCHEDULED FUNCTION: monthlyPayrollGeneration
+ *
+ * Läuft am 1. jeden Monats um 06:00 Uhr (Europe/Berlin)
+ * Erstellt Lohnabrechnungen für alle aktiven Mitarbeiter
+ * Sendet Email an Mitarbeiter mit hinterlegter Email-Adresse
+ */
+exports.monthlyPayrollGeneration = onSchedule(
+  {
+    schedule: "0 6 1 * *",           // 1. des Monats, 06:00 Uhr
+    timeZone: "Europe/Berlin",
+    region: "europe-west3",
+    memory: "512MiB",
+    timeoutSeconds: 540,             // 9 Minuten max
+    secrets: [awsAccessKeyId, awsSecretAccessKey]
+  },
+  async (event) => {
+    console.log("💰 [monthlyPayrollGeneration] Starting monthly payroll run...");
+
+    const now = new Date();
+    // Vormonat berechnen (wenn wir am 1. Januar sind, dann Dezember des Vorjahres)
+    let abrechnungsMonat = now.getMonth(); // 0-11, also aktueller Monat - 1 = Vormonat
+    let abrechnungsJahr = now.getFullYear();
+
+    if (abrechnungsMonat === 0) {
+      abrechnungsMonat = 12;
+      abrechnungsJahr -= 1;
+    }
+
+    console.log(`📅 Processing payroll for: ${MONATSNAMEN[abrechnungsMonat - 1]} ${abrechnungsJahr}`);
+
+    const stats = {
+      werkstaetten: 0,
+      mitarbeiter: 0,
+      abrechnungen: 0,
+      emailsSent: 0,
+      errors: []
+    };
+
+    try {
+      // 1. Alle Werkstätten finden (anhand von settings-Dokumenten)
+      const settingsSnapshot = await db.collection('settings').get();
+      const werkstaetten = [];
+
+      settingsSnapshot.forEach(doc => {
+        if (doc.id.startsWith('werkstatt_') || doc.id === 'werkstatt') {
+          const werkstattId = doc.id === 'werkstatt' ? 'mosbach' : doc.id.replace('werkstatt_', '');
+          werkstaetten.push({
+            id: werkstattId,
+            name: doc.data().name || `Werkstatt ${werkstattId}`
+          });
+        }
+      });
+
+      // Fallback: Mindestens Mosbach
+      if (werkstaetten.length === 0) {
+        werkstaetten.push({ id: 'mosbach', name: 'Auto-Lackierzentrum Mosbach' });
+      }
+
+      console.log(`🏭 Found ${werkstaetten.length} werkstätten`);
+      stats.werkstaetten = werkstaetten.length;
+
+      // 2. Für jede Werkstatt: Mitarbeiter verarbeiten
+      for (const werkstatt of werkstaetten) {
+        console.log(`\n📋 Processing werkstatt: ${werkstatt.name} (${werkstatt.id})`);
+
+        try {
+          // Mitarbeiter-Collection mit werkstatt-Suffix
+          const mitarbeiterRef = db.collection(`mitarbeiter_${werkstatt.id}`);
+          const mitarbeiterSnapshot = await mitarbeiterRef
+            .where('status', '==', 'active')
+            .get();
+
+          if (mitarbeiterSnapshot.empty) {
+            console.log(`   ℹ️ No active employees found`);
+            continue;
+          }
+
+          console.log(`   👥 Found ${mitarbeiterSnapshot.size} active employees`);
+
+          for (const mitarbeiterDoc of mitarbeiterSnapshot.docs) {
+            const mitarbeiter = { id: mitarbeiterDoc.id, ...mitarbeiterDoc.data() };
+            stats.mitarbeiter++;
+
+            // Prüfen ob Gehalt hinterlegt
+            if (!mitarbeiter.stundenlohn && !mitarbeiter.monatsgehalt) {
+              console.log(`   ⏭️ Skipping ${mitarbeiter.name}: No salary configured`);
+              continue;
+            }
+
+            try {
+              console.log(`   💼 Processing: ${mitarbeiter.name}`);
+
+              // Zeiterfassung laden
+              let zeiterfassung = null;
+              const startDatum = `${abrechnungsJahr}-${String(abrechnungsMonat).padStart(2, '0')}-01`;
+              const endDatum = abrechnungsMonat === 12
+                ? `${abrechnungsJahr + 1}-01-01`
+                : `${abrechnungsJahr}-${String(abrechnungsMonat + 1).padStart(2, '0')}-01`;
+
+              const zeitSnapshot = await db.collection(`zeiterfassung_${werkstatt.id}`)
+                .where('mitarbeiterId', '==', mitarbeiter.id)
+                .where('datum', '>=', startDatum)
+                .where('datum', '<', endDatum)
+                .get();
+
+              if (!zeitSnapshot.empty) {
+                let gesamtStunden = 0;
+                zeitSnapshot.forEach(doc => {
+                  gesamtStunden += parseFloat(doc.data().stunden) || 0;
+                });
+                zeiterfassung = { gesamtStunden };
+                console.log(`      ⏱️ Time tracked: ${gesamtStunden.toFixed(2)}h`);
+              }
+
+              // Lohnabrechnung berechnen
+              const abrechnung = berechneLohnabrechnungServer(
+                mitarbeiter,
+                abrechnungsMonat,
+                abrechnungsJahr,
+                zeiterfassung
+              );
+
+              // In Firestore speichern
+              const docId = `${mitarbeiter.id}_${abrechnungsJahr}_${String(abrechnungsMonat).padStart(2, '0')}`;
+              await db.collection(`lohnabrechnungen_${werkstatt.id}`).doc(docId).set({
+                ...abrechnung,
+                werkstattId: werkstatt.id,
+                createdAt: admin.firestore.Timestamp.now(),
+                createdBy: 'System (Scheduled)'
+              });
+
+              stats.abrechnungen++;
+              console.log(`      ✅ Payslip saved: ${abrechnung.netto.toFixed(2)}€ netto`);
+
+              // Email senden wenn Adresse hinterlegt
+              if (mitarbeiter.externalEmail) {
+                try {
+                  const sesClient = getAWSSESClient();
+                  const emailHtml = generateLohnEmailHTML(abrechnung, werkstatt.name);
+
+                  const emailCommand = new SendEmailCommand({
+                    Source: SENDER_EMAIL,
+                    Destination: { ToAddresses: [mitarbeiter.externalEmail] },
+                    Message: {
+                      Subject: {
+                        Data: `💰 Lohnabrechnung ${MONATSNAMEN[abrechnungsMonat - 1]} ${abrechnungsJahr}`,
+                        Charset: "UTF-8"
+                      },
+                      Body: {
+                        Html: { Data: emailHtml, Charset: "UTF-8" }
+                      }
+                    }
+                  });
+
+                  await sesClient.send(emailCommand);
+                  stats.emailsSent++;
+                  console.log(`      📧 Email sent to: ${mitarbeiter.externalEmail}`);
+
+                } catch (emailError) {
+                  console.error(`      ❌ Email failed: ${emailError.message}`);
+                  stats.errors.push(`Email to ${mitarbeiter.name}: ${emailError.message}`);
+                }
+              }
+
+            } catch (mitarbeiterError) {
+              console.error(`   ❌ Error processing ${mitarbeiter.name}:`, mitarbeiterError);
+              stats.errors.push(`${mitarbeiter.name}: ${mitarbeiterError.message}`);
+            }
+          }
+
+        } catch (werkstattError) {
+          console.error(`❌ Error processing werkstatt ${werkstatt.id}:`, werkstattError);
+          stats.errors.push(`Werkstatt ${werkstatt.id}: ${werkstattError.message}`);
+        }
+      }
+
+      // Log Summary
+      console.log("\n" + "=".repeat(50));
+      console.log("📊 MONTHLY PAYROLL SUMMARY");
+      console.log("=".repeat(50));
+      console.log(`   Werkstätten: ${stats.werkstaetten}`);
+      console.log(`   Mitarbeiter: ${stats.mitarbeiter}`);
+      console.log(`   Abrechnungen: ${stats.abrechnungen}`);
+      console.log(`   Emails sent: ${stats.emailsSent}`);
+      console.log(`   Errors: ${stats.errors.length}`);
+      if (stats.errors.length > 0) {
+        console.log(`   Error details: ${stats.errors.join('; ')}`);
+      }
+
+      // System-Log speichern
+      await db.collection('systemLogs').add({
+        type: 'monthly_payroll',
+        timestamp: admin.firestore.Timestamp.now(),
+        monat: abrechnungsMonat,
+        jahr: abrechnungsJahr,
+        stats
+      });
+
+      console.log("\n✅ [monthlyPayrollGeneration] Completed successfully");
+
+    } catch (error) {
+      console.error("❌ [monthlyPayrollGeneration] Critical error:", error);
+
+      await db.collection('systemLogs').add({
+        type: 'monthly_payroll_error',
+        timestamp: admin.firestore.Timestamp.now(),
+        error: error.message,
+        stack: error.stack
+      });
+
+      throw error;
+    }
+  }
+);
+
+/**
+ * MANUAL TRIGGER: testMonthlyPayroll
+ * Für manuelles Testen der Lohnabrechnung
+ * Aufruf: https://europe-west3-auto-lackierzentrum-mosbach.cloudfunctions.net/testMonthlyPayroll?werkstatt=mosbach&monat=11&jahr=2025
+ */
+exports.testMonthlyPayroll = functions
+  .region("europe-west3")
+  .runWith({
+    secrets: [awsAccessKeyId, awsSecretAccessKey],
+    memory: "512MB",
+    timeoutSeconds: 300
+  })
+  .https.onRequest(async (req, res) => {
+    console.log("🧪 [testMonthlyPayroll] Manual test triggered");
+
+    // CORS
+    res.set('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') {
+      res.set('Access-Control-Allow-Methods', 'GET');
+      return res.status(204).send('');
+    }
+
+    const werkstattId = req.query.werkstatt || 'mosbach';
+    const monat = parseInt(req.query.monat) || new Date().getMonth() + 1;
+    const jahr = parseInt(req.query.jahr) || new Date().getFullYear();
+    const sendEmail = req.query.email === 'true';
+
+    console.log(`📋 Test parameters: werkstatt=${werkstattId}, monat=${monat}, jahr=${jahr}, sendEmail=${sendEmail}`);
+
+    try {
+      const mitarbeiterRef = db.collection(`mitarbeiter_${werkstattId}`);
+      const snapshot = await mitarbeiterRef.where('status', '==', 'active').get();
+
+      const results = [];
+
+      for (const doc of snapshot.docs) {
+        const mitarbeiter = { id: doc.id, ...doc.data() };
+
+        if (!mitarbeiter.stundenlohn && !mitarbeiter.monatsgehalt) {
+          results.push({ name: mitarbeiter.name, status: 'skipped', reason: 'No salary' });
+          continue;
+        }
+
+        const abrechnung = berechneLohnabrechnungServer(mitarbeiter, monat, jahr, null);
+
+        // Save to Firestore
+        const docId = `${mitarbeiter.id}_${jahr}_${String(monat).padStart(2, '0')}_TEST`;
+        await db.collection(`lohnabrechnungen_${werkstattId}`).doc(docId).set({
+          ...abrechnung,
+          werkstattId,
+          createdAt: admin.firestore.Timestamp.now(),
+          createdBy: 'Manual Test',
+          isTest: true
+        });
+
+        let emailStatus = 'not_sent';
+        if (sendEmail && mitarbeiter.externalEmail) {
+          try {
+            const sesClient = getAWSSESClient();
+            const emailHtml = generateLohnEmailHTML(abrechnung, 'Test-Werkstatt');
+
+            await sesClient.send(new SendEmailCommand({
+              Source: SENDER_EMAIL,
+              Destination: { ToAddresses: [mitarbeiter.externalEmail] },
+              Message: {
+                Subject: { Data: `[TEST] Lohnabrechnung ${MONATSNAMEN[monat - 1]} ${jahr}`, Charset: "UTF-8" },
+                Body: { Html: { Data: emailHtml, Charset: "UTF-8" } }
+              }
+            }));
+            emailStatus = 'sent';
+          } catch (e) {
+            emailStatus = `error: ${e.message}`;
+          }
+        }
+
+        results.push({
+          name: mitarbeiter.name,
+          status: 'processed',
+          brutto: abrechnung.brutto.gesamt,
+          netto: abrechnung.netto,
+          email: emailStatus
+        });
+      }
+
+      res.json({
+        success: true,
+        werkstatt: werkstattId,
+        monat: MONATSNAMEN[monat - 1],
+        jahr,
+        results
+      });
+
+    } catch (error) {
+      console.error("❌ Test failed:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
