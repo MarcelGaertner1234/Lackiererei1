@@ -4059,6 +4059,25 @@
             return labels[serviceTyp] || 'Service';
         }
 
+        // 🔧 BUG #14 FIX (2025-11-26): Zentrale Abholtermin-Berechnung (statt inline Code)
+        // Berechnet Abholtermin: 1 Tag vor Start, Wochenenden werden auf Freitag verschoben
+        function calculateAbholtermin(startDatum) {
+            const abhol = new Date(startDatum);
+            abhol.setDate(abhol.getDate() - 1);
+
+            // Wenn Samstag (6) → Gehe zu Freitag
+            if (abhol.getDay() === 6) {
+                abhol.setDate(abhol.getDate() - 1);
+            }
+
+            // Wenn Sonntag (0) → Gehe zu Freitag (2 Tage zurück)
+            if (abhol.getDay() === 0) {
+                abhol.setDate(abhol.getDate() - 2);
+            }
+
+            return abhol.toISOString().split('T')[0];
+        }
+
         // 🔧 FIX Bug #5h (2025-11-22): Date Sanitization Helper Functions (copied from meine-anfragen.html Lines 6205-6328)
         // PROBLEM: Same "Expected type 'Vd'" error as Bug #5 (fixed in meine-anfragen.html on Nov 22, Commit 47adbe1)
         // SOLUTION: Apply identical fix to anfrage-detail.html (duplicate annehmenKVA implementation)
@@ -5044,24 +5063,10 @@
                     console.log('✅ Entwurf wird bestätigt (entwurfStatus → bestaetigt)');
                 }
 
-                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen (1 Tag vor START, Wochenenden berücksichtigen)
-                let abholtermin = null;
+                // 2. Wenn Abholservice gewünscht: Abholtermin berechnen
+                // 🔧 BUG #14 FIX: Nutzt jetzt zentrale calculateAbholtermin() Funktion
                 if (anfrage.abholserviceGewuenscht) {
-                    const abhol = new Date(startDatum);
-                    abhol.setDate(abhol.getDate() - 1);
-
-                    // Wenn Samstag (6) → Gehe zu Freitag
-                    if (abhol.getDay() === 6) {
-                        abhol.setDate(abhol.getDate() - 1);
-                    }
-
-                    // Wenn Sonntag (0) → Gehe zu Freitag (2 Tage zurück)
-                    if (abhol.getDay() === 0) {
-                        abhol.setDate(abhol.getDate() - 2);
-                    }
-
-                    abholtermin = abhol.toISOString().split('T')[0];
-                    updateData.abholtermin = abholtermin;
+                    updateData.abholtermin = calculateAbholtermin(startDatum);
                 }
 
                 // 3. Kunden registrieren

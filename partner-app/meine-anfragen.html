@@ -5716,6 +5716,25 @@
             return labels[serviceTyp] || 'Service';
         }
 
+        // 🔧 BUG #14 FIX (2025-11-26): Zentrale Abholtermin-Berechnung (statt inline Code)
+        // Berechnet Abholtermin: 1 Tag vor Start, Wochenenden werden auf Freitag verschoben
+        function calculateAbholtermin(startDatum) {
+            const abhol = new Date(startDatum);
+            abhol.setDate(abhol.getDate() - 1);
+
+            // Wenn Samstag (6) → Gehe zu Freitag
+            if (abhol.getDay() === 6) {
+                abhol.setDate(abhol.getDate() - 1);
+            }
+
+            // Wenn Sonntag (0) → Gehe zu Freitag (2 Tage zurück)
+            if (abhol.getDay() === 0) {
+                abhol.setDate(abhol.getDate() - 2);
+            }
+
+            return abhol.toISOString().split('T')[0];
+        }
+
         // KVA-Variante auswählen (Aftermarket vs. Originalteil)
         async function waehleKVAVariante(anfrageId, variante, event) {
             event?.stopPropagation();  // Verhindert Karten-Click
@@ -6851,6 +6870,54 @@
                         console.error('❌ Bestellungen-Erstellung fehlgeschlagen (nicht kritisch):', error);
                         // Continue anyway - Ersatzteile sind in ersatzteile collection gespeichert
                     }
+                }
+
+                // 5.5 🆕 LEIHFAHRZEUG-RESERVIERUNG (2025-11-26)
+                // Wenn ein Leihfahrzeug zugewiesen wurde, Status aktualisieren und Buchung erstellen
+                const zugewiesenesLeihfahrzeugId = anfrage.kva?.zugewiesenesLeihfahrzeugId;
+                if (zugewiesenesLeihfahrzeugId) {
+                    try {
+                        console.log(`🚗 [LEIHFAHRZEUG] Reserviere Leihfahrzeug ${zugewiesenesLeihfahrzeugId}...`);
+
+                        // 5.5.1 Status auf "verliehen" setzen
+                        await window.getCollection('leihfahrzeuge').doc(zugewiesenesLeihfahrzeugId).update({
+                            status: 'verliehen',
+                            aktiveBuchung: {
+                                fahrzeugId: fahrzeugData.id,
+                                anfrageId: anfrageId,
+                                kundenname: anfrage.partnerName || anfrage.kundenname || 'Partner',
+                                kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
+                                ausgeliehenAm: new Date().toISOString(),
+                                voraussichtlicheRueckgabe: anfrage.kva?.termine?.ende || null
+                            },
+                            letzteAenderung: new Date().toISOString()
+                        });
+                        console.log(`✅ Leihfahrzeug ${zugewiesenesLeihfahrzeugId} Status → verliehen`);
+
+                        // 5.5.2 Buchung in Historie speichern
+                        const buchungRef = window.getCollection('leihfahrzeugBuchungen').doc();
+                        await buchungRef.set({
+                            leihfahrzeugId: zugewiesenesLeihfahrzeugId,
+                            leihfahrzeugDetails: anfrage.kva?.zugewiesenesLeihfahrzeug || {},
+                            fahrzeugId: fahrzeugData.id,
+                            anfrageId: anfrageId,
+                            kundenname: anfrage.partnerName || anfrage.kundenname || 'Partner',
+                            kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
+                            ausgeliehenAm: new Date().toISOString(),
+                            voraussichtlicheRueckgabe: anfrage.kva?.termine?.ende || null,
+                            rueckgabeAm: null,
+                            status: 'aktiv',
+                            werkstattId: window.werkstattId || 'mosbach',
+                            erstelltAm: firebase.firestore.Timestamp.now()
+                        });
+                        console.log(`✅ Leihfahrzeug-Buchung erstellt: ${buchungRef.id}`);
+
+                    } catch (leihError) {
+                        console.error('❌ Leihfahrzeug-Reservierung fehlgeschlagen (nicht kritisch):', leihError);
+                        // Continue anyway - Hauptvorgang (Fahrzeug-Erstellung) war erfolgreich
+                    }
+                } else {
+                    console.log('ℹ️ Kein Leihfahrzeug zugewiesen - Reservierung wird übersprungen');
                 }
 
                 // 6. Kalender-Eintrag erstellen (DEAKTIVIERT - nicht benötigt)
