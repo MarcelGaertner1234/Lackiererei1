@@ -892,22 +892,40 @@
                 // Wait for Firebase initialization
                 await window.firebaseInitialized;
 
-                // Check authentication
-                const user = firebase.auth().currentUser;
-                if (!user) {
+                // Auth-Check mit Retry-Loop (wie liste.html) - Fix für Race Condition
+                console.log('🔐 [LEIHFAHRZEUGE] Prüfe Auth State...');
+                let currentUser = null;
+                let attempts = 0;
+                const maxAttempts = 20;
+
+                while (!currentUser && attempts < maxAttempts) {
+                    currentUser = window.authManager?.getCurrentUser();
+                    if (!currentUser) {
+                        console.log(`⏳ [LEIHFAHRZEUGE] Warte auf Auth (${attempts + 1}/${maxAttempts})...`);
+                        await new Promise(resolve => setTimeout(resolve, 250));
+                        attempts++;
+                    }
+                }
+
+                if (!currentUser) {
+                    console.warn('⚠️ [LEIHFAHRZEUGE] Kein User nach 5s');
                     toast.error('Bitte melden Sie sich an');
                     safeNavigate('index.html');
                     return;
                 }
 
-                // Check role (only werkstatt/admin/mitarbeiter)
-                const userDoc = await db.collection('users').doc(user.uid).get();
-                const role = userDoc.data()?.role;
-                if (!['werkstatt', 'admin', 'superadmin', 'mitarbeiter'].includes(role)) {
-                    toast.error('Keine Berechtigung für diese Seite');
-                    safeNavigate('index.html');
+                // Partner-Redirect (dürfen nicht auf Werkstatt-Seiten)
+                const userRole = currentUser.rolle || currentUser.role;
+                if (userRole === 'partner') {
+                    console.warn('🚫 [LEIHFAHRZEUGE] Partner-Zugriff blockiert');
+                    safeNavigate('./partner-app/meine-anfragen.html');
                     return;
                 }
+
+                // werkstattId aus Auth-Manager setzen
+                window.werkstattId = currentUser.werkstattId;
+                console.log('✅ [LEIHFAHRZEUGE] Auth OK:', currentUser.name);
+                console.log('   WerkstattId:', window.werkstattId);
 
                 // Initialize Feather Icons
                 feather.replace();
