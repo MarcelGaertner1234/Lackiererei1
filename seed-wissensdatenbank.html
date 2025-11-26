@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wissensdatenbank Seeding | Auto-Lackierzentrum Mosbach</title>
+
+    <!-- 🌓 FOUC Prevention: Load Theme BEFORE CSS -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
     <style>
         * {
             margin: 0;
@@ -114,7 +123,7 @@
         <p>Dieses Tool erstellt automatisch Sample-Daten für die Wissensdatenbank.</p>
 
         <div class="warning">
-            <strong>⚠️ Achtung:</strong> Dieses Tool erstellt 10 Richtlinien, 5 Mitteilungen und 3 Schichtübergaben in der Firestore-Datenbank.
+            <strong>⚠️ Achtung:</strong> Dieses Tool erstellt 10 Richtlinien, 5 Mitteilungen, 3 Schichtübergaben und 5 Demontage-Anleitungen in der Firestore-Datenbank.
             Führen Sie dies nur einmal aus!
         </div>
 
@@ -132,6 +141,10 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+
+    <!-- Listener Registry (für safeNavigate) -->
+    <script src="listener-registry.js"></script>
 
     <!-- Firebase Config -->
     <script src="firebase-config.js"></script>
@@ -155,15 +168,25 @@
         async function seedData() {
             log('🚀 Starte Seeding-Prozess...', 'info');
 
-            // Wait for Firebase
-            let attempts = 0;
-            while (!window.firebaseInitialized && attempts < 20) {
-                await new Promise(resolve => setTimeout(resolve, 250));
-                attempts++;
-            }
+            // Wait for Firebase - CRITICAL FIX: Await the Promise correctly!
+            // window.firebaseInitialized ist ein Promise, nicht ein Boolean
+            // Der alte Code prüfte !window.firebaseInitialized, aber ein Promise ist IMMER truthy
+            try {
+                log('⏳ Warte auf Firebase-Initialisierung...', 'info');
 
-            if (!window.firebaseInitialized) {
-                log('❌ Firebase initialization timeout!', 'error');
+                // Timeout-Wrapper für das Promise
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Firebase initialization timeout')), 10000);
+                });
+
+                const result = await Promise.race([window.firebaseInitialized, timeoutPromise]);
+
+                if (result === false) {
+                    log('❌ Firebase initialization failed!', 'error');
+                    return;
+                }
+            } catch (error) {
+                log(`❌ Firebase initialization timeout! ${error.message}`, 'error');
                 return;
             }
 
@@ -180,11 +203,15 @@
                 // Create Shift Handovers
                 await seedHandovers();
 
+                // Create Demontage Anleitungen
+                await seedDemontageAnleitungen();
+
                 log('', 'info');
                 log('🎉 SEEDING ABGESCHLOSSEN!', 'success');
                 log('✅ 10 Richtlinien erstellt', 'success');
                 log('✅ 5 Mitteilungen erstellt', 'success');
                 log('✅ 3 Schichtübergaben erstellt', 'success');
+                log('✅ 5 Demontage-Anleitungen erstellt', 'success');
                 log('', 'info');
                 log('👉 Klicken Sie auf "Zur Wissensdatenbank" um die Daten anzuzeigen.', 'info');
 
@@ -674,7 +701,7 @@ Weiter so, Max! 👏`,
                         {
                             author: { uid: 'user1', name: 'Anna Schmidt' },
                             text: 'Verdient! Glückwunsch Max! 🎉',
-                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                            timestamp: new Date()  // serverTimestamp() nicht erlaubt in Arrays
                         }
                     ],
                     reactions: { thumbsUp: 12, heart: 8 }
@@ -767,6 +794,354 @@ Reminder: Morgen kommt Sicherheitsbeauftragter zur Inspektion.`
             for (const handover of handovers) {
                 await window.getCollection('shift_handovers').add(handover);
                 log(`✅ Schichtübergabe erstellt: ${handover.datum} - ${handover.mitarbeiterName}`, 'success');
+            }
+        }
+
+        async function seedDemontageAnleitungen() {
+            log('🔧 Erstelle Demontage-Anleitungen...', 'info');
+
+            const anleitungen = [
+                {
+                    title: 'Stoßstange vorne demontieren',
+                    fahrzeug: {
+                        marke: 'VW',
+                        modell: 'Golf',
+                        generation: '7 (2012-2020)'
+                    },
+                    bauteil: 'demontage_karosserie',
+                    difficulty: 'leicht',
+                    estimatedTime: '30-45 Minuten',
+                    tools: ['Torx T25', 'Torx T30', 'Kunststoffhebel', '10er Nuss', 'Schraubendreher flach'],
+                    safety: [
+                        'Fahrzeug sicher abstellen (Handbremse anziehen)',
+                        'Motor ausschalten und Schlüssel abziehen',
+                        'Batterie NICHT trennen nötig'
+                    ],
+                    steps: [
+                        {
+                            order: 1,
+                            title: 'Radlaufverkleidung lösen',
+                            description: 'Die 3 Torx T25 Schrauben in der Radlaufverkleidung links und rechts entfernen. Verkleidung leicht nach vorne ziehen.',
+                            warnings: [],
+                            tips: ['Schrauben in einer Magnetschale sammeln', 'Position markieren für späteren Einbau'],
+                            images: []
+                        },
+                        {
+                            order: 2,
+                            title: 'Unterbodenschutz entfernen',
+                            description: 'Die 5 Clips am Unterbodenschutz mit dem Kunststoffhebel aushebeln. Vorsichtig arbeiten um Beschädigungen zu vermeiden.',
+                            warnings: ['Clips können brechen - Ersatzclips bereithalten'],
+                            tips: ['Mit Wärme (Heißluftföhn) werden Clips flexibler'],
+                            images: []
+                        },
+                        {
+                            order: 3,
+                            title: 'Kühlergrill entfernen',
+                            description: 'VW-Emblem drücken um Motorhaube zu entriegeln. Kühlergrill an den Seitenclips aushebeln, dann nach vorne herausziehen.',
+                            warnings: ['Vorsicht bei Fahrzeugen mit Parksensor-Kabeln'],
+                            tips: ['Von unten nach oben aushebeln ist einfacher'],
+                            images: []
+                        },
+                        {
+                            order: 4,
+                            title: 'Scheinwerferanschlüsse',
+                            description: 'Bei Fahrzeugen mit LED-Tagfahrlicht: Stecker der Blinker abziehen. Bei Xenon: Waschanlage-Schlauch abklemmen.',
+                            warnings: ['Stecker vorsichtig behandeln - Plastik kann brechen'],
+                            tips: [],
+                            images: []
+                        },
+                        {
+                            order: 5,
+                            title: 'Schrauben lösen',
+                            description: 'Zwei Torx T30 Schrauben oben am Stoßstangenträger entfernen (hinter Kühlergrill sichtbar). Eine 10er Schraube je Seite am Kotflügel-Übergang.',
+                            warnings: [],
+                            tips: ['Schrauben beschriften für einfacheren Zusammenbau'],
+                            images: []
+                        },
+                        {
+                            order: 6,
+                            title: 'Stoßstange abnehmen',
+                            description: 'Stoßstange mit gleichmäßigem Druck nach vorne ziehen. Am besten zu zweit arbeiten. Auf Kabelbäume und Sensoren achten.',
+                            warnings: ['Nicht am Nebelscheinwerfer-Gitter ziehen', 'Sensorkabel können noch verbunden sein'],
+                            tips: ['Zweite Person hält eine Seite fest', 'Auf Decke/Schaumstoff ablegen'],
+                            images: []
+                        }
+                    ],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    viewCount: 0,
+                    readBy: []
+                },
+                {
+                    title: 'Scheinwerfer ausbauen',
+                    fahrzeug: {
+                        marke: 'BMW',
+                        modell: '3er',
+                        generation: 'F30/F31 (2012-2019)'
+                    },
+                    bauteil: 'demontage_beleuchtung',
+                    difficulty: 'mittel',
+                    estimatedTime: '45-60 Minuten',
+                    tools: ['Torx T20', 'Torx T30', '10er Nuss', 'Ratsche', 'Kunststoffhebel'],
+                    safety: [
+                        'Zündung ausschalten',
+                        'Bei Xenon/LED: 5 Minuten warten (Kondensatoren entladen)',
+                        'Schutzhandschuhe tragen (Halogenlampen nicht mit bloßen Händen anfassen)'
+                    ],
+                    steps: [
+                        {
+                            order: 1,
+                            title: 'Motorhaube öffnen',
+                            description: 'Motorhaube entriegeln und mit Stütze sichern. Bereich um Scheinwerfer inspizieren.',
+                            warnings: [],
+                            tips: ['Gute Beleuchtung sicherstellen'],
+                            images: []
+                        },
+                        {
+                            order: 2,
+                            title: 'Luftfilterkasten entfernen (nur links)',
+                            description: 'Für linken Scheinwerfer: Luftfilterkasten-Deckel abnehmen und Kasten nach oben herausnehmen für besseren Zugang.',
+                            warnings: [],
+                            tips: ['Markierungen für Wiedereinbau machen'],
+                            images: []
+                        },
+                        {
+                            order: 3,
+                            title: 'Befestigungsschrauben lösen',
+                            description: 'Drei Torx T30 Schrauben oben am Scheinwerfer entfernen. Position merken: zwei vorne, eine hinten.',
+                            warnings: ['Scheinwerfer kann nach Lösen der Schrauben herausfallen'],
+                            tips: ['Mit einer Hand festhalten während Schrauben gelöst werden'],
+                            images: []
+                        },
+                        {
+                            order: 4,
+                            title: 'Stecker abziehen',
+                            description: 'Elektrische Stecker am Scheinwerfer abziehen. Bei Xenon: Zündgerät-Stecker vorsichtig lösen. Bei LED: Steuergerät-Stecker.',
+                            warnings: ['Nicht an Kabeln ziehen - nur an Stecker-Gehäuse'],
+                            tips: ['Foto vor Abstecken machen für spätere Orientierung'],
+                            images: []
+                        },
+                        {
+                            order: 5,
+                            title: 'Scheinwerfer herausnehmen',
+                            description: 'Scheinwerfer vorsichtig nach vorne und dann nach oben herausziehen. Auf Lack achten.',
+                            warnings: ['Scheinwerfer ist schwerer als erwartet (LED-Varianten bis 5kg)'],
+                            tips: ['Decke unter Fahrzeug legen', 'Auf weicher Unterlage ablegen'],
+                            images: []
+                        }
+                    ],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    viewCount: 0,
+                    readBy: []
+                },
+                {
+                    title: 'Türverkleidung abnehmen',
+                    fahrzeug: {
+                        marke: 'Mercedes',
+                        modell: 'C-Klasse',
+                        generation: 'W205 (2014-2021)'
+                    },
+                    bauteil: 'demontage_innenraum',
+                    difficulty: 'leicht',
+                    estimatedTime: '15-20 Minuten',
+                    tools: ['Kunststoffhebel (Plastik-Spachtel)', 'Torx T20', 'Kreuzschraubendreher PH2'],
+                    safety: [
+                        'Fensterheber-Sicherung ziehen oder Batterie abklemmen',
+                        'Keine metallischen Werkzeuge an Airbag-Bereichen verwenden'
+                    ],
+                    steps: [
+                        {
+                            order: 1,
+                            title: 'Spiegeldreieck entfernen',
+                            description: 'Kunststoffabdeckung am Außenspiegel-Dreieck aushebeln. Mit flachem Kunststoffhebel von unten ansetzen.',
+                            warnings: [],
+                            tips: ['Vorsichtig - Clips brechen leicht bei kaltem Wetter'],
+                            images: []
+                        },
+                        {
+                            order: 2,
+                            title: 'Türgriff-Blende abnehmen',
+                            description: 'Kleine Abdeckkappe am Türgriff aushebeln. Darunter befindet sich eine Torx T20 Schraube - entfernen.',
+                            warnings: [],
+                            tips: ['Schraube nicht fallen lassen - rollt in Türspalt'],
+                            images: []
+                        },
+                        {
+                            order: 3,
+                            title: 'Schaltereinheit ausbauen',
+                            description: 'Fensterheber-Schaltereinheit am hinteren Ende anheben. Stecker abziehen und beiseite legen.',
+                            warnings: ['Bei aktivem Strom: Kurzschlussgefahr'],
+                            tips: ['Stecker mit Tape markieren'],
+                            images: []
+                        },
+                        {
+                            order: 4,
+                            title: 'Sichtbare Schrauben entfernen',
+                            description: 'Zwei weitere Schrauben in der Griffmulde und am unteren Rand der Verkleidung entfernen.',
+                            warnings: [],
+                            tips: [],
+                            images: []
+                        },
+                        {
+                            order: 5,
+                            title: 'Verkleidung aushebeln',
+                            description: 'Mit Kunststoffhebel am unteren Rand ansetzen und Clips lösen. Von unten nach oben arbeiten. Zum Schluss Verkleidung nach oben aus der Fensterführung heben.',
+                            warnings: ['Nicht zu stark hebeln - Clips können abbrechen', 'Kabelverbindungen prüfen bevor komplett abnehmen'],
+                            tips: ['Ersatzclips bereithalten', 'Clips vorher mit WD40 einsprühen'],
+                            images: []
+                        }
+                    ],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    viewCount: 0,
+                    readBy: []
+                },
+                {
+                    title: 'Motorhaube demontieren',
+                    fahrzeug: {
+                        marke: 'Audi',
+                        modell: 'A4',
+                        generation: 'B9 (2015-2024)'
+                    },
+                    bauteil: 'demontage_karosserie',
+                    difficulty: 'mittel',
+                    estimatedTime: '20-30 Minuten',
+                    tools: ['10er Maulschlüssel', '13er Maulschlüssel', 'Torx T30', 'Kabelbinder', 'Edding/Marker'],
+                    safety: [
+                        'Zu zweit arbeiten (Haube ist schwer)',
+                        'Motor muss kalt sein',
+                        'Decken auf Kotflügel legen'
+                    ],
+                    steps: [
+                        {
+                            order: 1,
+                            title: 'Scheibenwaschanlage trennen',
+                            description: 'Motorhaube öffnen. Schlauch der Scheibenwaschanlage von den Düsen an der Haube abziehen. Mit Kabelbinder markieren für Wiedereinbau.',
+                            warnings: [],
+                            tips: ['Schlauchende mit Stopfen verschließen'],
+                            images: []
+                        },
+                        {
+                            order: 2,
+                            title: 'Scharnier-Position markieren',
+                            description: 'Mit Edding die Position der Scharniere auf der Haube markieren. Dies erleichtert die Ausrichtung beim Wiedereinbau erheblich.',
+                            warnings: [],
+                            tips: ['Beide Seiten markieren', 'Fotos machen'],
+                            images: []
+                        },
+                        {
+                            order: 3,
+                            title: 'Gasdruckfedern abbauen',
+                            description: 'Gasdruckfedern an der Haube aushängen. Kleine Clip-Sicherung entfernen, dann Kugelpfanne abhebeln.',
+                            warnings: ['Federn stehen unter Spannung', 'Haube muss gestützt werden nach Ausbau der Federn'],
+                            tips: ['Eine Person hält Haube, andere löst Federn'],
+                            images: []
+                        },
+                        {
+                            order: 4,
+                            title: 'Scharnierschrauben lösen',
+                            description: 'Je zwei 13er Schrauben pro Scharnier lösen. Haube dabei festhalten. Schrauben nicht komplett herausdrehen, sondern nur lockern.',
+                            warnings: ['Haube kann nach Lösen der Schrauben fallen'],
+                            tips: ['Erst alle lockern, dann gemeinsam entfernen'],
+                            images: []
+                        },
+                        {
+                            order: 5,
+                            title: 'Haube abnehmen',
+                            description: 'Zu zweit die Haube vorsichtig nach oben abnehmen. Auf Decke ablegen mit Unterseite nach oben.',
+                            warnings: ['Schwer! Mindestens zwei Personen', 'Lack nicht beschädigen'],
+                            tips: ['Am besten auf Motorhaube-Gestell lagern', 'Scharnier-Bereich abkleben'],
+                            images: []
+                        }
+                    ],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    viewCount: 0,
+                    readBy: []
+                },
+                {
+                    title: 'Heckleuchte wechseln',
+                    fahrzeug: {
+                        marke: 'Universal',
+                        modell: '',
+                        generation: 'Alle Modelle'
+                    },
+                    bauteil: 'demontage_beleuchtung',
+                    difficulty: 'leicht',
+                    estimatedTime: '10-15 Minuten',
+                    tools: ['Torx T20/T25 (modellabhängig)', 'Kreuzschraubendreher', '10er Nuss', 'Kunststoffhebel'],
+                    safety: [
+                        'Zündung ausschalten',
+                        'Bei nassen Bedingungen: Auf Rutschgefahr achten'
+                    ],
+                    steps: [
+                        {
+                            order: 1,
+                            title: 'Kofferraum öffnen',
+                            description: 'Kofferraum öffnen und Verkleidung/Abdeckung im Bereich der Rückleuchte lokalisieren. Oft mit Clips oder Klettverschluss befestigt.',
+                            warnings: [],
+                            tips: ['Bei manchen Fahrzeugen muss seitliche Verkleidung entfernt werden'],
+                            images: []
+                        },
+                        {
+                            order: 2,
+                            title: 'Verkleidung entfernen',
+                            description: 'Verkleidung vorsichtig abnehmen. Clips merken/fotografieren für späteren Einbau.',
+                            warnings: [],
+                            tips: ['Clips bei Kälte vorher erwärmen'],
+                            images: []
+                        },
+                        {
+                            order: 3,
+                            title: 'Befestigung lösen',
+                            description: 'Schrauben oder Flügelmuttern der Rückleuchte entfernen. Meist 2-3 Befestigungspunkte.',
+                            warnings: [],
+                            tips: ['Schrauben aufbewahren - oft unterschiedliche Längen'],
+                            images: []
+                        },
+                        {
+                            order: 4,
+                            title: 'Stecker abziehen',
+                            description: 'Elektrischen Stecker an der Rückleuchte abziehen. Entriegelungslasche drücken.',
+                            warnings: ['Nicht am Kabel ziehen'],
+                            tips: [],
+                            images: []
+                        },
+                        {
+                            order: 5,
+                            title: 'Leuchte herausnehmen',
+                            description: 'Rückleuchte vorsichtig nach hinten herausziehen. Bei Widerstand: Prüfen ob alle Befestigungen gelöst sind.',
+                            warnings: ['Dichtung nicht beschädigen', 'Lack nicht zerkratzen'],
+                            tips: ['Leichte Drehbewegung kann helfen', 'Dichtung prüfen und ggf. erneuern'],
+                            images: []
+                        }
+                    ],
+                    createdBy: { uid: 'admin', name: 'Admin' },
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                    version: 1,
+                    isPublished: true,
+                    viewCount: 0,
+                    readBy: []
+                }
+            ];
+
+            for (const anleitung of anleitungen) {
+                await window.getCollection('demontage_anleitungen').add(anleitung);
+                log(`✅ Demontage-Anleitung erstellt: ${anleitung.title}`, 'success');
             }
         }
     </script>
