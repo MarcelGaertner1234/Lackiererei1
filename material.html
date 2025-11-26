@@ -1904,14 +1904,24 @@
             window.showToast = function(message, type = 'info', duration = 3000) {
                 console.log(`[${type.toUpperCase()}] ${message}`);
 
-                // Einfacher Alert als Fallback
-                if (type === 'error') {
-                    alert('❌ ' + message);
-                } else if (type === 'success') {
-                    console.log('✅ ' + message);
-                } else {
-                    console.log('ℹ️ ' + message);
-                }
+                // Visual toast notification (no alert!)
+                const toast = document.createElement('div');
+                toast.className = `toast-notification toast-${type}`;
+                toast.style.cssText = `
+                    position: fixed; top: 20px; right: 20px; z-index: 10000;
+                    padding: 16px 24px; border-radius: 12px; max-width: 400px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    animation: slideIn 0.3s ease; cursor: pointer;
+                    ${type === 'error' ? 'background: #fee2e2; color: #dc2626; border-left: 4px solid #dc2626;' : ''}
+                    ${type === 'success' ? 'background: #dcfce7; color: #16a34a; border-left: 4px solid #16a34a;' : ''}
+                    ${type === 'warning' ? 'background: #fef3c7; color: #d97706; border-left: 4px solid #d97706;' : ''}
+                    ${type === 'info' ? 'background: #dbeafe; color: #2563eb; border-left: 4px solid #2563eb;' : ''}
+                `;
+                toast.textContent = message;
+                toast.onclick = () => toast.remove();
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), duration);
             };
         }
     </script>
@@ -2681,21 +2691,13 @@
 
                 // Validierung: Nur Bilder erlaubt
                 if (!file.type.startsWith('image/')) {
-                    if (typeof showToast === 'function') {
-                        showToast('❌ Bitte nur Bilder hochladen (JPG, PNG, etc.)', 'error');
-                    } else {
-                        alert('❌ Bitte nur Bilder hochladen (JPG, PNG, etc.)');
-                    }
+                    showToast('Bitte nur Bilder hochladen (JPG, PNG, etc.)', 'error');
                     return;
                 }
 
                 // Größen-Validierung: Max 10MB
                 if (file.size > 10 * 1024 * 1024) {
-                    if (typeof showToast === 'function') {
-                        showToast('❌ Bild zu groß. Maximal 10MB erlaubt.', 'error');
-                    } else {
-                        alert('❌ Bild zu groß. Maximal 10MB erlaubt.');
-                    }
+                    showToast('Bild zu groß. Maximal 10MB erlaubt.', 'error');
                     return;
                 }
 
@@ -2755,11 +2757,7 @@
 
                 } catch (error) {
                     console.error('Foto-Upload Fehler:', error);
-                    if (typeof showToast === 'function') {
-                        showToast('❌ Upload fehlgeschlagen: ' + error.message, 'error');
-                    } else {
-                        alert('❌ Upload fehlgeschlagen: ' + error.message);
-                    }
+                    showToast('Upload fehlgeschlagen: ' + error.message, 'error');
                 }
             });
 
@@ -2834,7 +2832,7 @@
          */
         async function convertToBestellung(requestId, etn, benennung, einzelpreis, menge, kennzeichen) {
             if (!window.db) {
-                alert('❌ Firebase nicht initialisiert');
+                showToast('Firebase nicht initialisiert', 'error');
                 return;
             }
 
@@ -2844,7 +2842,7 @@
                 const requestDoc = await window.getCollection('materialRequests').doc(requestId).get();
 
                 if (!requestDoc.exists) {
-                    alert('❌ Material-Anfrage nicht gefunden');
+                    showToast('Material-Anfrage nicht gefunden', 'error');
                     return;
                 }
 
@@ -2867,8 +2865,7 @@
 
                 // Wenn Validierung fehlschlägt, zeige Fehler und blockiere
                 if (validationErrors.length > 0) {
-                    const errorMessage = `⚠️ Bestellung kann nicht aufgegeben werden!\n\nFehlende Pflichtfelder:\n\n${validationErrors.join('\n')}\n\nℹ️ Bitte füllen Sie alle Felder mit * aus, bevor Sie "Als bestellt markieren" klicken.`;
-                    alert(errorMessage);
+                    showToast(`Fehlende Pflichtfelder: ${validationErrors.join(', ')}`, 'warning', 5000);
                     return;
                 }
 
@@ -2893,7 +2890,7 @@
                 const activeVehicles = snapshot.docs.filter(doc => doc.data().status !== 'abgeschlossen');
 
                 if (activeVehicles.length === 0) {
-                    alert(`❌ Fahrzeug "${kennzeichen}" nicht gefunden oder bereits abgeschlossen.\n\nBitte zuerst Fahrzeug aufnehmen.`);
+                    showToast(`Fahrzeug "${kennzeichen}" nicht gefunden oder bereits abgeschlossen`, 'error');
                     return;
                 }
 
@@ -2968,7 +2965,7 @@
 
             } catch (error) {
                 console.error('❌ Fehler beim Konvertieren:', error);
-                alert(`❌ Fehler: ${error.message}\n\nBitte erneut versuchen oder Support kontaktieren.`);
+                showToast(`Fehler: ${error.message}`, 'error');
             }
         }
 
@@ -3457,7 +3454,7 @@
             }
 
             if (!window.db || !window.firebaseInitialized) {
-                alert('❌ Firebase nicht initialisiert. Bitte Seite neu laden.');
+                showToast('Firebase nicht initialisiert. Bitte Seite neu laden.', 'error');
                 return;
             }
 
@@ -3533,7 +3530,7 @@
 
             } catch (error) {
                 console.error('❌ [BESTELLUNG] Fehler beim Speichern:', error);
-                alert('❌ Fehler beim Speichern der Bestellung: ' + error.message);
+                showToast('Fehler beim Speichern der Bestellung: ' + error.message, 'error');
             }
         }
 
@@ -4235,7 +4232,7 @@
 
             } catch (error) {
                 console.error('❌ [BESTELLUNGEN] Fehler beim Status-Update:', error);
-                alert('❌ Fehler beim Aktualisieren des Status: ' + error.message);
+                showToast('Fehler beim Aktualisieren des Status: ' + error.message, 'error');
             }
         }
 
@@ -4269,7 +4266,7 @@
                 const currentUser = window.authManager?.getCurrentUser();
                 const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin' || currentUser.role === 'werkstatt');
                 if (!isAdmin) {
-                    alert('❌ Nur Admins können den Preis bearbeiten!');
+                    showToast('Nur Admins können den Preis bearbeiten!', 'warning');
                     inputElement.value = ''; // Reset
                     return;
                 }
@@ -4363,7 +4360,7 @@
                 inputElement.style.opacity = '';
                 inputElement.style.pointerEvents = '';
 
-                alert(`❌ Fehler beim Speichern: ${error.message}`);
+                showToast(`Fehler beim Speichern: ${error.message}`, 'error');
             }
         }
 
@@ -4397,7 +4394,7 @@
                 const currentUser = window.authManager?.getCurrentUser();
                 const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin' || currentUser.role === 'werkstatt');
                 if (!isAdmin) {
-                    alert('❌ Nur Admins können den Preis bearbeiten!');
+                    showToast('Nur Admins können den Preis bearbeiten!', 'warning');
                     inputElement.value = ''; // Reset
                     return;
                 }
@@ -4499,7 +4496,7 @@
                 inputElement.style.opacity = '';
                 inputElement.style.pointerEvents = '';
 
-                alert(`❌ Fehler beim Speichern: ${error.message}`);
+                showToast(`Fehler beim Speichern: ${error.message}`, 'error');
             }
         }
 
@@ -4722,7 +4719,7 @@
 
             } catch (error) {
                 console.error('❌ [MANUAL MATERIAL-ANFRAGE] Fehler beim Speichern:', error);
-                alert('❌ Fehler beim Speichern der Material-Anfrage: ' + error.message);
+                showToast('Fehler beim Speichern der Material-Anfrage: ' + error.message, 'error');
             }
         }
     </script>
