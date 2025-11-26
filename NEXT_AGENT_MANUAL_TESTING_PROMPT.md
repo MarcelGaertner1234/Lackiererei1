@@ -9184,9 +9184,9 @@ match /fahrzeuge/{fahrzeugId}/{allPaths=**} {
 
 ---
 
-### Pattern 57: Logic - Fire-and-Forget Firestore Updates 🟠 HIGH
+### Pattern 57: Logic - Fire-and-Forget Firestore Updates ✅ FIXED
 
-**Priority:** 🟠 HIGH
+**Priority:** 🟠 HIGH (FIXED)
 
 **Category:** Logic / Error Handling
 
@@ -9238,15 +9238,21 @@ window.getCollection('fahrzeuge').doc(fahrzeug.id).update({
 **Affected Locations:**
 - `kanban.html:2950-2955` - Lazy Migration Update
 - `kanban.html:2980-2984` - Service-Status Init
-- Multiple other `.catch(err => console.warn(...))` patterns
+- `kanban.html:3368-3372` - DATA RESCUE
 
-**Status:** 🟠 NOT FIXED
+**Status:** ✅ FIXED (2025-11-26, Commit pending)
+
+**Fix Applied:**
+- Added `window.backgroundSyncTracker` global tracker
+- Tracks all background sync failures
+- Shows ONE warning toast after 3+ failures
+- User-friendly message: "Einige Hintergrund-Updates konnten nicht synchronisiert werden"
 
 ---
 
-### Pattern 58: Logic - Uninitialized Modal State 🟠 HIGH
+### Pattern 58: Logic - Uninitialized Modal State ✅ FIXED
 
-**Priority:** 🟠 HIGH
+**Priority:** 🟠 HIGH (FIXED)
 
 **Category:** Logic / UI State
 
@@ -9292,7 +9298,13 @@ function openPhotoModal(fahrzeugId, serviceTyp) {
 }
 ```
 
-**Status:** ⚠️ NEEDS VERIFICATION (may be false positive)
+**Status:** ✅ FIXED (2025-11-26, Commit pending)
+
+**Fix Applied:**
+- Added null check for modal element before accessing
+- Added toast error message for user feedback
+- Added null checks for all child elements (modalKennzeichen, photoPreview, etc.)
+- Fixed both `showPhotoModal()` and `closePhotoModal()` functions
 
 ---
 
@@ -9726,8 +9738,8 @@ if (fahrzeug.createdAt < cutoffDate) {
 
 | # | Issue | File | Status |
 |---|-------|------|--------|
-| 57 | Fire-and-Forget Updates | kanban.html:2950 | NOT FIXED |
-| 58 | Uninitialized Modal | kanban.html:5317 | VERIFY |
+| 57 | Fire-and-Forget Updates | kanban.html:2950 | ✅ FIXED (2025-11-26) |
+| 58 | Uninitialized Modal | kanban.html:5317 | ✅ FIXED (2025-11-26) |
 | 62 | additionalServices Type | multiple files | PARTIAL FIX |
 | 63 | E2E Test Rules | firestore.rules | MITIGATED |
 
@@ -9744,4 +9756,4 @@ if (fahrzeug.createdAt < cutoffDate) {
 
 ---
 
-_Last Updated: 2025-11-26 - Patterns 55-56 FIXED (Storage Rules Security), Patterns 57-66 documented_
+_Last Updated: 2025-11-26 - Patterns 55-58 FIXED (Storage Rules + kanban.html Logic), Patterns 59-66 documented_

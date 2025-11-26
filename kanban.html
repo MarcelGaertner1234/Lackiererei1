@@ -15,6 +15,49 @@
             window.location.hostname === 'localhost' ||
             window.location.port === '8000'
         );
+
+        // 🛡️ Pattern 57 FIX (2025-11-26): Background Sync Tracker
+        // Tracks silent Firestore update failures and shows ONE warning toast
+        window.backgroundSyncTracker = {
+            failures: [],
+            warningShown: false,
+            maxFailuresBeforeWarning: 3,
+
+            // Track a failed background sync operation
+            trackFailure: function(operation, error, vehicleId) {
+                this.failures.push({
+                    operation,
+                    error: error?.message || String(error),
+                    vehicleId,
+                    timestamp: Date.now()
+                });
+
+                console.error(`❌ Background Sync Failed [${operation}]:`, error);
+
+                // Show ONE warning toast after multiple failures
+                if (this.failures.length >= this.maxFailuresBeforeWarning && !this.warningShown) {
+                    this.warningShown = true;
+                    if (window.toast) {
+                        window.toast.warning(
+                            'Einige Hintergrund-Updates konnten nicht synchronisiert werden. ' +
+                            'Bitte Seite neu laden falls Daten fehlen.',
+                            { duration: 8000 }
+                        );
+                    }
+                }
+            },
+
+            // Reset tracker (call on successful page load)
+            reset: function() {
+                this.failures = [];
+                this.warningShown = false;
+            },
+
+            // Get failure count
+            getFailureCount: function() {
+                return this.failures.length;
+            }
+        };
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2947,11 +2990,12 @@
                         }
                     };
 
-                    // Async Update in Firestore (Fire-and-Forget)
+                    // Async Update in Firestore (with tracking - Pattern 57 FIX)
                     window.getCollection('fahrzeuge').doc(fahrzeug.id).update({
                         serviceStatuses: fahrzeug.serviceStatuses
                     }).catch(err => {
-                        console.warn('⚠️ Lazy Migration Update fehlgeschlagen:', err);
+                        // 🛡️ Pattern 57 FIX: Track failure instead of silent warn
+                        window.backgroundSyncTracker?.trackFailure('LazyMigration', err, fahrzeug.id);
                     });
                 }
 
@@ -2976,11 +3020,12 @@
                     }]
                 };
 
-                // Async Update
+                // Async Update (with tracking - Pattern 57 FIX)
                 window.getCollection('fahrzeuge').doc(fahrzeug.id).update({
                     [`serviceStatuses.${serviceTyp}`]: fahrzeug.serviceStatuses[serviceTyp]
                 }).catch(err => {
-                    console.warn('⚠️ Service-Status Init fehlgeschlagen:', err);
+                    // 🛡️ Pattern 57 FIX: Track failure instead of silent warn
+                    window.backgroundSyncTracker?.trackFailure('ServiceStatusInit', err, fahrzeug.id);
                 });
 
                 return 'neu';
@@ -3321,7 +3366,9 @@
                             }).then(() => {
                                 console.log(`   ✅ DATA RESCUE [${f.kennzeichen}]: Auto-fix saved successfully`);
                             }).catch(err => {
+                                // 🛡️ Pattern 57 FIX: Track DATA RESCUE failures (critical!)
                                 console.error(`   ❌ DATA RESCUE [${f.kennzeichen}]: Auto-fix failed:`, err);
+                                window.backgroundSyncTracker?.trackFailure('DataRescue', err, f.id);
                             });
                         }
 
@@ -5340,10 +5387,21 @@
             reader.readAsDataURL(file);
         }
 
-        // Modal anzeigen
+        // Modal anzeigen (with defensive checks - Pattern 58 FIX)
         async function showPhotoModal(fahrzeugId, newStatus) {
             const fahrzeug = allFahrzeuge.find(f => window.compareIds(f.id, fahrzeugId));
-            if (!fahrzeug) return;
+            if (!fahrzeug) {
+                console.error('❌ showPhotoModal: Fahrzeug nicht gefunden:', fahrzeugId);
+                return;
+            }
+
+            // 🛡️ Pattern 58 FIX: Verify modal exists before using
+            const modal = document.getElementById('photoModal');
+            if (!modal) {
+                console.error('❌ showPhotoModal: Modal #photoModal nicht im DOM gefunden!');
+                window.toast?.error('Fehler: Foto-Dialog konnte nicht geöffnet werden. Bitte Seite neu laden.');
+                return;
+            }
 
             // Daten speichern
             currentPhotoData.fahrzeugId = fahrzeugId;
@@ -5351,21 +5409,29 @@
             currentPhotoData.photoFile = null;
             currentPhotoData.photoDataURL = null;
 
-            // Modal-Inhalte aktualisieren
-            document.getElementById('modalKennzeichen').textContent = fahrzeug.kennzeichen;
-            document.getElementById('modalNeuerStatus').textContent = getStatusLabel(newStatus);
-            document.getElementById('photoPreview').innerHTML = '';
-            document.getElementById('photoNotiz').value = '';
-            document.getElementById('uploadPhotoBtn').disabled = true;
-            document.getElementById('photoInputFile').value = '';
+            // Modal-Inhalte aktualisieren (with null checks)
+            const modalKennzeichen = document.getElementById('modalKennzeichen');
+            const modalNeuerStatus = document.getElementById('modalNeuerStatus');
+            const photoPreview = document.getElementById('photoPreview');
+            const photoNotiz = document.getElementById('photoNotiz');
+            const uploadPhotoBtn = document.getElementById('uploadPhotoBtn');
+            const photoInputFile = document.getElementById('photoInputFile');
+
+            if (modalKennzeichen) modalKennzeichen.textContent = fahrzeug.kennzeichen;
+            if (modalNeuerStatus) modalNeuerStatus.textContent = getStatusLabel(newStatus);
+            if (photoPreview) photoPreview.innerHTML = '';
+            if (photoNotiz) photoNotiz.value = '';
+            if (uploadPhotoBtn) uploadPhotoBtn.disabled = true;
+            if (photoInputFile) photoInputFile.value = '';
 
             // Modal anzeigen
-            document.getElementById('photoModal').classList.add('active');
+            modal.classList.add('active');
         }
 
-        // Modal schließen
+        // Modal schließen (with defensive check - Pattern 58 FIX)
         function closePhotoModal() {
-            document.getElementById('photoModal').classList.remove('active');
+            const modal = document.getElementById('photoModal');
+            if (modal) modal.classList.remove('active');
             currentPhotoData = { fahrzeugId: null, newStatus: null, photoFile: null, photoDataURL: null };
         }
 
