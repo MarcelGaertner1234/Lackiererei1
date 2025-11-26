@@ -3104,9 +3104,93 @@ setupMaterialRequestsListener();  // ✅ This function exists!
 // Lesson: ALWAYS verify function existence with grep/search before calling
 ```
 
-### Pattern 19: ⚠️ RESERVED (Future Pattern)
+### Pattern 19: Global CSS Konflikt (components.css überschreibt lokale Styles)
 
-### Pattern 20: ⚠️ RESERVED (Future Pattern)
+**Symptom:**
+- Modal-Overlay erscheint (dunkler Hintergrund sichtbar)
+- Modal-Content UNSICHTBAR trotz korrekter HTML-Struktur
+- Lokale CSS-Styles für background, border etc. werden ignoriert
+- Console zeigt KEINE Fehler!
+
+**Root Cause:**
+`components.css` (Line 587) definiert GLOBAL:
+```css
+.modal {
+  display: none;      /* ← VERSTECKT alles! */
+  position: fixed;
+  inset: 0;
+}
+```
+
+Lokale Styles überschreiben nur `background`, `border` etc. - NICHT `display: none`!
+
+**Fix:**
+```css
+.modal {
+    /* KRITISCH: Überschreibe components.css Defaults */
+    position: static !important;
+    inset: unset !important;
+    display: block !important;
+
+    /* Dann visuelle Styles */
+    background: rgba(30, 32, 34, 0.98);
+    border-radius: var(--radius-xl, 20px);
+    ...
+}
+```
+
+**Lesson:** Bei unsichtbaren Elementen IMMER globale CSS-Dateien prüfen (design-system.css, components.css) auf `display: none`, `visibility: hidden`, `opacity: 0`!
+
+**Betroffene Datei:** leihfahrzeuge.html (Commit: 68565ee)
+
+---
+
+### Pattern 20: Auth Race Condition ohne Retry-Loop
+
+**Symptom:**
+- User wird sofort zu index.html redirected
+- Console zeigt nur index.html Logs, nicht die Zielseite
+- Eingeloggter User kann Seite nicht erreichen
+
+**Root Cause:**
+```javascript
+// KAPUTT - Race Condition!
+const user = firebase.auth().currentUser;  // Kann null sein obwohl eingeloggt!
+if (!user) {
+    safeNavigate('index.html');  // ← Sofortiger Redirect!
+    return;
+}
+```
+
+Firebase Auth ist ASYNCHRON - `currentUser` kann `null` sein während Auth noch lädt!
+
+**Fix:**
+```javascript
+// KORREKT - Mit Retry-Loop (wie liste.html, kanban.html)
+console.log('🔐 Prüfe Auth State...');
+let currentUser = null;
+let attempts = 0;
+const maxAttempts = 20;  // 20 × 250ms = 5s Wartezeit
+
+while (!currentUser && attempts < maxAttempts) {
+    currentUser = window.authManager?.getCurrentUser();
+    if (!currentUser) {
+        console.log(`⏳ Warte auf Auth (${attempts + 1}/${maxAttempts})...`);
+        await new Promise(r => setTimeout(r, 250));
+        attempts++;
+    }
+}
+
+if (!currentUser) {
+    console.warn('⚠️ Kein User nach 5s - Redirect');
+    safeNavigate('index.html');
+    return;
+}
+```
+
+**Lesson:** NIEMALS `firebase.auth().currentUser` direkt verwenden! IMMER `authManager.getCurrentUser()` mit Retry-Loop nutzen (max 5s Wartezeit).
+
+**Betroffene Datei:** leihfahrzeuge.html (Commit: d85ae75)
 
 ### Pattern 21: Multi-Service serviceTyp Overwrite 🔴 CRITICAL!
 
