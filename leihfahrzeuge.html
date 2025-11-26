@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+    <script>
+        // window.werkstattId is set automatically after successful login
+        // This ensures proper multi-tenant data isolation
+    </script>
+    <script>
+        // Global DEBUG flag for conditional logging
+        window.DEBUG = (
+            localStorage.getItem('DEBUG') === 'true' ||
+            window.location.search.includes('debug=true') ||
+            window.location.hostname === 'localhost' ||
+            window.location.port === '8000'
+        );
+    </script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leihfahrzeuge verwalten | Auto-Lackierzentrum Mosbach</title>
+
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <!-- Apple Liquid Glass Dark Mode Design System -->
+    <link rel="stylesheet" href="design-system.css?v=af6b90f">
+    <link rel="stylesheet" href="components.css?v=af6b90f">
+    <link rel="stylesheet" href="animations.css?v=af6b90f">
+    <link rel="stylesheet" href="mobile-first.css?v=af6b90f">
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+
+    <!-- Listener Registry for Memory Leak Prevention -->
+    <script src="listener-registry.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--color-background);
+            min-height: 100vh;
+            padding: 20px;
+            transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur-nav));
+            border: 1px solid var(--color-border-glass);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-glass);
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1) rotate(15deg);
+        }
+
+        .theme-toggle svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--color-text-primary);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur-card));
+            box-shadow: var(--shadow-glass);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl, 20px);
+            padding: 30px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--color-border-glass);
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-icon {
+            font-size: 48px;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            color: var(--color-text-primary);
+            font-weight: 700;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: var(--radius-md, 10px);
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-secondary {
+            background: var(--color-surface-elevated);
+            color: var(--color-text-primary);
+            border: 1px solid var(--color-border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-surface-hover);
+        }
+
+        .btn-danger {
+            background: var(--color-error);
+            color: white;
+        }
+
+        .btn-success {
+            background: var(--color-success);
+            color: white;
+        }
+
+        /* Filter Section */
+        .filter-section {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-section select,
+        .filter-section input {
+            padding: 10px 15px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-surface-elevated);
+            color: var(--color-text-primary);
+            font-size: 0.95rem;
+            min-width: 150px;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 200px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding-left: 40px;
+        }
+
+        .search-box svg {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            stroke: var(--color-text-muted);
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: var(--color-surface-elevated);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--color-border-glass);
+        }
+
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.9rem;
+            color: var(--color-text-muted);
+            margin-top: 5px;
+        }
+
+        .stat-card.available .stat-value { color: var(--color-success); }
+        .stat-card.assigned .stat-value { color: var(--color-warning); }
+        .stat-card.maintenance .stat-value { color: var(--color-error); }
+
+        /* Vehicle Cards Grid */
+        .vehicles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .vehicle-card {
+            background: var(--color-surface-elevated);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            border: 1px solid var(--color-border-glass);
+            transition: all 0.3s ease;
+        }
+
+        .vehicle-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .vehicle-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .vehicle-info h3 {
+            font-size: 1.2rem;
+            color: var(--color-text-primary);
+            margin-bottom: 5px;
+        }
+
+        .vehicle-info .kennzeichen {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--color-primary);
+            font-family: monospace;
+        }
+
+        .vehicle-info .model {
+            color: var(--color-text-muted);
+            font-size: 0.95rem;
+        }
+
+        .vehicle-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .status-verfuegbar {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--color-success);
+        }
+
+        .status-vergeben {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--color-warning);
+        }
+
+        .status-wartung {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--color-error);
+        }
+
+        .status-reserviert {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--color-info);
+        }
+
+        .vehicle-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+            padding: 15px 0;
+            border-top: 1px solid var(--color-border);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-label {
+            font-size: 0.8rem;
+            color: var(--color-text-muted);
+            margin-bottom: 2px;
+        }
+
+        .detail-value {
+            font-size: 0.95rem;
+            color: var(--color-text-primary);
+            font-weight: 500;
+        }
+
+        .vehicle-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .vehicle-actions .btn {
+            flex: 1;
+            justify-content: center;
+            padding: 10px;
+            font-size: 0.9rem;
+        }
+
+        .pool-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            background: rgba(139, 92, 246, 0.15);
+            color: #8B5CF6;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            margin-top: 10px;
+        }
+
+        .assignment-info {
+            background: var(--color-surface);
+            border-radius: var(--radius-md);
+            padding: 12px;
+            margin-top: 10px;
+            border-left: 3px solid var(--color-warning);
+        }
+
+        .assignment-info .customer-name {
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .assignment-info .dates {
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--color-surface);
+            border-radius: var(--radius-xl);
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .modal-header h2 {
+            font-size: 1.4rem;
+            color: var(--color-text-primary);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .modal-close svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--color-text-muted);
+        }
+
+        .modal-body {
+            padding: 25px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--color-text-primary);
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-surface-elevated);
+            color: var(--color-text-primary);
+            font-size: 1rem;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-checkbox input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 20px 25px;
+            border-top: 1px solid var(--color-border);
+        }
+
+        /* Loading State */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--color-text-muted);
+        }
+
+        .loading svg {
+            animation: spin 1s linear infinite;
+            width: 48px;
+            height: 48px;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            stroke: var(--color-text-muted);
+            margin-bottom: 20px;
+        }
+
+        .empty-state h3 {
+            color: var(--color-text-primary);
+            margin-bottom: 10px;
+        }
+
+        .empty-state p {
+            color: var(--color-text-muted);
+            margin-bottom: 20px;
+        }
+
+        /* Back Button */
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur-nav));
+            border: 1px solid var(--color-border-glass);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .back-btn svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--color-text-primary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .vehicles-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .vehicle-details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Back Button -->
+    <button class="back-btn" onclick="safeNavigate('index.html')" title="Zurück zum Hauptmenü">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+    </button>
+
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" onclick="toggleTheme()" title="Dark/Light Mode umschalten">
+        <svg id="theme-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+    </button>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <span class="header-icon">🚗</span>
+                <div>
+                    <h1>Leihfahrzeuge</h1>
+                    <p style="color: var(--color-text-muted); font-size: 0.9rem;">Ersatzfahrzeuge verwalten und zuweisen</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="openPoolPage()">
+                    <i data-feather="globe"></i>
+                    Pool-Netzwerk
+                </button>
+                <button class="btn btn-secondary" onclick="openAnfragenModal()" id="btnAnfragen" style="position: relative;">
+                    <i data-feather="inbox"></i>
+                    Anfragen
+                    <span id="anfragenBadge" class="badge badge-danger" style="display: none; position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 6px; border-radius: 10px;">0</span>
+                </button>
+                <button class="btn btn-primary" onclick="openCreateModal()">
+                    <i data-feather="plus"></i>
+                    Neues Fahrzeug
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">-</div>
+                <div class="stat-label">Gesamt</div>
+            </div>
+            <div class="stat-card available">
+                <div class="stat-value" id="statAvailable">-</div>
+                <div class="stat-label">Verfügbar</div>
+            </div>
+            <div class="stat-card assigned">
+                <div class="stat-value" id="statAssigned">-</div>
+                <div class="stat-label">Vergeben</div>
+            </div>
+            <div class="stat-card maintenance">
+                <div class="stat-value" id="statMaintenance">-</div>
+                <div class="stat-label">In Wartung</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-section">
+            <select id="filterStatus" onchange="applyFilters()">
+                <option value="">Alle Status</option>
+                <option value="verfuegbar">Verfügbar</option>
+                <option value="vergeben">Vergeben</option>
+                <option value="wartung">In Wartung</option>
+                <option value="reserviert">Reserviert</option>
+            </select>
+            <select id="filterCategory" onchange="applyFilters()">
+                <option value="">Alle Kategorien</option>
+                <option value="kleinwagen">Kleinwagen</option>
+                <option value="limousine">Limousine</option>
+                <option value="kombi">Kombi</option>
+                <option value="suv">SUV</option>
+                <option value="transporter">Transporter</option>
+            </select>
+            <div class="search-box">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="M21 21l-4.35-4.35"></path>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Suche nach Kennzeichen, Marke..." oninput="applyFilters()">
+            </div>
+        </div>
+
+        <!-- Vehicles Grid -->
+        <div id="vehiclesContainer">
+            <div class="loading">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 6v6l4 2"></path>
+                </svg>
+                <p>Lade Leihfahrzeuge...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div class="modal-overlay" id="vehicleModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modalTitle">Neues Leihfahrzeug anlegen</h2>
+                <button class="modal-close" onclick="closeModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="vehicleForm">
+                    <input type="hidden" id="vehicleId">
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="kennzeichen">Kennzeichen *</label>
+                            <input type="text" id="kennzeichen" placeholder="MOS-LF-001" required
+                                   style="text-transform: uppercase;" oninput="this.value = this.value.toUpperCase()">
+                        </div>
+                        <div class="form-group">
+                            <label for="kategorie">Kategorie *</label>
+                            <select id="kategorie" required>
+                                <option value="">Bitte wählen</option>
+                                <option value="kleinwagen">Kleinwagen</option>
+                                <option value="limousine">Limousine</option>
+                                <option value="kombi">Kombi</option>
+                                <option value="suv">SUV</option>
+                                <option value="transporter">Transporter</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="marke">Marke *</label>
+                            <input type="text" id="marke" placeholder="BMW" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="modell">Modell *</label>
+                            <input type="text" id="modell" placeholder="3er Touring" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="baujahr">Baujahr</label>
+                            <input type="number" id="baujahr" placeholder="2022" min="2000" max="2030">
+                        </div>
+                        <div class="form-group">
+                            <label for="farbe">Farbe</label>
+                            <input type="text" id="farbe" placeholder="Schwarz">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="kilometerstand">Kilometerstand</label>
+                            <input type="number" id="kilometerstand" placeholder="45000" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="tuevBis">TÜV bis</label>
+                            <input type="date" id="tuevBis">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="tagesmiete">Tagesmiete (€) *</label>
+                            <input type="number" id="tagesmiete" placeholder="45.00" step="0.01" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="kaution">Kaution (€)</label>
+                            <input type="number" id="kaution" placeholder="500.00" step="0.01" min="0">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select id="status">
+                            <option value="verfuegbar">Verfügbar</option>
+                            <option value="wartung">In Wartung</option>
+                            <option value="reserviert">Reserviert</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="form-checkbox">
+                            <input type="checkbox" id="imPoolFreigegeben">
+                            <label for="imPoolFreigegeben">Im Netzwerk-Pool freigeben (andere Werkstätten können anfragen)</label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="notizen">Notizen</label>
+                        <textarea id="notizen" placeholder="Weitere Informationen zum Fahrzeug..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Abbrechen</button>
+                <button class="btn btn-primary" onclick="saveVehicle()">
+                    <i data-feather="save"></i>
+                    Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pool Browser Modal (2025-11-26) -->
+    <div id="poolModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>🌐 Netzwerk-Pool</h2>
+                <button class="btn-close" onclick="closePoolModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                    Verfügbare Leihfahrzeuge von anderen Werkstätten im Netzwerk.
+                    Sie können Fahrzeuge anfragen und bei Genehmigung nutzen.
+                </p>
+
+                <div id="poolLoading" style="text-align: center; padding: 40px;">
+                    <div class="loading-spinner"></div>
+                    <p>Lade Pool-Fahrzeuge...</p>
+                </div>
+
+                <div id="poolEmpty" style="display: none; text-align: center; padding: 40px; color: var(--text-secondary);">
+                    <div style="font-size: 48px; margin-bottom: 16px;">🚗</div>
+                    <h3 style="margin-bottom: 8px;">Keine Fahrzeuge verfügbar</h3>
+                    <p>Aktuell sind keine Leihfahrzeuge von anderen Werkstätten im Pool verfügbar.</p>
+                </div>
+
+                <div id="poolGrid" class="cards-grid" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Anfragen-Eingang Modal (für Besitzer-Werkstatt) -->
+    <div id="anfragenModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>📬 Eingehende Anfragen</h2>
+                <button class="btn-close" onclick="closeAnfragenModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                    Anfragen von anderen Werkstätten für Ihre Pool-Fahrzeuge.
+                </p>
+
+                <div id="anfragenLoading" style="text-align: center; padding: 40px;">
+                    <div class="loading-spinner"></div>
+                    <p>Lade Anfragen...</p>
+                </div>
+
+                <div id="anfragenEmpty" style="display: none; text-align: center; padding: 40px; color: var(--text-secondary);">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                    <h3 style="margin-bottom: 8px;">Keine offenen Anfragen</h3>
+                    <p>Es liegen keine Anfragen für Ihre Leihfahrzeuge vor.</p>
+                </div>
+
+                <div id="anfragenList" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Config & Auth -->
+    <script src="firebase-config.js"></script>
+    <script src="auth-manager.js"></script>
+    <script src="toast.js"></script>
+
+    <script>
+        // ============================================
+        // GLOBAL STATE
+        // ============================================
+        let allVehicles = [];
+        let currentEditId = null;
+        let unsubscribeListener = null;
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Wait for Firebase initialization
+                await window.firebaseInitialized;
+
+                // Check authentication
+                const user = firebase.auth().currentUser;
+                if (!user) {
+                    toast.error('Bitte melden Sie sich an');
+                    safeNavigate('index.html');
+                    return;
+                }
+
+                // Check role (only werkstatt/admin/mitarbeiter)
+                const userDoc = await db.collection('users').doc(user.uid).get();
+                const role = userDoc.data()?.role;
+                if (!['werkstatt', 'admin', 'superadmin', 'mitarbeiter'].includes(role)) {
+                    toast.error('Keine Berechtigung für diese Seite');
+                    safeNavigate('index.html');
+                    return;
+                }
+
+                // Initialize Feather Icons
+                feather.replace();
+
+                // Load vehicles
+                loadVehicles();
+
+                // Initialize theme
+                initTheme();
+
+                // Update anfragen badge count
+                updateAnfragenBadge();
+
+                if (window.DEBUG) console.log('✅ Leihfahrzeuge page initialized');
+
+            } catch (error) {
+                console.error('Initialization error:', error);
+                toast.error('Fehler beim Laden der Seite');
+            }
+        });
+
+        // ============================================
+        // LOAD VEHICLES (Real-time Listener)
+        // ============================================
+        function loadVehicles() {
+            const container = document.getElementById('vehiclesContainer');
+
+            // Show loading
+            container.innerHTML = `
+                <div class="loading">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 6v6l4 2"></path>
+                    </svg>
+                    <p>Lade Leihfahrzeuge...</p>
+                </div>
+            `;
+
+            // Get collection using Multi-Tenant helper
+            const collectionName = window.getCollectionName('leihfahrzeuge');
+
+            // Setup real-time listener
+            unsubscribeListener = db.collection(collectionName)
+                .orderBy('kennzeichen')
+                .onSnapshot(snapshot => {
+                    allVehicles = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+
+                    updateStats();
+                    applyFilters();
+
+                    if (window.DEBUG) console.log(`Loaded ${allVehicles.length} vehicles`);
+                }, error => {
+                    console.error('Error loading vehicles:', error);
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M12 8v4M12 16h.01"></path>
+                            </svg>
+                            <h3>Fehler beim Laden</h3>
+                            <p>${error.message}</p>
+                        </div>
+                    `;
+                });
+
+            // Register listener for cleanup
+            if (window.listenerRegistry) {
+                window.listenerRegistry.add(unsubscribeListener);
+            }
+        }
+
+        // ============================================
+        // UPDATE STATS
+        // ============================================
+        function updateStats() {
+            const total = allVehicles.length;
+            const available = allVehicles.filter(v => v.status === 'verfuegbar').length;
+            const assigned = allVehicles.filter(v => v.status === 'vergeben').length;
+            const maintenance = allVehicles.filter(v => v.status === 'wartung').length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statAvailable').textContent = available;
+            document.getElementById('statAssigned').textContent = assigned;
+            document.getElementById('statMaintenance').textContent = maintenance;
+        }
+
+        // ============================================
+        // APPLY FILTERS
+        // ============================================
+        function applyFilters() {
+            const statusFilter = document.getElementById('filterStatus').value;
+            const categoryFilter = document.getElementById('filterCategory').value;
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+
+            let filtered = allVehicles;
+
+            if (statusFilter) {
+                filtered = filtered.filter(v => v.status === statusFilter);
+            }
+
+            if (categoryFilter) {
+                filtered = filtered.filter(v => v.kategorie === categoryFilter);
+            }
+
+            if (searchTerm) {
+                filtered = filtered.filter(v =>
+                    v.kennzeichen?.toLowerCase().includes(searchTerm) ||
+                    v.marke?.toLowerCase().includes(searchTerm) ||
+                    v.modell?.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            renderVehicles(filtered);
+        }
+
+        // ============================================
+        // RENDER VEHICLES
+        // ============================================
+        function renderVehicles(vehicles) {
+            const container = document.getElementById('vehiclesContainer');
+
+            if (vehicles.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                        </svg>
+                        <h3>Keine Leihfahrzeuge gefunden</h3>
+                        <p>Legen Sie Ihr erstes Leihfahrzeug an</p>
+                        <button class="btn btn-primary" onclick="openCreateModal()">
+                            <i data-feather="plus"></i>
+                            Neues Fahrzeug anlegen
+                        </button>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+
+            container.innerHTML = `<div class="vehicles-grid">${vehicles.map(v => renderVehicleCard(v)).join('')}</div>`;
+            feather.replace();
+        }
+
+        // ============================================
+        // RENDER SINGLE VEHICLE CARD
+        // ============================================
+        function renderVehicleCard(vehicle) {
+            const statusLabels = {
+                'verfuegbar': 'Verfügbar',
+                'vergeben': 'Vergeben',
+                'wartung': 'In Wartung',
+                'reserviert': 'Reserviert'
+            };
+
+            const categoryLabels = {
+                'kleinwagen': 'Kleinwagen',
+                'limousine': 'Limousine',
+                'kombi': 'Kombi',
+                'suv': 'SUV',
+                'transporter': 'Transporter'
+            };
+
+            let assignmentHtml = '';
+            if (vehicle.status === 'vergeben' && vehicle.aktuelleZuweisung) {
+                const zuweisung = vehicle.aktuelleZuweisung;
+                assignmentHtml = `
+                    <div class="assignment-info">
+                        <div class="customer-name">${zuweisung.kundenName || 'Unbekannt'}</div>
+                        <div class="dates">${formatDate(zuweisung.von)} - ${formatDate(zuweisung.bis)}</div>
+                    </div>
+                `;
+            }
+
+            let poolBadgeHtml = '';
+            if (vehicle.imPoolFreigegeben) {
+                poolBadgeHtml = `
+                    <div class="pool-badge">
+                        <i data-feather="globe" style="width: 14px; height: 14px;"></i>
+                        Im Pool
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="vehicle-card">
+                    <div class="vehicle-card-header">
+                        <div class="vehicle-info">
+                            <div class="kennzeichen">${vehicle.kennzeichen || '-'}</div>
+                            <div class="model">${vehicle.marke || ''} ${vehicle.modell || ''}</div>
+                        </div>
+                        <span class="vehicle-status status-${vehicle.status}">
+                            ${statusLabels[vehicle.status] || vehicle.status}
+                        </span>
+                    </div>
+
+                    <div class="vehicle-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Kategorie</span>
+                            <span class="detail-value">${categoryLabels[vehicle.kategorie] || '-'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Baujahr</span>
+                            <span class="detail-value">${vehicle.baujahr || '-'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Tagesmiete</span>
+                            <span class="detail-value">${formatCurrency(vehicle.tagesmiete)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">KM-Stand</span>
+                            <span class="detail-value">${vehicle.kilometerstand ? vehicle.kilometerstand.toLocaleString('de-DE') : '-'}</span>
+                        </div>
+                    </div>
+
+                    ${assignmentHtml}
+                    ${poolBadgeHtml}
+
+                    <div class="vehicle-actions">
+                        <button class="btn btn-secondary" onclick="editVehicle('${vehicle.id}')">
+                            <i data-feather="edit-2"></i>
+                            Bearbeiten
+                        </button>
+                        ${vehicle.status === 'verfuegbar' ? `
+                            <button class="btn btn-success" onclick="assignVehicle('${vehicle.id}')">
+                                <i data-feather="user-plus"></i>
+                                Zuweisen
+                            </button>
+                        ` : vehicle.status === 'vergeben' ? `
+                            <button class="btn btn-primary" onclick="returnVehicle('${vehicle.id}')">
+                                <i data-feather="corner-down-left"></i>
+                                Rücknahme
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // MODAL FUNCTIONS
+        // ============================================
+        function openCreateModal() {
+            currentEditId = null;
+            document.getElementById('modalTitle').textContent = 'Neues Leihfahrzeug anlegen';
+            document.getElementById('vehicleForm').reset();
+            document.getElementById('status').value = 'verfuegbar';
+            document.getElementById('vehicleModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('vehicleModal').classList.remove('active');
+            currentEditId = null;
+        }
+
+        function editVehicle(vehicleId) {
+            const vehicle = allVehicles.find(v => String(v.id) === String(vehicleId));
+            if (!vehicle) {
+                toast.error('Fahrzeug nicht gefunden');
+                return;
+            }
+
+            currentEditId = vehicleId;
+            document.getElementById('modalTitle').textContent = 'Leihfahrzeug bearbeiten';
+
+            // Fill form
+            document.getElementById('kennzeichen').value = vehicle.kennzeichen || '';
+            document.getElementById('kategorie').value = vehicle.kategorie || '';
+            document.getElementById('marke').value = vehicle.marke || '';
+            document.getElementById('modell').value = vehicle.modell || '';
+            document.getElementById('baujahr').value = vehicle.baujahr || '';
+            document.getElementById('farbe').value = vehicle.farbe || '';
+            document.getElementById('kilometerstand').value = vehicle.kilometerstand || '';
+            document.getElementById('tuevBis').value = vehicle.tuevBis || '';
+            document.getElementById('tagesmiete').value = vehicle.tagesmiete || '';
+            document.getElementById('kaution').value = vehicle.kaution || '';
+            document.getElementById('status').value = vehicle.status || 'verfuegbar';
+            document.getElementById('imPoolFreigegeben').checked = vehicle.imPoolFreigegeben || false;
+            document.getElementById('notizen').value = vehicle.notizen || '';
+
+            document.getElementById('vehicleModal').classList.add('active');
+        }
+
+        // ============================================
+        // SAVE VEHICLE
+        // ============================================
+        async function saveVehicle() {
+            const form = document.getElementById('vehicleForm');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const vehicleData = {
+                kennzeichen: document.getElementById('kennzeichen').value.trim().toUpperCase(),
+                kategorie: document.getElementById('kategorie').value,
+                marke: document.getElementById('marke').value.trim(),
+                modell: document.getElementById('modell').value.trim(),
+                baujahr: document.getElementById('baujahr').value ? parseInt(document.getElementById('baujahr').value) : null,
+                farbe: document.getElementById('farbe').value.trim(),
+                kilometerstand: document.getElementById('kilometerstand').value ? parseInt(document.getElementById('kilometerstand').value) : null,
+                tuevBis: document.getElementById('tuevBis').value || null,
+                tagesmiete: parseFloat(document.getElementById('tagesmiete').value) || 0,
+                kaution: parseFloat(document.getElementById('kaution').value) || 0,
+                status: document.getElementById('status').value,
+                imPoolFreigegeben: document.getElementById('imPoolFreigegeben').checked,
+                notizen: document.getElementById('notizen').value.trim(),
+                werkstattId: window.werkstattId,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                const collectionName = window.getCollectionName('leihfahrzeuge');
+
+                if (currentEditId) {
+                    // Update existing
+                    await db.collection(collectionName).doc(currentEditId).update(vehicleData);
+                    toast.success('Leihfahrzeug aktualisiert');
+                } else {
+                    // Create new
+                    vehicleData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    vehicleData.erstelltVon = firebase.auth().currentUser?.uid;
+                    await db.collection(collectionName).add(vehicleData);
+                    toast.success('Leihfahrzeug angelegt');
+                }
+
+                closeModal();
+
+                // Update pool if needed
+                if (vehicleData.imPoolFreigegeben) {
+                    await updatePool(currentEditId || 'new', vehicleData);
+                }
+
+            } catch (error) {
+                console.error('Save error:', error);
+                toast.error('Fehler beim Speichern: ' + error.message);
+            }
+        }
+
+        // ============================================
+        // UPDATE POOL (Cross-Werkstatt)
+        // ============================================
+        async function updatePool(vehicleId, vehicleData) {
+            if (!vehicleData.imPoolFreigegeben) return;
+
+            try {
+                // Get werkstatt name from settings
+                const settingsCollectionName = window.getCollectionName('einstellungen');
+                const settingsDoc = await db.collection(settingsCollectionName).doc('werkstatt').get();
+                const werkstattName = settingsDoc.data()?.name || 'Unbekannte Werkstatt';
+
+                const poolData = {
+                    originalId: vehicleId,
+                    besitzerWerkstattId: window.werkstattId,
+                    besitzerWerkstattName: werkstattName,
+                    kennzeichen: vehicleData.kennzeichen,
+                    marke: vehicleData.marke,
+                    modell: vehicleData.modell,
+                    kategorie: vehicleData.kategorie,
+                    tagesmiete: vehicleData.tagesmiete,
+                    verfuegbar: vehicleData.status === 'verfuegbar',
+                    aktualisiertAm: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                // Use originalId as pool document ID for easy lookup
+                await db.collection('leihfahrzeugPool').doc(`${window.werkstattId}_${vehicleId}`).set(poolData, { merge: true });
+
+                if (window.DEBUG) console.log('Pool updated for vehicle:', vehicleId);
+
+            } catch (error) {
+                console.error('Pool update error:', error);
+                // Don't show error to user - pool update is secondary
+            }
+        }
+
+        // ============================================
+        // ASSIGN VEHICLE (Opens separate modal - simplified for now)
+        // ============================================
+        function assignVehicle(vehicleId) {
+            toast.info('Zuweisung erfolgt über KVA-Erstellung');
+            // TODO: Implement assignment modal or redirect to KVA
+        }
+
+        // ============================================
+        // RETURN VEHICLE
+        // ============================================
+        async function returnVehicle(vehicleId) {
+            if (!confirm('Leihfahrzeug als zurückgegeben markieren?')) return;
+
+            try {
+                const collectionName = window.getCollectionName('leihfahrzeuge');
+                await db.collection(collectionName).doc(vehicleId).update({
+                    status: 'verfuegbar',
+                    aktuelleZuweisung: null,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                toast.success('Leihfahrzeug zurückgenommen');
+
+            } catch (error) {
+                console.error('Return error:', error);
+                toast.error('Fehler bei Rücknahme: ' + error.message);
+            }
+        }
+
+        // ============================================
+        // POOL BROWSER (Cross-Werkstatt - 2025-11-26)
+        // ============================================
+        function openPoolPage() {
+            document.getElementById('poolModal').classList.add('show');
+            loadPoolVehicles();
+        }
+
+        function closePoolModal() {
+            document.getElementById('poolModal').classList.remove('show');
+        }
+
+        async function loadPoolVehicles() {
+            const loading = document.getElementById('poolLoading');
+            const empty = document.getElementById('poolEmpty');
+            const grid = document.getElementById('poolGrid');
+
+            loading.style.display = 'block';
+            empty.style.display = 'none';
+            grid.style.display = 'none';
+
+            try {
+                // Load all available vehicles from pool (excluding own werkstatt)
+                const snapshot = await db.collection('leihfahrzeugPool')
+                    .where('verfuegbar', '==', true)
+                    .get();
+
+                // Filter out own werkstatt vehicles
+                const poolVehicles = snapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .filter(v => v.besitzerWerkstattId !== window.werkstattId);
+
+                loading.style.display = 'none';
+
+                if (poolVehicles.length === 0) {
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                grid.style.display = 'grid';
+                grid.innerHTML = poolVehicles.map(vehicle => `
+                    <div class="card" style="border-left: 4px solid var(--primary);">
+                        <div class="card-header">
+                            <h3>${vehicle.kennzeichen}</h3>
+                            <span class="badge badge-info">${vehicle.besitzerWerkstattName || 'Werkstatt'}</span>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>${vehicle.marke} ${vehicle.modell}</strong></p>
+                            <p style="color: var(--text-secondary); font-size: 13px;">
+                                ${formatKategorie(vehicle.kategorie)} • ${vehicle.tagesmiete?.toFixed(2) || '0.00'} €/Tag
+                            </p>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn btn-primary btn-sm" onclick="requestPoolVehicle('${vehicle.id}', '${vehicle.besitzerWerkstattId}', '${vehicle.kennzeichen}')">
+                                📩 Anfragen
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+                if (window.DEBUG) console.log('Pool vehicles loaded:', poolVehicles.length);
+
+            } catch (error) {
+                console.error('Pool load error:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                toast.error('Fehler beim Laden des Pools');
+            }
+        }
+
+        async function requestPoolVehicle(poolId, besitzerWerkstattId, kennzeichen) {
+            const grund = prompt('Warum benötigen Sie dieses Fahrzeug? (optional)');
+            if (grund === null) return; // User cancelled
+
+            try {
+                // Get own werkstatt name
+                const settingsDoc = await db.collection(window.getCollectionName('einstellungen')).doc('werkstatt').get();
+                const eigeneWerkstattName = settingsDoc.data()?.name || 'Anfragende Werkstatt';
+
+                // Create request in global collection
+                const anfrageRef = db.collection('leihfahrzeugAnfragen').doc();
+                await anfrageRef.set({
+                    poolFahrzeugId: poolId,
+                    besitzerWerkstattId: besitzerWerkstattId,
+                    anfragerWerkstattId: window.werkstattId,
+                    anfragerWerkstattName: eigeneWerkstattName,
+                    kennzeichen: kennzeichen,
+                    grund: grund || 'Keine Angabe',
+                    status: 'pending',
+                    erstelltAm: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                toast.success(`Anfrage für ${kennzeichen} gesendet!`);
+                closePoolModal();
+
+                if (window.DEBUG) console.log('Pool request created:', anfrageRef.id);
+
+            } catch (error) {
+                console.error('Request error:', error);
+                toast.error('Fehler beim Senden der Anfrage');
+            }
+        }
+
+        // ============================================
+        // INCOMING REQUESTS (für Besitzer-Werkstatt)
+        // ============================================
+        function openAnfragenModal() {
+            document.getElementById('anfragenModal').classList.add('show');
+            loadIncomingRequests();
+        }
+
+        function closeAnfragenModal() {
+            document.getElementById('anfragenModal').classList.remove('show');
+        }
+
+        // Update badge with pending requests count
+        async function updateAnfragenBadge() {
+            try {
+                const snapshot = await db.collection('leihfahrzeugAnfragen')
+                    .where('besitzerWerkstattId', '==', window.werkstattId)
+                    .where('status', '==', 'pending')
+                    .get();
+
+                const badge = document.getElementById('anfragenBadge');
+                if (badge) {
+                    if (snapshot.size > 0) {
+                        badge.textContent = snapshot.size;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+
+                if (window.DEBUG) console.log('Pending anfragen:', snapshot.size);
+            } catch (error) {
+                console.error('Error updating anfragen badge:', error);
+            }
+        }
+
+        async function loadIncomingRequests() {
+            const loading = document.getElementById('anfragenLoading');
+            const empty = document.getElementById('anfragenEmpty');
+            const list = document.getElementById('anfragenList');
+
+            loading.style.display = 'block';
+            empty.style.display = 'none';
+            list.style.display = 'none';
+
+            try {
+                // Load pending requests for our werkstatt
+                const snapshot = await db.collection('leihfahrzeugAnfragen')
+                    .where('besitzerWerkstattId', '==', window.werkstattId)
+                    .where('status', '==', 'pending')
+                    .get();
+
+                const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                loading.style.display = 'none';
+
+                if (requests.length === 0) {
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                list.style.display = 'block';
+                list.innerHTML = requests.map(req => `
+                    <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div>
+                                <h3 style="margin: 0;">${req.kennzeichen}</h3>
+                                <p style="color: var(--text-secondary); margin: 4px 0 0 0;">
+                                    Anfrage von: <strong>${req.anfragerWerkstattName}</strong>
+                                </p>
+                            </div>
+                            <span class="badge badge-warning">Ausstehend</span>
+                        </div>
+                        ${req.grund && req.grund !== 'Keine Angabe' ? `
+                            <p style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;">
+                                <strong>Grund:</strong> ${req.grund}
+                            </p>
+                        ` : ''}
+                        <div style="display: flex; gap: 12px;">
+                            <button class="btn btn-success btn-sm" onclick="approveRequest('${req.id}', '${req.poolFahrzeugId}', '${req.anfragerWerkstattId}')">
+                                ✅ Genehmigen
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="rejectRequest('${req.id}')">
+                                ❌ Ablehnen
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                console.error('Load requests error:', error);
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                toast.error('Fehler beim Laden der Anfragen');
+            }
+        }
+
+        async function approveRequest(anfrageId, poolFahrzeugId, anfragerWerkstattId) {
+            if (!confirm('Anfrage genehmigen? Das Fahrzeug wird für die anfragende Werkstatt reserviert.')) return;
+
+            try {
+                // 1. Update request status
+                await db.collection('leihfahrzeugAnfragen').doc(anfrageId).update({
+                    status: 'genehmigt',
+                    genehmigtAm: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                // 2. Get pool vehicle details
+                const poolDoc = await db.collection('leihfahrzeugPool').doc(poolFahrzeugId).get();
+                const poolData = poolDoc.data();
+
+                // 3. Mark pool vehicle as unavailable
+                await db.collection('leihfahrzeugPool').doc(poolFahrzeugId).update({
+                    verfuegbar: false,
+                    reserviertFuer: anfragerWerkstattId
+                });
+
+                // 4. Update original vehicle status
+                if (poolData?.originalId) {
+                    const collectionName = window.getCollectionName('leihfahrzeuge');
+                    await db.collection(collectionName).doc(poolData.originalId).update({
+                        status: 'reserviert',
+                        reserviertFuer: anfragerWerkstattId,
+                        letzteAenderung: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+
+                toast.success('Anfrage genehmigt!');
+                loadIncomingRequests();
+                updateAnfragenBadge(); // Update badge count
+                loadVehicles(); // Refresh main list
+
+            } catch (error) {
+                console.error('Approve error:', error);
+                toast.error('Fehler bei der Genehmigung');
+            }
+        }
+
+        async function rejectRequest(anfrageId) {
+            const grund = prompt('Grund für Ablehnung (optional):');
+            if (grund === null) return; // User cancelled
+
+            try {
+                await db.collection('leihfahrzeugAnfragen').doc(anfrageId).update({
+                    status: 'abgelehnt',
+                    ablehnungsgrund: grund || 'Keine Angabe',
+                    abgelehntAm: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                toast.info('Anfrage abgelehnt');
+                loadIncomingRequests();
+                updateAnfragenBadge(); // Update badge count
+
+            } catch (error) {
+                console.error('Reject error:', error);
+                toast.error('Fehler bei der Ablehnung');
+            }
+        }
+
+        // ============================================
+        // HELPER FUNCTIONS
+        // ============================================
+        function formatCurrency(amount) {
+            if (!amount && amount !== 0) return '-';
+            return new Intl.NumberFormat('de-DE', {
+                style: 'currency',
+                currency: 'EUR'
+            }).format(amount);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            try {
+                return new Date(dateStr).toLocaleDateString('de-DE');
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function formatKategorie(kategorie) {
+            const labels = {
+                'kleinwagen': 'Kleinwagen',
+                'limousine': 'Limousine',
+                'kombi': 'Kombi',
+                'suv': 'SUV',
+                'transporter': 'Transporter'
+            };
+            return labels[kategorie] || kategorie || '-';
+        }
+        // Make globally accessible for tests
+        window.formatKategorie = formatKategorie;
+
+        // ============================================
+        // THEME TOGGLE
+        // ============================================
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('theme-icon');
+            if (theme === 'dark') {
+                icon.innerHTML = `
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                `;
+            } else {
+                icon.innerHTML = `
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                `;
+            }
+        }
+
+        // ============================================
+        // CLEANUP ON PAGE LEAVE
+        // ============================================
+        window.addEventListener('beforeunload', () => {
+            if (unsubscribeListener) {
+                unsubscribeListener();
+            }
+            if (window.listenerRegistry) {
+                window.listenerRegistry.cleanup();
+            }
+        });
+    </script>
+</body>
+</html>

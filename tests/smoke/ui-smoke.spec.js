@@ -205,4 +205,63 @@ test.describe('SMOKE: UI Accessibility Tests', () => {
     expect(firebaseState.werkstattId).toBeTruthy();
     console.log('✅ Firebase initialization successful');
   });
+
+  // ============================================
+  // LEIHFAHRZEUGE SMOKE TESTS (2025-11-26)
+  // ============================================
+
+  test('SMOKE-LF-1: leihfahrzeuge.html - Page loads and stats visible', async ({ page }) => {
+    await page.goto('/leihfahrzeuge.html');
+    await waitForFirebaseReady(page);
+
+    // Assert: Stats cards visible
+    await expect(page.locator('#statTotal')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#statAvailable')).toBeVisible();
+    await expect(page.locator('#statAssigned')).toBeVisible();
+    await expect(page.locator('#statMaintenance')).toBeVisible();
+    console.log('✅ leihfahrzeuge.html stats visible');
+  });
+
+  test('SMOKE-LF-2: leihfahrzeuge.html - Create modal opens', async ({ page }) => {
+    await page.goto('/leihfahrzeuge.html');
+    await waitForFirebaseReady(page);
+
+    // Act: Click new vehicle button
+    await page.click('button:has-text("Neues Fahrzeug")');
+
+    // Wait for modal animation to complete
+    await page.waitForTimeout(500);
+
+    // Assert: Modal has 'active' class after clicking (custom modal implementation)
+    const modalHasActive = await page.evaluate(() => {
+      const modal = document.getElementById('vehicleModal');
+      return modal && modal.classList.contains('active');
+    });
+    expect(modalHasActive).toBeTruthy();
+
+    // Check modal form elements are present in DOM
+    await expect(page.locator('#vehicleModal #kennzeichen')).toBeAttached();
+    await expect(page.locator('#vehicleModal #marke')).toBeAttached();
+    await expect(page.locator('#vehicleModal #modell')).toBeAttached();
+    console.log('✅ Create modal opens');
+  });
+
+  test('SMOKE-LF-3: leihfahrzeuge.html - Pool modal opens', async ({ page }) => {
+    await page.goto('/leihfahrzeuge.html');
+    await waitForFirebaseReady(page);
+
+    // Act: Click pool button
+    await page.click('button:has-text("Pool-Netzwerk")');
+
+    // Wait for Bootstrap modal animation to complete
+    await page.waitForTimeout(500);
+
+    // Assert: Pool modal has 'show' class (CSS visibility handled by Bootstrap)
+    const modalHasShow = await page.evaluate(() => {
+      const modal = document.getElementById('poolModal');
+      return modal && modal.classList.contains('show');
+    });
+    expect(modalHasShow).toBeTruthy();
+    console.log('✅ Pool modal opens');
+  });
 });

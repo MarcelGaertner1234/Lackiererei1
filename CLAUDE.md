@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **KRITISCHE ÄNDERUNG (Nov 2025):** Manual testing wurde **VOLLSTÄNDIG ERSETZT** durch Hybrid Testing Approach.
 - ❌ **NICHT mehr:** Browser öffnen + manuell klicken + Console-Logs kopieren
-- ✅ **STATTDESSEN:** `npm run test:all` (23 automatisierte Tests, 100% Success Rate)
+- ✅ **STATTDESSEN:** `npm run test:all` (49 automatisierte Tests, 100% Success Rate)
 - 🎉 **Resultat:** 15x schneller (30s → 2s per test), 100% zuverlässig
 
 **Siehe:** [Testing Philosophy](#-testing-philosophy) für vollständige Dokumentation.
@@ -26,7 +26,7 @@ NEXT_AGENT_MANUAL_TESTING_PROMPT.md
 
 **Dieses Dokument enthält:**
 - 🎯 **Your Role:** Code Quality Guardian (ALWAYS test first!)
-- 🐛 **23 Error Patterns** (inkl. Pattern 21-23, die HIER nicht dokumentiert sind)
+- 🐛 **52+ Error Patterns** (inkl. Pattern 21-54, die HIER nicht dokumentiert sind)
 - 🛡️ **Backup-First Security Methodology** (Pre-Implementation Checklist)
 - 🧪 **Hybrid Testing Workflow** (MANDATORY: Run tests before/after EVERY change)
 - ✅ **ALWAYS Do** (15+ critical rules) | ❌ **NEVER Do** (9+ forbidden patterns)
@@ -347,7 +347,7 @@ if (!window.validateServiceType(serviceTyp)) {
 
 ### 1. 🧪 TESTING FIRST - VOR JEDER SESSION!
 ```bash
-npm run test:all  # 23 Hybrid Tests (Integration + Smoke), ~46s
+npm run test:all  # 49 Hybrid Tests (36 Integration + 13 Smoke), ~90s
 ```
 **✅ 100% Pass-Rate = App funktioniert einwandfrei**
 **❌ Failures = Etwas ist kaputt - FIX BEFORE coding!**

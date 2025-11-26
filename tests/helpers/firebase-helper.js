@@ -543,6 +543,248 @@ async function loginAsTestAdmin(page) {
   }
 }
 
+// ============================================
+// LEIHFAHRZEUG HELPERS (2025-11-26)
+// ============================================
+
+/**
+ * Creates a Leihfahrzeug directly in Firestore (bypasses UI)
+ * @param {import('@playwright/test').Page} page
+ * @param {Object} data - Vehicle data
+ * @returns {Promise<string>} Document ID
+ */
+async function createLeihfahrzeugDirectly(page, data) {
+  console.log(`🚗 Creating Leihfahrzeug: ${data.kennzeichen}`);
+
+  return await page.evaluate(async (vehicleData) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('leihfahrzeuge');
+
+    const doc = {
+      kennzeichen: vehicleData.kennzeichen,
+      marke: vehicleData.marke || 'Test Marke',
+      modell: vehicleData.modell || 'Test Modell',
+      kategorie: vehicleData.kategorie || 'limousine',
+      baujahr: vehicleData.baujahr || 2022,
+      farbe: vehicleData.farbe || 'Schwarz',
+      kilometerstand: vehicleData.kilometerstand || 10000,
+      tagesmiete: vehicleData.tagesmiete || 45.00,
+      kaution: vehicleData.kaution || 500.00,
+      status: vehicleData.status || 'verfuegbar',
+      imPoolFreigegeben: vehicleData.imPoolFreigegeben || false,
+      notizen: vehicleData.notizen || '',
+      werkstattId: window.werkstattId || 'mosbach',
+      erstelltVon: firebase.auth().currentUser?.uid || 'test',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    const docRef = await db.collection(collectionName).add(doc);
+    console.log(`✅ Leihfahrzeug created: ${docRef.id}`);
+    return docRef.id;
+  }, data);
+}
+
+/**
+ * Gets Leihfahrzeug data from Firestore
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen
+ * @returns {Promise<Object|null>} Vehicle data or null
+ */
+async function getLeihfahrzeugData(page, kennzeichen) {
+  return await page.evaluate(async (kz) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('leihfahrzeuge');
+
+    const snapshot = await db.collection(collectionName)
+      .where('kennzeichen', '==', kz)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  }, kennzeichen);
+}
+
+/**
+ * Deletes a Leihfahrzeug and associated pool/anfragen data
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen
+ * @returns {Promise<boolean>} Success
+ */
+async function deleteLeihfahrzeug(page, kennzeichen) {
+  console.log(`🗑️ Deleting Leihfahrzeug: ${kennzeichen}`);
+
+  return await page.evaluate(async (kz) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('leihfahrzeuge');
+
+    // Delete from leihfahrzeuge collection
+    const snapshot = await db.collection(collectionName)
+      .where('kennzeichen', '==', kz)
+      .get();
+
+    for (const doc of snapshot.docs) {
+      await db.collection(collectionName).doc(doc.id).delete();
+    }
+
+    // Also clean up pool entries
+    try {
+      const poolSnapshot = await db.collection('leihfahrzeugPool')
+        .where('kennzeichen', '==', kz)
+        .get();
+      for (const doc of poolSnapshot.docs) {
+        await doc.ref.delete();
+      }
+    } catch (e) {
+      console.log('Pool cleanup skipped (no access or not exists)');
+    }
+
+    // Clean up anfragen
+    try {
+      const anfragenSnapshot = await db.collection('leihfahrzeugAnfragen')
+        .where('kennzeichen', '==', kz)
+        .get();
+      for (const doc of anfragenSnapshot.docs) {
+        await doc.ref.delete();
+      }
+    } catch (e) {
+      console.log('Anfragen cleanup skipped (no access or not exists)');
+    }
+
+    console.log(`✅ Leihfahrzeug ${kz} deleted`);
+    return true;
+  }, kennzeichen);
+}
+
+/**
+ * Updates Leihfahrzeug status
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen
+ * @param {string} newStatus - verfuegbar | verliehen | wartung | reserviert
+ * @returns {Promise<boolean>} Success
+ */
+async function updateLeihfahrzeugStatus(page, kennzeichen, newStatus) {
+  console.log(`🔄 Updating Leihfahrzeug ${kennzeichen} status to: ${newStatus}`);
+
+  return await page.evaluate(async ({ kz, status }) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('leihfahrzeuge');
+
+    const snapshot = await db.collection(collectionName)
+      .where('kennzeichen', '==', kz)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return false;
+
+    await snapshot.docs[0].ref.update({
+      status: status,
+      updatedAt: Date.now()
+    });
+
+    console.log(`✅ Leihfahrzeug ${kz} status updated to ${status}`);
+    return true;
+  }, { kz: kennzeichen, status: newStatus });
+}
+
+/**
+ * Creates a Pool entry for a Leihfahrzeug
+ * @param {import('@playwright/test').Page} page
+ * @param {string} leihfahrzeugId - Document ID
+ * @param {Object} vehicleData - Vehicle data
+ * @returns {Promise<string>} Pool document ID
+ */
+async function createPoolEntry(page, leihfahrzeugId, vehicleData) {
+  console.log(`🌐 Creating Pool entry for: ${vehicleData.kennzeichen}`);
+
+  return await page.evaluate(async ({ id, data }) => {
+    const db = window.firebaseApp.db();
+    const poolId = `${window.werkstattId}_${id}`;
+
+    await db.collection('leihfahrzeugPool').doc(poolId).set({
+      originalId: id,
+      besitzerWerkstattId: window.werkstattId,
+      besitzerWerkstattName: 'Auto-Lackierzentrum Mosbach',
+      kennzeichen: data.kennzeichen,
+      marke: data.marke,
+      modell: data.modell,
+      kategorie: data.kategorie || 'limousine',
+      tagesmiete: data.tagesmiete || 45.00,
+      verfuegbar: true,
+      aktualisiertAm: Date.now()
+    });
+
+    console.log(`✅ Pool entry created: ${poolId}`);
+    return poolId;
+  }, { id: leihfahrzeugId, data: vehicleData });
+}
+
+/**
+ * Creates a Leihfahrzeug Anfrage (request)
+ * @param {import('@playwright/test').Page} page
+ * @param {string} poolFahrzeugId - Pool document ID
+ * @param {string} besitzerWerkstattId - Owner workshop ID
+ * @param {string} kennzeichen - Vehicle plate
+ * @returns {Promise<string>} Anfrage document ID
+ */
+async function createLeihfahrzeugAnfrage(page, poolFahrzeugId, besitzerWerkstattId, kennzeichen) {
+  console.log(`📩 Creating Leihfahrzeug Anfrage for: ${kennzeichen}`);
+
+  return await page.evaluate(async ({ poolId, besitzerId, kz }) => {
+    const db = window.firebaseApp.db();
+
+    const anfrageRef = db.collection('leihfahrzeugAnfragen').doc();
+    await anfrageRef.set({
+      poolFahrzeugId: poolId,
+      besitzerWerkstattId: besitzerId,
+      anfragerWerkstattId: window.werkstattId,
+      anfragerWerkstattName: 'Test Werkstatt',
+      kennzeichen: kz,
+      grund: 'Test-Anfrage',
+      status: 'pending',
+      erstelltAm: Date.now()
+    });
+
+    console.log(`✅ Anfrage created: ${anfrageRef.id}`);
+    return anfrageRef.id;
+  }, { poolId: poolFahrzeugId, besitzerId: besitzerWerkstattId, kz: kennzeichen });
+}
+
+/**
+ * Creates a Leihfahrzeug Buchung (booking)
+ * @param {import('@playwright/test').Page} page
+ * @param {Object} data - Booking data
+ * @returns {Promise<string>} Buchung document ID
+ */
+async function createLeihfahrzeugBuchung(page, data) {
+  console.log(`📋 Creating Leihfahrzeug Buchung`);
+
+  return await page.evaluate(async (buchungData) => {
+    const db = window.firebaseApp.db();
+    const collectionName = window.getCollectionName('leihfahrzeugBuchungen');
+
+    const buchungRef = db.collection(collectionName).doc();
+    await buchungRef.set({
+      leihfahrzeugId: buchungData.leihfahrzeugId,
+      leihfahrzeugDetails: buchungData.leihfahrzeugDetails || {},
+      fahrzeugId: buchungData.fahrzeugId || 'test-fahrzeug-id',
+      anfrageId: buchungData.anfrageId || 'test-anfrage-id',
+      kundenname: buchungData.kundenname || 'Test Kunde',
+      kennzeichen: buchungData.kennzeichen || 'TEST-123',
+      ausgeliehenAm: new Date().toISOString(),
+      voraussichtlicheRueckgabe: buchungData.voraussichtlicheRueckgabe || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      rueckgabeAm: null,
+      status: 'aktiv',
+      werkstattId: window.werkstattId || 'mosbach',
+      erstelltAm: Date.now()
+    });
+
+    console.log(`✅ Buchung created: ${buchungRef.id}`);
+    return buchungRef.id;
+  }, data);
+}
+
 module.exports = {
   waitForFirebaseReady,
   checkVehicleExists,
@@ -558,5 +800,13 @@ module.exports = {
   // HYBRID TESTING: Direct write functions
   createVehicleDirectly,
   createCustomerDirectly,
-  updateVehicleStatus
+  updateVehicleStatus,
+  // LEIHFAHRZEUG HELPERS (2025-11-26)
+  createLeihfahrzeugDirectly,
+  getLeihfahrzeugData,
+  deleteLeihfahrzeug,
+  updateLeihfahrzeugStatus,
+  createPoolEntry,
+  createLeihfahrzeugAnfrage,
+  createLeihfahrzeugBuchung
 };
