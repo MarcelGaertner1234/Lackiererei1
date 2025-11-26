@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Teile-Karte Demo - Fahrzeugteile-Auswahl</title>
+    <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --text-secondary: #666666;
+            --border-color: #e0e0e0;
+            --accent-color: #3498db;
+            --accent-hover: #2980b9;
+            --selected-color: #e74c3c;
+            --selected-hover: #c0392b;
+            --part-fill: #d4d4d4;
+            --part-stroke: #888888;
+            --part-hover: #a8d4f0;
+            --part-selected: #f8b4b4;
+            --shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a2e;
+            --card-bg: #16213e;
+            --text-color: #eaeaea;
+            --text-secondary: #b0b0b0;
+            --border-color: #2d3a5a;
+            --accent-color: #4fc3f7;
+            --accent-hover: #29b6f6;
+            --selected-color: #ef5350;
+            --selected-hover: #e53935;
+            --part-fill: #2d3a5a;
+            --part-stroke: #4a5a7a;
+            --part-hover: #3d5a8a;
+            --part-selected: #5a3a4a;
+            --shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            transition: all 0.3s ease;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px 16px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .car-container {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .car-container h2 {
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+        }
+
+        .view-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .view-tab {
+            padding: 10px 20px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .view-tab:hover {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .view-tab.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .svg-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+        }
+
+        .car-svg {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .car-part {
+            fill: var(--part-fill);
+            stroke: var(--part-stroke);
+            stroke-width: 2;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .car-part:hover {
+            fill: var(--part-hover);
+            stroke: var(--accent-color);
+            stroke-width: 3;
+        }
+
+        .car-part.selected {
+            fill: var(--part-selected);
+            stroke: var(--selected-color);
+            stroke-width: 3;
+        }
+
+        .car-part.selected:hover {
+            fill: var(--part-selected);
+            stroke: var(--selected-hover);
+        }
+
+        .car-body {
+            fill: none;
+            stroke: var(--part-stroke);
+            stroke-width: 3;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .selected-parts-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .selected-parts-card h3 {
+            font-size: 1rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .parts-count {
+            background: var(--accent-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+
+        .selected-list {
+            list-style: none;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .selected-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: var(--bg-color);
+            border-radius: 8px;
+            border-left: 4px solid var(--selected-color);
+            animation: slideIn 0.2s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .selected-list li .part-name {
+            font-weight: 500;
+        }
+
+        .selected-list li .remove-btn {
+            background: none;
+            border: none;
+            color: var(--selected-color);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0 5px;
+            transition: transform 0.2s ease;
+        }
+
+        .selected-list li .remove-btn:hover {
+            transform: scale(1.2);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state .icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .actions-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .actions-card h3 {
+            font-size: 1rem;
+            margin-bottom: 15px;
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-danger {
+            background: var(--selected-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: var(--selected-hover);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--border-color);
+            color: var(--text-color);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        .legend {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .legend h4 {
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+        }
+
+        .legend-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid;
+        }
+
+        .legend-color.normal {
+            background: var(--part-fill);
+            border-color: var(--part-stroke);
+        }
+
+        .legend-color.hover {
+            background: var(--part-hover);
+            border-color: var(--accent-color);
+        }
+
+        .legend-color.selected {
+            background: var(--part-selected);
+            border-color: var(--selected-color);
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: var(--card-bg);
+            color: var(--text-color);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            box-shadow: var(--shadow);
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        /* Quick Select Buttons */
+        .quick-select {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .quick-select h4 {
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+        }
+
+        .quick-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .quick-btn {
+            padding: 6px 12px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: var(--text-color);
+            transition: all 0.2s ease;
+        }
+
+        .quick-btn:hover {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>
+                <span>🚗</span>
+                2D Teile-Karte Demo
+            </h1>
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span id="themeIcon">🌙</span>
+                <span id="themeText">Dark Mode</span>
+            </button>
+        </header>
+
+        <div class="main-content">
+            <div class="car-container">
+                <h2>Klicken Sie auf die Fahrzeugteile, um sie auszuwählen</h2>
+
+                <div class="view-tabs">
+                    <button class="view-tab active" data-view="side">Seitenansicht</button>
+                    <button class="view-tab" data-view="front">Frontansicht</button>
+                    <button class="view-tab" data-view="rear">Heckansicht</button>
+                    <button class="view-tab" data-view="top">Draufsicht</button>
+                </div>
+
+                <div class="svg-container" id="svgContainer">
+                    <!-- SVG wird hier dynamisch eingefügt -->
+                </div>
+
+                <div class="legend">
+                    <h4>Legende</h4>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <div class="legend-color normal"></div>
+                            <span>Nicht ausgewählt</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color hover"></div>
+                            <span>Hover</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color selected"></div>
+                            <span>Ausgewählt</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="selected-parts-card">
+                    <h3>
+                        <span>📋</span>
+                        Ausgewählte Teile
+                        <span class="parts-count" id="partsCount">0</span>
+                    </h3>
+                    <ul class="selected-list" id="selectedList">
+                        <li class="empty-state">
+                            <div>
+                                <div class="icon">👆</div>
+                                <div>Klicken Sie auf Fahrzeugteile, um sie auszuwählen</div>
+                            </div>
+                        </li>
+                    </ul>
+
+                    <div class="quick-select">
+                        <h4>Schnellauswahl</h4>
+                        <div class="quick-buttons">
+                            <button class="quick-btn" onclick="selectGroup('front')">Front komplett</button>
+                            <button class="quick-btn" onclick="selectGroup('rear')">Heck komplett</button>
+                            <button class="quick-btn" onclick="selectGroup('left')">Linke Seite</button>
+                            <button class="quick-btn" onclick="selectGroup('right')">Rechte Seite</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions-card">
+                    <h3>Aktionen</h3>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="confirmSelection()">
+                            ✓ Auswahl bestätigen
+                        </button>
+                        <button class="btn btn-danger" onclick="clearSelection()">
+                            🗑️ Alle löschen
+                        </button>
+                        <button class="btn btn-outline" onclick="exportSelection()">
+                            📤 Als JSON exportieren
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // ============================================
+        // FAHRZEUGTEILE DEFINITION
+        // ============================================
+        const carParts = {
+            // FRONT
+            'stossstange-vorne': { name: 'Stoßstange vorne', group: 'front', views: ['side', 'front'] },
+            'motorhaube': { name: 'Motorhaube', group: 'front', views: ['side', 'front', 'top'] },
+            'kotfluegel-vorne-links': { name: 'Kotflügel vorne links', group: ['front', 'left'], views: ['side', 'front', 'top'] },
+            'kotfluegel-vorne-rechts': { name: 'Kotflügel vorne rechts', group: ['front', 'right'], views: ['front', 'top'] },
+            'scheinwerfer-links': { name: 'Scheinwerfer links', group: ['front', 'left'], views: ['side', 'front'] },
+            'scheinwerfer-rechts': { name: 'Scheinwerfer rechts', group: ['front', 'right'], views: ['front'] },
+            'frontgrill': { name: 'Kühlergrill', group: 'front', views: ['front'] },
+            'windschutzscheibe': { name: 'Windschutzscheibe', group: 'front', views: ['side', 'front', 'top'] },
+
+            // SEITE LINKS
+            'tuer-vorne-links': { name: 'Tür vorne links', group: 'left', views: ['side', 'top'] },
+            'tuer-hinten-links': { name: 'Tür hinten links', group: 'left', views: ['side', 'top'] },
+            'seitenspiegel-links': { name: 'Außenspiegel links', group: 'left', views: ['side', 'top'] },
+            'schweller-links': { name: 'Schweller links', group: 'left', views: ['side'] },
+            'fenster-vorne-links': { name: 'Seitenfenster vorne links', group: 'left', views: ['side'] },
+            'fenster-hinten-links': { name: 'Seitenfenster hinten links', group: 'left', views: ['side'] },
+
+            // SEITE RECHTS
+            'tuer-vorne-rechts': { name: 'Tür vorne rechts', group: 'right', views: ['top'] },
+            'tuer-hinten-rechts': { name: 'Tür hinten rechts', group: 'right', views: ['top'] },
+            'seitenspiegel-rechts': { name: 'Außenspiegel rechts', group: 'right', views: ['top'] },
+            'schweller-rechts': { name: 'Schweller rechts', group: 'right', views: [] },
+
+            // DACH
+            'dach': { name: 'Dach', group: 'top', views: ['side', 'top'] },
+
+            // HECK
+            'stossstange-hinten': { name: 'Stoßstange hinten', group: 'rear', views: ['side', 'rear'] },
+            'heckklappe': { name: 'Heckklappe/Kofferraum', group: 'rear', views: ['side', 'rear', 'top'] },
+            'kotfluegel-hinten-links': { name: 'Kotflügel hinten links', group: ['rear', 'left'], views: ['side', 'rear', 'top'] },
+            'kotfluegel-hinten-rechts': { name: 'Kotflügel hinten rechts', group: ['rear', 'right'], views: ['rear', 'top'] },
+            'rueckleuchte-links': { name: 'Rückleuchte links', group: ['rear', 'left'], views: ['side', 'rear'] },
+            'rueckleuchte-rechts': { name: 'Rückleuchte rechts', group: ['rear', 'right'], views: ['rear'] },
+            'heckscheibe': { name: 'Heckscheibe', group: 'rear', views: ['side', 'rear', 'top'] }
+        };
+
+        // ============================================
+        // STATE
+        // ============================================
+        let selectedParts = new Set();
+        let currentView = 'side';
+
+        // ============================================
+        // SVG DEFINITIONEN
+        // ============================================
+        const svgViews = {
+            side: `
+                <svg viewBox="0 0 800 350" class="car-svg">
+                    <!-- Car Body Outline -->
+                    <path class="car-body" d="M 50 220
+                        L 50 180 Q 50 150 80 130
+                        L 200 130 Q 230 130 250 100
+                        L 350 60 Q 380 50 420 50
+                        L 550 50 Q 600 50 620 80
+                        L 700 130 Q 730 140 750 170
+                        L 750 220" />
+
+                    <!-- Wheels -->
+                    <circle cx="150" cy="250" r="45" fill="#333" stroke="#222" stroke-width="3"/>
+                    <circle cx="150" cy="250" r="25" fill="#666"/>
+                    <circle cx="600" cy="250" r="45" fill="#333" stroke="#222" stroke-width="3"/>
+                    <circle cx="600" cy="250" r="25" fill="#666"/>
+
+                    <!-- Clickable Parts -->
+
+                    <!-- Stoßstange vorne -->
+                    <path id="part-stossstange-vorne" class="car-part"
+                        d="M 50 180 L 50 220 L 100 220 L 100 200 Q 80 190 80 170 L 80 150 Q 60 160 50 180 Z"
+                        data-part="stossstange-vorne"/>
+
+                    <!-- Motorhaube -->
+                    <path id="part-motorhaube" class="car-part"
+                        d="M 80 130 L 200 130 L 220 100 L 250 80 L 250 60 Q 230 55 200 60 L 100 100 Q 80 110 80 130 Z"
+                        data-part="motorhaube"/>
+
+                    <!-- Kotflügel vorne links -->
+                    <path id="part-kotfluegel-vorne-links" class="car-part"
+                        d="M 80 130 L 80 180 L 100 200 L 200 200 L 200 180 L 200 130 Z"
+                        data-part="kotfluegel-vorne-links"/>
+
+                    <!-- Scheinwerfer links -->
+                    <ellipse id="part-scheinwerfer-links" class="car-part"
+                        cx="70" cy="160" rx="15" ry="20"
+                        data-part="scheinwerfer-links"/>
+
+                    <!-- Windschutzscheibe -->
+                    <path id="part-windschutzscheibe" class="car-part"
+                        d="M 250 60 L 350 60 Q 360 60 365 70 L 350 120 L 260 120 Q 250 110 250 100 Z"
+                        data-part="windschutzscheibe"/>
+
+                    <!-- Tür vorne links -->
+                    <path id="part-tuer-vorne-links" class="car-part"
+                        d="M 200 130 L 200 200 L 350 200 L 350 120 L 260 120 L 220 130 Z"
+                        data-part="tuer-vorne-links"/>
+
+                    <!-- Fenster vorne links -->
+                    <path id="part-fenster-vorne-links" class="car-part"
+                        d="M 265 125 L 345 125 L 345 70 L 300 70 Q 280 80 265 100 Z"
+                        data-part="fenster-vorne-links"/>
+
+                    <!-- Seitenspiegel links -->
+                    <rect id="part-seitenspiegel-links" class="car-part"
+                        x="245" y="125" width="20" height="15" rx="3"
+                        data-part="seitenspiegel-links"/>
+
+                    <!-- Schweller links -->
+                    <rect id="part-schweller-links" class="car-part"
+                        x="180" y="205" width="400" height="15" rx="2"
+                        data-part="schweller-links"/>
+
+                    <!-- Tür hinten links -->
+                    <path id="part-tuer-hinten-links" class="car-part"
+                        d="M 350 120 L 350 200 L 500 200 L 500 120 Z"
+                        data-part="tuer-hinten-links"/>
+
+                    <!-- Fenster hinten links -->
+                    <path id="part-fenster-hinten-links" class="car-part"
+                        d="M 355 70 L 355 115 L 495 115 L 495 70 Q 480 55 450 55 L 400 55 Q 370 55 355 70 Z"
+                        data-part="fenster-hinten-links"/>
+
+                    <!-- Dach -->
+                    <path id="part-dach" class="car-part"
+                        d="M 365 55 L 365 65 L 575 65 L 600 80 L 610 65 Q 580 45 530 45 L 420 45 Q 380 45 365 55 Z"
+                        data-part="dach"/>
+
+                    <!-- Kotflügel hinten links -->
+                    <path id="part-kotfluegel-hinten-links" class="car-part"
+                        d="M 500 120 L 500 200 L 680 200 L 700 180 L 700 130 L 620 80 L 575 80 L 500 80 Z"
+                        data-part="kotfluegel-hinten-links"/>
+
+                    <!-- Heckscheibe -->
+                    <path id="part-heckscheibe" class="car-part"
+                        d="M 575 65 L 500 65 L 500 115 L 600 115 L 620 80 Z"
+                        data-part="heckscheibe"/>
+
+                    <!-- Heckklappe -->
+                    <path id="part-heckklappe" class="car-part"
+                        d="M 700 130 L 750 170 L 750 200 L 680 200 L 680 130 Z"
+                        data-part="heckklappe"/>
+
+                    <!-- Rückleuchte links -->
+                    <rect id="part-rueckleuchte-links" class="car-part"
+                        x="735" y="145" width="15" height="35" rx="3"
+                        data-part="rueckleuchte-links"/>
+
+                    <!-- Stoßstange hinten -->
+                    <path id="part-stossstange-hinten" class="car-part"
+                        d="M 680 200 L 750 200 L 750 220 L 680 220 Z"
+                        data-part="stossstange-hinten"/>
+                </svg>
+            `,
+
+            front: `
+                <svg viewBox="0 0 500 400" class="car-svg">
+                    <!-- Car Body Outline -->
+                    <path class="car-body" d="M 50 300 L 50 200 Q 50 150 100 120 L 150 100 Q 200 80 250 80 Q 300 80 350 100 L 400 120 Q 450 150 450 200 L 450 300"/>
+
+                    <!-- Wheels -->
+                    <ellipse cx="80" cy="320" rx="35" ry="20" fill="#333"/>
+                    <ellipse cx="420" cy="320" rx="35" ry="20" fill="#333"/>
+
+                    <!-- Motorhaube -->
+                    <path id="part-motorhaube-front" class="car-part"
+                        d="M 100 120 L 150 100 Q 200 85 250 85 Q 300 85 350 100 L 400 120 L 400 180 L 100 180 Z"
+                        data-part="motorhaube"/>
+
+                    <!-- Windschutzscheibe -->
+                    <path id="part-windschutzscheibe-front" class="car-part"
+                        d="M 120 80 L 150 60 Q 200 40 250 40 Q 300 40 350 60 L 380 80 L 400 120 L 100 120 Z"
+                        data-part="windschutzscheibe"/>
+
+                    <!-- Frontgrill -->
+                    <rect id="part-frontgrill" class="car-part"
+                        x="150" y="185" width="200" height="40" rx="5"
+                        data-part="frontgrill"/>
+
+                    <!-- Stoßstange vorne -->
+                    <path id="part-stossstange-vorne-front" class="car-part"
+                        d="M 50 230 L 450 230 L 450 280 Q 400 300 250 300 Q 100 300 50 280 Z"
+                        data-part="stossstange-vorne"/>
+
+                    <!-- Scheinwerfer links -->
+                    <ellipse id="part-scheinwerfer-links-front" class="car-part"
+                        cx="100" cy="195" rx="40" ry="25"
+                        data-part="scheinwerfer-links"/>
+
+                    <!-- Scheinwerfer rechts -->
+                    <ellipse id="part-scheinwerfer-rechts-front" class="car-part"
+                        cx="400" cy="195" rx="40" ry="25"
+                        data-part="scheinwerfer-rechts"/>
+
+                    <!-- Kotflügel vorne links -->
+                    <path id="part-kotfluegel-vorne-links-front" class="car-part"
+                        d="M 50 200 L 50 230 L 130 230 L 130 180 L 100 180 Q 60 180 50 200 Z"
+                        data-part="kotfluegel-vorne-links"/>
+
+                    <!-- Kotflügel vorne rechts -->
+                    <path id="part-kotfluegel-vorne-rechts-front" class="car-part"
+                        d="M 450 200 L 450 230 L 370 230 L 370 180 L 400 180 Q 440 180 450 200 Z"
+                        data-part="kotfluegel-vorne-rechts"/>
+                </svg>
+            `,
+
+            rear: `
+                <svg viewBox="0 0 500 400" class="car-svg">
+                    <!-- Car Body Outline -->
+                    <path class="car-body" d="M 50 300 L 50 150 Q 50 100 100 80 L 150 70 Q 200 60 250 60 Q 300 60 350 70 L 400 80 Q 450 100 450 150 L 450 300"/>
+
+                    <!-- Wheels -->
+                    <ellipse cx="80" cy="320" rx="35" ry="20" fill="#333"/>
+                    <ellipse cx="420" cy="320" rx="35" ry="20" fill="#333"/>
+
+                    <!-- Heckscheibe -->
+                    <path id="part-heckscheibe-rear" class="car-part"
+                        d="M 120 65 L 150 50 Q 200 35 250 35 Q 300 35 350 50 L 380 65 L 400 120 L 100 120 Z"
+                        data-part="heckscheibe"/>
+
+                    <!-- Heckklappe -->
+                    <path id="part-heckklappe-rear" class="car-part"
+                        d="M 100 120 L 400 120 L 400 200 L 100 200 Z"
+                        data-part="heckklappe"/>
+
+                    <!-- Stoßstange hinten -->
+                    <path id="part-stossstange-hinten-rear" class="car-part"
+                        d="M 50 210 L 450 210 L 450 280 Q 400 300 250 300 Q 100 300 50 280 Z"
+                        data-part="stossstange-hinten"/>
+
+                    <!-- Rückleuchte links -->
+                    <rect id="part-rueckleuchte-links-rear" class="car-part"
+                        x="70" y="140" width="40" height="60" rx="5"
+                        data-part="rueckleuchte-links"/>
+
+                    <!-- Rückleuchte rechts -->
+                    <rect id="part-rueckleuchte-rechts-rear" class="car-part"
+                        x="390" y="140" width="40" height="60" rx="5"
+                        data-part="rueckleuchte-rechts"/>
+
+                    <!-- Kotflügel hinten links -->
+                    <path id="part-kotfluegel-hinten-links-rear" class="car-part"
+                        d="M 50 150 L 50 210 L 115 210 L 115 140 L 70 140 Q 50 140 50 150 Z"
+                        data-part="kotfluegel-hinten-links"/>
+
+                    <!-- Kotflügel hinten rechts -->
+                    <path id="part-kotfluegel-hinten-rechts-rear" class="car-part"
+                        d="M 450 150 L 450 210 L 385 210 L 385 140 L 430 140 Q 450 140 450 150 Z"
+                        data-part="kotfluegel-hinten-rechts"/>
+                </svg>
+            `,
+
+            top: `
+                <svg viewBox="0 0 300 600" class="car-svg">
+                    <!-- Car Body Outline -->
+                    <path class="car-body" d="M 50 50 Q 50 30 100 20 L 200 20 Q 250 30 250 50 L 250 550 Q 250 570 200 580 L 100 580 Q 50 570 50 550 Z"/>
+
+                    <!-- Motorhaube -->
+                    <path id="part-motorhaube-top" class="car-part"
+                        d="M 60 30 Q 60 20 100 15 L 200 15 Q 240 20 240 30 L 240 130 L 60 130 Z"
+                        data-part="motorhaube"/>
+
+                    <!-- Windschutzscheibe -->
+                    <path id="part-windschutzscheibe-top" class="car-part"
+                        d="M 70 135 L 230 135 L 220 180 L 80 180 Z"
+                        data-part="windschutzscheibe"/>
+
+                    <!-- Dach -->
+                    <path id="part-dach-top" class="car-part"
+                        d="M 80 185 L 220 185 L 220 380 L 80 380 Z"
+                        data-part="dach"/>
+
+                    <!-- Heckscheibe -->
+                    <path id="part-heckscheibe-top" class="car-part"
+                        d="M 80 385 L 220 385 L 230 430 L 70 430 Z"
+                        data-part="heckscheibe"/>
+
+                    <!-- Heckklappe -->
+                    <path id="part-heckklappe-top" class="car-part"
+                        d="M 60 435 L 240 435 L 240 540 Q 240 555 200 565 L 100 565 Q 60 555 60 540 Z"
+                        data-part="heckklappe"/>
+
+                    <!-- Kotflügel vorne links -->
+                    <path id="part-kotfluegel-vorne-links-top" class="car-part"
+                        d="M 40 60 L 55 60 L 55 130 L 40 130 Q 30 120 30 95 Q 30 70 40 60 Z"
+                        data-part="kotfluegel-vorne-links"/>
+
+                    <!-- Kotflügel vorne rechts -->
+                    <path id="part-kotfluegel-vorne-rechts-top" class="car-part"
+                        d="M 260 60 L 245 60 L 245 130 L 260 130 Q 270 120 270 95 Q 270 70 260 60 Z"
+                        data-part="kotfluegel-vorne-rechts"/>
+
+                    <!-- Tür vorne links -->
+                    <path id="part-tuer-vorne-links-top" class="car-part"
+                        d="M 40 140 L 75 140 L 75 280 L 40 280 Q 30 270 30 210 Q 30 150 40 140 Z"
+                        data-part="tuer-vorne-links"/>
+
+                    <!-- Tür vorne rechts -->
+                    <path id="part-tuer-vorne-rechts-top" class="car-part"
+                        d="M 260 140 L 225 140 L 225 280 L 260 280 Q 270 270 270 210 Q 270 150 260 140 Z"
+                        data-part="tuer-vorne-rechts"/>
+
+                    <!-- Tür hinten links -->
+                    <path id="part-tuer-hinten-links-top" class="car-part"
+                        d="M 40 285 L 75 285 L 75 420 L 40 420 Q 30 410 30 355 Q 30 295 40 285 Z"
+                        data-part="tuer-hinten-links"/>
+
+                    <!-- Tür hinten rechts -->
+                    <path id="part-tuer-hinten-rechts-top" class="car-part"
+                        d="M 260 285 L 225 285 L 225 420 L 260 420 Q 270 410 270 355 Q 270 295 260 285 Z"
+                        data-part="tuer-hinten-rechts"/>
+
+                    <!-- Kotflügel hinten links -->
+                    <path id="part-kotfluegel-hinten-links-top" class="car-part"
+                        d="M 40 425 L 55 425 L 55 510 L 40 510 Q 30 500 30 467 Q 30 435 40 425 Z"
+                        data-part="kotfluegel-hinten-links"/>
+
+                    <!-- Kotflügel hinten rechts -->
+                    <path id="part-kotfluegel-hinten-rechts-top" class="car-part"
+                        d="M 260 425 L 245 425 L 245 510 L 260 510 Q 270 500 270 467 Q 270 435 260 425 Z"
+                        data-part="kotfluegel-hinten-rechts"/>
+
+                    <!-- Seitenspiegel links -->
+                    <ellipse id="part-seitenspiegel-links-top" class="car-part"
+                        cx="25" cy="155" rx="15" ry="10"
+                        data-part="seitenspiegel-links"/>
+
+                    <!-- Seitenspiegel rechts -->
+                    <ellipse id="part-seitenspiegel-rechts-top" class="car-part"
+                        cx="275" cy="155" rx="15" ry="10"
+                        data-part="seitenspiegel-rechts"/>
+                </svg>
+            `
+        };
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            renderSVG();
+            setupViewTabs();
+        });
+
+        // ============================================
+        // THEME HANDLING
+        // ============================================
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeUI(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeUI(newTheme);
+        }
+
+        function updateThemeUI(theme) {
+            document.getElementById('themeIcon').textContent = theme === 'dark' ? '☀️' : '🌙';
+            document.getElementById('themeText').textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+        }
+
+        // ============================================
+        // SVG RENDERING
+        // ============================================
+        function renderSVG() {
+            const container = document.getElementById('svgContainer');
+            container.innerHTML = svgViews[currentView];
+
+            // Attach event listeners to all parts
+            document.querySelectorAll('.car-part').forEach(part => {
+                const partId = part.getAttribute('data-part');
+
+                // Update selected state
+                if (selectedParts.has(partId)) {
+                    part.classList.add('selected');
+                }
+
+                // Click handler
+                part.addEventListener('click', () => togglePart(partId));
+
+                // Tooltip handlers
+                part.addEventListener('mouseenter', (e) => showTooltip(e, partId));
+                part.addEventListener('mouseleave', hideTooltip);
+                part.addEventListener('mousemove', moveTooltip);
+            });
+        }
+
+        // ============================================
+        // VIEW TABS
+        // ============================================
+        function setupViewTabs() {
+            document.querySelectorAll('.view-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // Update active state
+                    document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+
+                    // Change view
+                    currentView = tab.getAttribute('data-view');
+                    renderSVG();
+                });
+            });
+        }
+
+        // ============================================
+        // PART SELECTION
+        // ============================================
+        function togglePart(partId) {
+            if (selectedParts.has(partId)) {
+                selectedParts.delete(partId);
+                // Remove selected class from all elements with this part
+                document.querySelectorAll(`[data-part="${partId}"]`).forEach(el => {
+                    el.classList.remove('selected');
+                });
+            } else {
+                selectedParts.add(partId);
+                // Add selected class to all elements with this part
+                document.querySelectorAll(`[data-part="${partId}"]`).forEach(el => {
+                    el.classList.add('selected');
+                });
+            }
+            updateSelectedList();
+        }
+
+        function updateSelectedList() {
+            const list = document.getElementById('selectedList');
+            const count = document.getElementById('partsCount');
+
+            count.textContent = selectedParts.size;
+
+            if (selectedParts.size === 0) {
+                list.innerHTML = `
+                    <li class="empty-state">
+                        <div>
+                            <div class="icon">👆</div>
+                            <div>Klicken Sie auf Fahrzeugteile, um sie auszuwählen</div>
+                        </div>
+                    </li>
+                `;
+                return;
+            }
+
+            list.innerHTML = '';
+            selectedParts.forEach(partId => {
+                const partInfo = carParts[partId];
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span class="part-name">${partInfo?.name || partId}</span>
+                    <button class="remove-btn" onclick="togglePart('${partId}')" title="Entfernen">×</button>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        // ============================================
+        // GROUP SELECTION
+        // ============================================
+        function selectGroup(groupName) {
+            Object.entries(carParts).forEach(([partId, info]) => {
+                const groups = Array.isArray(info.group) ? info.group : [info.group];
+                if (groups.includes(groupName) && !selectedParts.has(partId)) {
+                    selectedParts.add(partId);
+                    document.querySelectorAll(`[data-part="${partId}"]`).forEach(el => {
+                        el.classList.add('selected');
+                    });
+                }
+            });
+            updateSelectedList();
+        }
+
+        // ============================================
+        // TOOLTIP
+        // ============================================
+        function showTooltip(event, partId) {
+            const tooltip = document.getElementById('tooltip');
+            const partInfo = carParts[partId];
+            tooltip.textContent = partInfo?.name || partId;
+            tooltip.classList.add('visible');
+            moveTooltip(event);
+        }
+
+        function moveTooltip(event) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.style.left = (event.pageX + 15) + 'px';
+            tooltip.style.top = (event.pageY + 15) + 'px';
+        }
+
+        function hideTooltip() {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.classList.remove('visible');
+        }
+
+        // ============================================
+        // ACTIONS
+        // ============================================
+        function clearSelection() {
+            selectedParts.clear();
+            document.querySelectorAll('.car-part.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            updateSelectedList();
+        }
+
+        function confirmSelection() {
+            if (selectedParts.size === 0) {
+                alert('Bitte wählen Sie mindestens ein Teil aus.');
+                return;
+            }
+
+            const parts = Array.from(selectedParts).map(id => ({
+                id,
+                name: carParts[id]?.name || id
+            }));
+
+            console.log('Ausgewählte Teile:', parts);
+            alert(`✅ ${parts.length} Teil(e) ausgewählt:\n\n${parts.map(p => '• ' + p.name).join('\n')}`);
+        }
+
+        function exportSelection() {
+            const data = {
+                timestamp: new Date().toISOString(),
+                partsCount: selectedParts.size,
+                parts: Array.from(selectedParts).map(id => ({
+                    id,
+                    name: carParts[id]?.name || id,
+                    group: carParts[id]?.group || 'unknown'
+                }))
+            };
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `fahrzeugteile-auswahl-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
