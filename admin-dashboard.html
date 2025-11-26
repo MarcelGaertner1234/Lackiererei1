@@ -1285,23 +1285,32 @@
             });
             realtimeListeners.push(fahrzeugeUnsubscribe);
 
-            // Listener 2: Partners (pending registrations)
-            const partnersUnsubscribe = window.db.collection('partners')
-                .where('status', '==', 'pending')
-                .onSnapshot(snapshot => {
-                    console.log('🔄 Realtime Update: Pending Partners');
+            // Listener 2: Partners (pending registrations) - NUR für berechtigte User
+            const currentUser = window.authManager?.getCurrentUser();
+            const hasRegistrierungPermission = currentUser?.isOwner || currentUser?.berechtigungen?.registrierung === true;
 
-                    const pendingCount = snapshot.size;
-                    document.getElementById('pendingUsers').textContent = pendingCount;
+            if (hasRegistrierungPermission) {
+                const partnersUnsubscribe = window.db.collection('partners')
+                    .where('status', '==', 'pending')
+                    .onSnapshot(snapshot => {
+                        console.log('🔄 Realtime Update: Pending Partners');
 
-                    // Show notification badge
-                    if (pendingCount > 0) {
-                        showPendingBadge(pendingCount);
-                    } else {
-                        hidePendingBadge();
-                    }
-                });
-            realtimeListeners.push(partnersUnsubscribe);
+                        const pendingCount = snapshot.size;
+                        document.getElementById('pendingUsers').textContent = pendingCount;
+
+                        // Show notification badge
+                        if (pendingCount > 0) {
+                            showPendingBadge(pendingCount);
+                        } else {
+                            hidePendingBadge();
+                        }
+                    });
+                realtimeListeners.push(partnersUnsubscribe);
+            } else {
+                // Nicht-berechtigte User sehen keinen Zähler
+                const pendingUsersEl = document.getElementById('pendingUsers');
+                if (pendingUsersEl) pendingUsersEl.textContent = '-';
+            }
 
             // Listener 3: Mitarbeiter
             const mitarbeiterUnsubscribe = window.getCollection('mitarbeiter').onSnapshot(snapshot => {
