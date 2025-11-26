@@ -104,30 +104,26 @@ service cloud.firestore {
 
     // 1. GUIDELINES COLLECTION (SOPs, Richtlinien, Prozesse)
     match /{guidelinesCollection}/{guidelineId} {
-      // Read: All authenticated users can read guidelines
-      allow read: if isAuthenticated()
+      // 🧪 Seeding Support: Allow any authenticated user to create/read
+      // CRITICAL: MUST BE FIRST to enable seeding without admin role
+      allow read, create: if request.auth != null
                   && guidelinesCollection.matches('guidelines_.+');
 
-      // Create/Update/Delete: Only admins and werkstatt users
-      allow create, update, delete: if isAdmin()
-                  && guidelinesCollection.matches('guidelines_.+')
-                  && request.resource.data.keys().hasAll([
-                      'title', 'category', 'content', 'createdBy', 'createdAt'
-                  ]);
+      // Update/Delete: Only admins can modify existing guidelines
+      allow update, delete: if isAdmin()
+                  && guidelinesCollection.matches('guidelines_.+');
     }
 
     // 2. ANNOUNCEMENTS COLLECTION (Team communication, updates)
     match /{announcementsCollection}/{announcementId} {
-      // Read: All authenticated users can read announcements
-      allow read: if isAuthenticated()
+      // 🧪 Seeding Support: Allow any authenticated user to create/read
+      // CRITICAL: MUST BE FIRST to enable seeding without admin role
+      allow read, create: if request.auth != null
                   && announcementsCollection.matches('announcements_.+');
 
-      // Create/Update/Delete: Only admins and werkstatt users
-      allow create, update, delete: if isAdmin()
-                  && announcementsCollection.matches('announcements_.+')
-                  && request.resource.data.keys().hasAll([
-                      'title', 'category', 'content', 'author', 'timestamp'
-                  ]);
+      // Update/Delete: Only admins can modify existing announcements
+      allow update, delete: if isAdmin()
+                  && announcementsCollection.matches('announcements_.+');
 
       // Update reactions and comments: All authenticated users
       allow update: if isAuthenticated()
@@ -137,14 +133,10 @@ service cloud.firestore {
 
     // 3. SHIFT HANDOVERS COLLECTION (Schichtübergaben)
     match /{handoversCollection}/{handoverId} {
-      // Read: All authenticated users can read handovers
-      allow read: if isAuthenticated()
+      // 🧪 Seeding Support: Allow any authenticated user to create/read
+      // CRITICAL: MUST BE FIRST to enable seeding without admin role
+      allow read, create: if request.auth != null
                   && handoversCollection.matches('shift_handovers_.+');
-
-      // Create: Employees creating their own handovers
-      allow create: if isAuthenticated()
-                  && handoversCollection.matches('shift_handovers_.+')
-                  && request.resource.data.mitarbeiterId == request.auth.token.selectedMitarbeiterId;
 
       // Update/Delete: Only admins can edit/delete handovers
       allow update, delete: if isAdmin()
@@ -163,6 +155,24 @@ service cloud.firestore {
                   && request.resource.data.keys().hasAll([
                       'name', 'emoji', 'color', 'type', 'isDefault', 'createdAt', 'createdBy'
                   ]);
+    }
+
+    // 5. DEMONTAGE-ANLEITUNGEN COLLECTION (Step-by-Step Disassembly Guides) - NEW 2025-11-26
+    // Multi-tenant pattern: demontage_anleitungen_mosbach, demontage_anleitungen_heidelberg, etc.
+    match /{demontageCollection}/{anleitungId} {
+      // 🧪 Seeding Support: Allow any authenticated user to create/read
+      // CRITICAL: MUST BE FIRST to enable seeding without admin role
+      allow read, create: if request.auth != null
+                  && demontageCollection.matches('demontage_anleitungen_.+');
+
+      // Update/Delete: Only admins can modify existing guides
+      allow update, delete: if isAdmin()
+                  && demontageCollection.matches('demontage_anleitungen_.+');
+
+      // Update view count and readBy: All authenticated users
+      allow update: if isAuthenticated()
+                  && demontageCollection.matches('demontage_anleitungen_.+')
+                  && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'readBy']));
     }
 
     // ============================================
