@@ -15,6 +15,27 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ## 📊 Latest Session History (2025-11-26)
 
+### Session 2025-11-26 Nacht: Teile-Karte Feature - ABGEBROCHEN
+
+**🎯 USER REQUEST:**
+SilverDAT-ähnliche isometrische Teile-Karte für KVA-Erstellung
+
+**❌ SESSION SUMMARY:**
+1. **Isometrische 2.5D Version** - Implementiert, FEHLGESCHLAGEN (überlappende SVG Shapes, unbrauchbar)
+2. **User wählte "Bessere 2D"** - Implementiert mit 4 Ansichten + 50 Teile
+3. **User-Entscheidung:** "Das können wir total vergessen!! Lass uns das nicht implementieren!!"
+
+**📁 BETROFFENE DATEIEN:**
+- `partner-app/teile-karte-demo.html` - Existiert noch, aber Feature nicht weiterverfolgen
+- Commit: `568b35a` (2D Version)
+
+**⚠️ WICHTIG FÜR NÄCHSTEN AGENTEN:**
+- **NICHT** an Teile-Karte weiterarbeiten
+- Feature ist komplett abgebrochen
+- Auf neue Anweisungen vom User warten
+
+---
+
 ### Session 2025-11-26 Abend: Zweiter Codebase-Scan - 18 Bugs, 7 Fixed, 11 FALSE POSITIVES (DEPLOYED)
 
 **🎯 USER REQUEST:**
