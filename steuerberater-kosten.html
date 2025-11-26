@@ -192,6 +192,10 @@
             --card-color: #009688;
         }
 
+        .cost-card.pink {
+            --card-color: #E91E63;
+        }
+
         .cost-header {
             display: flex;
             justify-content: space-between;
@@ -492,6 +496,18 @@
                 <div class="cost-value" id="costMaterialien">0,00 €</div>
                 <div class="cost-subtitle" id="costMaterialienItems">0 Positionen</div>
             </div>
+
+            <!-- 🆕 NEU 2025-11-26: Personalkosten aus Lohnabrechnungen -->
+            <div class="cost-card pink" style="--card-color: #E91E63;">
+                <div class="cost-header">
+                    <span class="cost-title">Personalkosten</span>
+                    <div class="cost-icon" style="background: #E91E63;">
+                        <i data-feather="users"></i>
+                    </div>
+                </div>
+                <div class="cost-value" id="costPersonal">0,00 €</div>
+                <div class="cost-subtitle"><span id="personalCount">0</span> Mitarbeiter</div>
+            </div>
         </div>
 
         <!-- Detailed Cost Breakdown: Ersatzteile -->
@@ -620,6 +636,42 @@
                 </table>
             </div>
         </div>
+
+        <!-- 🆕 NEU 2025-11-26: Detailed Cost Breakdown: Personalkosten -->
+        <div id="personalSection" class="section" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i data-feather="users"></i>
+                    Personalkosten - Lohnabrechnungen
+                </h2>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Mitarbeiter</th>
+                            <th>Monat</th>
+                            <th>Brutto</th>
+                            <th>Steuern</th>
+                            <th>SV-Beiträge</th>
+                            <th>Netto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="personalTableBody">
+                        <!-- Wird via JavaScript gefüllt -->
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2">GESAMT</td>
+                            <td class="amount" id="sumBrutto">0,00 €</td>
+                            <td class="amount" id="sumSteuern">0,00 €</td>
+                            <td class="amount" id="sumSV">0,00 €</td>
+                            <td class="amount" id="sumNetto">0,00 €</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
     </div>
 
     <!-- Firebase SDKs -->
@@ -640,6 +692,7 @@
         // GLOBAL STATE
         // ============================================
         let allFahrzeuge = [];
+        let allLohnabrechnungen = []; // 🆕 NEU 2025-11-26: Personalkosten
         let werkstattId = '';
         let uniqueServices = new Set();
 
@@ -734,12 +787,16 @@
 
                 console.log(`✅ ${allFahrzeuge.length} abgeschlossene Fahrzeuge geladen`);
 
+                // 🆕 NEU 2025-11-26: Personalkosten laden
+                await loadPersonalkosten();
+
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('costCards').style.display = 'grid';
                 document.getElementById('ersatzteileSection').style.display = 'block';
                 document.getElementById('arbeitslohnSection').style.display = 'block';
                 document.getElementById('lackierungSection').style.display = 'block';
                 document.getElementById('materialienSection').style.display = 'block';
+                document.getElementById('personalSection').style.display = 'block'; // 🆕
 
                 calculateAndDisplayCosts();
 
@@ -751,6 +808,33 @@
                     <p style="color: var(--color-error); font-weight: 600;">Fehler beim Laden der Daten</p>
                 `;
                 feather.replace();
+            }
+        }
+
+        // ============================================
+        // 🆕 NEU 2025-11-26: LOAD PERSONALKOSTEN (Lohnabrechnungen)
+        // ============================================
+        async function loadPersonalkosten() {
+            try {
+                console.log(`📊 Lade Lohnabrechnungen für werkstattId: ${werkstattId}`);
+
+                const collection = `lohnabrechnungen_${werkstattId}`;
+                const snapshot = await firebase.firestore()
+                    .collection(collection)
+                    .orderBy('jahr', 'desc')
+                    .orderBy('monat', 'desc')
+                    .get();
+
+                allLohnabrechnungen = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log(`✅ ${allLohnabrechnungen.length} Lohnabrechnungen geladen`);
+
+            } catch (error) {
+                console.warn('⚠️ Lohnabrechnungen konnten nicht geladen werden:', error.message);
+                allLohnabrechnungen = [];
             }
         }
 
@@ -842,8 +926,8 @@
                 }
 
                 // 2. Nachbestellte Materialien (vom Fahrzeug-Abschluss übertragen)
-                if (fahrzeug.nachbestellungen && Array.isArray(fahrzeug.nachbestellungen)) {
-                    fahrzeug.nachbestellungen.forEach(bestellung => {
+                if (f.nachbestellungen && Array.isArray(f.nachbestellungen)) {
+                    f.nachbestellungen.forEach(bestellung => {
                         // Verwende benennung als Typ (Material-Typ nicht in Bestellungen)
                         const key = bestellung.benennung || bestellung.etn || 'Nachbestellung';
                         if (!aggregated.materialien[key]) {
@@ -856,6 +940,9 @@
                     });
                 }
             });
+
+            // 🆕 NEU 2025-11-26: Personalkosten berechnen
+            const personalkosten = calculatePersonalkosten(period);
 
             // Update summary cards
             document.getElementById('costErsatzteile').textContent = formatCurrency(totalErsatzteile);
@@ -870,13 +957,108 @@
             document.getElementById('costMaterialien').textContent = formatCurrency(totalMaterialien);
             document.getElementById('costMaterialienItems').textContent = `${Object.keys(aggregated.materialien).length} Positionen`;
 
+            // 🆕 Personalkosten Card
+            document.getElementById('costPersonal').textContent = formatCurrency(personalkosten.brutto);
+            document.getElementById('personalCount').textContent = personalkosten.count;
+
             // Render tables
             renderErsatzteileTable(aggregated.ersatzteile, totalErsatzteile);
             renderArbeitslohnTable(aggregated.arbeitslohn, totalArbeitslohn);
             renderLackierungTable(aggregated.lackierung, totalLackierung);
             renderMaterialienTable(aggregated.materialien, totalMaterialien);
+            renderPersonalkostenTable(personalkosten); // 🆕
 
             feather.replace();
+        }
+
+        // ============================================
+        // 🆕 NEU 2025-11-26: CALCULATE PERSONALKOSTEN
+        // ============================================
+        function calculatePersonalkosten(period) {
+            const filtered = filterByPeriodLohn(allLohnabrechnungen, period);
+
+            const result = {
+                brutto: 0,
+                steuern: 0,
+                sv: 0,
+                netto: 0,
+                count: 0,
+                items: []
+            };
+
+            // Unique Mitarbeiter zählen
+            const uniqueMitarbeiter = new Set();
+
+            filtered.forEach(l => {
+                // Brutto-Summe (Gesamtbrutto aus dem Lohnabrechnungs-Objekt)
+                result.brutto += parseFloat(l.brutto?.gesamt || l.brutto || 0);
+
+                // Steuern (Lohnsteuer + Soli + Kirchensteuer)
+                const steuern = parseFloat(l.steuern?.gesamt || 0) ||
+                    (parseFloat(l.steuern?.lohnsteuer || 0) +
+                     parseFloat(l.steuern?.soli || 0) +
+                     parseFloat(l.steuern?.kirchensteuer || 0));
+                result.steuern += steuern;
+
+                // Sozialversicherung (AN-Anteil)
+                const sv = parseFloat(l.sozialversicherung?.gesamt || 0) ||
+                    (parseFloat(l.sozialversicherung?.kvAN || 0) +
+                     parseFloat(l.sozialversicherung?.rvAN || 0) +
+                     parseFloat(l.sozialversicherung?.avAN || 0) +
+                     parseFloat(l.sozialversicherung?.pvAN || 0));
+                result.sv += sv;
+
+                // Netto
+                result.netto += parseFloat(l.netto || 0);
+
+                // Mitarbeiter tracken
+                if (l.mitarbeiterId) {
+                    uniqueMitarbeiter.add(l.mitarbeiterId);
+                }
+
+                // Für die Tabellen-Anzeige
+                result.items.push({
+                    name: l.mitarbeiterName || 'Unbekannt',
+                    monat: `${String(l.monat).padStart(2, '0')}/${l.jahr}`,
+                    brutto: parseFloat(l.brutto?.gesamt || l.brutto || 0),
+                    steuern: steuern,
+                    sv: sv,
+                    netto: parseFloat(l.netto || 0)
+                });
+            });
+
+            result.count = uniqueMitarbeiter.size;
+
+            return result;
+        }
+
+        // ============================================
+        // 🆕 NEU 2025-11-26: FILTER BY PERIOD (für Lohnabrechnungen)
+        // ============================================
+        function filterByPeriodLohn(lohnabrechnungen, period) {
+            if (period === 'all') return lohnabrechnungen;
+
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
+            const currentQuarter = Math.ceil(currentMonth / 3);
+
+            return lohnabrechnungen.filter(l => {
+                const year = l.jahr;
+                const month = l.monat;
+                const quarter = Math.ceil(month / 3);
+
+                switch (period) {
+                    case 'month':
+                        return year === currentYear && month === currentMonth;
+                    case 'quarter':
+                        return year === currentYear && quarter === currentQuarter;
+                    case 'year':
+                        return year === currentYear;
+                    default:
+                        return true;
+                }
+            });
         }
 
         // ============================================
@@ -1002,6 +1184,57 @@
             });
 
             document.getElementById('materialienSumme').textContent = formatCurrency(total);
+        }
+
+        // ============================================
+        // 🆕 NEU 2025-11-26: RENDER PERSONALKOSTEN TABLE
+        // ============================================
+        function renderPersonalkostenTable(personalkosten) {
+            const tbody = document.getElementById('personalTableBody');
+            tbody.innerHTML = '';
+
+            // Sortiert nach Monat (neueste zuerst)
+            const sorted = personalkosten.items.sort((a, b) => {
+                // Parse monat format "MM/YYYY"
+                const [monthA, yearA] = a.monat.split('/').map(Number);
+                const [monthB, yearB] = b.monat.split('/').map(Number);
+                return yearB - yearA || monthB - monthA;
+            });
+
+            if (sorted.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--color-text-secondary); padding: 24px;">
+                            Keine Lohnabrechnungen im gewählten Zeitraum vorhanden.
+                        </td>
+                    </tr>
+                `;
+                document.getElementById('sumBrutto').textContent = formatCurrency(0);
+                document.getElementById('sumSteuern').textContent = formatCurrency(0);
+                document.getElementById('sumSV').textContent = formatCurrency(0);
+                document.getElementById('sumNetto').textContent = formatCurrency(0);
+                return;
+            }
+
+            sorted.forEach(item => {
+                const row = `
+                    <tr>
+                        <td>${item.name}</td>
+                        <td>${item.monat}</td>
+                        <td class="amount">${formatCurrency(item.brutto)}</td>
+                        <td class="amount">${formatCurrency(item.steuern)}</td>
+                        <td class="amount">${formatCurrency(item.sv)}</td>
+                        <td class="amount">${formatCurrency(item.netto)}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+
+            // Footer-Summen
+            document.getElementById('sumBrutto').textContent = formatCurrency(personalkosten.brutto);
+            document.getElementById('sumSteuern').textContent = formatCurrency(personalkosten.steuern);
+            document.getElementById('sumSV').textContent = formatCurrency(personalkosten.sv);
+            document.getElementById('sumNetto').textContent = formatCurrency(personalkosten.netto);
         }
 
         // ============================================
