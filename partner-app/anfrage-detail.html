@@ -5067,24 +5067,6 @@
                 // 3. Kunden registrieren
                 console.log('👤 Registriere Kunden...');
 
-                // RUN #28 DIAGNOSTIC: Check what's actually loaded in firebaseApp
-                // RUN #37 FIX: Changed to console.error() so Playwright captures it!
-                console.error('🔍 RUN #28 DEBUG: firebaseApp structure check:');
-                console.error('  typeof window.firebaseApp:', typeof window.firebaseApp);
-                console.error('  window.firebaseApp exists:', !!window.firebaseApp);
-                if (window.firebaseApp) {
-                    console.error('  firebaseApp.keys:', Object.keys(window.firebaseApp));
-                    console.error('  registriereKundenbesuch type:', typeof window.firebaseApp.registriereKundenbesuch);
-                    console.error('  registriereKundenbesuch exists:', !!window.firebaseApp.registriereKundenbesuch);
-
-                    // List all functions available
-                    const functions = Object.keys(window.firebaseApp).filter(key => typeof window.firebaseApp[key] === 'function');
-                    console.error('  Available functions:', functions);
-                } else {
-                    console.error('  ❌ window.firebaseApp is NOT defined!');
-                }
-                console.error('🔍 RUN #28 DEBUG: End of diagnostic');
-
                 // ✅ FIX #4 (Bug #16, 2025-11-24): Reuse serviceLabelText (already handles Arrays)
                 const kundeId = await window.firebaseApp.registriereKundenbesuch({
                     name: anfrage.partnerName || 'Partner',
@@ -5571,6 +5553,54 @@
                         console.error('❌ [PHASE 2] Bestellungen-Erstellung fehlgeschlagen (nicht kritisch):', bestellungenError);
                         // Continue anyway - Ersatzteile sind in ersatzteile collection gespeichert
                     }
+                }
+
+                // 🆕 LEIHFAHRZEUG-RESERVIERUNG (2025-11-26) - Sync mit meine-anfragen.html
+                // Wenn ein Leihfahrzeug zugewiesen wurde, Status aktualisieren und Buchung erstellen
+                const zugewiesenesLeihfahrzeugId = anfrage.kva?.zugewiesenesLeihfahrzeugId;
+                if (zugewiesenesLeihfahrzeugId) {
+                    try {
+                        console.log(`🚗 [LEIHFAHRZEUG] Reserviere Leihfahrzeug ${zugewiesenesLeihfahrzeugId}...`);
+
+                        // Status auf "verliehen" setzen
+                        await window.getCollection('leihfahrzeuge').doc(zugewiesenesLeihfahrzeugId).update({
+                            status: 'verliehen',
+                            aktiveBuchung: {
+                                fahrzeugId: fahrzeugData.id,
+                                anfrageId: anfrageId,
+                                kundenname: anfrage.partnerName || anfrage.kundenname || 'Partner',
+                                kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
+                                ausgeliehenAm: new Date().toISOString(),
+                                voraussichtlicheRueckgabe: anfrage.kva?.termine?.ende || null
+                            },
+                            letzteAenderung: new Date().toISOString()
+                        });
+                        console.log(`✅ Leihfahrzeug ${zugewiesenesLeihfahrzeugId} Status → verliehen`);
+
+                        // Buchung in Historie speichern
+                        const buchungRef = window.getCollection('leihfahrzeugBuchungen').doc();
+                        await buchungRef.set({
+                            leihfahrzeugId: zugewiesenesLeihfahrzeugId,
+                            leihfahrzeugDetails: anfrage.kva?.zugewiesenesLeihfahrzeug || {},
+                            fahrzeugId: fahrzeugData.id,
+                            anfrageId: anfrageId,
+                            kundenname: anfrage.partnerName || anfrage.kundenname || 'Partner',
+                            kennzeichen: anfrage.kennzeichen || anfrage.auftragsnummer,
+                            ausgeliehenAm: new Date().toISOString(),
+                            voraussichtlicheRueckgabe: anfrage.kva?.termine?.ende || null,
+                            rueckgabeAm: null,
+                            status: 'aktiv',
+                            werkstattId: window.werkstattId || 'mosbach',
+                            erstelltAm: firebase.firestore.Timestamp.now()
+                        });
+                        console.log(`✅ Leihfahrzeug-Buchung erstellt: ${buchungRef.id}`);
+
+                    } catch (leihError) {
+                        console.error('❌ Leihfahrzeug-Reservierung fehlgeschlagen (nicht kritisch):', leihError);
+                        // Continue anyway - Hauptvorgang war erfolgreich
+                    }
+                } else {
+                    console.log('ℹ️ Kein Leihfahrzeug zugewiesen - Reservierung wird übersprungen');
                 }
 
                 showToast(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`, 'success');
