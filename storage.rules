@@ -20,17 +20,31 @@ service firebase.storage {
     // Produktionsfotos: Public Read (für Partner-Integration)
     // Pfad: progress-photos/{fahrzeugId}/{fileName}
     // Verwendet von: kanban.html (Photo Upload während Produktion)
+    // 🛡️ SECURITY FIX 2025-11-26 (Pattern 55): Auth + Size + MIME Validation
     match /progress-photos/{fahrzeugId}/{fileName} {
       allow read: if true;  // Partner können Fotos sehen
-      allow write: if true;  // Werkstatt kann Fotos hochladen (temporär)
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024  // Max 10 MB
+                   && request.resource.contentType.matches('image/(jpeg|png|webp)')
+                   && (request.auth.token.role == 'admin'
+                       || request.auth.token.role == 'werkstatt'
+                       || request.auth.token.role == 'superadmin'
+                       || request.auth.token.role == 'mitarbeiter');
     }
 
     // Fahrzeug-Fotos (Schadensfotos bei Annahme/Abnahme)
     // Pfad: fahrzeuge/{fahrzeugId}/**
     // Verwendet von: annahme.html, abnahme.html
+    // 🛡️ SECURITY FIX 2025-11-26 (Pattern 56): Auth + MIME Validation hinzugefügt
     match /fahrzeuge/{fahrzeugId}/{allPaths=**} {
       allow read: if true;  // Public Read
-      allow write: if request.resource.size < 10 * 1024 * 1024;  // Max 10 MB
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024  // Max 10 MB
+                   && request.resource.contentType.matches('image/(jpeg|png|webp)')
+                   && (request.auth.token.role == 'admin'
+                       || request.auth.token.role == 'werkstatt'
+                       || request.auth.token.role == 'superadmin'
+                       || request.auth.token.role == 'mitarbeiter');
     }
 
     // 🆕 Partner-Anfragen Fotos (Multi-Service Anfragen)
@@ -74,10 +88,12 @@ service firebase.storage {
     // Pfad: material_photos/{requestId}/{fileName}
     // Verwendet von: material.html (Foto-Upload für Materialbestellungen)
     // Phase: 2025-11-12 - Material-Verwaltung Feature
+    // 🛡️ SECURITY FIX 2025-11-26: MIME Validation hinzugefügt
     match /material_photos/{requestId}/{fileName} {
       allow read: if true;  // Public Read (Material-Datenbank sichtbar)
       allow write: if request.auth != null
                    && request.resource.size < 10 * 1024 * 1024  // Max 10 MB
+                   && request.resource.contentType.matches('image/(jpeg|png|webp)')
                    && (request.auth.token.role == 'admin'
                        || request.auth.token.role == 'werkstatt'
                        || request.auth.token.role == 'lager'
@@ -109,10 +125,14 @@ service firebase.storage {
 // ====================================================================
 //
 // Max Dateigröße: 10 MB (verhindert Missbrauch)
-// Authentication: Noch nicht implementiert (für später)
 //
-// Zukunft: Mit Firebase Authentication
-// allow write: if request.auth != null &&
-//              request.auth.token.email.matches('.*@auto-lackierzentrum\\.de$');
+// 🛡️ SECURITY FIX 2025-11-26 (Pattern 55, 56):
+// - Authentication: IMPLEMENTIERT für alle Pfade (außer partner-anfragen)
+// - MIME-Type Validation: IMPLEMENTIERT für alle Pfade
+// - Erlaubte Rollen: admin, werkstatt, superadmin, mitarbeiter (je nach Pfad)
+// - Erlaubte MIME-Types: image/jpeg, image/png, image/webp
+//
+// Partner-Anfragen haben KEINE Auth-Prüfung weil Partner kein Firebase Auth nutzen.
+// Stattdessen: Size + MIME Validation als Schutz.
 //
 // ====================================================================

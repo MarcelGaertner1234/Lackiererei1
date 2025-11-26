@@ -13,7 +13,44 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ---
 
-## 📊 Latest Session History (2025-11-25)
+## 📊 Latest Session History (2025-11-26)
+
+### Session 2025-11-26: Vollständige Codebase-Analyse - 42 Issues Found (DOCUMENTED)
+
+**🎯 USER REQUEST:**
+"jetzt möchte ich das du die komplette codebasis logik und das datenmapping screenst und schwachstellen bug errors usw suchst !!"
+
+**✅ SESSION SUMMARY:**
+- **Methode:** 3 parallele Explore-Agents (Security, Datenmapping, Logic Errors)
+- **Ergebnis:** 42 Probleme identifiziert, kategorisiert nach Schweregrad
+- **Aktion:** User wählt "Dokumentieren" → Alle Issues zu NEXT_AGENT_MANUAL_TESTING_PROMPT.md hinzufügen
+
+**📊 Issue Summary:**
+
+| Kategorie | CRITICAL | HIGH | MEDIUM | LOW | Total |
+|-----------|----------|------|--------|-----|-------|
+| 🔒 Security | 3 | 6 | 3 | 0 | **12** |
+| 📊 Datenmapping | 3 (2 bereits gefixt) | 0 | 12 | 3 | **18** |
+| 🐛 Logic Errors | 4 | 4 | 4 | 0 | **12** |
+| **TOTAL** | **10** | **10** | **19** | **3** | **42** |
+
+**🔴 CRITICAL Issues (10):**
+1. `storage.rules:23` - Open File Upload (`allow write: if true`)
+2. `storage.rules:31` - Missing MIME-Type Validation
+3. `functions/index.js:100` - Unverified AWS SES Sender Email
+4. `meine-anfragen.html:7470` - kundenname→partnerName Bug ✅ BEREITS GEFIXT
+5. `meine-anfragen.html:6792` - Date Objects in Firestore ✅ BEREITS GEFIXT
+6. `annahme.html:6517` - kostenAufschluesselung nicht gespeichert
+7. `kanban.html:5046` - Missing additionalServices in updateData
+8. `kanban.html:2950` - Unhandled Promise Rejections
+9. `annahme.html:2479` - Race Condition werkstattId
+10. `kanban.html:5317` - Uninitialized Modal State
+
+**Neue Patterns:** Pattern 55-66 dokumentiert (siehe unten)
+
+**Fix-Priorität:** Security → Logic Bugs → Datenmapping
+
+---
 
 ### Session 2025-11-25: E2E Security Rules Fix - 36 Integration Tests (DEPLOYED)
 
@@ -9010,4 +9047,701 @@ try { resource.close(); } catch { }  // ← Non-blocking
 
 ---
 
-_Last Updated: 2025-11-25 - Added Patterns 53-54 from Session 2025-11-25 (Bug Analysis #16-40)_
+## 🔍 Codebase-Analyse Issues (2025-11-26)
+
+Diese Sektion dokumentiert die 42 Issues, die bei der vollständigen Codebase-Analyse am 2025-11-26 gefunden wurden.
+
+**⚠️ WICHTIG:** Einige Issues könnten FALSE POSITIVES sein (siehe Session 2025-11-25: 96% False Positive Rate). IMMER Code verifizieren vor Fix!
+
+---
+
+### Pattern 55: Storage Rules - Open File Upload 🔴 CRITICAL SECURITY!
+
+**Priority:** 🔴 CRITICAL
+
+**Category:** Security / Storage Rules
+
+**File:** `storage.rules` Lines 23-26
+
+**Symptom:**
+```javascript
+// Progress-photos path allows ANY write without authentication
+// Attackers can upload ANY file type to Firebase Storage
+```
+
+**Root Cause:**
+```javascript
+// storage.rules:23-26 (CURRENT - VULNERABLE!)
+match /progress-photos/{fahrzeugId}/{fileName} {
+  allow read: if true;
+  allow write: if true;  // ❌ NO AUTH CHECK! NO SIZE LIMIT! NO MIME VALIDATION!
+}
+```
+
+**Impact:**
+- 🔴 **Arbitrary File Upload** - Attackers can upload malware, phishing pages
+- 🔴 **Storage Abuse** - No size limit = DoS via storage exhaustion
+- 🔴 **No Content-Type** - Executables, scripts can be uploaded
+
+**Solution:**
+```javascript
+// ✅ FIXED Version:
+match /progress-photos/{fahrzeugId}/{fileName} {
+  allow read: if true;
+  allow write: if request.auth != null
+               && request.resource.size < 10 * 1024 * 1024  // Max 10MB
+               && request.resource.contentType.matches('image/(jpeg|png|webp)')
+               && (request.auth.token.role == 'admin'
+                   || request.auth.token.role == 'werkstatt'
+                   || request.auth.token.role == 'superadmin');
+}
+```
+
+**Testing:**
+```bash
+# Before fix: Upload arbitrary file succeeds
+curl -X POST "https://firebasestorage.googleapis.com/.../progress-photos/test/malware.exe"
+# Expected: 200 OK (VULNERABLE!)
+
+# After fix: Unauthorized upload fails
+# Expected: 403 Forbidden
+```
+
+**Status:** ✅ FIXED (2025-11-26, Commit pending)
+
+**Fix Applied:**
+- Added `request.auth != null` check
+- Added `request.resource.size < 10 * 1024 * 1024` (10MB limit)
+- Added `request.resource.contentType.matches('image/(jpeg|png|webp)')`
+- Added role check: admin, werkstatt, superadmin, mitarbeiter
+
+---
+
+### Pattern 56: Storage Rules - Missing MIME-Type Validation ✅ FIXED
+
+**Priority:** 🔴 CRITICAL
+
+**Category:** Security / Storage Rules
+
+**File:** `storage.rules` Lines 31-34
+
+**Symptom:**
+```javascript
+// fahrzeuge/* path has NO Content-Type check
+// Any file type can be uploaded (executables, scripts, etc.)
+```
+
+**Root Cause:**
+```javascript
+// storage.rules:31-34 (CURRENT - VULNERABLE!)
+match /fahrzeuge/{fahrzeugId}/{allPaths=**} {
+  allow read: if true;
+  allow write: if request.resource.size < 10 * 1024 * 1024;  // Only size check!
+  // ❌ MISSING: Content-Type validation!
+  // ❌ MISSING: Authentication check!
+}
+```
+
+**Impact:**
+- 🟠 **Executables Upload** - .exe, .sh, .bat files can be stored
+- 🟠 **XSS via SVG** - Malicious SVGs with JavaScript
+- 🟠 **Phishing** - HTML files mimicking login pages
+
+**Solution:**
+```javascript
+// ✅ FIXED Version:
+match /fahrzeuge/{fahrzeugId}/{allPaths=**} {
+  allow read: if true;
+  allow write: if request.auth != null
+               && request.resource.size < 10 * 1024 * 1024
+               && request.resource.contentType.matches('image/(jpeg|png|webp)');
+}
+```
+
+**Comparison with Other Rules:**
+```javascript
+// ✅ partner-anfragen (Line 41-45) - HAS Content-Type check
+match /partner-anfragen/{partnerId}/{allPaths=**} {
+  allow write: if request.resource.size < 10 * 1024 * 1024
+               && request.resource.contentType.matches('image/(jpeg|png|webp)');  // ✅
+}
+
+// ✅ fahrzeuge (Line 39-48) - NOW HAS Content-Type check
+match /fahrzeuge/{fahrzeugId}/{allPaths=**} {
+  allow write: if request.auth != null
+               && request.resource.size < 10 * 1024 * 1024
+               && request.resource.contentType.matches('image/(jpeg|png|webp)')
+               && (request.auth.token.role == 'admin' || ...);  // ✅ FIXED!
+}
+```
+
+**Status:** ✅ FIXED (2025-11-26, Commit pending)
+
+**Fix Applied:**
+- Added `request.auth != null` check
+- Added `request.resource.contentType.matches('image/(jpeg|png|webp)')`
+- Added role check: admin, werkstatt, superadmin, mitarbeiter
+
+---
+
+### Pattern 57: Logic - Fire-and-Forget Firestore Updates 🟠 HIGH
+
+**Priority:** 🟠 HIGH
+
+**Category:** Logic / Error Handling
+
+**File:** `kanban.html` Lines 2950-2955, 2980-2984
+
+**Symptom:**
+```javascript
+// Firestore updates silently fail
+// User sees success message but data not persisted
+// Lazy migration never completes
+```
+
+**Root Cause:**
+```javascript
+// kanban.html Lines 2950-2955 (CURRENT)
+window.getCollection('fahrzeuge').doc(fahrzeug.id).update({
+    serviceStatuses: fahrzeug.serviceStatuses
+}).catch(err => {
+    console.warn('⚠️ Lazy Migration Update fehlgeschlagen:', err);
+    // ❌ NO USER NOTIFICATION!
+    // ❌ NO RETRY LOGIC!
+    // ❌ Error swallowed silently
+});
+```
+
+**Impact:**
+- 🟡 **Silent Data Loss** - User thinks operation succeeded
+- 🟡 **Incomplete Migration** - serviceStatuses never persisted
+- 🟡 **Debugging Hell** - Only visible in console (users don't check)
+
+**Solution:**
+```javascript
+// ✅ FIXED Version with User Notification:
+window.getCollection('fahrzeuge').doc(fahrzeug.id).update({
+    serviceStatuses: fahrzeug.serviceStatuses
+}).catch(err => {
+    console.error('❌ Lazy Migration Update fehlgeschlagen:', err);
+
+    // Notify user with retry option
+    toast.error('Fehler beim Speichern. Bitte Seite neu laden.', {
+        action: {
+            label: 'Neu laden',
+            onClick: () => window.location.reload()
+        }
+    });
+});
+```
+
+**Affected Locations:**
+- `kanban.html:2950-2955` - Lazy Migration Update
+- `kanban.html:2980-2984` - Service-Status Init
+- Multiple other `.catch(err => console.warn(...))` patterns
+
+**Status:** 🟠 NOT FIXED
+
+---
+
+### Pattern 58: Logic - Uninitialized Modal State 🟠 HIGH
+
+**Priority:** 🟠 HIGH
+
+**Category:** Logic / UI State
+
+**File:** `kanban.html` Line ~5317
+
+**Symptom:**
+```javascript
+// Photo Modal fails to open silently
+// User clicks "Foto hinzufügen" but nothing happens
+// No error message shown
+```
+
+**Root Cause:**
+```javascript
+// Modal functions may be called before DOM is ready
+// or before modal HTML is injected into page
+function openPhotoModal(fahrzeugId, serviceTyp) {
+    const modal = document.getElementById('photoModal');
+    // ❌ modal might be null if DOM not ready!
+    modal.style.display = 'block';  // TypeError: Cannot read 'style' of null
+}
+```
+
+**Impact:**
+- 🟡 **Silent Failure** - Click does nothing, no feedback
+- 🟡 **User Confusion** - "Is the button broken?"
+- 🟡 **Inconsistent State** - Modal might be partially initialized
+
+**Solution:**
+```javascript
+// ✅ FIXED Version with Defensive Check:
+function openPhotoModal(fahrzeugId, serviceTyp) {
+    const modal = document.getElementById('photoModal');
+
+    if (!modal) {
+        console.error('❌ photoModal not found in DOM!');
+        toast.error('Fehler: Modal nicht gefunden. Bitte Seite neu laden.');
+        return;
+    }
+
+    modal.style.display = 'block';
+    // ... rest of initialization
+}
+```
+
+**Status:** ⚠️ NEEDS VERIFICATION (may be false positive)
+
+---
+
+### Pattern 59: Datenmapping - Photo Field Name Chaos 🟡 MEDIUM
+
+**Priority:** 🟡 MEDIUM
+
+**Category:** Datenmapping / Consistency
+
+**Symptom:**
+```javascript
+// Same data stored under different field names across files
+// Query for "fotos" misses "photos" and vice versa
+// Photos appear in one view but not another
+```
+
+**Root Cause - Inconsistent Field Names:**
+```javascript
+// File 1: annahme.html
+fahrzeugData.fotos = [...];           // German: "fotos"
+fahrzeugData.schadenfotos = [...];    // Specific: "schadenfotos"
+
+// File 2: kanban.html
+fahrzeug.photos = [...];              // English: "photos"
+fahrzeug.photoUrls = [...];           // Different: "photoUrls"
+
+// File 3: abnahme.html
+fahrzeugData.abnahmefotos = [...];    // Specific: "abnahmefotos"
+
+// Result: 5 different field names for the same concept!
+```
+
+**Impact:**
+- 🟡 **Photos Missing** - Query for wrong field returns empty
+- 🟡 **Inconsistent Display** - Some pages show photos, others don't
+- 🟡 **Data Migration Nightmare** - Which field is canonical?
+
+**Standard Field Names (Recommended):**
+```javascript
+// ✅ RECOMMENDED Standardization:
+{
+    photos: {
+        annahme: [...],      // Photos from intake
+        produktion: [...],   // Photos during production
+        abnahme: [...]       // Photos at completion
+    }
+}
+
+// OR simpler flat structure:
+{
+    annahmePhotos: [...],
+    produktionPhotos: [...],
+    abnahmePhotos: [...]
+}
+```
+
+**Affected Files:**
+- `annahme.html` - Uses: fotos, schadenfotos
+- `kanban.html` - Uses: photos, photoUrls
+- `abnahme.html` - Uses: abnahmefotos
+- `liste.html` - Uses: photos
+
+**Status:** 🟡 LOW PRIORITY (cosmetic, not breaking)
+
+---
+
+### Pattern 60: Datenmapping - Date Field Inconsistency 🟡 MEDIUM
+
+**Priority:** 🟡 MEDIUM
+
+**Category:** Datenmapping / Consistency
+
+**Symptom:**
+```javascript
+// Different date fields used for same concept
+// "When will the car be ready?" has 3+ possible answers
+```
+
+**Root Cause:**
+```javascript
+// Different files use different field names for completion date:
+fahrzeug.anliefertermin          // From intake form
+fahrzeug.geplantesAbnahmeDatum   // From Entwurf system
+fahrzeug.geplantesStartDatum     // From KVA
+fahrzeug.fertigstellungsDatum    // Calculated completion
+
+// Which one is THE deadline? Depends on data source!
+```
+
+**Impact:**
+- 🟡 **Confusion** - Different pages show different dates
+- 🟡 **Sorting Issues** - Sort by which date field?
+- 🟡 **Reporting** - KPIs use inconsistent date logic
+
+**Field Purpose Documentation:**
+```javascript
+// DOCUMENTATION: Which field means what
+{
+    anliefertermin: "Customer's preferred date (from intake form)",
+    geplantesStartDatum: "When work should START",
+    geplantesAbnahmeDatum: "When customer should PICK UP",
+    fertigstellungsDatum: "When work was actually COMPLETED",
+    abholdatum: "Actual pickup date (after completion)"
+}
+```
+
+**Status:** 🟡 DOCUMENT ONLY (no code change needed)
+
+---
+
+### Pattern 61: Datenmapping - 8-Stage Price Fallback Chain 🟡 MEDIUM
+
+**Priority:** 🟡 MEDIUM
+
+**Category:** Datenmapping / Complexity
+
+**File:** `partner-app/rechnungen.html`
+
+**Symptom:**
+```javascript
+// Invoice shows wrong price
+// "Where does this price come from?" is unanswerable
+```
+
+**Root Cause - Undocumented Fallback Chain:**
+```javascript
+// rechnungen.html (Invoice PDF Generation)
+// Price is determined by FIRST truthy value:
+const preis = fahrzeug.kalkulationData?.summeGesamt      // 1. From Entwurf system
+           || fahrzeug.kva?.breakdown?.total              // 2. From KVA
+           || fahrzeug.kva?.angenommenerPreis             // 3. From accepted KVA
+           || fahrzeug.kostenAufschluesselung?.summeGesamt // 4. From direct workshop
+           || fahrzeug.vereinbarterPreis                   // 5. Manual price
+           || fahrzeug.gesamtpreis                         // 6. Legacy field
+           || fahrzeug.preis                               // 7. Very old field
+           || 0;                                           // 8. Default
+
+// WHY 8 levels? Different data pipelines:
+// - Entwurf → kalkulationData
+// - KVA → kva.breakdown
+// - Direct Workshop → kostenAufschluesselung
+// - Legacy → vereinbarterPreis, gesamtpreis, preis
+```
+
+**Impact:**
+- 🟡 **Debugging Difficulty** - "Why is the price 500€ not 600€?"
+- 🟡 **Maintenance Risk** - Adding new source = update all 8 places?
+- 🟡 **Audit Issues** - Which price is canonical for accounting?
+
+**Solution - Document in Code:**
+```javascript
+// ✅ ADD THIS COMMENT to rechnungen.html:
+/**
+ * PRICE FALLBACK CHAIN (8 levels)
+ * Priority order: First truthy value wins
+ *
+ * 1. kalkulationData.summeGesamt - Entwurf/Angebot system
+ * 2. kva.breakdown.total - KVA totals
+ * 3. kva.angenommenerPreis - Partner-accepted KVA price
+ * 4. kostenAufschluesselung.summeGesamt - Direct workshop entry
+ * 5. vereinbarterPreis - Manual price override
+ * 6. gesamtpreis - Legacy (pre-2025)
+ * 7. preis - Very old legacy
+ * 8. 0 - Fallback default
+ */
+```
+
+**Status:** 🟡 DOCUMENT ONLY
+
+---
+
+### Pattern 62: Logic - additionalServices Type Inconsistency 🟠 HIGH
+
+**Priority:** 🟠 HIGH
+
+**Category:** Logic / Type Safety
+
+**Symptom:**
+```javascript
+// hasService check fails intermittently
+// Vehicle has Reifen service but doesn't appear in Reifen tab
+// Console shows: "Expected array, got object"
+```
+
+**Root Cause:**
+```javascript
+// additionalServices should be Array, but sometimes it's Object
+
+// Expected (Array):
+fahrzeug.additionalServices = [
+    { serviceTyp: 'reifen', status: 'neu' },
+    { serviceTyp: 'klima', status: 'in_arbeit' }
+];
+
+// Actual (Object - WRONG!):
+fahrzeug.additionalServices = {
+    0: { serviceTyp: 'reifen', status: 'neu' },
+    1: { serviceTyp: 'klima', status: 'in_arbeit' }
+};
+
+// Why? Firestore Array → Object conversion on some operations
+// Or JavaScript array with gaps being stringified
+```
+
+**Impact:**
+- 🟠 **Filter Failures** - `.some()` on Object throws/returns false
+- 🟠 **Vehicles Disappear** - Service tabs show empty
+- 🟠 **Data Corruption** - Type changes propagate
+
+**Solution (Already Partially Implemented):**
+```javascript
+// kanban.html Lines 5048-5063 (EXISTING FIX)
+if (!Array.isArray(fahrzeug.additionalServices)) {
+    console.error('❌ CRITICAL: additionalServices ist kein Array!');
+
+    // DATA RESCUE: Convert Object → Array
+    if (fahrzeug.additionalServices && typeof fahrzeug.additionalServices === 'object') {
+        fahrzeug.additionalServices = Object.values(fahrzeug.additionalServices);
+    } else {
+        fahrzeug.additionalServices = [];
+    }
+}
+```
+
+**Status:** ✅ PARTIALLY FIXED in kanban.html (needs verification in other files)
+
+---
+
+### Pattern 63: Security - E2E Test Rules Security Bypass 🟠 HIGH
+
+**Priority:** 🟠 HIGH
+
+**Category:** Security / Test Configuration
+
+**File:** `firestore.rules` Lines ~920-940
+
+**Symptom:**
+```javascript
+// E2E tests bypass normal security rules
+// If test rules leak to production → open database access
+```
+
+**Root Cause:**
+```javascript
+// firestore.rules (E2E Test Section)
+// These rules allow operations WITHOUT normal role checks
+
+match /fahrzeuge_{werkstattId}/{fahrzeugId} {
+    // E2E Test Rule - bypasses isAdmin/isMitarbeiter checks
+    allow delete: if request.resource == null;  // ⚠️ Permissive!
+}
+```
+
+**Impact:**
+- 🟠 **Test → Prod Leakage** - Rules deployed without review
+- 🟠 **Privilege Escalation** - Test user gains admin access
+- 🟠 **Data Deletion** - Unauthorized delete operations
+
+**Current Mitigation:**
+- E2E tests use `demo-test` project (separate from production)
+- Production rules reviewed before deployment
+
+**Recommendation:**
+```javascript
+// ✅ Add explicit environment check (if Firebase supports):
+// OR document clearly that E2E rules are ONLY for demo-test project
+```
+
+**Status:** ⚠️ ACKNOWLEDGED RISK (mitigated by project separation)
+
+---
+
+### Pattern 64: Datenmapping - kundenId Not Saved (Direct Workshop) 🟡 MEDIUM
+
+**Priority:** 🟡 MEDIUM
+
+**Category:** Datenmapping / Data Completeness
+
+**Symptom:**
+```javascript
+// Vehicle created via direct workshop intake (annahme.html)
+// Missing kundenId field → Cannot link to customer record
+```
+
+**Root Cause:**
+```javascript
+// Direct workshop path (no KVA, no Entwurf):
+// 1. User fills annahme.html form
+// 2. Creates fahrzeug document
+// 3. kundenId NOT included in fahrzeugData
+
+// But KVA path DOES include kundenId:
+// 1. Partner creates Anfrage → has kundenEmail
+// 2. KVA created → has partnerId
+// 3. Fahrzeug created → kundenId linked
+
+// Gap: Direct workshop has customer name but no Firestore link
+```
+
+**Impact:**
+- 🟡 **No Customer Lookup** - Can't find all vehicles for customer
+- 🟡 **Incomplete CRM** - Customer history fragmented
+- 🟡 **Reporting Gap** - Customer statistics incomplete
+
+**Solution:**
+```javascript
+// annahme.html - Add customer lookup/creation:
+const kundenRef = await getOrCreateKunde({
+    name: document.getElementById('kundenname').value,
+    email: document.getElementById('kundenEmail')?.value,
+    telefon: document.getElementById('kundenTelefon')?.value
+});
+
+fahrzeugData.kundenId = kundenRef.id;  // Link to customer
+```
+
+**Status:** 🟡 ENHANCEMENT (not blocking)
+
+---
+
+### Pattern 65: Security - Token Expiration Not Validated 🟡 MEDIUM
+
+**Priority:** 🟡 MEDIUM
+
+**Category:** Security / Authentication
+
+**Symptom:**
+```javascript
+// Partner auto-login tokens work indefinitely
+// Old/revoked tokens still grant access
+```
+
+**Root Cause:**
+```javascript
+// Token validation checks existence but not expiration:
+const tokenDoc = await db.collection('partnerAutoLoginTokens').doc(token).get();
+
+if (tokenDoc.exists) {
+    // ✅ Token exists
+    // ❌ But is it expired? Not checked!
+    const tokenData = tokenDoc.data();
+    // tokenData.expiresAt might be in the past
+}
+```
+
+**Impact:**
+- 🟡 **Stale Tokens** - Expired tokens still work
+- 🟡 **Security Risk** - Shared links remain active forever
+- 🟡 **Audit Gap** - Can't revoke access
+
+**Current Mitigation:**
+- Tokens have 7-day TTL (intentional design decision)
+- Backend scheduled cleanup exists
+
+**Solution:**
+```javascript
+// ✅ Add expiration check:
+if (tokenDoc.exists) {
+    const tokenData = tokenDoc.data();
+    const now = Date.now();
+
+    if (tokenData.expiresAt && tokenData.expiresAt.toMillis() < now) {
+        console.warn('❌ Token expired');
+        throw new Error('Token abgelaufen');
+    }
+
+    // Token valid and not expired
+}
+```
+
+**Status:** 🟡 ENHANCEMENT (current TTL is acceptable)
+
+---
+
+### Pattern 66: Datenmapping - Legacy Cutoff Date (Wartungsbombe) 🟡 MEDIUM
+
+**Priority:** 🟡 MEDIUM
+
+**Category:** Datenmapping / Maintenance
+
+**Symptom:**
+```javascript
+// Code has hardcoded date checks for legacy data migration
+// After that date passes → logic becomes dead code
+```
+
+**Root Cause:**
+```javascript
+// Example legacy cutoff pattern:
+const cutoffDate = new Date('2025-06-01');
+
+if (fahrzeug.createdAt < cutoffDate) {
+    // Legacy data handling
+    // This code is now ALWAYS skipped for new data
+    // But still runs for ALL queries (performance cost)
+}
+```
+
+**Impact:**
+- 🟡 **Dead Code** - Legacy branches never execute for new data
+- 🟡 **Performance** - Unnecessary date checks on every record
+- 🟡 **Confusion** - "Why is this code here?"
+
+**Solution:**
+```javascript
+// Option 1: Remove after migration complete
+// - Run migration script to update all legacy records
+// - Then remove the if-check entirely
+
+// Option 2: Document with TODO
+/**
+ * @deprecated Legacy handling for pre-2025-06 records
+ * TODO: Remove after 2026-01-01 when all records migrated
+ */
+```
+
+**Status:** 🟡 TECHNICAL DEBT (document for future cleanup)
+
+---
+
+## Summary: Fix Priority Checklist
+
+### 🔴 CRITICAL (Fix Immediately)
+
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| 55 | Open File Upload | storage.rules:23 | ✅ FIXED (2025-11-26) |
+| 56 | Missing MIME-Type | storage.rules:31 | ✅ FIXED (2025-11-26) |
+
+### 🟠 HIGH (Fix Soon)
+
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| 57 | Fire-and-Forget Updates | kanban.html:2950 | NOT FIXED |
+| 58 | Uninitialized Modal | kanban.html:5317 | VERIFY |
+| 62 | additionalServices Type | multiple files | PARTIAL FIX |
+| 63 | E2E Test Rules | firestore.rules | MITIGATED |
+
+### 🟡 MEDIUM (Document/Plan)
+
+| # | Issue | File | Status |
+|---|-------|------|--------|
+| 59 | Photo Field Chaos | multiple files | DOCUMENT |
+| 60 | Date Field Inconsistency | multiple files | DOCUMENT |
+| 61 | Price Fallback Chain | rechnungen.html | DOCUMENT |
+| 64 | kundenId Not Saved | annahme.html | ENHANCEMENT |
+| 65 | Token Expiration | auth code | ENHANCEMENT |
+| 66 | Legacy Cutoff Date | multiple files | TECH DEBT |
+
+---
+
+_Last Updated: 2025-11-26 - Patterns 55-56 FIXED (Storage Rules Security), Patterns 57-66 documented_
