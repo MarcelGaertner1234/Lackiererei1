@@ -30,6 +30,24 @@ const SESSION_KEY_MITARBEITER = 'session_mitarbeiter';
 const SESSION_KEY_ACTIVE_SESSION_ID = 'session_active_id';
 
 // ============================================
+// SECURITY: Email Masking for Logs (GDPR Compliance)
+// ============================================
+/**
+ * Masks email for logging (PII protection)
+ * @param {string} email - Full email address
+ * @returns {string} Masked email (e.g., "m***@example.com")
+ */
+function maskEmail(email) {
+  if (!email || typeof email !== 'string') return '[no-email]';
+  const [local, domain] = email.split('@');
+  if (!domain) return '[invalid-email]';
+  const maskedLocal = local.length > 2
+    ? local[0] + '***' + local[local.length - 1]
+    : local[0] + '***';
+  return `${maskedLocal}@${domain}`;
+}
+
+// ============================================
 // SESSION STORAGE HELPERS
 // ============================================
 
@@ -123,7 +141,7 @@ async function registerUser(userData) {
   }
 
   try {
-    console.log('🔐 Registriere neuen User:', email);
+    console.log('🔐 Registriere neuen User:', maskEmail(email));
 
     // 1. Create Firebase Auth user
     const userCredential = await window.auth.createUserWithEmailAndPassword(email, password);
@@ -200,7 +218,7 @@ async function registerUser(userData) {
  */
 async function loginWerkstatt(email, password) {
   try {
-    console.log('🔐 STAGE 1: Workshop Login:', email);
+    console.log('🔐 STAGE 1: Workshop Login:', maskEmail(email));
 
     // 1. Sign in with Firebase Auth
     const userCredential = await window.auth.signInWithEmailAndPassword(email, password);
@@ -338,7 +356,7 @@ async function loginMitarbeiter(mitarbeiterId, password) {
 
     // Firebase Auth Login
     try {
-      console.log(`   🔐 Firebase Auth Login: ${mitarbeiterData.email}`);
+      console.log(`   🔐 Firebase Auth Login: ${maskEmail(mitarbeiterData.email)}`);
       const userCredential = await window.auth.signInWithEmailAndPassword(mitarbeiterData.email, password);
 
       // Verify UID matches (security check)
@@ -708,7 +726,7 @@ window.addEventListener('firebaseReady', () => {
   // Listen for Firebase Auth state changes
   window.auth.onAuthStateChanged(async (firebaseUser) => {
     if (firebaseUser) {
-      console.log('🔐 Firebase Auth State Changed:', firebaseUser.email);
+      console.log('🔐 Firebase Auth State Changed:', maskEmail(firebaseUser.email));
 
       // Load user data from Firestore
       try {
@@ -722,15 +740,15 @@ window.addEventListener('firebaseReady', () => {
           // If Firebase Auth email differs from Firestore users collection, update Firestore
           if (firebaseUser.email !== userData.email) {
             console.warn('⚠️ Email mismatch detected between Firebase Auth and Firestore:');
-            console.warn('   Firebase Auth email:', firebaseUser.email);
-            console.warn('   Firestore users email:', userData.email);
+            console.warn('   Firebase Auth email:', maskEmail(firebaseUser.email));
+            console.warn('   Firestore users email:', maskEmail(userData.email));
             console.log('🔄 Auto-updating Firestore users collection with Firebase Auth email...');
 
             try {
               await window.db.collection('users').doc(firebaseUser.uid).update({
                 email: firebaseUser.email
               });
-              console.log('✅ Firestore users collection email updated to:', firebaseUser.email);
+              console.log('✅ Firestore users collection email updated to:', maskEmail(firebaseUser.email));
               userData.email = firebaseUser.email;  // Update local copy
             } catch (updateError) {
               console.error('❌ Failed to auto-update Firestore email:', updateError);
