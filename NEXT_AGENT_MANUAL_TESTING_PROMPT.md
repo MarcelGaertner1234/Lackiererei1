@@ -9529,7 +9529,12 @@ if (!Array.isArray(fahrzeug.additionalServices)) {
 }
 ```
 
-**Status:** ✅ PARTIALLY FIXED in kanban.html (needs verification in other files)
+**Status:** ✅ FULLY FIXED (2025-11-26)
+
+**Fix Applied:**
+- kanban.html: Object→Array conversion (existing)
+- liste.html: Added Object→Array conversion (Pattern 62 FIX)
+- Other files use safe `Array.isArray()` checks before accessing
 
 ---
 
@@ -9577,9 +9582,9 @@ match /fahrzeuge_{werkstattId}/{fahrzeugId} {
 
 ---
 
-### Pattern 64: Datenmapping - kundenId Not Saved (Direct Workshop) 🟡 MEDIUM
+### Pattern 64: Datenmapping - kundenId Not Saved ⚠️ FALSE POSITIVE
 
-**Priority:** 🟡 MEDIUM
+**Priority:** 🟡 MEDIUM → ⚠️ FALSE POSITIVE
 
 **Category:** Datenmapping / Data Completeness
 
@@ -9621,13 +9626,17 @@ const kundenRef = await getOrCreateKunde({
 fahrzeugData.kundenId = kundenRef.id;  // Link to customer
 ```
 
-**Status:** 🟡 ENHANCEMENT (not blocking)
+**Status:** ⚠️ FALSE POSITIVE (Already Implemented!)
+
+**Verification (2025-11-26):**
+- annahme.html:2952-2965 calls `registriereKundenbesuch()` and updates fahrzeug with kundenId
+- kundenId IS saved via `firebaseApp.updateFahrzeug(annahmeData.id, { kundenId })`
 
 ---
 
-### Pattern 65: Security - Token Expiration Not Validated 🟡 MEDIUM
+### Pattern 65: Security - Token Expiration Not Validated ⚠️ FALSE POSITIVE
 
-**Priority:** 🟡 MEDIUM
+**Priority:** 🟡 MEDIUM → ⚠️ FALSE POSITIVE
 
 **Category:** Security / Authentication
 
@@ -9675,7 +9684,12 @@ if (tokenDoc.exists) {
 }
 ```
 
-**Status:** 🟡 ENHANCEMENT (current TTL is acceptable)
+**Status:** ⚠️ FALSE POSITIVE (Already Implemented SERVER-SIDE!)
+
+**Verification (2025-11-26):**
+- functions/index.js:3365-3375 validates `expiresAt` in `validatePartnerAutoLoginToken()`
+- Token expiration IS checked server-side (correct security approach)
+- Throws `deadline-exceeded` error for expired tokens
 
 ---
 
@@ -9740,7 +9754,7 @@ if (fahrzeug.createdAt < cutoffDate) {
 |---|-------|------|--------|
 | 57 | Fire-and-Forget Updates | kanban.html:2950 | ✅ FIXED (2025-11-26) |
 | 58 | Uninitialized Modal | kanban.html:5317 | ✅ FIXED (2025-11-26) |
-| 62 | additionalServices Type | multiple files | PARTIAL FIX |
+| 62 | additionalServices Type | multiple files | ✅ FULLY FIXED (2025-11-26) |
 | 63 | E2E Test Rules | firestore.rules | MITIGATED |
 
 ### 🟡 MEDIUM (Document/Plan)
@@ -9750,10 +9764,10 @@ if (fahrzeug.createdAt < cutoffDate) {
 | 59 | Photo Field Chaos | multiple files | DOCUMENT |
 | 60 | Date Field Inconsistency | multiple files | DOCUMENT |
 | 61 | Price Fallback Chain | rechnungen.html | DOCUMENT |
-| 64 | kundenId Not Saved | annahme.html | ENHANCEMENT |
-| 65 | Token Expiration | auth code | ENHANCEMENT |
+| 64 | kundenId Not Saved | annahme.html | ⚠️ FALSE POSITIVE |
+| 65 | Token Expiration | auth code | ⚠️ FALSE POSITIVE |
 | 66 | Legacy Cutoff Date | multiple files | TECH DEBT |
 
 ---
 
-_Last Updated: 2025-11-26 - Patterns 55-58 FIXED (Storage Rules + kanban.html Logic), Patterns 59-66 documented_
+_Last Updated: 2025-11-26 - Patterns 55-58, 62 FIXED; Patterns 64-65 FALSE POSITIVE; Patterns 59-61, 63, 66 documented_
