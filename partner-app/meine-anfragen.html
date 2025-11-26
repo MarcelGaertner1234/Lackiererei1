@@ -3742,11 +3742,17 @@
                 console.log('✅ Partner-Account bestätigt');
             }
 
-            // 🆕 MULTI-TENANT: Set werkstattId from partner object (with fallback)
-            window.werkstattId = (partner && partner.werkstattId) || 'mosbach';
+            // 🆕 MULTI-TENANT: Set werkstattId from partner object (SECURITY FIX: No fallback!)
             if (!partner || !partner.werkstattId) {
-                console.warn('⚠️ [MEINE-ANFRAGEN] partner.werkstattId missing, using fallback: mosbach');
+                console.error('❌ [MEINE-ANFRAGEN] CRITICAL: partner.werkstattId missing! Logout required.');
+                showToast('Fehler: Werkstatt-Zuordnung fehlt. Bitte erneut einloggen.', 'error');
+                await firebase.auth().signOut();
+                localStorage.clear();
+                sessionStorage.clear();
+                safeNavigate('../login.html');
+                return;
             }
+            window.werkstattId = partner.werkstattId; // ✅ SECURITY FIX: No 'mosbach' fallback
             console.log('✅ [MEINE-ANFRAGEN] werkstattId initialized:', window.werkstattId);
 
             // RUN #62: Emulator-Detection - Skip Firestore Check in Test-Umgebung
@@ -6077,7 +6083,12 @@
             console.log(`🔄 ENTWURF-PIPELINE: Übertrage ${bestellungen.length} Bestellungen...`);
 
             const userName = localStorage.getItem('userName') || 'Partner';
-            const werkstattId = window.werkstattId || 'mosbach';
+            // ✅ SECURITY FIX: No 'mosbach' fallback - werkstattId must be validated at login
+            if (!window.werkstattId) {
+                console.error('❌ werkstattId nicht gesetzt - Bestellungen werden nicht erstellt');
+                return 0;
+            }
+            const werkstattId = window.werkstattId;
             const batch = window.db.batch();
             let bestellungenCreated = 0;
 
@@ -6164,10 +6175,15 @@
                 return 0;
             }
 
-            console.log(`🗄️ Speichere ${ersatzteile.length} Ersatzteile in zentrale DB (ersatzteile_${window.werkstattId || 'mosbach'})...`);
+            // ✅ SECURITY FIX: No 'mosbach' fallback - werkstattId must be validated at login
+            if (!window.werkstattId) {
+                console.error('❌ werkstattId nicht gesetzt - Ersatzteile werden nicht gespeichert');
+                return 0;
+            }
+            console.log(`🗄️ Speichere ${ersatzteile.length} Ersatzteile in zentrale DB (ersatzteile_${window.werkstattId})...`);
 
             const userName = localStorage.getItem('userName') || 'Admin';
-            const werkstattId = window.werkstattId || 'mosbach';
+            const werkstattId = window.werkstattId;
             const batch = window.db.batch();
             let successCount = 0;
 
@@ -6238,7 +6254,12 @@
             console.log(`🔄 KVA-PIPELINE: Konvertiere ${ersatzteile.length} Ersatzteile → Bestellungen...`);
 
             const userName = localStorage.getItem('userName') || 'Partner';
-            const werkstattId = window.werkstattId || 'mosbach';
+            // ✅ SECURITY FIX: No 'mosbach' fallback - werkstattId must be validated at login
+            if (!window.werkstattId) {
+                console.error('❌ werkstattId nicht gesetzt - Bestellungen werden nicht erstellt');
+                return 0;
+            }
+            const werkstattId = window.werkstattId;
             const batch = window.db.batch();
             let bestellungenCreated = 0;
 
@@ -6907,7 +6928,7 @@
                             voraussichtlicheRueckgabe: anfrage.kva?.termine?.ende || null,
                             rueckgabeAm: null,
                             status: 'aktiv',
-                            werkstattId: window.werkstattId || 'mosbach',
+                            werkstattId: window.werkstattId, // ✅ SECURITY FIX: No 'mosbach' fallback
                             erstelltAm: firebase.firestore.Timestamp.now()
                         });
                         console.log(`✅ Leihfahrzeug-Buchung erstellt: ${buchungRef.id}`);
@@ -6967,7 +6988,7 @@
                         const sendNotification = window.functions.httpsCallable('sendEntwurfBestaetigtNotification');
                         await sendNotification({
                             fahrzeugId: anfrageId,
-                            werkstattId: window.werkstattId || 'mosbach'
+                            werkstattId: window.werkstattId // ✅ SECURITY FIX: No 'mosbach' fallback
                         });
                         console.log('✅ Notification an Admins gesendet');
                     } catch (notificationError) {
@@ -7061,7 +7082,7 @@
                         const sendNotification = window.functions.httpsCallable('sendEntwurfAbgelehntNotification');
                         await sendNotification({
                             fahrzeugId: anfrageId,
-                            werkstattId: window.werkstattId || 'mosbach',
+                            werkstattId: window.werkstattId, // ✅ SECURITY FIX: No 'mosbach' fallback
                             grund: grund || 'Keine Angabe'
                         });
                         console.log('✅ Notification an Admins gesendet');

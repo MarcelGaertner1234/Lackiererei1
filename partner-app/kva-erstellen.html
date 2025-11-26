@@ -576,6 +576,7 @@
         let anfrage = null;
         let anfrageId = null;
         let isMultiService = false;  // 🆕 Global variable for Multi-Service detection
+        let verfuegbareLeihfahrzeuge = []; // 🆕 2025-11-26: Leihfahrzeuge für Zuweisung
 
         // ============================================
         // SERVICE-TEMPLATE DEFINITIONEN (12 Service-Typen)
@@ -2291,6 +2292,11 @@
 
             await loadAnfrage();
 
+            // 🆕 2025-11-26: Leihfahrzeuge laden wenn Ersatzfahrzeug gewünscht
+            if (anfrage && anfrage.ersatzfahrzeugGewuenscht) {
+                await loadVerfuegbareLeihfahrzeuge();
+            }
+
             // 📄 PDF-Upload Event Listener
             const kvaPdfInput = document.getElementById('datKvaPdfInput');
             if (kvaPdfInput) {
@@ -2774,6 +2780,47 @@
             }
         }
 
+        // ============================================
+        // 🆕 LEIHFAHRZEUGE LADEN (2025-11-26)
+        // Lädt verfügbare Leihfahrzeuge für Zuweisung in KVA
+        // ============================================
+        async function loadVerfuegbareLeihfahrzeuge() {
+            try {
+                const leihfahrzeugeCollection = window.getCollection('leihfahrzeuge');
+                const snapshot = await leihfahrzeugeCollection
+                    .where('status', '==', 'verfuegbar')
+                    .get();
+
+                verfuegbareLeihfahrzeuge = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                console.log('🚗 [KVA] Verfügbare Leihfahrzeuge geladen:', verfuegbareLeihfahrzeuge.length);
+
+                // Dropdown aktualisieren falls bereits gerendert
+                updateLeihfahrzeugDropdown();
+            } catch (error) {
+                console.warn('⚠️ Leihfahrzeuge konnten nicht geladen werden:', error);
+            }
+        }
+
+        function updateLeihfahrzeugDropdown() {
+            const dropdown = document.getElementById('leihfahrzeugSelect');
+            if (!dropdown) return;
+
+            dropdown.innerHTML = '<option value="">-- Kein Leihfahrzeug --</option>';
+
+            verfuegbareLeihfahrzeuge.forEach(fahrzeug => {
+                const option = document.createElement('option');
+                option.value = fahrzeug.id;
+                option.textContent = `${fahrzeug.kennzeichen} - ${fahrzeug.marke} ${fahrzeug.modell} (${fahrzeug.kraftstoff || 'k.A.'})`;
+                dropdown.appendChild(option);
+            });
+
+            console.log('🚗 [KVA] Leihfahrzeug-Dropdown aktualisiert:', verfuegbareLeihfahrzeuge.length, 'Optionen');
+        }
+
         function displayAnfrageInfo() {
             const infoBox = document.getElementById('anfrageInfo');
 
@@ -3036,9 +3083,22 @@
                                 </div>
                             ` : ''}
                             ${anfrage.ersatzfahrzeugGewuenscht ? `
-                                <div>
-                                    <strong>Ersatzfahrzeug:</strong>
-                                    ${anfrage.ersatzfahrzeugGewuenscht ? '🚙 Ja, benötigt' : 'Nein'}
+                                <div style="grid-column: span 2;">
+                                    <strong>🚙 Ersatzfahrzeug:</strong>
+                                    <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
+                                        <select id="leihfahrzeugSelect" style="
+                                            flex: 1;
+                                            padding: 8px 12px;
+                                            border: 2px solid #9c27b0;
+                                            border-radius: 6px;
+                                            font-size: 13px;
+                                            background: white;
+                                            cursor: pointer;
+                                        ">
+                                            <option value="">-- Lädt Leihfahrzeuge... --</option>
+                                        </select>
+                                        <span style="font-size: 12px; color: #666;">Wird bei KVA-Versand zugewiesen</span>
+                                    </div>
                                 </div>
                             ` : ''}
                         </div>
@@ -3155,6 +3215,11 @@
                 if (serviceDetailsHTML) {
                     infoBox.innerHTML += serviceDetailsHTML;
                 }
+            }
+
+            // 🆕 2025-11-26: Leihfahrzeug-Dropdown nach Render aktualisieren
+            if (anfrage.ersatzfahrzeugGewuenscht) {
+                updateLeihfahrzeugDropdown();
             }
         }
 
@@ -3830,6 +3895,21 @@
                         abholadresse: anfrage.abholadresse || null,
                         ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false,
 
+                        // 🆕 2025-11-26: Zugewiesenes Leihfahrzeug aus Dropdown
+                        zugewiesenesLeihfahrzeugId: document.getElementById('leihfahrzeugSelect')?.value || null,
+                        zugewiesenesLeihfahrzeug: (() => {
+                            const selectedId = document.getElementById('leihfahrzeugSelect')?.value;
+                            if (!selectedId) return null;
+                            const fahrzeug = verfuegbareLeihfahrzeuge.find(f => f.id === selectedId);
+                            return fahrzeug ? {
+                                id: fahrzeug.id,
+                                kennzeichen: fahrzeug.kennzeichen,
+                                marke: fahrzeug.marke,
+                                modell: fahrzeug.modell,
+                                kraftstoff: fahrzeug.kraftstoff || null
+                            } : null;
+                        })(),
+
                         // ✅ PHASE 4: Ersatzteile-Daten übernehmen (wenn vorhanden)
                         ...(ersatzteileData.length > 0 && {
                             pdfImport: {
@@ -3978,6 +4058,21 @@
                     abholtermin: anfrage.abholtermin || null,
                     abholadresse: anfrage.abholadresse || null,
                     ersatzfahrzeugGewuenscht: anfrage.ersatzfahrzeugGewuenscht || false,
+
+                    // 🆕 2025-11-26: Zugewiesenes Leihfahrzeug aus Dropdown
+                    zugewiesenesLeihfahrzeugId: document.getElementById('leihfahrzeugSelect')?.value || null,
+                    zugewiesenesLeihfahrzeug: (() => {
+                        const selectedId = document.getElementById('leihfahrzeugSelect')?.value;
+                        if (!selectedId) return null;
+                        const fahrzeug = verfuegbareLeihfahrzeuge.find(f => f.id === selectedId);
+                        return fahrzeug ? {
+                            id: fahrzeug.id,
+                            kennzeichen: fahrzeug.kennzeichen,
+                            marke: fahrzeug.marke,
+                            modell: fahrzeug.modell,
+                            kraftstoff: fahrzeug.kraftstoff || null
+                        } : null;
+                    })(),
 
                     // ✅ PHASE 4: Ersatzteile-Daten übernehmen (wenn vorhanden)
                     ...(ersatzteileData.length > 0 && {
