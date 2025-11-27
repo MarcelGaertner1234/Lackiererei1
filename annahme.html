@@ -1060,6 +1060,65 @@
 
             .skeleton { animation: none; }
         }
+
+        /* ============================================
+           🔙 ZURÜCK-BUTTON (Fixed Position)
+           ============================================ */
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-4);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            color: var(--color-text-primary);
+            font-weight: 500;
+            font-size: var(--font-size-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateX(-2px);
+            border-color: var(--color-primary);
+        }
+
+        .back-button svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        [data-theme="light"] .back-button {
+            background: rgba(255, 255, 255, 0.8);
+            border-color: rgba(0, 0, 0, 0.1);
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .back-button:hover {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: var(--color-primary);
+        }
+
+        @media (max-width: 768px) {
+            .back-button {
+                top: 10px;
+                left: 10px;
+                padding: var(--space-2);
+            }
+
+            .back-button span {
+                display: none;
+            }
+        }
     </style>
 
     <!-- Firebase SDK -->
@@ -1097,6 +1156,12 @@
     <div class="floating-orb floating-orb--1" aria-hidden="true"></div>
     <div class="floating-orb floating-orb--2" aria-hidden="true"></div>
     <div class="floating-orb floating-orb--3" aria-hidden="true"></div>
+
+    <!-- 🔙 ZURÜCK-BUTTON -->
+    <button class="back-button" onclick="history.back()" title="Zurück">
+        <i data-feather="arrow-left"></i>
+        <span>Zurück</span>
+    </button>
 
     <!-- THEME TOGGLE BUTTON -->
     <button id="themeToggle" class="theme-toggle" aria-label="Toggle Light/Dark Mode">
@@ -3514,6 +3579,23 @@
                             } catch (error) {
                                 console.error('   ❌ Fehler beim Speichern in zentrale Ersatzteile-DB:', error);
                             }
+
+                            // 🔧 BUG FIX (2025-11-27): Manuell eingegebene Ersatzteile zu Bestellungen konvertieren
+                            // PROBLEM: ersatzteileData (manuell) wurde NICHT zu Bestellungen konvertiert
+                            // LÖSUNG: autoConvertErsatzteileToBestellungen auch für ersatzteileData aufrufen
+                            console.log('   🔄 AUTO-PIPELINE: Konvertiere manuell eingegebene Ersatzteile zu Bestellungen...');
+                            try {
+                                const bestellungenCreated = await autoConvertErsatzteileToBestellungen(
+                                    ersatzteileData,
+                                    annahmeData.kennzeichen,
+                                    annahmeData.id
+                                );
+                                if (bestellungenCreated > 0) {
+                                    console.log(`   ✅ ${bestellungenCreated} Bestellungen aus manuellen Ersatzteilen erstellt`);
+                                }
+                            } catch (error) {
+                                console.error('   ❌ Fehler bei Auto-Konvertierung (manuell):', error);
+                            }
                         }
 
                         // ============================================
@@ -3533,23 +3615,11 @@
                                 console.error('   ❌ Fehler beim Speichern der Ersatzteile:', error);
                             }
 
-                            // ============================================
-                            // AUTOMATISCHE PIPELINE (NEU 2025-11-11)
-                            // Konvertiere Ersatzteile automatisch zu Bestellungen
-                            // ============================================
-                            console.log('   🔄 AUTO-PIPELINE: Konvertiere Ersatzteile zu Bestellungen...');
-                            try {
-                                const bestellungenCreated = await autoConvertErsatzteileToBestellungen(
-                                    pdfData.ersatzteile,
-                                    annahmeData.kennzeichen,
-                                    annahmeData.id
-                                );
-                                if (bestellungenCreated > 0) {
-                                    console.log(`   ✅ ${bestellungenCreated} Bestellungen automatisch erstellt`);
-                                }
-                            } catch (error) {
-                                console.error('   ❌ Fehler bei Auto-Konvertierung:', error);
-                            }
+                            // ❌ REMOVED (2025-11-27): pdfData.ersatzteile Konvertierung
+                            // GRUND: PDF-Ersatzteile werden via renderErsatzteilePreview() in ersatzteileData geladen.
+                            //        ersatzteileData wird jetzt oben (Zeile 3583-3598) zu Bestellungen konvertiert.
+                            //        Diese alte Konvertierung würde DUPLIKATE erzeugen!
+                            // SIEHE: Fix für Bug B - alle Ersatzteile (manuell + PDF) werden jetzt unified behandelt
                         }
 
                         console.log('   d) Registriere Kunde und setze kundenId...');
