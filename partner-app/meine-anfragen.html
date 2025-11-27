@@ -7648,17 +7648,21 @@
                             }
                         ]
                     },
-                    // 🆕 FIX DATA-PIPELINE #1: Additional Services MUST also be initialized!
+                    // 🆕 FIX DATA-PIPELINE #1 + #2 (2025-11-27): Additional Services MUST also be initialized!
                     // Without this, Multi-Service vehicles show "undefined" status in Kanban for additional services
+                    // 🔧 FIX Bug #2: Additional Services MUST respect Abholservice/Ersatzfahrzeug flag!
                     ...additionalServices.reduce((acc, service) => {
+                        const initialStatus = (anfrage.abholserviceGewuenscht || anfrage.ersatzfahrzeugGewuenscht) ? 'anlieferung' : 'terminiert';
                         acc[service.serviceTyp] = {
-                            status: 'terminiert',  // Additional services always start as "terminiert"
+                            status: initialStatus,  // 🔧 FIX: Respects Abholservice flag (was hardcoded "terminiert")
                             timestamp: firestoreTimestamp,
                             statusHistory: [
                                 {
-                                    status: 'terminiert',
+                                    status: initialStatus,
                                     timestamp: firestoreTimestamp,
-                                    note: `Multi-Service: ${service.serviceTyp} initialisiert (Zusatz-Service)`
+                                    note: (anfrage.abholserviceGewuenscht || anfrage.ersatzfahrzeugGewuenscht)
+                                        ? `Multi-Service: ${service.serviceTyp} - wartet auf Fahrzeugabholung`
+                                        : `Multi-Service: ${service.serviceTyp} initialisiert (Zusatz-Service)`
                                 }
                             ]
                         };
@@ -7795,8 +7799,9 @@
             event?.stopPropagation();
 
             const anfrage = alleAnfragen.find(a => String(a.id) === String(anfrageId));
-            // 🔧 FIX (2025-11-22): BUG #2 - Add photoUrls fallback (field name mismatch)
-            const fotoArray = anfrage?.fotos || anfrage?.photos || anfrage?.photoUrls || [];
+            // 🔧 FIX (2025-11-22 + 2025-11-27 Bug #8): photoUrls FIRST (empty array truthy trap fix)
+            // CRITICAL: photoUrls is the standardized field name - must be first in fallback chain!
+            const fotoArray = anfrage?.photoUrls || anfrage?.fotos || anfrage?.photos || anfrage?.schadenfotos || [];
             if (!anfrage || !fotoArray || fotoArray.length === 0) return;
 
             currentLightboxAnfrage = anfrage;
