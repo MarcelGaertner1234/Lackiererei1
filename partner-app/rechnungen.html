@@ -1692,6 +1692,11 @@
                 const footerY = 270;  // Footer-Position (für QR-Code Platz-Check + Footer)
 
                 if (bank.iban) {
+                    // 🔧 FIX v2 2025-11-28: QR-Code RECHTS neben Zahlungsinfos statt darunter
+                    // Problem: Bei langen Rechnungen (Ersatzfahrzeug) war y ≈ 215-220, Platz-Check zu streng
+                    // Lösung: QR-Code auf rechter Seite, parallel zu den Bankdaten
+                    const zahlungsStartY = y;  // Y-Position für QR-Code merken
+
                     doc.setFont(undefined, 'bold');
                     doc.setFontSize(11);
                     doc.text('ZAHLUNGSINFORMATIONEN', 20, y);
@@ -1733,41 +1738,35 @@
                     doc.text(rechnung.rechnungsnummer, 60, y);
                     y += 10;
 
-                    // 🆕 2025-11-28: EPC QR-Code (GiroCode) für direkte Überweisung
-                    // 🔧 FIX 2025-11-28: Platz-Check um Abschneiden zu verhindern
-                    const qrSize = 40;    // Kompakter als vorher (45 → 40)
-                    const qrLabelHeight = 12;
-                    const requiredQRSpace = qrSize + qrLabelHeight + 5;
+                    // 🆕 2025-11-28: EPC QR-Code (GiroCode) RECHTS neben Zahlungsinfos
+                    // Position: x=150 (rechte Seite), y=zahlungsStartY (parallel zur Überschrift)
+                    // Größe: 35mm (kompakt, passt immer)
+                    const qrSize = 35;
+                    const qrX = 150;  // Rechte Seite des PDFs
+                    const qrY = zahlungsStartY;  // Gleiche Höhe wie "ZAHLUNGSINFORMATIONEN"
 
-                    // Nur QR-Code einfügen wenn genug Platz VOR dem Footer
-                    if (y + requiredQRSpace < footerY - 5) {
-                        const qrCodeData = generateEPCQRCode(
-                            bank.iban,
-                            bank.bic,
-                            profil.firmenname || profil.name || 'Auto-Lackierzentrum Mosbach',
-                            rechnung.nettoBetrag,
-                            rechnung.rechnungsnummer
-                        );
+                    const qrCodeData = generateEPCQRCode(
+                        bank.iban,
+                        bank.bic,
+                        profil.firmenname || profil.name || 'Auto-Lackierzentrum Mosbach',
+                        rechnung.nettoBetrag,
+                        rechnung.rechnungsnummer
+                    );
 
-                        if (qrCodeData) {
-                            y += 5;
-                            const pageWidth = doc.internal.pageSize.getWidth();
-                            const qrX = (pageWidth - qrSize) / 2;
+                    if (qrCodeData) {
+                        // QR-Code rechts platzieren
+                        doc.addImage(qrCodeData, 'PNG', qrX, qrY, qrSize, qrSize);
 
-                            // QR-Code zentriert einfügen
-                            doc.addImage(qrCodeData, 'PNG', qrX, y, qrSize, qrSize);
-                            y += qrSize + 4;
-
-                            // Label unter dem QR-Code
-                            doc.setFontSize(9);
-                            doc.setTextColor(100, 100, 100);
-                            const qrLabel = 'Mit Banking-App scannen zum Überweisen';
-                            const labelWidth = doc.getTextWidth(qrLabel);
-                            doc.text(qrLabel, (pageWidth - labelWidth) / 2, y);
-                            doc.setTextColor(0, 0, 0);
-                        }
-                    } else {
-                        console.log('⚠️ [PDF] Nicht genug Platz für QR-Code, überspringe');
+                        // Label unter dem QR-Code (zentriert unter dem QR)
+                        doc.setFontSize(7);
+                        doc.setTextColor(100, 100, 100);
+                        const qrLabel = 'Scannen zum';
+                        const qrLabel2 = 'Überweisen';
+                        const labelX = qrX + qrSize / 2;
+                        doc.text(qrLabel, labelX, qrY + qrSize + 4, { align: 'center' });
+                        doc.text(qrLabel2, labelX, qrY + qrSize + 8, { align: 'center' });
+                        doc.setTextColor(0, 0, 0);
+                        doc.setFontSize(9);
                     }
                 }
 
