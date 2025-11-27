@@ -1255,6 +1255,22 @@
                 <p id="modalBonusBetrag" class="amount"></p>
             </div>
 
+            <!-- 🆕 NEU (2025-11-28): Verrechnung auf nächste Rechnung -->
+            <div class="form-group">
+                <label>Verrechnung auf nächste Rechnung:</label>
+                <select id="modalVerrechnungsart" onchange="toggleProzentEingabe()" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
+                    <option value="none">❌ Keine Verrechnung (nur Status ändern)</option>
+                    <option value="betrag">💰 Als fester Betrag von Rechnung abziehen</option>
+                    <option value="prozent">📊 Als Prozent-Rabatt auf nächste Rechnung</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="prozentEingabeWrapper" style="display: none;">
+                <label>Rabatt-Prozent:</label>
+                <input type="number" id="modalRabattProzent" min="1" max="100" value="5" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;">
+                <small style="color: #666; font-size: 12px;">z.B. 5 = 5% Rabatt auf nächste Rechnung</small>
+            </div>
+
             <div class="form-group">
                 <label>Notizen / Zahlungsdetails:</label>
                 <textarea id="modalNotizen" placeholder="z.B. Überweisung am 21.10.2025, Referenz: XYZ..."></textarea>
@@ -1672,6 +1688,13 @@
             });
         }
 
+        // 🆕 NEU (2025-11-28): Toggle Prozent-Eingabe bei Auswahl
+        function toggleProzentEingabe() {
+            const verrechnungsart = document.getElementById('modalVerrechnungsart').value;
+            const prozentWrapper = document.getElementById('prozentEingabeWrapper');
+            prozentWrapper.style.display = verrechnungsart === 'prozent' ? 'block' : 'none';
+        }
+
         // Open Auszahlung Modal
         function openAuszahlungModal(bonusId) {
             currentBonus = allBonuses.find(b => String(b.id) === String(bonusId));
@@ -1680,6 +1703,11 @@
             document.getElementById('modalPartnerName').textContent = currentBonus.partnerName;
             document.getElementById('modalBonusBetrag').textContent = currentBonus.bonusBetrag.toFixed(2) + ' €';
             document.getElementById('modalNotizen').value = '';
+
+            // 🆕 Reset Verrechnungsart UI
+            document.getElementById('modalVerrechnungsart').value = 'none';
+            document.getElementById('prozentEingabeWrapper').style.display = 'none';
+            document.getElementById('modalRabattProzent').value = '5';
 
             document.getElementById('auszahlungModal').classList.add('active');
         }
@@ -1694,6 +1722,7 @@
             if (!currentBonus) return;
 
             const notizen = document.getElementById('modalNotizen').value.trim();
+            const verrechnungsart = document.getElementById('modalVerrechnungsart').value;
 
             try {
                 // ✅ FIX 2025-11-17: Track actual admin user for audit trail
@@ -1703,12 +1732,55 @@
                     status: 'ausgezahlt',
                     ausgezahltAm: new Date().toISOString(),
                     ausgezahltDurch: adminUser,
-                    notizen: notizen
+                    notizen: notizen,
+                    verrechnungsart: verrechnungsart  // 🆕 Track how it was processed
                 });
+
+                // 🆕 NEU (2025-11-28): pendingRabatt beim Partner speichern
+                if (verrechnungsart !== 'none' && currentBonus.partnerId) {
+                    const partnerRef = window.getCollection('partners').doc(currentBonus.partnerId);
+
+                    if (verrechnungsart === 'betrag') {
+                        // Fixer Betrag - Bonus-Betrag direkt abziehen
+                        await partnerRef.update({
+                            'rabattKonditionen.pendingRabatt': {
+                                typ: 'betrag',
+                                wert: currentBonus.bonusBetrag,
+                                bonusId: currentBonus.id,
+                                erstelltAm: new Date(),
+                                erstelltDurch: adminUser
+                            }
+                        });
+                        console.log('✅ pendingRabatt (Betrag) gespeichert:', currentBonus.bonusBetrag + '€');
+
+                    } else if (verrechnungsart === 'prozent') {
+                        // Prozent-Rabatt
+                        const prozent = parseFloat(document.getElementById('modalRabattProzent').value) || 5;
+                        await partnerRef.update({
+                            'rabattKonditionen.pendingRabatt': {
+                                typ: 'prozent',
+                                wert: prozent,
+                                bonusId: currentBonus.id,
+                                erstelltAm: new Date(),
+                                erstelltDurch: adminUser
+                            }
+                        });
+                        console.log('✅ pendingRabatt (Prozent) gespeichert:', prozent + '%');
+                    }
+                }
 
                 console.log('✅ Bonus als ausgezahlt markiert:', currentBonus.id);
                 closeAuszahlungModal();
-                showToast('✅ Bonus erfolgreich als ausgezahlt markiert!', 'success', 4000);
+
+                // 🆕 Angepasste Success-Message
+                let successMsg = '✅ Bonus erfolgreich als ausgezahlt markiert!';
+                if (verrechnungsart === 'betrag') {
+                    successMsg += ` (${currentBonus.bonusBetrag.toFixed(2)}€ wird von nächster Rechnung abgezogen)`;
+                } else if (verrechnungsart === 'prozent') {
+                    const prozent = document.getElementById('modalRabattProzent').value;
+                    successMsg += ` (${prozent}% Rabatt auf nächste Rechnung)`;
+                }
+                showToast(successMsg, 'success', 5000);
 
             } catch (error) {
                 console.error('❌ Fehler beim Auszahlen:', error);

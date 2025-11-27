@@ -1358,11 +1358,15 @@
 
         /**
          * Lädt Partner-Rabatt aus partnerAnfragen
+         * 🆕 NEU (2025-11-28): Unterstützt jetzt auch pendingRabatt (Bonus-Verrechnung)
+         * @returns {Object} { prozent, betrag, pendingBonusId, partnerId }
          */
         async function loadPartnerRabatt(partnerAnfrageId) {
+            const defaultResult = { prozent: 0, betrag: 0, pendingBonusId: null, partnerId: null };
+
             if (!partnerAnfrageId) {
                 console.log('ℹ️ Keine Partner-Anfrage - kein Rabatt');
-                return 0;
+                return defaultResult;
             }
 
             try {
@@ -1372,30 +1376,62 @@
 
                 if (!anfrageDoc.exists) {
                     console.warn('⚠️ Partner-Anfrage nicht gefunden:', partnerAnfrageId);
-                    return 0;
+                    return defaultResult;
                 }
 
                 const anfrageData = anfrageDoc.data();
                 const partnerEmail = anfrageData.partnerEmail || anfrageData.email;
 
-                if (!partnerEmail) return 0;
+                if (!partnerEmail) return defaultResult;
 
                 const partnersSnapshot = await window.getCollection('partners')
                     .where('email', '==', partnerEmail)
                     .limit(1)
                     .get();
 
-                if (partnersSnapshot.empty) return 0;
+                if (partnersSnapshot.empty) return defaultResult;
 
-                const partnerData = partnersSnapshot.docs[0].data();
+                const partnerDoc = partnersSnapshot.docs[0];
+                const partnerData = partnerDoc.data();
+                const partnerId = partnerDoc.id;
+
+                // 🆕 NEU: Check for pendingRabatt (einmaliger Bonus-Abzug) FIRST
+                const pendingRabatt = partnerData.rabattKonditionen?.pendingRabatt;
+
+                if (pendingRabatt) {
+                    console.log('🎁 pendingRabatt gefunden:', pendingRabatt);
+
+                    if (pendingRabatt.typ === 'prozent') {
+                        return {
+                            prozent: pendingRabatt.wert,
+                            betrag: 0,
+                            pendingBonusId: pendingRabatt.bonusId,
+                            partnerId: partnerId
+                        };
+                    } else if (pendingRabatt.typ === 'betrag') {
+                        return {
+                            prozent: 0,
+                            betrag: pendingRabatt.wert,
+                            pendingBonusId: pendingRabatt.bonusId,
+                            partnerId: partnerId
+                        };
+                    }
+                }
+
+                // Fallback: Dauerhafter allgemeinerRabatt
                 const rabatt = partnerData.rabattKonditionen?.allgemeinerRabatt || 0;
+                console.log('✅ Partner-Rabatt (dauerhaft):', rabatt + '%');
 
-                console.log('✅ Partner-Rabatt:', rabatt + '%');
-                return rabatt;
+                return {
+                    prozent: rabatt,
+                    betrag: 0,
+                    pendingBonusId: null,
+                    partnerId: partnerId
+                };
 
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Rabatts:', error);
-                return 0;
+                return defaultResult;
             }
         }
 
@@ -1447,13 +1483,16 @@
 
                 console.log('🧾 Erstelle Rechnung für Fahrzeug:', fahrzeugId, 'Brutto:', bruttoPreis);
 
-                // Partner-Rabatt laden
+                // Partner-Rabatt laden (🆕 2025-11-28: jetzt Object mit prozent, betrag, pendingBonusId)
                 const partnerAnfrageId = fahrzeugData.partnerAnfrageId || fahrzeugData.anfrageId || fahrzeugData.fahrzeugAnfrageId;
-                const rabattProzent = await loadPartnerRabatt(partnerAnfrageId);
+                const rabattInfo = await loadPartnerRabatt(partnerAnfrageId);
 
-                // Beträge berechnen
-                const rabattBetrag = bruttoPreis * (rabattProzent / 100);
-                const nettoBetrag = bruttoPreis - rabattBetrag;
+                // 🆕 2025-11-28: Beträge berechnen - BEIDE Rabattarten unterstützen
+                const rabattProzent = rabattInfo.prozent || 0;
+                const rabattBetragFix = rabattInfo.betrag || 0;  // Fixer Bonus-Abzug
+                const rabattBetragProzent = bruttoPreis * (rabattProzent / 100);  // Prozent-Rabatt
+                const gesamtRabatt = rabattBetragProzent + rabattBetragFix;
+                const nettoBetrag = bruttoPreis - gesamtRabatt;
 
                 // Rechnungsnummer generieren
                 const rechnungsnummer = await generateUniqueRechnungsnummer();
@@ -1476,8 +1515,10 @@
 
                     bruttoBetrag: parseFloat(bruttoPreis.toFixed(2)),
                     rabattProzent: rabattProzent,
-                    rabattBetrag: parseFloat(rabattBetrag.toFixed(2)),
+                    rabattBetrag: parseFloat(rabattBetragProzent.toFixed(2)),  // Prozent-Rabatt Betrag
+                    rabattBetragFix: parseFloat(rabattBetragFix.toFixed(2)),   // 🆕 Fixer Bonus-Abzug
                     nettoBetrag: parseFloat(nettoBetrag.toFixed(2)),
+                    bonusId: rabattInfo.pendingBonusId || null,                // 🆕 Referenz zum Bonus
 
                     bezahltAm: null,
                     bezahltVon: null,
@@ -1516,6 +1557,19 @@
                     } catch (syncError) {
                         console.warn('⚠️ Partner-Sync für Rechnung fehlgeschlagen:', syncError);
                         // Nicht werfen - Fahrzeug-Update war erfolgreich
+                    }
+                }
+
+                // 🆕 2025-11-28: pendingRabatt löschen nach erfolgreicher Rechnungserstellung
+                if (rabattInfo.pendingBonusId && rabattInfo.partnerId) {
+                    try {
+                        await window.getCollection('partners').doc(rabattInfo.partnerId).update({
+                            'rabattKonditionen.pendingRabatt': firebase.firestore.FieldValue.delete()
+                        });
+                        console.log('✅ pendingRabatt gelöscht für Partner:', rabattInfo.partnerId, '(Bonus:', rabattInfo.pendingBonusId, ')');
+                    } catch (deleteError) {
+                        console.warn('⚠️ pendingRabatt konnte nicht gelöscht werden:', deleteError);
+                        // Nicht werfen - Rechnung wurde erfolgreich erstellt
                     }
                 }
 
