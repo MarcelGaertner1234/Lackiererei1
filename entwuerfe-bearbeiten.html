@@ -1356,9 +1356,12 @@
             try {
                 console.log('🔥 === ENTWÜRFE-BEARBEITEN.HTML INIT ===');
 
-                // Wait for Firebase initialization
-                if (!window.db) {
+                // ✅ FIX: Wait for Firebase initialization (Promise-based)
+                if (window.firebaseInitialized) {
                     console.log('⏳ Warte auf Firebase Initialisierung...');
+                    await window.firebaseInitialized;
+                } else if (!window.db) {
+                    // Fallback: Poll for window.db
                     await new Promise((resolve) => {
                         const interval = setInterval(() => {
                             if (window.db) {
@@ -1368,12 +1371,32 @@
                         }, 100);
                     });
                 }
+                console.log('✅ Firebase initialisiert');
+
+                // ✅ FIX: Wait for Auth Manager to set werkstattId
+                if (!window.werkstattId) {
+                    console.log('⏳ Warte auf Auth Manager (werkstattId)...');
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            console.warn('⚠️ Auth timeout - prüfe ob User eingeloggt ist');
+                            reject(new Error('Auth timeout - bitte einloggen'));
+                        }, 10000);
+                        const interval = setInterval(() => {
+                            if (window.werkstattId) {
+                                clearInterval(interval);
+                                clearTimeout(timeout);
+                                resolve();
+                            }
+                        }, 100);
+                    });
+                }
 
                 firebaseInitialized = true;
-                console.log('✅ Firebase initialisiert');
+                console.log('✅ Firebase + Auth Manager initialisiert, werkstattId:', window.werkstattId);
 
                 // 🛡️ SECURITY: Page-Level Access Control (Pattern 6 - Defense in Depth)
                 // Partner-Accounts dürfen NICHT auf Werkstatt-Seiten zugreifen
+                // ✅ FIX: Jetzt funktioniert dieser Check, da window.currentUser gesetzt ist
                 if (window.currentUser?.role === 'partner') {
                     console.warn('🚫 Partner-Zugriff blockiert! Redirect zu Partner-Portal...');
                     showToast('⚠️ Zugriff verweigert. Sie werden zum Partner-Portal weitergeleitet...', 'error', 3000);
