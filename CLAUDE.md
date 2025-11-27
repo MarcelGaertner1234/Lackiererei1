@@ -4312,8 +4312,8 @@ function safeNavigate(url, forceCleanup = true) {
 ---
 
 _Last Updated: 2025-11-27 by Claude Code (Opus 4.5)_
-_Version: 8.12 (Pipeline-Test + 7 Commits: 12+ Bug-Fixes)_
+_Version: 8.13 (Bug-Screening Runde 2: Double-Click + querySelector null-safety)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
-_Lines: ~4,320 (Documentation update)_
-_**COMMITS (Nov 27):** 5cc784c, 04e8db2, 2c49d38, f3846f2, f267cbc, 0666a71, d4d0d2f_
-_**Session 2025-11-27:** Pipeline vollständig getestet, 7 Commits mit Kanban/Rechnung/Timestamp-Fixes_
+_Lines: ~4,350 (Documentation update)_
+_**COMMITS (Nov 27):** 5cc784c, 04e8db2, 2c49d38, f3846f2, f267cbc, 0666a71, d4d0d2f, ac67f40_
+_**Session 2025-11-27 Nacht:** Bug-Screening Runde 2 - 22 Bugs analysiert → 2 gefixt (Double-Click Protection, querySelector null-safety)_
