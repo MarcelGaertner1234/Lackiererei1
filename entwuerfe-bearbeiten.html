@@ -552,6 +552,27 @@
                     <input type="text" id="vin" class="form-input" placeholder="z.B. WVWZZZ1KZBW123456">
                 </div>
 
+                <!-- ERSATZFAHRZEUG -->
+                <div class="section-title">
+                    <i data-feather="refresh-cw"></i>
+                    Ersatzfahrzeug
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="ersatzfahrzeugGewuenscht" name="ersatzfahrzeugGewuenscht" style="width: 18px; height: 18px;">
+                        <span>Kunde benötigt Ersatzfahrzeug</span>
+                    </label>
+                </div>
+
+                <div class="form-group" id="ersatzfahrzeugZuweisungGroup" style="display: none;">
+                    <label for="zugewiesenesErsatzfahrzeug" class="form-label">Ersatzfahrzeug zuweisen</label>
+                    <select id="zugewiesenesErsatzfahrzeug" class="form-input" style="cursor: pointer;">
+                        <option value="">-- Kein Fahrzeug zugewiesen --</option>
+                        <!-- Dynamisch gefüllt aus leihfahrzeuge Collection -->
+                    </select>
+                </div>
+
                 <!-- SERVICE-DETAILS -->
                 <div class="section-title">
                     <i data-feather="tool"></i>
@@ -1409,6 +1430,9 @@
                 // Load drafts
                 await loadOffeneEntwuerfe();
 
+                // 🚗 Ersatzfahrzeug Toggle initialisieren (FIX: Nov 27, 2025)
+                initErsatzfahrzeugToggle();
+
             } catch (error) {
                 console.error('❌ Fehler bei Initialisierung:', error);
                 showToast('❌ Fehler beim Laden der Entwürfe', 'error', 6000);
@@ -2255,6 +2279,30 @@
                     );
                 }
 
+                // 🚗 Ersatzfahrzeug laden (FIX: Nov 27, 2025)
+                const ersatzfahrzeugCheckbox = document.getElementById('ersatzfahrzeugGewuenscht');
+                const ersatzfahrzeugZuweisungGroup = document.getElementById('ersatzfahrzeugZuweisungGroup');
+                const zugewiesenesErsatzfahrzeugSelect = document.getElementById('zugewiesenesErsatzfahrzeug');
+
+                // Checkbox-Status setzen
+                if (currentEntwurf.serviceDetails?.ersatzfahrzeugGewuenscht || currentEntwurf.ersatzfahrzeugGewuenscht) {
+                    ersatzfahrzeugCheckbox.checked = true;
+                    ersatzfahrzeugZuweisungGroup.style.display = 'block';
+
+                    // Verfügbare Leihfahrzeuge laden
+                    await loadVerfuegbareLeihfahrzeuge();
+
+                    // Zugewiesenes Fahrzeug auswählen (falls vorhanden)
+                    if (currentEntwurf.zugewiesenesErsatzfahrzeug) {
+                        zugewiesenesErsatzfahrzeugSelect.value = currentEntwurf.zugewiesenesErsatzfahrzeug;
+                    }
+                } else {
+                    ersatzfahrzeugCheckbox.checked = false;
+                    ersatzfahrzeugZuweisungGroup.style.display = 'none';
+                }
+
+                console.log('🚗 Ersatzfahrzeug-Status geladen:', ersatzfahrzeugCheckbox.checked);
+
                 // Show form
                 document.getElementById('formContainer').classList.add('visible');
                 feather.replace();
@@ -2269,6 +2317,100 @@
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Entwurfs:', error);
                 showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
+            }
+        }
+
+        // ============================================
+        // ERSATZFAHRZEUG FUNKTIONEN (FIX: Nov 27, 2025)
+        // ============================================
+
+        /**
+         * Lädt verfügbare Leihfahrzeuge aus der Datenbank
+         */
+        async function loadVerfuegbareLeihfahrzeuge() {
+            try {
+                const select = document.getElementById('zugewiesenesErsatzfahrzeug');
+                if (!select) return;
+
+                // Reset dropdown (behalte erste Option)
+                select.innerHTML = '<option value="">-- Kein Fahrzeug zugewiesen --</option>';
+
+                const werkstattId = window.werkstattId;
+                if (!werkstattId) {
+                    console.warn('⚠️ werkstattId nicht gesetzt, kann Leihfahrzeuge nicht laden');
+                    return;
+                }
+
+                // Lade verfügbare Leihfahrzeuge
+                const collectionName = `leihfahrzeuge_${werkstattId}`;
+                const snapshot = await window.db.collection(collectionName)
+                    .where('status', '==', 'verfuegbar')
+                    .get();
+
+                if (snapshot.empty) {
+                    // Auch ohne Filter versuchen (alle Fahrzeuge)
+                    const allSnapshot = await window.db.collection(collectionName).get();
+                    if (allSnapshot.empty) {
+                        console.log('ℹ️ Keine Leihfahrzeuge in der Datenbank');
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '-- Keine Leihfahrzeuge verfügbar --';
+                        option.disabled = true;
+                        select.appendChild(option);
+                        return;
+                    }
+
+                    // Zeige alle Fahrzeuge mit Status
+                    allSnapshot.forEach(doc => {
+                        const data = doc.data();
+                        const option = document.createElement('option');
+                        option.value = doc.id;
+                        const statusText = data.status === 'verfuegbar' ? '' : ` (${data.status || 'unbekannt'})`;
+                        option.textContent = `${data.marke || 'Unbekannt'} ${data.modell || ''} (${data.kennzeichen || 'N/A'})${statusText}`;
+                        if (data.status !== 'verfuegbar') {
+                            option.disabled = true;
+                        }
+                        select.appendChild(option);
+                    });
+                    console.log(`🚗 ${allSnapshot.size} Leihfahrzeuge geladen (inkl. nicht verfügbare)`);
+                    return;
+                }
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const option = document.createElement('option');
+                    option.value = doc.id;
+                    option.textContent = `${data.marke || 'Unbekannt'} ${data.modell || ''} (${data.kennzeichen || 'N/A'})`;
+                    select.appendChild(option);
+                });
+
+                console.log(`🚗 ${snapshot.size} verfügbare Leihfahrzeuge geladen`);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Leihfahrzeuge:', error);
+            }
+        }
+
+        /**
+         * Initialisiert Ersatzfahrzeug-Checkbox Event-Listener
+         */
+        function initErsatzfahrzeugToggle() {
+            const checkbox = document.getElementById('ersatzfahrzeugGewuenscht');
+            const zuweisungGroup = document.getElementById('ersatzfahrzeugZuweisungGroup');
+
+            if (checkbox && zuweisungGroup) {
+                checkbox.addEventListener('change', async function() {
+                    if (this.checked) {
+                        zuweisungGroup.style.display = 'block';
+                        await loadVerfuegbareLeihfahrzeuge();
+                    } else {
+                        zuweisungGroup.style.display = 'none';
+                        // Reset dropdown selection
+                        const select = document.getElementById('zugewiesenesErsatzfahrzeug');
+                        if (select) select.value = '';
+                    }
+                });
+                console.log('✅ Ersatzfahrzeug Toggle initialisiert');
             }
         }
 
@@ -2499,6 +2641,10 @@
                     vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis').value) || 0,  // FIX: Nov 17, 2025 - BUG #2 (type consistency)
                     geplantesAbnahmeDatum: document.getElementById('geplantesAbnahmeDatum').value,
                     updatedAt: new Date().toISOString(),
+
+                    // 🚗 Ersatzfahrzeug (FIX: Nov 27, 2025)
+                    ersatzfahrzeugGewuenscht: document.getElementById('ersatzfahrzeugGewuenscht')?.checked || false,
+                    zugewiesenesErsatzfahrzeug: document.getElementById('zugewiesenesErsatzfahrzeug')?.value || null,
 
                     // Kalkulations-Tabellen Daten
                     kalkulationData: {
