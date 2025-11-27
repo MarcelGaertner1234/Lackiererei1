@@ -28,6 +28,9 @@
     <!-- jsPDF for PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- QRious for EPC QR-Code (GiroCode) Generation -->
+    <script src="../libs/qrious.min.js"></script>
+
     <style>
         /* ============================================
            RECHNUNGEN PAGE STYLES
@@ -1109,6 +1112,58 @@
         // PDF DOWNLOAD (✅ Full Implementation with Multi-Service Support)
         // ========================================
 
+        /**
+         * 🆕 2025-11-28: EPC QR-Code (GiroCode) für SEPA-Überweisung
+         * Standard: European Payments Council (EPC 069-12)
+         * Kompatibel mit allen deutschen Banking-Apps (Sparkasse, VR, DKB, etc.)
+         */
+        function generateEPCQRCode(iban, bic, empfaenger, betrag, verwendungszweck) {
+            // IBAN bereinigen (Leerzeichen entfernen)
+            const cleanIBAN = (iban || '').replace(/\s/g, '');
+
+            // Betrag validieren
+            const amount = parseFloat(betrag) || 0;
+            if (amount <= 0 || !cleanIBAN) {
+                console.warn('⚠️ [QR] Ungültige Daten für EPC QR-Code');
+                return null;
+            }
+
+            // EPC QR-Code Daten nach Standard (EPC 069-12)
+            const epcData = [
+                'BCD',                                      // Service Tag (fixed)
+                '002',                                      // Version (002 = UTF-8)
+                '1',                                        // Character Set (1 = UTF-8)
+                'SCT',                                      // SEPA Credit Transfer
+                (bic || '').replace(/\s/g, ''),            // BIC (optional bei DE-IBAN)
+                (empfaenger || 'Auto-Lackierzentrum').substring(0, 70),  // Max 70 chars
+                cleanIBAN,                                  // IBAN ohne Leerzeichen
+                'EUR' + amount.toFixed(2),                 // Betrag mit EUR Prefix
+                '',                                         // Purpose Code (leer)
+                '',                                         // Structured Reference (leer)
+                (verwendungszweck || '').substring(0, 140) // Verwendungszweck max 140 chars
+            ].join('\n');
+
+            console.log('🔲 [QR] Generiere EPC QR-Code:', { iban: cleanIBAN, betrag: amount, zweck: verwendungszweck });
+
+            // QR-Code generieren mit QRious
+            try {
+                const canvas = document.createElement('canvas');
+                new QRious({
+                    element: canvas,
+                    value: epcData,
+                    size: 200,        // Größe für bessere Scan-Qualität
+                    level: 'M',       // Error Correction Level (M = 15%)
+                    background: '#ffffff',
+                    foreground: '#000000'
+                });
+
+                return canvas.toDataURL('image/png');
+            } catch (err) {
+                console.error('❌ [QR] Fehler bei QR-Code Generierung:', err);
+                return null;
+            }
+        }
+
         // 🔧 2025-11-18: KOMPLETT ÜBERARBEITETE PDF-GENERATION
         // Professionelles Layout mit MwSt, IBAN, rechtlichen Angaben
         async function downloadPDF(fahrzeugId) {
@@ -1675,6 +1730,35 @@
                     doc.setFont(undefined, 'normal');
                     doc.text(rechnung.rechnungsnummer, 60, y);
                     y += 10;
+
+                    // 🆕 2025-11-28: EPC QR-Code (GiroCode) für direkte Überweisung
+                    const qrCodeData = generateEPCQRCode(
+                        bank.iban,
+                        bank.bic,
+                        profil.firmenname || profil.name || 'Auto-Lackierzentrum Mosbach',
+                        rechnung.nettoBetrag,
+                        rechnung.rechnungsnummer
+                    );
+
+                    if (qrCodeData) {
+                        y += 5;
+                        const qrSize = 45;
+                        const pageWidth = doc.internal.pageSize.getWidth();
+                        const qrX = (pageWidth - qrSize) / 2;
+
+                        // QR-Code zentriert einfügen
+                        doc.addImage(qrCodeData, 'PNG', qrX, y, qrSize, qrSize);
+                        y += qrSize + 4;
+
+                        // Label unter dem QR-Code
+                        doc.setFontSize(9);
+                        doc.setTextColor(100, 100, 100);
+                        const qrLabel = 'Mit Banking-App scannen zum Überweisen';
+                        const labelWidth = doc.getTextWidth(qrLabel);
+                        doc.text(qrLabel, (pageWidth - labelWidth) / 2, y);
+                        doc.setTextColor(0, 0, 0);
+                        y += 10;
+                    }
                 }
 
                 // ========================================
