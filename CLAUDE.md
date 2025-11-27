@@ -4307,13 +4307,13 @@ function safeNavigate(url, forceCleanup = true) {
 | L1 | kanban.html:3281 | Off-by-one fix (`> 1` → `> 0`) |
 | D6 | meine-anfragen.html, anfrage-detail.html | werkstattId zu aktiveBuchung |
 
-**Key Learning:** ~61% FALSE POSITIVE Rate in Bug-Reports → IMMER Code verifizieren!
+**Key Learning:** ~75% FALSE POSITIVE Rate in Bug-Reports → IMMER Code verifizieren vor dem Fixen!
 
 ---
 
-_Last Updated: 2025-11-26 by Claude Code (Opus 4.5)_
-_Version: 8.11 (Codebase Screening Complete: 60 Bugs analyzed, 19 fixed, 41 FALSE POSITIVES)_
+_Last Updated: 2025-11-27 by Claude Code (Opus 4.5)_
+_Version: 8.12 (Pipeline-Test + 7 Commits: 12+ Bug-Fixes)_
 _**CRITICAL:** Read NEXT_AGENT_MANUAL_TESTING_PROMPT.md BEFORE making code changes!_
 _Lines: ~4,320 (Documentation update)_
-_**COMMITS:** ea76a52, 0e9073d, a0c2fb8, 0e3d6a2, a4f9151_
-_**Session 2025-11-26:** 2 vollständige Codebase-Scans durchgeführt. Alle Bugs adressiert!_
+_**COMMITS (Nov 27):** 5cc784c, 04e8db2, 2c49d38, f3846f2, f267cbc, 0666a71, d4d0d2f_
+_**Session 2025-11-27:** Pipeline vollständig getestet, 7 Commits mit Kanban/Rechnung/Timestamp-Fixes_

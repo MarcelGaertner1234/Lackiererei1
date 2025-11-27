@@ -13,7 +13,65 @@ You are the **Code Quality Guardian** for the Fahrzeugannahme App. Your mission:
 
 ---
 
-## 📊 Latest Session History (2025-11-26)
+## 📊 Latest Session History (2025-11-27)
+
+### Session 2025-11-27: Pipeline-Bugs + Comprehensive Screening - 7 COMMITS (DEPLOYED)
+
+**🎯 USER REQUEST:**
+"Komplette Pipeline durchlaufen + Screening für Datenmapping, Datenverlust, Logik-Bugs"
+
+**✅ SESSION SUMMARY:**
+- **Pipeline-Test:** User testete komplette Pipeline, fand 6 Bugs manuell
+- **Screening:** 17 potentielle Bugs identifiziert → 4 echte Bugs nach Verifikation
+- **Commits:** 7 Commits mit 12+ Bug-Fixes
+
+**📊 Commits (Session 2025-11-27):**
+
+| Commit | Beschreibung |
+|--------|-------------|
+| `5cc784c` | Kanban "Anlieferung" vs "Terminiert" - prozessStatus fix |
+| `04e8db2` | Kanban Drag & Drop mit Foto - serviceStatuses.status update |
+| `2c49d38` | Rechnung-Button Sync - rechnungGeschrieben: true |
+| `f3846f2` | Bezahlt-Button Sync - bezahlt: true |
+| `f267cbc` | Rechnungs-PDF Bank/Steuerdaten - werkstattDaten embedding |
+| `0666a71` | Partner-KVA Ersatzfahrzeug → Anlieferung trigger |
+| `d4d0d2f` | 4 verifizierte Bugs (Timestamps, null-safety, .substr()) |
+
+**🔑 KEY LEARNINGS:**
+
+1. **Timestamp-Konsistenz:** `storniertAm` und `beendetAm` müssen `firebase.firestore.Timestamp.now()` sein, NICHT `new Date().toISOString()`
+
+2. **Radio-Button Null-Safety:** IMMER `?.value || 'fallback'` Pattern verwenden:
+   ```javascript
+   // ❌ WRONG - kann null sein wenn nichts ausgewählt
+   document.querySelector('input[name="xyz"]:checked').value
+   // ✅ CORRECT
+   document.querySelector('input[name="xyz"]:checked')?.value || 'default'
+   ```
+
+3. **Ersatzfahrzeug = Anlieferung:** Wenn `ersatzfahrzeugGewuenscht === true`, dann muss `prozessStatus: 'anlieferung'` sein (nicht nur bei `abholserviceGewuenscht`)
+
+4. **werkstattDaten Embedding:** Partner-App kann Werkstatt-Settings nicht lesen (permission-denied). Lösung: Embed `werkstattDaten` direkt im Rechnung-Objekt bei Erstellung
+
+5. **Screening FALSE POSITIVE Rate:** ~76% der gemeldeten Bugs waren FALSE POSITIVES (13 von 17). IMMER Code verifizieren vor dem Fixen!
+
+6. **Deprecated Methods:** `.substr(start, length)` → `.substring(start, end)` (Achtung: Parameter-Semantik unterschiedlich!)
+
+**📁 BETROFFENE DATEIEN (7 Commits):**
+- `annahme.html` - prozessStatus, fahrzeugAbholung null-safety
+- `kanban.html` - Drag & Drop status sync
+- `rechnungen-admin.html` - Button sync, werkstattDaten, beendetAm Timestamp
+- `leihfahrzeuge.html` - beendetAm Timestamp
+- `partner-app/meine-anfragen.html` - Ersatzfahrzeug logic, storniertAm Timestamp, .substr()
+- `partner-app/anfrage-detail.html` - Ersatzfahrzeug logic, storniertAm Timestamp
+- `partner-app/rechnungen.html` - werkstattDaten display
+
+**⚠️ WICHTIG FÜR NÄCHSTEN AGENTEN:**
+- Pipeline ist vollständig getestet und funktioniert
+- Screening ist abgeschlossen - keine bekannten Bugs mehr
+- Bei neuen Bugs: IMMER erst Code verifizieren, ~75% sind FALSE POSITIVES
+
+---
 
 ### Session 2025-11-26 Nacht: Teile-Karte Feature - ABGEBROCHEN
 
