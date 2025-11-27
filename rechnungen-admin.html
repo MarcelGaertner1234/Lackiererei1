@@ -1168,24 +1168,33 @@
         // Helper: Extrahiere Preis für Fahrzeuge ohne Rechnung
         // Unterstützt beide Workflows: KVA-basiert UND vereinbarter Preis (no-KVA)
         function getKVAPreis(fahrzeug) {
+            let basePreis = 0;
+
             // 🔧 2025-11-18: Prüfe ZUERST vereinbartenPreis (no-KVA workflow)
             if (fahrzeug.vereinbarterPreis) {
-                return parseFloat(fahrzeug.vereinbarterPreis) || 0;
+                basePreis = parseFloat(fahrzeug.vereinbarterPreis) || 0;
             }
-
             // Fallback: KVA-Preis (standard workflow)
-            if (!fahrzeug.kva) return 0;
-
-            if (fahrzeug.kva.varianten && fahrzeug.kva.gewaehlteVariante) {
-                const variante = fahrzeug.kva.varianten[fahrzeug.kva.gewaehlteVariante];
-                return parseFloat(variante?.gesamt) || 0;
-            } else if (fahrzeug.kva.varianten?.original) {
-                return parseFloat(fahrzeug.kva.varianten.original.gesamt) || 0;
-            } else if (fahrzeug.kva.gesamt) {
-                return parseFloat(fahrzeug.kva.gesamt) || 0;
+            else if (fahrzeug.kva) {
+                if (fahrzeug.kva.varianten && fahrzeug.kva.gewaehlteVariante) {
+                    const variante = fahrzeug.kva.varianten[fahrzeug.kva.gewaehlteVariante];
+                    basePreis = parseFloat(variante?.gesamt) || 0;
+                } else if (fahrzeug.kva.varianten?.original) {
+                    basePreis = parseFloat(fahrzeug.kva.varianten.original.gesamt) || 0;
+                } else if (fahrzeug.kva.gesamt) {
+                    basePreis = parseFloat(fahrzeug.kva.gesamt) || 0;
+                }
             }
 
-            return 0;
+            // 🆕 GAP-5 (2025-11-27): Ersatzfahrzeug-Kosten addieren
+            const ersatzfahrzeug = fahrzeug.kalkulationData?.ersatzfahrzeug
+                || fahrzeug.kva?.ersatzfahrzeugKosten
+                || null;
+            if (ersatzfahrzeug && ersatzfahrzeug.gesamt > 0) {
+                basePreis += parseFloat(ersatzfahrzeug.gesamt) || 0;
+            }
+
+            return basePreis;
         }
 
         function getStatus(rechnung) {
@@ -1405,6 +1414,15 @@
                     bruttoPreis = parseFloat(fahrzeugData.kva.varianten.original.gesamt) || 0;
                 } else if (fahrzeugData.kva?.gesamt) {
                     bruttoPreis = parseFloat(fahrzeugData.kva.gesamt) || 0;
+                }
+
+                // 🆕 GAP-5 (2025-11-27): Ersatzfahrzeug-Kosten zum Bruttopreis addieren
+                const ersatzfahrzeug = fahrzeugData.kalkulationData?.ersatzfahrzeug
+                    || fahrzeugData.kva?.ersatzfahrzeugKosten
+                    || null;
+                if (ersatzfahrzeug && ersatzfahrzeug.gesamt > 0) {
+                    bruttoPreis += parseFloat(ersatzfahrzeug.gesamt) || 0;
+                    console.log('🚗 Ersatzfahrzeug-Kosten zur Rechnung addiert:', ersatzfahrzeug.gesamt, '€');
                 }
 
                 if (bruttoPreis === 0) {

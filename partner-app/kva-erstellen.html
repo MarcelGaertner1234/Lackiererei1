@@ -3231,7 +3231,16 @@
                                         ">
                                             <option value="">-- Lädt Leihfahrzeuge... --</option>
                                         </select>
-                                        <span style="font-size: 12px; color: #666;">Wird bei KVA-Versand zugewiesen</span>
+                                        <!-- 🆕 NEU 2025-11-27: Geschätzte Mietdauer für KVA -->
+                                        <input type="number" id="leihfahrzeugTage" min="1" value="3" style="
+                                            width: 60px;
+                                            padding: 8px;
+                                            border: 2px solid #9c27b0;
+                                            border-radius: 6px;
+                                            font-size: 13px;
+                                            text-align: center;
+                                        " title="Geschätzte Mietdauer">
+                                        <span style="font-size: 12px; color: #666;">Tage (geschätzt)</span>
                                     </div>
                                 </div>
                             ` : ''}
@@ -4040,8 +4049,24 @@
                                 kennzeichen: fahrzeug.kennzeichen,
                                 marke: fahrzeug.marke,
                                 modell: fahrzeug.modell,
-                                kraftstoff: fahrzeug.kraftstoff || null
+                                kraftstoff: fahrzeug.kraftstoff || null,
+                                tagesmiete: parseFloat(fahrzeug.tagesmiete) || 0 // 🆕 NEU 2025-11-27
                             } : null;
+                        })(),
+                        // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten (geschätzt für KVA)
+                        ersatzfahrzeugKosten: (() => {
+                            const selectedId = document.getElementById('leihfahrzeugSelect')?.value;
+                            const geschaetzteTage = parseInt(document.getElementById('leihfahrzeugTage')?.value) || 3;
+                            if (!selectedId) return null;
+                            const fahrzeug = verfuegbareLeihfahrzeuge.find(f => f.id === selectedId);
+                            if (!fahrzeug) return null;
+                            const tagesmiete = parseFloat(fahrzeug.tagesmiete) || 0;
+                            return {
+                                kennzeichen: fahrzeug.kennzeichen,
+                                tagesmiete: tagesmiete,
+                                tage: geschaetzteTage,
+                                gesamt: tagesmiete * geschaetzteTage
+                            };
                         })(),
 
                         // ✅ PHASE 4: Ersatzteile-Daten übernehmen (wenn vorhanden)
@@ -4204,8 +4229,24 @@
                             kennzeichen: fahrzeug.kennzeichen,
                             marke: fahrzeug.marke,
                             modell: fahrzeug.modell,
-                            kraftstoff: fahrzeug.kraftstoff || null
+                            kraftstoff: fahrzeug.kraftstoff || null,
+                            tagesmiete: parseFloat(fahrzeug.tagesmiete) || 0 // 🆕 NEU 2025-11-27
                         } : null;
+                    })(),
+                    // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten (geschätzt für KVA)
+                    ersatzfahrzeugKosten: (() => {
+                        const selectedId = document.getElementById('leihfahrzeugSelect')?.value;
+                        const geschaetzteTage = parseInt(document.getElementById('leihfahrzeugTage')?.value) || 3;
+                        if (!selectedId) return null;
+                        const fahrzeug = verfuegbareLeihfahrzeuge.find(f => f.id === selectedId);
+                        if (!fahrzeug) return null;
+                        const tagesmiete = parseFloat(fahrzeug.tagesmiete) || 0;
+                        return {
+                            kennzeichen: fahrzeug.kennzeichen,
+                            tagesmiete: tagesmiete,
+                            tage: geschaetzteTage,
+                            gesamt: tagesmiete * geschaetzteTage
+                        };
                     })(),
 
                     // ✅ PHASE 4: Ersatzteile-Daten übernehmen (wenn vorhanden)
@@ -4541,7 +4582,8 @@
                     ersatzteile: 0,
                     arbeitslohn: 0,
                     lackierung: 0,
-                    materialien: 0
+                    materialien: 0,
+                    ersatzfahrzeug: 0 // 🆕 NEU 2025-11-27
                 };
 
                 // Collect all input fields with IDs matching the pattern
@@ -4565,8 +4607,26 @@
                     }
                 });
 
+                // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten berechnen
+                const leihfahrzeugSelect = document.getElementById('leihfahrzeugSelect');
+                const leihfahrzeugTageInput = document.getElementById('leihfahrzeugTage');
+                if (leihfahrzeugSelect && leihfahrzeugSelect.value) {
+                    const selectedFahrzeug = verfuegbareLeihfahrzeuge.find(f => f.id === leihfahrzeugSelect.value);
+                    if (selectedFahrzeug) {
+                        const tagesmiete = parseFloat(selectedFahrzeug.tagesmiete) || 0;
+                        const tage = parseInt(leihfahrzeugTageInput?.value) || 3;
+                        breakdownData.ersatzfahrzeug = tagesmiete * tage;
+                        breakdownData.ersatzfahrzeugDetails = {
+                            kennzeichen: selectedFahrzeug.kennzeichen,
+                            tagesmiete: tagesmiete,
+                            tage: tage
+                        };
+                    }
+                }
+
                 const breakdownTotal = breakdownData.ersatzteile + breakdownData.arbeitslohn +
-                                      breakdownData.lackierung + breakdownData.materialien;
+                                      breakdownData.lackierung + breakdownData.materialien +
+                                      breakdownData.ersatzfahrzeug;
 
                 // Only show breakdown table if there's data
                 if (breakdownTotal > 0) {
@@ -4596,6 +4656,16 @@
                     if (breakdownData.materialien > 0) {
                         doc.text('Materialien:', 20, y);
                         doc.text(breakdownData.materialien.toFixed(2) + ' €', 185, y, { align: 'right' });
+                        y += 7;
+                    }
+                    // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten
+                    if (breakdownData.ersatzfahrzeug > 0) {
+                        const details = breakdownData.ersatzfahrzeugDetails;
+                        const label = details
+                            ? `Ersatzfahrzeug (${details.tage} Tage × ${details.tagesmiete.toFixed(2)} €):`
+                            : 'Ersatzfahrzeug:';
+                        doc.text(label, 20, y);
+                        doc.text(breakdownData.ersatzfahrzeug.toFixed(2) + ' €', 185, y, { align: 'right' });
                         y += 7;
                     }
 

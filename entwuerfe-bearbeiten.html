@@ -573,6 +573,15 @@
                     </select>
                 </div>
 
+                <div class="form-group" id="ersatzfahrzeugAdresseGroup" style="display: none;">
+                    <label for="ersatzfahrzeugAdresse" class="form-label">Übergabeadresse für Ersatzfahrzeug</label>
+                    <input type="text" id="ersatzfahrzeugAdresse" class="form-input"
+                           placeholder="Straße, PLZ Ort (z.B. Musterstraße 1, 74821 Mosbach)">
+                    <small style="color: var(--color-text-tertiary); margin-top: 4px; display: block;">
+                        📍 Wo soll das Ersatzfahrzeug übergeben werden?
+                    </small>
+                </div>
+
                 <!-- SERVICE-DETAILS -->
                 <div class="section-title">
                     <i data-feather="tool"></i>
@@ -1224,6 +1233,37 @@
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+
+                <!-- ===== ERSATZFAHRZEUG-KOSTEN ===== -->
+                <div class="kalkulation-section" id="ersatzfahrzeugKostenSection" style="display: none; margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); border-radius: 12px; border: 2px solid #ffc107;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h4 style="margin: 0; color: #f57c00; display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.2em;">🚗</span> Ersatzfahrzeug-Kosten
+                        </h4>
+                    </div>
+                    <table id="ersatzfahrzeugKostenTable" style="width: 100%; border-collapse: collapse; font-size: 13px; background: white; border-radius: 4px; overflow: hidden;">
+                        <thead>
+                            <tr style="background: linear-gradient(to bottom, #fff8e1, #ffecb3);">
+                                <th style="padding: 10px; text-align: left; color: #e65100; border-bottom: 2px solid #ffc107;">Fahrzeug</th>
+                                <th style="padding: 10px; text-align: right; color: #e65100; border-bottom: 2px solid #ffc107;">Tagesmiete (€)</th>
+                                <th style="padding: 10px; text-align: center; color: #e65100; border-bottom: 2px solid #ffc107;">Tage</th>
+                                <th style="padding: 10px; text-align: right; color: #e65100; border-bottom: 2px solid #ffc107;">Gesamt (€)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ersatzfahrzeugKostenBody">
+                            <!-- Dynamisch gefüllt durch berechneErsatzfahrzeugKosten() -->
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="3" style="padding: 10px; text-align: right; border-top: 2px solid #ffc107; font-weight: bold;">SUMME:</td>
+                                <td id="ersatzfahrzeugSumme" style="padding: 10px; text-align: right; color: #f57c00; font-size: 1.1em; border-top: 2px solid #ffc107; font-weight: bold;">0,00 €</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <small style="color: #795548; display: block; margin-top: 10px;">
+                        💡 Tagesmiete × Anzahl Tage (bis geplantes Abnahmedatum)
+                    </small>
                 </div>
 
                 <!-- PREISKALKULATION -->
@@ -2282,12 +2322,15 @@
                 // 🚗 Ersatzfahrzeug laden (FIX: Nov 27, 2025)
                 const ersatzfahrzeugCheckbox = document.getElementById('ersatzfahrzeugGewuenscht');
                 const ersatzfahrzeugZuweisungGroup = document.getElementById('ersatzfahrzeugZuweisungGroup');
+                const ersatzfahrzeugAdresseGroup = document.getElementById('ersatzfahrzeugAdresseGroup');
+                const ersatzfahrzeugAdresseInput = document.getElementById('ersatzfahrzeugAdresse');
                 const zugewiesenesErsatzfahrzeugSelect = document.getElementById('zugewiesenesErsatzfahrzeug');
 
                 // Checkbox-Status setzen
                 if (currentEntwurf.serviceDetails?.ersatzfahrzeugGewuenscht || currentEntwurf.ersatzfahrzeugGewuenscht) {
                     ersatzfahrzeugCheckbox.checked = true;
                     ersatzfahrzeugZuweisungGroup.style.display = 'block';
+                    ersatzfahrzeugAdresseGroup.style.display = 'block';
 
                     // Verfügbare Leihfahrzeuge laden
                     await loadVerfuegbareLeihfahrzeuge();
@@ -2296,12 +2339,22 @@
                     if (currentEntwurf.zugewiesenesErsatzfahrzeug) {
                         zugewiesenesErsatzfahrzeugSelect.value = currentEntwurf.zugewiesenesErsatzfahrzeug;
                     }
+
+                    // Übergabeadresse laden (aus serviceDetails oder direkt)
+                    const adresse = currentEntwurf.serviceDetails?.ersatzfahrzeugAdresse || currentEntwurf.ersatzfahrzeugAdresse || '';
+                    ersatzfahrzeugAdresseInput.value = adresse;
                 } else {
                     ersatzfahrzeugCheckbox.checked = false;
                     ersatzfahrzeugZuweisungGroup.style.display = 'none';
+                    ersatzfahrzeugAdresseGroup.style.display = 'none';
                 }
 
-                console.log('🚗 Ersatzfahrzeug-Status geladen:', ersatzfahrzeugCheckbox.checked);
+                console.log('🚗 Ersatzfahrzeug-Status geladen:', ersatzfahrzeugCheckbox.checked, 'Adresse:', ersatzfahrzeugAdresseInput?.value);
+
+                // 🚗 Ersatzfahrzeug-Kosten berechnen (wenn Fahrzeug zugewiesen)
+                if (ersatzfahrzeugCheckbox.checked && currentEntwurf.zugewiesenesErsatzfahrzeug) {
+                    await berechneErsatzfahrzeugKosten();
+                }
 
                 // Show form
                 document.getElementById('formContainer').classList.add('visible');
@@ -2397,20 +2450,139 @@
         function initErsatzfahrzeugToggle() {
             const checkbox = document.getElementById('ersatzfahrzeugGewuenscht');
             const zuweisungGroup = document.getElementById('ersatzfahrzeugZuweisungGroup');
+            const adresseGroup = document.getElementById('ersatzfahrzeugAdresseGroup');
 
-            if (checkbox && zuweisungGroup) {
+            if (checkbox && zuweisungGroup && adresseGroup) {
                 checkbox.addEventListener('change', async function() {
                     if (this.checked) {
                         zuweisungGroup.style.display = 'block';
+                        adresseGroup.style.display = 'block';
                         await loadVerfuegbareLeihfahrzeuge();
+                        await berechneErsatzfahrzeugKosten();
                     } else {
                         zuweisungGroup.style.display = 'none';
+                        adresseGroup.style.display = 'none';
                         // Reset dropdown selection
                         const select = document.getElementById('zugewiesenesErsatzfahrzeug');
                         if (select) select.value = '';
+                        // Reset address
+                        const adresseInput = document.getElementById('ersatzfahrzeugAdresse');
+                        if (adresseInput) adresseInput.value = '';
+                        // Kosten-Sektion verstecken
+                        await berechneErsatzfahrzeugKosten();
                     }
                 });
-                console.log('✅ Ersatzfahrzeug Toggle initialisiert');
+
+                // Event-Listener für Fahrzeug-Dropdown (Neuberechnung bei Auswahl)
+                const fahrzeugSelect = document.getElementById('zugewiesenesErsatzfahrzeug');
+                if (fahrzeugSelect) {
+                    fahrzeugSelect.addEventListener('change', async function() {
+                        await berechneErsatzfahrzeugKosten();
+                    });
+                }
+
+                // Event-Listener für Abnahmedatum (Neuberechnung bei Änderung)
+                const abnahmeDatum = document.getElementById('geplantesAbnahmeDatum');
+                if (abnahmeDatum) {
+                    abnahmeDatum.addEventListener('change', async function() {
+                        await berechneErsatzfahrzeugKosten();
+                    });
+                }
+
+                console.log('✅ Ersatzfahrzeug Toggle initialisiert (mit Adresse + Kosten)');
+            }
+        }
+
+        /**
+         * Berechnet Ersatzfahrzeug-Kosten (Tagesmiete × Tage)
+         * @returns {Promise<{gesamt: number, fahrzeugId: string, kennzeichen: string, tagesmiete: number, tage: number}>}
+         */
+        async function berechneErsatzfahrzeugKosten() {
+            const section = document.getElementById('ersatzfahrzeugKostenSection');
+            const tbody = document.getElementById('ersatzfahrzeugKostenBody');
+            const summeEl = document.getElementById('ersatzfahrzeugSumme');
+
+            // Default: Versteckt
+            if (!section || !tbody || !summeEl) {
+                console.log('⚠️ Ersatzfahrzeug-Kosten UI-Elemente nicht gefunden');
+                return { gesamt: 0, fahrzeugId: null, kennzeichen: '', tagesmiete: 0, tage: 0 };
+            }
+
+            const zugewiesenesErsatzfahrzeug = document.getElementById('zugewiesenesErsatzfahrzeug')?.value;
+            const ersatzfahrzeugGewuenscht = document.getElementById('ersatzfahrzeugGewuenscht')?.checked;
+
+            // Nicht gewünscht oder nicht zugewiesen
+            if (!ersatzfahrzeugGewuenscht || !zugewiesenesErsatzfahrzeug) {
+                section.style.display = 'none';
+                tbody.innerHTML = '';
+                summeEl.textContent = '0,00 €';
+                return { gesamt: 0, fahrzeugId: null, kennzeichen: '', tagesmiete: 0, tage: 0 };
+            }
+
+            try {
+                // Leihfahrzeug-Daten aus Firestore laden
+                const werkstattId = window.werkstattId;
+                const leihfahrzeugDoc = await window.db
+                    .collection(`leihfahrzeuge_${werkstattId}`)
+                    .doc(zugewiesenesErsatzfahrzeug)
+                    .get();
+
+                if (!leihfahrzeugDoc.exists) {
+                    console.warn('⚠️ Leihfahrzeug nicht gefunden:', zugewiesenesErsatzfahrzeug);
+                    section.style.display = 'none';
+                    return { gesamt: 0, fahrzeugId: zugewiesenesErsatzfahrzeug, kennzeichen: '', tagesmiete: 0, tage: 0 };
+                }
+
+                const leihfahrzeug = leihfahrzeugDoc.data();
+                const tagesmiete = parseFloat(leihfahrzeug.tagesmiete) || 0;
+                const kennzeichen = leihfahrzeug.kennzeichen || 'N/A';
+                const fahrzeugName = `${leihfahrzeug.marke || ''} ${leihfahrzeug.modell || ''} (${kennzeichen})`.trim();
+
+                // Tage berechnen (heute bis geplantes Abnahmedatum)
+                const heute = new Date();
+                heute.setHours(0, 0, 0, 0);
+
+                const endeDatumStr = document.getElementById('geplantesAbnahmeDatum')?.value;
+                let endeDatum = heute;
+                if (endeDatumStr) {
+                    endeDatum = new Date(endeDatumStr);
+                    endeDatum.setHours(0, 0, 0, 0);
+                }
+
+                // Mindestens 1 Tag
+                const diffTime = endeDatum - heute;
+                const tage = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+                // Gesamt berechnen
+                const gesamt = tagesmiete * tage;
+
+                // Tabelle füllen
+                tbody.innerHTML = `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #ffe082;">${fahrzeugName}</td>
+                        <td style="padding: 10px; text-align: right; border-bottom: 1px solid #ffe082; font-family: 'Courier New', monospace;">${tagesmiete.toFixed(2)} €</td>
+                        <td style="padding: 10px; text-align: center; border-bottom: 1px solid #ffe082; font-weight: bold;">${tage}</td>
+                        <td style="padding: 10px; text-align: right; border-bottom: 1px solid #ffe082; font-family: 'Courier New', monospace; font-weight: bold;">${gesamt.toFixed(2)} €</td>
+                    </tr>
+                `;
+
+                summeEl.textContent = gesamt.toFixed(2).replace('.', ',') + ' €';
+                section.style.display = 'block';
+
+                console.log(`🚗 Ersatzfahrzeug-Kosten berechnet: ${fahrzeugName} × ${tage} Tage = ${gesamt.toFixed(2)} €`);
+
+                return {
+                    gesamt: gesamt,
+                    fahrzeugId: zugewiesenesErsatzfahrzeug,
+                    kennzeichen: kennzeichen,
+                    tagesmiete: tagesmiete,
+                    tage: tage
+                };
+
+            } catch (error) {
+                console.error('❌ Fehler bei Ersatzfahrzeug-Kosten Berechnung:', error);
+                section.style.display = 'none';
+                return { gesamt: 0, fahrzeugId: zugewiesenesErsatzfahrzeug, kennzeichen: '', tagesmiete: 0, tage: 0 };
             }
         }
 
@@ -2645,22 +2817,37 @@
                     // 🚗 Ersatzfahrzeug (FIX: Nov 27, 2025)
                     ersatzfahrzeugGewuenscht: document.getElementById('ersatzfahrzeugGewuenscht')?.checked || false,
                     zugewiesenesErsatzfahrzeug: document.getElementById('zugewiesenesErsatzfahrzeug')?.value || null,
+                    ersatzfahrzeugAdresse: document.getElementById('ersatzfahrzeugAdresse')?.value || '',
+                };
 
-                    // Kalkulations-Tabellen Daten
-                    kalkulationData: {
-                        ersatzteile: ersatzteileData,
-                        arbeitslohn: arbeitslohnData,
-                        lackierung: lackierungData,
-                        materialien: materialienData
-                    },
+                // 🚗 Ersatzfahrzeug-Kosten berechnen (für kalkulationData)
+                const ersatzfahrzeugKosten = await berechneErsatzfahrzeugKosten();
 
+                // Kalkulations-Tabellen Daten (inkl. Ersatzfahrzeug)
+                updatedData.kalkulationData = {
+                    ersatzteile: ersatzteileData,
+                    arbeitslohn: arbeitslohnData,
+                    lackierung: lackierungData,
+                    materialien: materialienData,
+                    // 🚗 NEU: Ersatzfahrzeug-Kosten als separate Position
+                    ersatzfahrzeug: ersatzfahrzeugKosten.gesamt > 0 ? {
+                        fahrzeugId: ersatzfahrzeugKosten.fahrzeugId,
+                        kennzeichen: ersatzfahrzeugKosten.kennzeichen,
+                        tagesmiete: ersatzfahrzeugKosten.tagesmiete,
+                        tage: ersatzfahrzeugKosten.tage,
+                        gesamt: ersatzfahrzeugKosten.gesamt
+                    } : null
+                };
+
+                // Restliche Daten
+                Object.assign(updatedData, {
                     // 🔧 Service-Details (Pattern 34 - FIX: Nov 17, 2025)
                     serviceDetails: gatherServiceDetails(),
 
                     // 🖼️ Fotos & Unterschrift (Phase 3)
                     photoUrls: photos,  // ✅ FIX Bug #7 (2025-11-23): Standardized field name (was: fotos)
                     signature: signatureData
-                };
+                });
 
                 // Update Firestore
                 const werkstattId = window.werkstattId; // ✅ SECURITY FIX: No 'mosbach' fallback

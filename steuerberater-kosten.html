@@ -588,6 +588,18 @@
                 <div class="cost-value" id="costPersonal">0,00 €</div>
                 <div class="cost-subtitle"><span id="personalCount">0</span> Mitarbeiter</div>
             </div>
+
+            <!-- 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten -->
+            <div class="cost-card amber" style="--card-color: #FF9800;">
+                <div class="cost-header">
+                    <span class="cost-title">Ersatzfahrzeug</span>
+                    <div class="cost-icon" style="background: #FF9800;">
+                        🚗
+                    </div>
+                </div>
+                <div class="cost-value" id="costErsatzfahrzeug">0,00 €</div>
+                <div class="cost-subtitle"><span id="ersatzfahrzeugCount">0</span> Buchungen</div>
+            </div>
         </div>
 
         <!-- Detailed Cost Breakdown: Ersatzteile -->
@@ -747,6 +759,37 @@
                             <td class="amount" id="sumSteuern">0,00 €</td>
                             <td class="amount" id="sumSV">0,00 €</td>
                             <td class="amount" id="sumNetto">0,00 €</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- 🆕 NEU 2025-11-27: Detailed Cost Breakdown: Ersatzfahrzeug-Kosten -->
+        <div id="ersatzfahrzeugSection" class="section" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">
+                    🚗 Ersatzfahrzeug-Kosten
+                </h2>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Kunde/Fahrzeug</th>
+                            <th>Leihfahrzeug</th>
+                            <th>Tagesmiete</th>
+                            <th>Tage</th>
+                            <th>Gesamtkosten</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ersatzfahrzeugTableBody">
+                        <!-- Wird via JavaScript gefüllt -->
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4">GESAMT</td>
+                            <td class="amount" id="sumErsatzfahrzeug">0,00 €</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -937,7 +980,8 @@
                 ersatzteile: {},
                 arbeitslohn: {},
                 lackierung: {},
-                materialien: {}
+                materialien: {},
+                ersatzfahrzeug: [] // 🆕 NEU 2025-11-27
             };
 
             let totalErsatzteile = 0;
@@ -945,6 +989,7 @@
             let totalLackierung = 0;
             let totalMaterialien = 0;
             let totalArbeitsstunden = 0;
+            let totalErsatzfahrzeug = 0; // 🆕 NEU 2025-11-27
 
             filtered.forEach(f => {
                 const data = f.pdfImport?.editedData || {};
@@ -1019,6 +1064,26 @@
                         totalMaterialien += parseFloat(bestellung.gesamtpreis || 0);
                     });
                 }
+
+                // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten (aus kalkulationData)
+                // 🔧 GAP-4 (2025-11-27): Legacy-Feldnamen Mapping für ältere Dokumente
+                const ersatzfahrzeugData = f.kalkulationData?.ersatzfahrzeug
+                    || data.ersatzfahrzeug
+                    || f.kva?.ersatzfahrzeugKosten          // Legacy: KVA-Format
+                    || f.zugewiesenesErsatzfahrzeug         // Legacy: Altes Feld
+                    || null;
+                if (ersatzfahrzeugData && ersatzfahrzeugData.gesamt > 0) {
+                    aggregated.ersatzfahrzeug.push({
+                        kunde: f.kundenname || 'Unbekannt',
+                        fahrzeug: `${f.marke || ''} ${f.modell || ''}`.trim() || 'Unbekannt',
+                        kennzeichen: f.kennzeichen || 'N/A',
+                        leihfahrzeug: ersatzfahrzeugData.kennzeichen || 'N/A',
+                        tagesmiete: parseFloat(ersatzfahrzeugData.tagesmiete) || 0,
+                        tage: parseInt(ersatzfahrzeugData.tage) || 0,
+                        gesamt: parseFloat(ersatzfahrzeugData.gesamt) || 0
+                    });
+                    totalErsatzfahrzeug += parseFloat(ersatzfahrzeugData.gesamt) || 0;
+                }
             });
 
             // 🆕 NEU 2025-11-26: Personalkosten berechnen
@@ -1041,12 +1106,17 @@
             document.getElementById('costPersonal').textContent = formatCurrency(personalkosten.brutto);
             document.getElementById('personalCount').textContent = personalkosten.count;
 
+            // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten Card
+            document.getElementById('costErsatzfahrzeug').textContent = formatCurrency(totalErsatzfahrzeug);
+            document.getElementById('ersatzfahrzeugCount').textContent = aggregated.ersatzfahrzeug.length;
+
             // Render tables
             renderErsatzteileTable(aggregated.ersatzteile, totalErsatzteile);
             renderArbeitslohnTable(aggregated.arbeitslohn, totalArbeitslohn);
             renderLackierungTable(aggregated.lackierung, totalLackierung);
             renderMaterialienTable(aggregated.materialien, totalMaterialien);
             renderPersonalkostenTable(personalkosten); // 🆕
+            renderErsatzfahrzeugTable(aggregated.ersatzfahrzeug, totalErsatzfahrzeug); // 🆕 NEU 2025-11-27
 
             feather.replace();
         }
@@ -1315,6 +1385,49 @@
             document.getElementById('sumSteuern').textContent = formatCurrency(personalkosten.steuern);
             document.getElementById('sumSV').textContent = formatCurrency(personalkosten.sv);
             document.getElementById('sumNetto').textContent = formatCurrency(personalkosten.netto);
+        }
+
+        // ============================================
+        // 🆕 NEU 2025-11-27: RENDER ERSATZFAHRZEUG TABLE
+        // ============================================
+        function renderErsatzfahrzeugTable(ersatzfahrzeuge, total) {
+            const tbody = document.getElementById('ersatzfahrzeugTableBody');
+            const section = document.getElementById('ersatzfahrzeugSection');
+            tbody.innerHTML = '';
+
+            if (ersatzfahrzeuge.length === 0) {
+                section.style.display = 'none';
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--color-text-secondary); padding: 24px;">
+                            Keine Ersatzfahrzeug-Kosten im gewählten Zeitraum vorhanden.
+                        </td>
+                    </tr>
+                `;
+                document.getElementById('sumErsatzfahrzeug').textContent = formatCurrency(0);
+                return;
+            }
+
+            section.style.display = 'block';
+
+            // Sortiert nach Gesamt (höchste zuerst)
+            const sorted = ersatzfahrzeuge.sort((a, b) => b.gesamt - a.gesamt);
+
+            sorted.forEach(item => {
+                const row = `
+                    <tr>
+                        <td>${item.kunde}<br><small style="color: var(--color-text-secondary);">${item.fahrzeug} (${item.kennzeichen})</small></td>
+                        <td>${item.leihfahrzeug}</td>
+                        <td class="amount">${formatCurrency(item.tagesmiete)}</td>
+                        <td style="text-align: center;">${item.tage}</td>
+                        <td class="amount">${formatCurrency(item.gesamt)}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+
+            // Footer-Summe
+            document.getElementById('sumErsatzfahrzeug').textContent = formatCurrency(total);
         }
 
         // ============================================
