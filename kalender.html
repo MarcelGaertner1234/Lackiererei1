@@ -1821,6 +1821,7 @@
             if (firebaseInitialized && window.db) {
                 setupMaterialListener();
                 setupLeihfahrzeugEventsListener();  // 🚗 PHASE 2: Leihfahrzeug-Events
+                setupTerminEventsListener();  // 📅 FIX (2025-11-27): Abholung + Geplante Abnahme Events
             }
         }
 
@@ -1877,6 +1878,57 @@
                     updateFilterCounts();
                 }, (error) => {
                     console.error('❌ Fehler bei Leihfahrzeug-Events Listener:', error);
+                });
+        }
+
+        // 📅 FIX (2025-11-27): Termin-Events (Abholung + Geplante Abnahme) aus Entwürfen
+        function setupTerminEventsListener() {
+            const werkstattId = window.werkstattId;
+            if (!werkstattId) {
+                console.warn('⚠️ werkstattId nicht verfügbar für Termin-Events');
+                return;
+            }
+
+            // Listener für 'abholung' Events
+            window.db.collection(`kalenderEvents_${werkstattId}`)
+                .where('typ', '==', 'abholung')
+                .where('status', '==', 'geplant')
+                .onSnapshot((snapshot) => {
+                    window.abholungEvents = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        window.abholungEvents.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    });
+                    console.log('🚚 Abholung-Events geladen:', window.abholungEvents.length);
+                    renderCalendar();
+                    renderStatistics();
+                    updateFilterCounts();
+                }, (error) => {
+                    console.error('❌ Fehler bei Abholung-Events Listener:', error);
+                });
+
+            // Listener für 'geplante_abnahme' Events
+            window.db.collection(`kalenderEvents_${werkstattId}`)
+                .where('typ', '==', 'geplante_abnahme')
+                .where('status', '==', 'geplant')
+                .onSnapshot((snapshot) => {
+                    window.geplante_abnahmeEvents = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        window.geplante_abnahmeEvents.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    });
+                    console.log('✅ Geplante-Abnahme-Events geladen:', window.geplante_abnahmeEvents.length);
+                    renderCalendar();
+                    renderStatistics();
+                    updateFilterCounts();
+                }, (error) => {
+                    console.error('❌ Fehler bei Geplante-Abnahme-Events Listener:', error);
                 });
         }
 
@@ -2168,6 +2220,44 @@
                                 overdue: false
                             });
                         }
+                    }
+                });
+            }
+
+            // 📅 FIX (2025-11-27): ABHOLUNG-EVENTS aus Entwürfen laden (unfiltered)
+            if (window.abholungEvents && Array.isArray(window.abholungEvents)) {
+                window.abholungEvents.forEach(abholEvent => {
+                    if (abholEvent.datum === dateString) {
+                        events.push({
+                            type: 'abholung_entwurf',
+                            typeName: abholEvent.titel || '🚚 Abholung (Entwurf)',
+                            eventId: abholEvent.id,
+                            kennzeichen: abholEvent.kennzeichen || '',
+                            kundenName: abholEvent.kundenName || '',
+                            adresse: abholEvent.adresse || '',
+                            time: abholEvent.zeit || '09:00',
+                            overdue: false
+                        });
+                    }
+                });
+            }
+
+            // 📅 FIX (2025-11-27): GEPLANTE-ABNAHME-EVENTS aus Entwürfen laden (unfiltered)
+            if (window.geplante_abnahmeEvents && Array.isArray(window.geplante_abnahmeEvents)) {
+                window.geplante_abnahmeEvents.forEach(abnahmeEvent => {
+                    if (abnahmeEvent.datum === dateString) {
+                        const abnahmeDateCheck = new Date(abnahmeEvent.datum);
+                        abnahmeDateCheck.setHours(0, 0, 0, 0);
+                        const isOverdue = abnahmeDateCheck < today;
+                        events.push({
+                            type: 'geplante_abnahme_entwurf',
+                            typeName: abnahmeEvent.titel || '✅ Geplante Abnahme (Entwurf)',
+                            eventId: abnahmeEvent.id,
+                            kennzeichen: abnahmeEvent.kennzeichen || '',
+                            kundenName: abnahmeEvent.kundenName || '',
+                            time: '15:00',
+                            overdue: isOverdue
+                        });
                     }
                 });
             }
@@ -2732,6 +2822,60 @@
                             if (activeFilters.includes('all') || activeFilters.includes('leihfahrzeug')) {
                                 events.push(event);
                             }
+                        }
+                    }
+                });
+            }
+
+            // 📅 FIX (2025-11-27): ABHOLUNG-EVENTS aus Entwürfen laden
+            if (window.abholungEvents && Array.isArray(window.abholungEvents)) {
+                window.abholungEvents.forEach(abholEvent => {
+                    if (abholEvent.datum === dateString) {
+                        const event = {
+                            type: 'abholung_entwurf',
+                            eventId: abholEvent.id,
+                            titel: abholEvent.titel || '🚚 Abholung',
+                            kennzeichen: abholEvent.kennzeichen || '',
+                            kundenName: abholEvent.kundenName || '',
+                            adresse: abholEvent.adresse || '',
+                            notiz: abholEvent.notiz || '',
+                            time: abholEvent.zeit || '09:00',
+                            overdue: false,
+                            fahrzeugId: abholEvent.fahrzeugId
+                        };
+
+                        // Filter anwenden (nutze 'abholung' Filter)
+                        if (activeFilters.includes('all') || activeFilters.includes('abholung')) {
+                            events.push(event);
+                        }
+                    }
+                });
+            }
+
+            // 📅 FIX (2025-11-27): GEPLANTE-ABNAHME-EVENTS aus Entwürfen laden
+            if (window.geplante_abnahmeEvents && Array.isArray(window.geplante_abnahmeEvents)) {
+                window.geplante_abnahmeEvents.forEach(abnahmeEvent => {
+                    if (abnahmeEvent.datum === dateString) {
+                        const abnahmeDateCheck = new Date(abnahmeEvent.datum);
+                        abnahmeDateCheck.setHours(0, 0, 0, 0);
+                        const isOverdue = abnahmeDateCheck < today;
+
+                        const event = {
+                            type: 'geplante_abnahme_entwurf',
+                            eventId: abnahmeEvent.id,
+                            titel: abnahmeEvent.titel || '✅ Geplante Abnahme',
+                            kennzeichen: abnahmeEvent.kennzeichen || '',
+                            kundenName: abnahmeEvent.kundenName || '',
+                            time: '15:00',
+                            overdue: isOverdue,
+                            fahrzeugId: abnahmeEvent.fahrzeugId
+                        };
+
+                        // Filter anwenden (nutze 'geplant' Filter)
+                        if (activeFilters.includes('all') || activeFilters.includes('geplant')) {
+                            events.push(event);
+                        } else if (activeFilters.includes('overdue') && isOverdue) {
+                            events.push(event);
                         }
                     }
                 });
