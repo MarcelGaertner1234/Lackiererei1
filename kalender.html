@@ -817,6 +817,26 @@
             background: linear-gradient(135deg, #f3f4ff 0%, #e8eaff 100%);
         }
 
+        /* 🚗 PHASE 2: Leihfahrzeug-Events */
+        .day-event-card.leihfahrzeug {
+            border-left-color: #f59e0b;
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        }
+
+        .timeline-event.leihfahrzeug {
+            border-left-color: #f59e0b;
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(254, 243, 199, 0.3) 100%);
+        }
+
+        .week-event-badge.leihfahrzeug {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+        }
+
+        .month-event-dot.leihfahrzeug {
+            background: #f59e0b;
+        }
+
         .day-event-header {
             display: flex;
             justify-content: space-between;
@@ -1800,6 +1820,7 @@
             // Material-Requests Realtime Listener einrichten
             if (firebaseInitialized && window.db) {
                 setupMaterialListener();
+                setupLeihfahrzeugEventsListener();  // 🚗 PHASE 2: Leihfahrzeug-Events
             }
         }
 
@@ -1825,6 +1846,37 @@
                     updateFilterCounts();
                 }, (error) => {
                     console.error('❌ Fehler bei Material-Requests Listener:', error);
+                });
+        }
+
+        // 🚗 PHASE 2: Leihfahrzeug-Events Realtime Listener
+        function setupLeihfahrzeugEventsListener() {
+            const werkstattId = window.werkstattId;
+            if (!werkstattId) {
+                console.warn('⚠️ werkstattId nicht verfügbar für Leihfahrzeug-Events');
+                return;
+            }
+
+            window.db.collection(`kalenderEvents_${werkstattId}`)
+                .where('typ', '==', 'leihfahrzeug')
+                .where('status', '==', 'aktiv')
+                .onSnapshot((snapshot) => {
+                    window.leihfahrzeugEvents = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        window.leihfahrzeugEvents.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    });
+                    console.log('🚗 Leihfahrzeug-Events geladen:', window.leihfahrzeugEvents.length);
+
+                    // Kalender neu rendern
+                    renderCalendar();
+                    renderStatistics();
+                    updateFilterCounts();
+                }, (error) => {
+                    console.error('❌ Fehler bei Leihfahrzeug-Events Listener:', error);
                 });
         }
 
@@ -2245,6 +2297,26 @@
                             </div>
                         </div>
                     `;
+                } else if (event.type === 'leihfahrzeug') {
+                    // 🚗 PHASE 2: Leihfahrzeug-Events
+                    const startFormatted = event.start ? new Date(event.start).toLocaleDateString('de-DE') : '';
+                    const endeFormatted = event.ende ? new Date(event.ende).toLocaleDateString('de-DE') : 'offen';
+                    html += `
+                        <div class="day-event-card leihfahrzeug"
+                             style="position: relative; cursor: pointer; border-left: 4px solid var(--color-warning);">
+                            <div class="day-event-header">
+                                <div class="day-event-title">
+                                    ${event.titel}
+                                </div>
+                                <div class="day-event-time">${time}</div>
+                            </div>
+                            <div class="day-event-details">
+                                <strong>Leihfahrzeug:</strong> ${event.leihfahrzeugKennzeichen}<br>
+                                <strong>Kunden-Fzg:</strong> ${event.kundenKennzeichen}<br>
+                                <strong>Zeitraum:</strong> ${startFormatted} - ${endeFormatted}
+                            </div>
+                        </div>
+                    `;
                 } else {
                     // Fahrzeug-Events (bestehender Code)
                     html += `
@@ -2315,6 +2387,19 @@
                             </div>
                             <div class="timeline-event-details">
                                 Von: ${event.requestedBy}
+                            </div>
+                        </div>
+                    `;
+                } else if (event.type === 'leihfahrzeug') {
+                    // 🚗 PHASE 2: Leihfahrzeug-Events in Timeline
+                    html += `
+                        <div class="timeline-event leihfahrzeug"
+                             style="top: ${topPosition}px; height: 50px; position: relative; cursor: pointer; background: rgba(251, 191, 36, 0.15); border-left: 3px solid var(--color-warning);">
+                            <div class="timeline-event-title">
+                                ${event.titel}
+                            </div>
+                            <div class="timeline-event-details">
+                                ${event.leihfahrzeugKennzeichen} • ${event.kundenKennzeichen}
                             </div>
                         </div>
                     `;
@@ -2391,9 +2476,18 @@
 
                 events.slice(0, 3).forEach(event => {
                     const overdueClass = event.overdue ? 'event-overdue' : '';
+                    // 🚗 PHASE 2: Handle different event types
+                    let badgeContent = '';
+                    if (event.type === 'material') {
+                        badgeContent = '📦 Material';
+                    } else if (event.type === 'leihfahrzeug') {
+                        badgeContent = `🚗 ${event.leihfahrzeugKennzeichen || 'Leihfahrzeug'}`;
+                    } else {
+                        badgeContent = event.vehicle?.kennzeichen || 'Unbekannt';
+                    }
                     html += `
                         <div class="week-event-badge ${event.type} ${overdueClass}">
-                            ${event.vehicle.kennzeichen}${event.overdue ? ' ⚠️' : ''}
+                            ${badgeContent}${event.overdue ? ' ⚠️' : ''}
                         </div>
                     `;
                 });
@@ -2597,6 +2691,45 @@
 
                             // Filter anwenden
                             if (activeFilters.includes('all') || activeFilters.includes('material')) {
+                                events.push(event);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 🚗 PHASE 2: LEIHFAHRZEUG-EVENTS laden
+            if (window.leihfahrzeugEvents && Array.isArray(window.leihfahrzeugEvents)) {
+                window.leihfahrzeugEvents.forEach(leihEvent => {
+                    // Prüfe ob das Event an diesem Datum aktiv ist (start <= dateString <= ende)
+                    const startDate = leihEvent.start ? new Date(leihEvent.start) : null;
+                    const endeDate = leihEvent.ende ? new Date(leihEvent.ende) : null;
+                    const checkDate = new Date(dateString);
+
+                    if (startDate) {
+                        startDate.setHours(0, 0, 0, 0);
+                        checkDate.setHours(0, 0, 0, 0);
+
+                        // Event zeigen wenn: startDate <= checkDate <= endeDate (oder kein Ende)
+                        const afterStart = checkDate >= startDate;
+                        const beforeEnd = !endeDate || checkDate <= endeDate;
+
+                        if (afterStart && beforeEnd) {
+                            const event = {
+                                type: 'leihfahrzeug',
+                                eventId: leihEvent.id,
+                                titel: leihEvent.titel || '🚗 Leihfahrzeug',
+                                leihfahrzeugKennzeichen: leihEvent.leihfahrzeugKennzeichen || '',
+                                kundenKennzeichen: leihEvent.kundenKennzeichen || '',
+                                entwurfId: leihEvent.entwurfId || '',
+                                time: '08:00',  // Default-Zeit für Leihfahrzeuge
+                                overdue: false,
+                                start: leihEvent.start,
+                                ende: leihEvent.ende
+                            };
+
+                            // Filter anwenden
+                            if (activeFilters.includes('all') || activeFilters.includes('leihfahrzeug')) {
                                 events.push(event);
                             }
                         }

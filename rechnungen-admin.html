@@ -1455,6 +1455,43 @@
                     updatedAt: firebase.firestore.Timestamp.now()
                 });
 
+                // 🚗 PHASE 2: Auto-Freigabe Leihfahrzeug bei Rechnung
+                if (fahrzeugData.zugewiesenesErsatzfahrzeug) {
+                    try {
+                        const werkstattId = window.werkstattId;
+                        const leihfahrzeugId = fahrzeugData.zugewiesenesErsatzfahrzeug;
+
+                        // 1. Leihfahrzeug-Status zurücksetzen
+                        await window.db.collection(`leihfahrzeuge_${werkstattId}`).doc(leihfahrzeugId).update({
+                            status: 'verfuegbar',
+                            aktuelleZuweisung: null
+                        });
+                        console.log('🚗 Leihfahrzeug automatisch freigegeben bei Rechnungserstellung');
+
+                        // 2. Kalender-Event als beendet markieren
+                        const kalenderEventsRef = window.db.collection(`kalenderEvents_${werkstattId}`);
+                        const activeEvents = await kalenderEventsRef
+                            .where('fahrzeugId', '==', leihfahrzeugId)
+                            .where('status', '==', 'aktiv')
+                            .get();
+
+                        if (!activeEvents.empty) {
+                            const batch = window.db.batch();
+                            activeEvents.forEach(doc => {
+                                batch.update(doc.ref, {
+                                    status: 'beendet',
+                                    beendetAm: new Date().toISOString(),
+                                    beendetDurch: 'Rechnung erstellt'
+                                });
+                            });
+                            await batch.commit();
+                            console.log(`📅 ${activeEvents.size} Kalender-Event(s) als beendet markiert`);
+                        }
+                    } catch (leihfahrzeugError) {
+                        console.warn('⚠️ Leihfahrzeug-Freigabe Fehler (Rechnung wurde trotzdem erstellt):', leihfahrzeugError);
+                    }
+                }
+
                 toast.success(`✅ Rechnung erstellt!\n\nRechnungsnummer: ${rechnungsnummer}\nNettobetrag: ${nettoBetrag.toFixed(2)} €`);
 
                 // Tabelle neu laden

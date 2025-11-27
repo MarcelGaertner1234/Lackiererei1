@@ -2672,6 +2672,50 @@
 
                 console.log('✅ Entwurf aktualisiert');
 
+                // 🚗 PHASE 2: Status-Sync + Kalender-Event bei Leihfahrzeug-Zuweisung
+                const zugewiesenesErsatzfahrzeug = document.getElementById('zugewiesenesErsatzfahrzeug')?.value;
+                if (zugewiesenesErsatzfahrzeug) {
+                    try {
+                        // 1. Leihfahrzeug-Dokument laden für Kennzeichen
+                        const leihfahrzeugDoc = await window.db.collection(`leihfahrzeuge_${werkstattId}`).doc(zugewiesenesErsatzfahrzeug).get();
+                        const leihfahrzeugData = leihfahrzeugDoc.exists ? leihfahrzeugDoc.data() : {};
+                        const leihfahrzeugKennzeichen = leihfahrzeugData.kennzeichen || 'Leihfahrzeug';
+
+                        // 2. Leihfahrzeug-Status auf "vergeben" setzen
+                        await window.db.collection(`leihfahrzeuge_${werkstattId}`).doc(zugewiesenesErsatzfahrzeug).update({
+                            status: 'vergeben',
+                            aktuelleZuweisung: {
+                                kundenName: document.getElementById('kundenname').value.trim(),
+                                fahrzeugKennzeichen: document.getElementById('kennzeichen')?.value || '',
+                                entwurfId: currentEntwurfId,
+                                von: new Date().toISOString(),
+                                bis: document.getElementById('geplantesAbnahmeDatum').value || null
+                            }
+                        });
+                        console.log('🚗 Leihfahrzeug-Status auf "vergeben" gesetzt');
+
+                        // 3. Kalender-Event erstellen
+                        const kalenderEvent = {
+                            typ: 'leihfahrzeug',
+                            titel: `🚗 ${leihfahrzeugKennzeichen} → ${document.getElementById('kundenname').value.trim()}`,
+                            start: new Date().toISOString(),
+                            ende: document.getElementById('geplantesAbnahmeDatum').value || null,
+                            fahrzeugId: zugewiesenesErsatzfahrzeug,
+                            leihfahrzeugKennzeichen: leihfahrzeugKennzeichen,
+                            entwurfId: currentEntwurfId,
+                            kundenKennzeichen: document.getElementById('kennzeichen')?.value || '',
+                            status: 'aktiv',
+                            werkstattId: werkstattId,
+                            createdAt: new Date().toISOString()
+                        };
+                        await window.db.collection(`kalenderEvents_${werkstattId}`).add(kalenderEvent);
+                        console.log('📅 Kalender-Event für Leihfahrzeug erstellt');
+
+                    } catch (leihfahrzeugError) {
+                        console.error('⚠️ Leihfahrzeug-Sync Fehler (Entwurf wurde trotzdem gespeichert):', leihfahrzeugError);
+                    }
+                }
+
                 // Reset button
                 saveBtn.innerHTML = '<i data-feather="check"></i> Gespeichert!';
                 feather.replace();

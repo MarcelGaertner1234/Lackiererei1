@@ -1337,20 +1337,46 @@
         }
 
         // ============================================
-        // RETURN VEHICLE
+        // RETURN VEHICLE (🚗 PHASE 2: Mit Kalender-Event-Freigabe)
         // ============================================
         async function returnVehicle(vehicleId) {
             if (!confirm('Leihfahrzeug als zurückgegeben markieren?')) return;
 
             try {
                 const collectionName = window.getCollectionName('leihfahrzeuge');
+
+                // 1. Leihfahrzeug-Status zurücksetzen
                 await db.collection(collectionName).doc(vehicleId).update({
                     status: 'verfuegbar',
                     aktuelleZuweisung: null,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
 
-                toast.success('Leihfahrzeug zurückgenommen');
+                // 2. 🚗 PHASE 2: Kalender-Event als beendet markieren
+                try {
+                    const werkstattId = window.werkstattId;
+                    const kalenderEventsRef = db.collection(`kalenderEvents_${werkstattId}`);
+                    const activeEvents = await kalenderEventsRef
+                        .where('fahrzeugId', '==', vehicleId)
+                        .where('status', '==', 'aktiv')
+                        .get();
+
+                    if (!activeEvents.empty) {
+                        const batch = db.batch();
+                        activeEvents.forEach(doc => {
+                            batch.update(doc.ref, {
+                                status: 'beendet',
+                                beendetAm: new Date().toISOString()
+                            });
+                        });
+                        await batch.commit();
+                        console.log(`📅 ${activeEvents.size} Kalender-Event(s) als beendet markiert`);
+                    }
+                } catch (kalenderError) {
+                    console.warn('⚠️ Kalender-Event konnte nicht aktualisiert werden:', kalenderError);
+                }
+
+                toast.success('✅ Leihfahrzeug zurückgenommen & freigegeben');
 
             } catch (error) {
                 console.error('Return error:', error);
