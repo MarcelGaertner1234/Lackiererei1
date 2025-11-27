@@ -309,29 +309,6 @@
             opacity: 1;
         }
 
-        /* Signature Canvas */
-        .signature-section {
-            margin: var(--space-6) 0;
-        }
-
-        #signatureCanvas {
-            width: 100%;
-            max-width: 800px;
-            height: 400px;  /* FIX: Match canvas height attribute to prevent scaling issues */
-            display: block;  /* 🆕 BUGFIX 2025-11-18: Ensure block layout (not inline) for proper dimensions */
-            border: 2px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            background: rgba(255, 255, 255, 0.03);  /* FIX: Theme-aware background (Nov 21, 2025) - adapts to light/dark mode */
-            cursor: crosshair;
-            touch-action: none;
-        }
-
-        .signature-buttons {
-            display: flex;
-            gap: var(--space-3);
-            margin-top: var(--space-3);
-        }
-
         /* 🌓 THEME TOGGLE */
         .theme-toggle {
             position: fixed;
@@ -1411,9 +1388,6 @@
         // Photo Upload Data
         let photos = [];
 
-        // Signature Canvas Data
-        let signatureData = null;
-
         // ============================================
         // HELPER: BASE64 TO BLOB (FIX: Nov 17, 2025 - BUG #2)
         // ============================================
@@ -2032,10 +2006,9 @@
                     // Clear tables
                     clearAllTables();
 
-                    // 🖼️ Clear photos and signature (Phase 3)
+                    // 🖼️ Clear photos (Phase 3)
                     photos = [];
                     updatePhotoGrid();
-                    clearSignature();
 
                     return;
                 }
@@ -2320,36 +2293,6 @@
                     photos = currentEntwurf.photoUrls;
                     updatePhotoGrid();
                     console.log(`📸 ${photos.length} Fotos geladen (photoUrls)`);
-                }
-
-                // 🖊️ Load Unterschrift (Phase 3) - ✅ FIX: Nov 17, 2025 - BUG #1
-                signatureData = null;
-                if (currentEntwurf.signature) {
-                    signatureData = currentEntwurf.signature;
-
-                    // Redraw signature on canvas
-                    const canvas = document.getElementById('signatureCanvas');
-                    const ctx = canvas.getContext('2d');
-                    const img = new Image();
-                    img.onload = function() {
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);  // Clear canvas (including any placeholder)
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);  // Draw signature
-                        hasDrawn = true;
-                        console.log('✅ Unterschrift angezeigt auf Canvas (hasDrawn=true)');
-                    };
-                    img.onerror = function() {
-                        console.error('❌ Fehler beim Laden der Unterschrift-Bilddaten');
-                        drawPlaceholder();  // Fallback: Show placeholder if image load fails
-                    };
-                    img.src = signatureData;
-                    console.log('✍️ Unterschrift wird geladen...');
-                } else {
-                    // ✅ FIX: No signature exists → show placeholder explicitly
-                    console.log('ℹ️ Keine Unterschrift vorhanden → Placeholder anzeigen');
-                    const canvas = document.getElementById('signatureCanvas');
-                    if (canvas && typeof drawPlaceholder === 'function') {
-                        drawPlaceholder();
-                    }
                 }
 
                 // ✅ BUG #4 FIX: Check for PDF generation errors
@@ -2968,9 +2911,8 @@
                     // 🔧 Service-Details (Pattern 34 - FIX: Nov 17, 2025)
                     serviceDetails: gatherServiceDetails(),
 
-                    // 🖼️ Fotos & Unterschrift (Phase 3)
-                    photoUrls: photos,  // ✅ FIX Bug #7 (2025-11-23): Standardized field name (was: fotos)
-                    signature: signatureData
+                    // 🖼️ Fotos (Phase 3)
+                    photoUrls: photos  // ✅ FIX Bug #7 (2025-11-23): Standardized field name (was: fotos)
                 });
 
                 // Update Firestore
@@ -3532,9 +3474,8 @@
                     // 🔧 Service-Details (Pattern 34 - FIX: Nov 17, 2025)
                     serviceDetails: gatherServiceDetails(),
 
-                    // 🖼️ Fotos & Unterschrift (Phase 3)
+                    // 🖼️ Fotos (Phase 3)
                     photoUrls: photos,  // ✅ FIX: Korrekter Feldname (preserviert Original)
-                    signature: signatureData,
 
                     // Metadata
                     angebotErstelltAm: new Date().toISOString(),
@@ -4119,145 +4060,6 @@
             photos.splice(index, 1);
             updatePhotoGrid();
             showToast('Foto entfernt', 'info', 2000);
-        }
-
-        // ============================================
-        // UNTERSCHRIFT-CANVAS
-        // ============================================
-
-        const canvas = document.getElementById('signatureCanvas');
-        const ctx = canvas ? canvas.getContext('2d') : null;
-        let isDrawing = false;
-        let hasDrawn = false;
-
-        function getCanvasStrokeColor() {
-            const textColor = getComputedStyle(document.documentElement)
-                .getPropertyValue('--color-text-primary').trim();
-            return textColor || '#000000';
-        }
-
-        function initCanvas() {
-            if (!canvas || !ctx) return;
-
-            // 🆕 BUGFIX 2025-11-18: Set explicit dimensions BEFORE scaling
-            // Prevents coordinate mismatch when getBoundingClientRect returns wrong values
-            canvas.width = 800;
-            canvas.height = 400;
-
-            // Scale for high-DPI displays and mobile responsiveness
-            const rect = canvas.getBoundingClientRect();
-            if (rect.width < 800) {
-                // Mobile: Scale proportionally
-                canvas.width = Math.round(rect.width * 2);
-                canvas.height = Math.round((rect.width * 2) * (400/800));
-            } else {
-                // Desktop: Use full resolution
-                canvas.width = rect.width * 2;
-                canvas.height = rect.height * 2;
-            }
-            ctx.scale(2, 2);
-
-            ctx.strokeStyle = getCanvasStrokeColor();
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            if (!hasDrawn) {
-                drawPlaceholder();
-            }
-        }
-
-        function drawPlaceholder() {
-            if (!ctx) return;
-
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.fillStyle = getCanvasStrokeColor();
-            ctx.globalAlpha = 0.3;
-            ctx.font = '20px Inter';
-            ctx.textAlign = 'center';
-            ctx.fillText('✍️ Hier unterschreiben', canvas.width / 2, canvas.height / 2);
-            ctx.restore();
-        }
-
-        function getCoordinates(e) {
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-
-            if (e.touches && e.touches.length > 0) {
-                return {
-                    x: (e.touches[0].clientX - rect.left) * scaleX / 2,
-                    y: (e.touches[0].clientY - rect.top) * scaleY / 2
-                };
-            } else {
-                return {
-                    x: (e.clientX - rect.left) * scaleX / 2,
-                    y: (e.clientY - rect.top) * scaleY / 2
-                };
-            }
-        }
-
-        function startDrawing(e) {
-            e.preventDefault();
-            isDrawing = true;
-
-            if (!hasDrawn) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                hasDrawn = true;
-            }
-
-            const coords = getCoordinates(e);
-            ctx.beginPath();
-            ctx.moveTo(coords.x, coords.y);
-        }
-
-        function draw(e) {
-            if (!isDrawing) return;
-            e.preventDefault();
-
-            const coords = getCoordinates(e);
-            ctx.lineTo(coords.x, coords.y);
-            ctx.stroke();
-        }
-
-        function stopDrawing(e) {
-            if (!isDrawing) return;
-            e.preventDefault();
-            isDrawing = false;
-            ctx.closePath();
-
-            // Save signature as Base64
-            if (hasDrawn) {
-                signatureData = canvas.toDataURL('image/png');
-            }
-        }
-
-        function clearSignature() {
-            if (!ctx) return;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            hasDrawn = false;
-            signatureData = null;
-            drawPlaceholder();
-            showToast('Unterschrift gelöscht', 'info', 2000);
-        }
-
-        // Canvas Event Listeners
-        if (canvas) {
-            canvas.addEventListener('mousedown', startDrawing);
-            canvas.addEventListener('mousemove', draw);
-            canvas.addEventListener('mouseup', stopDrawing);
-            canvas.addEventListener('mouseleave', stopDrawing);
-
-            canvas.addEventListener('touchstart', startDrawing);
-            canvas.addEventListener('touchmove', draw);
-            canvas.addEventListener('touchend', stopDrawing);
-            canvas.addEventListener('touchcancel', stopDrawing);
-
-            // Initialize canvas on load
-            window.addEventListener('resize', initCanvas);
-            setTimeout(initCanvas, 100); // Delay to ensure canvas is rendered
         }
 
         // ============================================
