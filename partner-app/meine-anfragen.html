@@ -7632,6 +7632,8 @@
                 // PATTERN: Identical to anfrage-detail.html Multi-Service implementation
                 // PREVENTS: Lazy Migration async race conditions in kanban.html
                 // 📦 ANLIEFERUNG (2025-11-27): Initial Status basiert auf Abholservice ODER Ersatzfahrzeug
+                // 🆕 FIX DATA-PIPELINE #1 (2025-11-27): Initialize ALL services (primary + additional)
+                // WHY: Previous code only initialized PRIMARY service → additional services had NO status in Kanban!
                 serviceStatuses: {
                     [serviceTyp]: {
                         status: (anfrage.abholserviceGewuenscht || anfrage.ersatzfahrzeugGewuenscht) ? 'anlieferung' : 'terminiert',
@@ -7645,7 +7647,23 @@
                                     : 'Partner-Anfrage akzeptiert und terminiert'
                             }
                         ]
-                    }
+                    },
+                    // 🆕 FIX DATA-PIPELINE #1: Additional Services MUST also be initialized!
+                    // Without this, Multi-Service vehicles show "undefined" status in Kanban for additional services
+                    ...additionalServices.reduce((acc, service) => {
+                        acc[service.serviceTyp] = {
+                            status: 'terminiert',  // Additional services always start as "terminiert"
+                            timestamp: firestoreTimestamp,
+                            statusHistory: [
+                                {
+                                    status: 'terminiert',
+                                    timestamp: firestoreTimestamp,
+                                    note: `Multi-Service: ${service.serviceTyp} initialisiert (Zusatz-Service)`
+                                }
+                            ]
+                        };
+                        return acc;
+                    }, {})
                 },
 
                 // Service-spezifische Daten (NEU! - z.B. Reifen: {typ, art, dimension, anzahl})
