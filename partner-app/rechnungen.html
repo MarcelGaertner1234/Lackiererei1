@@ -1689,6 +1689,8 @@
                 // ========================================
                 // ZAHLUNGSINFORMATIONEN (IBAN-BOX)
                 // ========================================
+                const footerY = 270;  // Footer-Position (für QR-Code Platz-Check + Footer)
+
                 if (bank.iban) {
                     doc.setFont(undefined, 'bold');
                     doc.setFontSize(11);
@@ -1732,40 +1734,47 @@
                     y += 10;
 
                     // 🆕 2025-11-28: EPC QR-Code (GiroCode) für direkte Überweisung
-                    const qrCodeData = generateEPCQRCode(
-                        bank.iban,
-                        bank.bic,
-                        profil.firmenname || profil.name || 'Auto-Lackierzentrum Mosbach',
-                        rechnung.nettoBetrag,
-                        rechnung.rechnungsnummer
-                    );
+                    // 🔧 FIX 2025-11-28: Platz-Check um Abschneiden zu verhindern
+                    const qrSize = 40;    // Kompakter als vorher (45 → 40)
+                    const qrLabelHeight = 12;
+                    const requiredQRSpace = qrSize + qrLabelHeight + 5;
 
-                    if (qrCodeData) {
-                        y += 5;
-                        const qrSize = 45;
-                        const pageWidth = doc.internal.pageSize.getWidth();
-                        const qrX = (pageWidth - qrSize) / 2;
+                    // Nur QR-Code einfügen wenn genug Platz VOR dem Footer
+                    if (y + requiredQRSpace < footerY - 5) {
+                        const qrCodeData = generateEPCQRCode(
+                            bank.iban,
+                            bank.bic,
+                            profil.firmenname || profil.name || 'Auto-Lackierzentrum Mosbach',
+                            rechnung.nettoBetrag,
+                            rechnung.rechnungsnummer
+                        );
 
-                        // QR-Code zentriert einfügen
-                        doc.addImage(qrCodeData, 'PNG', qrX, y, qrSize, qrSize);
-                        y += qrSize + 4;
+                        if (qrCodeData) {
+                            y += 5;
+                            const pageWidth = doc.internal.pageSize.getWidth();
+                            const qrX = (pageWidth - qrSize) / 2;
 
-                        // Label unter dem QR-Code
-                        doc.setFontSize(9);
-                        doc.setTextColor(100, 100, 100);
-                        const qrLabel = 'Mit Banking-App scannen zum Überweisen';
-                        const labelWidth = doc.getTextWidth(qrLabel);
-                        doc.text(qrLabel, (pageWidth - labelWidth) / 2, y);
-                        doc.setTextColor(0, 0, 0);
-                        y += 10;
+                            // QR-Code zentriert einfügen
+                            doc.addImage(qrCodeData, 'PNG', qrX, y, qrSize, qrSize);
+                            y += qrSize + 4;
+
+                            // Label unter dem QR-Code
+                            doc.setFontSize(9);
+                            doc.setTextColor(100, 100, 100);
+                            const qrLabel = 'Mit Banking-App scannen zum Überweisen';
+                            const labelWidth = doc.getTextWidth(qrLabel);
+                            doc.text(qrLabel, (pageWidth - labelWidth) / 2, y);
+                            doc.setTextColor(0, 0, 0);
+                        }
+                    } else {
+                        console.log('⚠️ [PDF] Nicht genug Platz für QR-Code, überspringe');
                     }
                 }
 
                 // ========================================
                 // FOOTER - Rechtliche Angaben
                 // ========================================
-                // Positioniere Footer am unteren Rand
-                const footerY = 270;
+                // Positioniere Footer am unteren Rand (footerY bereits oben definiert)
                 doc.setFontSize(7);
                 doc.setFont(undefined, 'normal');
                 doc.setTextColor(100, 100, 100);
