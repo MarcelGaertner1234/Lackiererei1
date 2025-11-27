@@ -905,6 +905,16 @@
             font-size: 10px;
         }
 
+        /* 🆕 NOTIFICATION SYSTEM: Kanban Column Pulse Animation (2025-11-27) */
+        @keyframes kanbanPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .kanban-column-new-data {
+            animation: kanbanPulse 0.8s ease-in-out 3;
+        }
+
         /* ✅ FIX 18 Phase 3 + FIX 19 Problem 2 + FIX 22: Kanban Headers Light Mode Override (WCAG Kontrast: 8:1 AAA) */
         [data-theme="light"] .kanban-column-header {
             background: rgba(100, 116, 139, 0.18) !important;  /* ✅ FIX 22: Improved contrast (was 0.08, now 8:1 AAA) */
@@ -4237,6 +4247,29 @@
             }
         }
 
+        // 🆕 NOTIFICATION SYSTEM: Kanban Column Pulse Tracking (2025-11-27)
+        const previousKanbanCounts = {
+            neu: 0,
+            warte_kva: 0,
+            kva_gesendet: 0,
+            beauftragt: 0,
+            abholung: 0,
+            in_arbeit: 0,
+            fertig: 0,
+            storniert: 0
+        };
+        let isPartnerInitialLoad = true;
+
+        function triggerKanbanPulse(status) {
+            const column = document.getElementById(`column-container-${status}`);
+            if (!column) return;
+            column.classList.remove('kanban-column-new-data');
+            void column.offsetWidth; // Reflow trigger
+            column.classList.add('kanban-column-new-data');
+            setTimeout(() => column.classList.remove('kanban-column-new-data'), 2400); // 3x 0.8s
+            console.log(`✨ Kanban pulse triggered for: ${status}`);
+        }
+
         function updateCounts() {
             // ✅ FILTER: Stornierte Anfragen NICHT zählen
             const aktiveAnfragen = alleAnfragen.filter(anfrage => {
@@ -4533,13 +4566,27 @@
                 }
             });
 
-            // Counts aktualisieren
+            // Counts aktualisieren + Pulse Animation (2025-11-27)
             Object.keys(statusCounts).forEach(status => {
                 const countEl = document.getElementById(`count-status-${status}`);
                 if (countEl) {
                     countEl.textContent = statusCounts[status];
                 }
+
+                // 🆕 NOTIFICATION SYSTEM: Trigger pulse if count changed
+                if (!isPartnerInitialLoad && statusCounts[status] !== previousKanbanCounts[status]) {
+                    triggerKanbanPulse(status);
+                }
+                previousKanbanCounts[status] = statusCounts[status];
             });
+
+            // Nach 2 Sekunden: Initial-Load Phase beenden
+            if (isPartnerInitialLoad) {
+                setTimeout(() => {
+                    isPartnerInitialLoad = false;
+                    console.log('🔔 Partner Kanban real-time updates active - pulses enabled');
+                }, 2000);
+            }
 
             // ❌ Portal Pattern DEAKTIVIERT - Verursachte Buttons-Verschwinden-Bug
             // ✅ Verwende stattdessen CSS-Only Fix (siehe .preis-hover-info CSS)

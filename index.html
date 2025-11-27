@@ -1470,6 +1470,16 @@
             50% { transform: scale(1.05); }
         }
 
+        /* Kachel New Data Pulse Animation (Subtil) */
+        @keyframes kachelPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .kachel-new-data {
+            animation: kachelPulse 0.8s ease-in-out 3;
+        }
+
         /* Icon Hover Glow */
         .hero-card__header i,
         .quick-link i {
@@ -2230,7 +2240,7 @@
         <h2 class="section-title">Hauptfunktionen</h2>
         <div class="hero-cards-grid">
             <!-- GRUPPE 1: Fahrzeug-Management -->
-            <div class="hero-card hero-card--primary">
+            <div class="hero-card hero-card--primary" id="kachel-fahrzeuge">
                 <!-- APPLE UX FEATURE 4: Shine Overlay -->
                 <div class="shine-overlay"></div>
                 <div class="hero-card__header">
@@ -2262,7 +2272,7 @@
             </div>
 
             <!-- GRUPPE 2: Prozess-Überwachung -->
-            <div class="hero-card">
+            <div class="hero-card" id="kachel-prozess">
                 <!-- APPLE UX FEATURE 4: Shine Overlay -->
                 <div class="shine-overlay"></div>
                 <div class="hero-card__header">
@@ -2285,7 +2295,7 @@
             </div>
 
             <!-- GRUPPE 3: Organisation & Partner -->
-            <div class="hero-card">
+            <div class="hero-card" id="kachel-partner">
                 <!-- APPLE UX FEATURE 4: Shine Overlay -->
                 <div class="shine-overlay"></div>
                 <div class="hero-card__header">
@@ -2410,7 +2420,7 @@
             </div>
 
             <!-- GRUPPE 4.7: Rechnungsverwaltung (🆕 2025-11-11) -->
-            <div class="hero-card">
+            <div class="hero-card" id="kachel-rechnungen">
                 <!-- APPLE UX FEATURE 4: Shine Overlay -->
                 <div class="shine-overlay"></div>
                 <div class="hero-card__header">
@@ -2437,7 +2447,7 @@
             </div>
 
             <!-- GRUPPE 4.8: Leihfahrzeuge (🆕 2025-11-26) -->
-            <div class="hero-card">
+            <div class="hero-card" id="kachel-leihfahrzeuge">
                 <!-- APPLE UX FEATURE 4: Shine Overlay -->
                 <div class="shine-overlay"></div>
                 <div class="hero-card__header">
@@ -3238,11 +3248,184 @@
             removeSkeletonLoading();
         }
 
+        // 🆕 NOTIFICATION SYSTEM: Pulse Animation Trigger (2025-11-27)
+        function triggerKachelPulse(kachelId) {
+            const kachel = document.getElementById(kachelId);
+            if (!kachel) return;
+            kachel.classList.remove('kachel-new-data');
+            void kachel.offsetWidth; // Reflow trigger
+            kachel.classList.add('kachel-new-data');
+            setTimeout(() => kachel.classList.remove('kachel-new-data'), 2400); // 3x 0.8s
+            console.log(`✨ Pulse triggered for: ${kachelId}`);
+        }
+
+        // 🆕 NOTIFICATION SYSTEM: Real-time Badge Listeners (2025-11-27)
+        // Track previous counts to detect NEW data
+        const previousCounts = {
+            fahrzeuge: 0,
+            prozess: 0,
+            partner: 0,
+            entwuerfe: 0,
+            rechnungen: 0,
+            leihfahrzeuge: 0
+        };
+        let isInitialLoad = true;
+
+        function setupRealtimeBadgeListeners() {
+            if (typeof window.getCollection !== 'function') {
+                console.warn('⚠️ getCollection not available - skipping real-time listeners');
+                return;
+            }
+
+            console.log('🔔 Setting up real-time badge listeners...');
+
+            // 1. Fahrzeuge - offene Fahrzeuge
+            try {
+                window.getCollection('fahrzeuge')
+                    .where('status', '!=', 'abgeschlossen')
+                    .onSnapshot((snapshot) => {
+                        const count = snapshot.size;
+                        const badge = document.getElementById('badge-fahrzeuge');
+                        if (badge) badge.textContent = `${count} offen`;
+
+                        if (!isInitialLoad && count !== previousCounts.fahrzeuge) {
+                            triggerKachelPulse('kachel-fahrzeuge');
+                        }
+                        previousCounts.fahrzeuge = count;
+                    }, (error) => {
+                        console.warn('⚠️ Fahrzeuge listener error:', error);
+                    });
+            } catch (e) {
+                console.warn('⚠️ Fahrzeuge listener setup failed:', e);
+            }
+
+            // 2. Prozess - in Arbeit (nicht angenommen, nicht abgeschlossen)
+            try {
+                window.getCollection('fahrzeuge')
+                    .where('status', '!=', 'abgeschlossen')
+                    .onSnapshot((snapshot) => {
+                        const inArbeit = snapshot.docs.filter(doc => {
+                            const d = doc.data();
+                            return d.prozessStatus && d.prozessStatus !== 'angenommen';
+                        }).length;
+                        const badge = document.getElementById('badge-prozess');
+                        if (badge) badge.textContent = `${inArbeit} in Arbeit`;
+
+                        if (!isInitialLoad && inArbeit !== previousCounts.prozess) {
+                            triggerKachelPulse('kachel-prozess');
+                        }
+                        previousCounts.prozess = inArbeit;
+                    }, (error) => {
+                        console.warn('⚠️ Prozess listener error:', error);
+                    });
+            } catch (e) {
+                console.warn('⚠️ Prozess listener setup failed:', e);
+            }
+
+            // 3. Partner-Anfragen - offene Anfragen
+            try {
+                window.getCollection('partnerAnfragen')
+                    .where('status', '==', 'pending')
+                    .where('isEntwurf', '==', false)
+                    .onSnapshot((snapshot) => {
+                        const count = snapshot.size;
+                        const badge = document.getElementById('badge-partner');
+                        if (badge) badge.textContent = `${count} Anfragen`;
+
+                        if (!isInitialLoad && count !== previousCounts.partner) {
+                            triggerKachelPulse('kachel-partner');
+                        }
+                        previousCounts.partner = count;
+                    }, (error) => {
+                        console.warn('⚠️ Partner listener error:', error);
+                    });
+            } catch (e) {
+                console.warn('⚠️ Partner listener setup failed:', e);
+            }
+
+            // 4. Entwürfe - offene Entwürfe
+            try {
+                window.getCollection('partnerAnfragen')
+                    .where('isEntwurf', '==', true)
+                    .where('entwurfStatus', '==', 'offen')
+                    .onSnapshot((snapshot) => {
+                        const count = snapshot.size;
+                        const badge = document.getElementById('entwuerfeBadge');
+                        if (badge) {
+                            if (count > 0) {
+                                badge.textContent = count;
+                                badge.style.display = 'inline-block';
+                            } else {
+                                badge.style.display = 'none';
+                            }
+                        }
+
+                        if (!isInitialLoad && count !== previousCounts.entwuerfe) {
+                            triggerKachelPulse('kachel-fahrzeuge'); // Entwürfe sind in der Fahrzeug-Kachel
+                        }
+                        previousCounts.entwuerfe = count;
+                    }, (error) => {
+                        console.warn('⚠️ Entwürfe listener error:', error);
+                    });
+            } catch (e) {
+                console.warn('⚠️ Entwürfe listener setup failed:', e);
+            }
+
+            // 5. Rechnungen - offene Rechnungen
+            try {
+                window.getCollection('rechnungen')
+                    .where('status', '==', 'offen')
+                    .onSnapshot((snapshot) => {
+                        const count = snapshot.size;
+                        const badge = document.getElementById('badge-rechnungen');
+                        if (badge) badge.textContent = `${count} offen`;
+
+                        if (!isInitialLoad && count !== previousCounts.rechnungen) {
+                            triggerKachelPulse('kachel-rechnungen');
+                        }
+                        previousCounts.rechnungen = count;
+                    }, (error) => {
+                        console.warn('⚠️ Rechnungen listener error:', error);
+                    });
+            } catch (e) {
+                console.warn('⚠️ Rechnungen listener setup failed:', e);
+            }
+
+            // 6. Leihfahrzeuge - verfügbare
+            try {
+                window.getCollection('leihfahrzeuge')
+                    .where('status', '==', 'verfuegbar')
+                    .onSnapshot((snapshot) => {
+                        const count = snapshot.size;
+                        const badge = document.getElementById('badge-leihfahrzeuge');
+                        if (badge) badge.textContent = `${count} verfügbar`;
+
+                        if (!isInitialLoad && count !== previousCounts.leihfahrzeuge) {
+                            triggerKachelPulse('kachel-leihfahrzeuge');
+                        }
+                        previousCounts.leihfahrzeuge = count;
+                    }, (error) => {
+                        console.warn('⚠️ Leihfahrzeuge listener error:', error);
+                    });
+            } catch (e) {
+                console.warn('⚠️ Leihfahrzeuge listener setup failed:', e);
+            }
+
+            // Nach 2 Sekunden: Initial-Load Phase beenden
+            setTimeout(() => {
+                isInitialLoad = false;
+                console.log('🔔 Real-time listeners active - pulses enabled');
+            }, 2000);
+        }
+
         // Wait for ALL resources (including GSAP CDN) to load
         window.addEventListener('load', async function() {
 
             // Update Status Badges (will also remove skeleton loading)
             await updateStatusBadges();
+
+            // 🆕 Setup real-time listeners for badge updates + pulse animations
+            setupRealtimeBadgeListeners();
 
             // Check if GSAP loaded successfully
             if (typeof gsap === 'undefined') {

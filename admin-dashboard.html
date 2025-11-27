@@ -311,6 +311,16 @@
             border-color: var(--color-primary);
         }
 
+        /* 🆕 NOTIFICATION SYSTEM: Stat Card Pulse Animation (2025-11-27) */
+        @keyframes statPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+
+        .stat-card-new-data {
+            animation: statPulse 0.8s ease-in-out 3;
+        }
+
         /* 🆕 Notification Badge */
         .notification-badge {
             position: absolute;
@@ -802,21 +812,21 @@
             const statsGrid = document.getElementById('statsGrid');
 
             statsGrid.innerHTML = `
-                <div class="stat-card">
+                <div class="stat-card" id="stat-fahrzeuge">
                     <div class="stat-icon">🚗</div>
                     <div class="stat-value" id="offeneFahrzeuge">${stats.offeneFahrzeuge}</div>
                     <div class="stat-label">Offene Fahrzeuge</div>
                     <div class="stat-change">Gesamt in Bearbeitung</div>
                 </div>
 
-                <div class="stat-card">
+                <div class="stat-card" id="stat-bearbeitung">
                     <div class="stat-icon">⚙️</div>
                     <div class="stat-value" id="inBearbeitung">${stats.inBearbeitung}</div>
                     <div class="stat-label">Aktiv in Arbeit</div>
                     <div class="stat-change">Lackierung, Mechanik, etc.</div>
                 </div>
 
-                <div class="stat-card">
+                <div class="stat-card" id="stat-abgeschlossen">
                     <div class="stat-icon">✅</div>
                     <div class="stat-value" id="abgeschlossenHeute">${stats.abgeschlossenHeute}</div>
                     <div class="stat-label">Abgeschlossen heute</div>
@@ -833,14 +843,14 @@
                     ${stats.pendingUsers > 0 ? `<span class="notification-badge">${stats.pendingUsers}</span>` : ''}
                 </div>
 
-                <div class="stat-card">
+                <div class="stat-card" id="stat-mitarbeiter">
                     <div class="stat-icon">👥</div>
                     <div class="stat-value" id="aktiveMitarbeiter">${stats.aktiveMitarbeiter}</div>
                     <div class="stat-label">Aktive Mitarbeiter</div>
                     <div class="stat-change">Verfügbare Mitarbeiter</div>
                 </div>
 
-                <div class="stat-card">
+                <div class="stat-card" id="stat-material">
                     <div class="stat-icon">📦</div>
                     <div class="stat-value" id="offeneMaterialBestellungen">${stats.offeneMaterialBestellungen}</div>
                     <div class="stat-label">Offene Bestellungen</div>
@@ -1312,6 +1322,28 @@
         // REALTIME UPDATES - Phase 4 (Optional)
         // ============================================
 
+        // 🆕 NOTIFICATION SYSTEM: Pulse Animation Trigger (2025-11-27)
+        function triggerStatPulse(statCardId) {
+            const statCard = document.getElementById(statCardId);
+            if (!statCard) return;
+            statCard.classList.remove('stat-card-new-data');
+            void statCard.offsetWidth; // Reflow trigger
+            statCard.classList.add('stat-card-new-data');
+            setTimeout(() => statCard.classList.remove('stat-card-new-data'), 2400); // 3x 0.8s
+            console.log(`✨ Pulse triggered for: ${statCardId}`);
+        }
+
+        // Track previous values for pulse detection
+        const previousAdminStats = {
+            fahrzeuge: 0,
+            bearbeitung: 0,
+            abgeschlossen: 0,
+            pending: 0,
+            mitarbeiter: 0,
+            material: 0
+        };
+        let isAdminInitialLoad = true;
+
         let realtimeListeners = [];
 
         function setupRealtimeListeners() {
@@ -1326,6 +1358,22 @@
                 console.log('🔄 Realtime Update: Fahrzeuge');
 
                 const fahrzeuge = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+
+                // Calculate stats for pulse detection
+                const offeneCount = fahrzeuge.filter(f => f.status !== 'abgeschlossen' && f.status !== 'abgeholt').length;
+                const bearbeitungCount = fahrzeuge.filter(f => ['in_arbeit', 'lackierung', 'mechanik', 'reifen', 'pflege', 'tuev'].includes(f.status)).length;
+
+                // Trigger pulses if counts increased (after initial load)
+                if (!isAdminInitialLoad) {
+                    if (offeneCount !== previousAdminStats.fahrzeuge) {
+                        triggerStatPulse('stat-fahrzeuge');
+                    }
+                    if (bearbeitungCount !== previousAdminStats.bearbeitung) {
+                        triggerStatPulse('stat-bearbeitung');
+                    }
+                }
+                previousAdminStats.fahrzeuge = offeneCount;
+                previousAdminStats.bearbeitung = bearbeitungCount;
 
                 // Update stats (nur Fahrzeug-bezogene)
                 updateFahrzeugStats(fahrzeuge);
@@ -1349,6 +1397,13 @@
                         console.log('🔄 Realtime Update: Pending Partners');
 
                         const pendingCount = snapshot.size;
+
+                        // Trigger pulse if count changed
+                        if (!isAdminInitialLoad && pendingCount !== previousAdminStats.pending) {
+                            triggerStatPulse('pendingRegistrationsStat');
+                        }
+                        previousAdminStats.pending = pendingCount;
+
                         document.getElementById('pendingUsers').textContent = pendingCount;
 
                         // Show notification badge
@@ -1373,6 +1428,12 @@
                     doc.id !== '_init' && doc.data().status === 'active'
                 ).length;
 
+                // Trigger pulse if count changed
+                if (!isAdminInitialLoad && aktiveMitarbeiter !== previousAdminStats.mitarbeiter) {
+                    triggerStatPulse('stat-mitarbeiter');
+                }
+                previousAdminStats.mitarbeiter = aktiveMitarbeiter;
+
                 document.getElementById('aktiveMitarbeiter').textContent = aktiveMitarbeiter;
             });
             realtimeListeners.push(mitarbeiterUnsubscribe);
@@ -1385,9 +1446,21 @@
                     doc.id !== '_init' && ['pending', 'ordered'].includes(doc.data().status)
                 ).length;
 
+                // Trigger pulse if count changed
+                if (!isAdminInitialLoad && offeneMaterialBestellungen !== previousAdminStats.material) {
+                    triggerStatPulse('stat-material');
+                }
+                previousAdminStats.material = offeneMaterialBestellungen;
+
                 document.getElementById('offeneMaterialBestellungen').textContent = offeneMaterialBestellungen;
             });
             realtimeListeners.push(materialUnsubscribe);
+
+            // Nach 2 Sekunden: Initial-Load Phase beenden
+            setTimeout(() => {
+                isAdminInitialLoad = false;
+                console.log('🔔 Admin Dashboard real-time listeners active - pulses enabled');
+            }, 2000);
 
             console.log('✅ Realtime-Listeners eingerichtet');
         }

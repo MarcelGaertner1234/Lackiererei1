@@ -3279,8 +3279,34 @@
 
             // Extract step IDs from workflow
             const stepIds = workflow.steps.map(s => s.id);
-            const currentIndex = stepIds.indexOf(currentStatus);
-            const newIndex = stepIds.indexOf(newStatus);
+
+            // 🔧 FIX (2025-11-27): Map legacy/alternative statuses to workflow equivalents
+            // Problem: Some services use 'angenommen' (lackier, werbebeklebung, folierung, steinschutz)
+            //          while others use 'neu' (reifen, mechanik, pflege, etc.)
+            // Solution: Map 'neu' ↔ 'angenommen' when the other is not in the workflow
+            let mappedCurrentStatus = currentStatus;
+            let mappedNewStatus = newStatus;
+
+            // Map 'neu' → 'angenommen' if 'neu' not in workflow but 'angenommen' is
+            if (currentStatus === 'neu' && !stepIds.includes('neu') && stepIds.includes('angenommen')) {
+                mappedCurrentStatus = 'angenommen';
+                console.log(`   🔄 Status-Mapping: "neu" → "angenommen" (Service: ${serviceTyp})`);
+            }
+            // Map 'angenommen' → 'neu' if 'angenommen' not in workflow but 'neu' is
+            if (currentStatus === 'angenommen' && !stepIds.includes('angenommen') && stepIds.includes('neu')) {
+                mappedCurrentStatus = 'neu';
+                console.log(`   🔄 Status-Mapping: "angenommen" → "neu" (Service: ${serviceTyp})`);
+            }
+            // Same for target status
+            if (newStatus === 'neu' && !stepIds.includes('neu') && stepIds.includes('angenommen')) {
+                mappedNewStatus = 'angenommen';
+            }
+            if (newStatus === 'angenommen' && !stepIds.includes('angenommen') && stepIds.includes('neu')) {
+                mappedNewStatus = 'neu';
+            }
+
+            const currentIndex = stepIds.indexOf(mappedCurrentStatus);
+            const newIndex = stepIds.indexOf(mappedNewStatus);
 
             // Validation Check 1: Both statuses must exist in workflow
             if (currentIndex === -1) {
@@ -5784,6 +5810,10 @@
                     const fahrzeugRef = window.getCollection('fahrzeuge').doc(String(fahrzeugId));
 
                     await db.runTransaction(async (transaction) => {
+                        // 🔧 FIX (2025-11-27): ALL READS BEFORE ALL WRITES
+                        // Firestore transactions require reads to complete before writes
+
+                        // READ 1: Fahrzeug-Dokument
                         const doc = await transaction.get(fahrzeugRef);
 
                         if (!doc.exists) {
@@ -5791,6 +5821,16 @@
                         }
 
                         const fahrzeugData = doc.data();
+
+                        // READ 2: Partner-Anfrage (falls vorhanden) - MUSS VOR allen WRITES passieren!
+                        const partnerAnfrageId = fahrzeugData.partnerAnfrageId || fahrzeugData.anfrageId || fahrzeugData.fahrzeugAnfrageId;
+                        let anfrageDoc = null;
+                        let anfrageRef = null;
+                        if (partnerAnfrageId) {
+                            anfrageRef = window.getCollection('partnerAnfragen').doc(partnerAnfrageId);
+                            anfrageDoc = await transaction.get(anfrageRef);
+                            console.log(`   📖 Partner-Anfrage READ (vor Writes): ${partnerAnfrageId}, exists: ${anfrageDoc.exists}`);
+                        }
 
                         // 🔒 RACE CONDITION FIX: Invoice Check INNERHALB Transaction (atomic)
                         if (newStatus === 'fertig' && !fahrzeugData.rechnung) {
@@ -5841,17 +5881,50 @@
                         console.log('   🔒 Transaction: Status + Timestamps atomic update');
 
                         // 🆕 MULTI-SERVICE (2025-11-13): Sync zu partnerAnfragen wenn Anfrage verknüpft ist
-                        // ✅ Nutzt neue syncServiceStatusToPartner() Funktion für Multi-Service Support
-                        const partnerAnfrageId = fahrzeugData.partnerAnfrageId || fahrzeugData.anfrageId || fahrzeugData.fahrzeugAnfrageId;
-                        if (partnerAnfrageId) {
-                            await syncServiceStatusToPartner(
-                                transaction,
-                                partnerAnfrageId,
-                                currentService,  // Nur aktuellen Service syncen!
-                                newStatus,
-                                fahrzeugData,
-                                timestamp
-                            );
+                        // 🔧 FIX (2025-11-27): Use pre-fetched anfrageDoc (READ already done above!)
+                        // OLD: syncServiceStatusToPartner() did transaction.get() AFTER transaction.update() → ERROR
+                        // NEW: All reads done before any writes (Firestore requirement)
+                        if (partnerAnfrageId && anfrageDoc && anfrageDoc.exists) {
+                            try {
+                                // Mapping: Werkstatt-Status → Partner-Kanban-Status
+                                const mappedStatus = mapProzessToStatus(newStatus);
+
+                                // Get user info for Partner-Sync audit
+                                const userInfo = getCurrentUserForAudit();
+
+                                const partnerUpdateData = {
+                                    // ✅ Backwards Compatibility: Nur Primary Service updatet status/prozessStatus
+                                    ...(currentService === fahrzeugData.serviceTyp && {
+                                        status: mappedStatus,
+                                        prozessStatus: newStatus
+                                    }),
+
+                                    // 🆕 MULTI-SERVICE: Update spezifischen Service-Status
+                                    [`serviceStatuses.${currentService}.status`]: mappedStatus,
+                                    [`serviceStatuses.${currentService}.prozessStatus`]: newStatus,
+                                    [`serviceStatuses.${currentService}.timestamp`]: timestamp,
+                                    [`serviceStatuses.${currentService}.statusHistory`]: firebase.firestore.FieldValue.arrayUnion({
+                                        status: mappedStatus,
+                                        prozessStatus: newStatus,
+                                        timestamp: timestamp,
+                                        user: userInfo.user,
+                                        userId: userInfo.userId,
+                                        rolle: userInfo.rolle,
+                                        syncedBy: 'werkstatt',
+                                        note: `Von Werkstatt synchronisiert (${newStatus} → ${mappedStatus})`
+                                    }),
+
+                                    lastModified: timestamp
+                                };
+
+                                transaction.update(anfrageRef, partnerUpdateData);
+                                console.log(`   🔄 Partner-Sync: ${currentService} → ${newStatus} (anfrage: ${partnerAnfrageId})`);
+                            } catch (syncError) {
+                                console.error('❌ Partner-Sync fehlgeschlagen:', syncError);
+                                // NICHT werfen - Fahrzeug-Update soll erfolgreich sein
+                            }
+                        } else if (partnerAnfrageId) {
+                            console.warn(`⚠️ Partner-Anfrage nicht gefunden - Sync übersprungen: ${partnerAnfrageId}`);
                         }
                     });
 
