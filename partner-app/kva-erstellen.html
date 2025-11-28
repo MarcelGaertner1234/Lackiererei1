@@ -731,6 +731,40 @@
                     </div>
                 </div>
 
+                <!-- ✅ PHASE 2d: ERSATZFAHRZEUG TABELLE -->
+                <div id="ersatzfahrzeugSection" style="margin-top: 20px; padding: 15px; background: rgba(255, 152, 0, 0.1); border-radius: 8px; border-left: 4px solid #ff9800;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="color: #ff9800; font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <span>🚗 Ersatzfahrzeug (<span id="ersatzfahrzeugCount">0</span>)</span>
+                        </h4>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table id="ersatzfahrzeugTable" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead>
+                                <tr style="background: rgba(0,0,0,0.1); text-align: left;">
+                                    <th style="padding: 8px; border-bottom: 2px solid #ff9800;">Kennzeichen</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #ff9800;">Fahrzeug</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #ff9800; text-align: right; width: 100px;">Tagesmiete</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #ff9800; text-align: center; width: 60px;">Tage</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid #ff9800; text-align: right; width: 100px;">Gesamtpreis</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ersatzfahrzeugTableBody">
+                                <tr><td colspan="5" style="text-align: center; color: #999; padding: 10px;">Kein Ersatzfahrzeug ausgewählt</td></tr>
+                            </tbody>
+                            <tfoot style="background: rgba(255, 152, 0, 0.1); font-weight: 600;">
+                                <tr>
+                                    <td colspan="4" style="padding: 8px; text-align: right;">SUMME:</td>
+                                    <td style="padding: 8px; text-align: right; color: #ff9800;" id="ersatzfahrzeugSumme">0.00 €</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <p style="margin: 5px 0 0 0; font-size: 11px; color: #666; font-style: italic;">
+                        * Wird automatisch aus der Ersatzfahrzeug-Auswahl oben befüllt
+                    </p>
+                </div>
+
                 <!-- Termine statt vage Lieferzeit -->
                 <div class="section-title" id="terminSectionTitle">📅 Service-Termin</div>
                 <div class="form-row">
@@ -2124,6 +2158,9 @@
         let arbeitslohnData = [];
         let lackierungData = [];
 
+        // ✅ PHASE 2d: Ersatzfahrzeug-Tabellen-Management
+        let ersatzfahrzeugData = null; // Single object (nicht Array) - nur ein Ersatzfahrzeug möglich
+
         /**
          * Fügt eine neue Ersatzteil-Zeile hinzu
          * @param {Object} data - Ersatzteil-Daten (optional)
@@ -2479,8 +2516,9 @@
             const ersatzteileSum = ersatzteileData.reduce((acc, t) => acc + (t.gesamtpreis || 0), 0);
             const arbeitslohnSum = arbeitslohnData.reduce((acc, t) => acc + (t.gesamtpreis || 0), 0);
             const lackierungSum = lackierungData.reduce((acc, t) => acc + (t.gesamtpreis || 0), 0);
+            const ersatzfahrzeugSum = ersatzfahrzeugData?.gesamtpreis || 0; // NEU: Ersatzfahrzeug
 
-            const gesamt = ersatzteileSum + arbeitslohnSum + lackierungSum;
+            const gesamt = ersatzteileSum + arbeitslohnSum + lackierungSum + ersatzfahrzeugSum;
 
             // Update Total-Display (falls vorhanden)
             const totalElement = document.getElementById('gesamtkosten');
@@ -2488,8 +2526,107 @@
                 totalElement.textContent = gesamt.toFixed(2) + ' €';
             }
 
-            console.log(`💰 [GESAMTKOSTEN] Ersatzteile: ${ersatzteileSum.toFixed(2)}€ + Arbeitslohn: ${arbeitslohnSum.toFixed(2)}€ + Lackierung: ${lackierungSum.toFixed(2)}€ = ${gesamt.toFixed(2)}€`);
+            console.log(`💰 [GESAMTKOSTEN] Ersatzteile: ${ersatzteileSum.toFixed(2)}€ + Arbeitslohn: ${arbeitslohnSum.toFixed(2)}€ + Lackierung: ${lackierungSum.toFixed(2)}€ + Ersatzfahrzeug: ${ersatzfahrzeugSum.toFixed(2)}€ = ${gesamt.toFixed(2)}€`);
         }
+
+        // ============================================
+        // ✅ PHASE 2e: ERSATZFAHRZEUG TABELLEN-FUNKTIONEN
+        // ============================================
+
+        /**
+         * Setzt die Ersatzfahrzeug-Zeile in der Tabelle
+         */
+        function setErsatzfahrzeugRow(data) {
+            ersatzfahrzeugData = data;
+            reRenderErsatzfahrzeugTable();
+        }
+
+        /**
+         * Rendert die Ersatzfahrzeug-Tabelle
+         */
+        function reRenderErsatzfahrzeugTable() {
+            const tbody = document.getElementById('ersatzfahrzeugTableBody');
+            const countSpan = document.getElementById('ersatzfahrzeugCount');
+
+            if (!tbody || !countSpan) return;
+
+            if (!ersatzfahrzeugData || !ersatzfahrzeugData.kennzeichen) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999; padding: 10px;">Kein Ersatzfahrzeug ausgewählt</td></tr>';
+                countSpan.textContent = '0';
+                updateErsatzfahrzeugSumme();
+                return;
+            }
+
+            tbody.innerHTML = `
+                <tr style="border-bottom: 1px solid rgba(0,0,0,0.1);">
+                    <td style="padding: 8px; font-weight: 500;">${ersatzfahrzeugData.kennzeichen}</td>
+                    <td style="padding: 8px;">${ersatzfahrzeugData.fahrzeug || '-'}</td>
+                    <td style="padding: 8px; text-align: right;">${ersatzfahrzeugData.tagesmiete.toFixed(2)} €</td>
+                    <td style="padding: 8px; text-align: center;">${ersatzfahrzeugData.tage}</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold; color: #ff9800;">${ersatzfahrzeugData.gesamtpreis.toFixed(2)} €</td>
+                </tr>
+            `;
+            countSpan.textContent = '1';
+            updateErsatzfahrzeugSumme();
+        }
+
+        /**
+         * Berechnet und aktualisiert die Ersatzfahrzeug-Summe
+         */
+        function updateErsatzfahrzeugSumme() {
+            const summe = ersatzfahrzeugData?.gesamtpreis || 0;
+            const summeElement = document.getElementById('ersatzfahrzeugSumme');
+            if (summeElement) {
+                summeElement.textContent = summe.toFixed(2) + ' €';
+            }
+            updateGesamtkosten();
+        }
+
+        // ============================================
+        // ✅ PHASE 2f: PARTNER-ERSATZTEIL SYNC
+        // ============================================
+
+        /**
+         * Synchronisiert Partner-Ersatzteil Werte aus Varianten-Box in Ersatzteile-Tabelle
+         */
+        function syncPartnerErsatzteilToTable() {
+            const partnerErsatzteileInput = document.querySelector('input[id$="_partner_ersatzteile"]');
+            if (!partnerErsatzteileInput) return;
+
+            const value = parseFloat(partnerErsatzteileInput.value) || 0;
+
+            // Suche bestehenden "Partner-Ersatzteil" Eintrag
+            const existingIndex = ersatzteileData.findIndex(e => e.isPartnerSync === true);
+
+            if (value > 0) {
+                const partnerRow = {
+                    etn: 'PARTNER',
+                    benennung: 'Partner-Ersatzteil (aus Variante)',
+                    anzahl: 1,
+                    einzelpreis: value,
+                    gesamtpreis: value,
+                    isPartnerSync: true // Marker für Auto-Sync
+                };
+
+                if (existingIndex >= 0) {
+                    ersatzteileData[existingIndex] = partnerRow;
+                } else {
+                    ersatzteileData.push(partnerRow);
+                }
+            } else if (existingIndex >= 0) {
+                // Wert ist 0 → Zeile entfernen
+                ersatzteileData.splice(existingIndex, 1);
+            }
+
+            reRenderErsatzteileTable();
+        }
+
+        // Event-Listener für Partner-Ersatzteil Sync
+        document.addEventListener('input', function(e) {
+            if (e.target.id && e.target.id.includes('_partner_ersatzteile')) {
+                syncPartnerErsatzteilToTable();
+            }
+        });
 
         /**
          * ✅ PHASE 3: Befüllt die Ersatzteile-Tabelle aus PDF-Daten
@@ -3345,6 +3482,19 @@
             // Varianten-Summen neu berechnen
             if (typeof berechneVarianten === 'function') {
                 berechneVarianten();
+            }
+
+            // ✅ NEU: Ersatzfahrzeug-Tabelle aktualisieren
+            if (dropdown && dropdown.value && tage > 0) {
+                setErsatzfahrzeugRow({
+                    kennzeichen: selectedOption?.dataset?.kennzeichen || selectedOption?.textContent?.split(' - ')[0] || '-',
+                    fahrzeug: `${selectedOption?.dataset?.marke || ''} ${selectedOption?.dataset?.modell || ''}`.trim() || selectedOption?.textContent?.split(' - ')[1] || '-',
+                    tagesmiete: tagesmiete,
+                    tage: tage,
+                    gesamtpreis: gesamt
+                });
+            } else {
+                setErsatzfahrzeugRow(null); // Keine Auswahl
             }
 
             console.log('🚙 [KVA] Ersatzfahrzeug-Kosten berechnet:', { tagesmiete, tage, gesamt });
@@ -4502,7 +4652,8 @@
                         kalkulationData: {
                             ersatzteile: ersatzteileData,
                             arbeitslohn: arbeitslohnData,
-                            lackierung: lackierungData
+                            lackierung: lackierungData,
+                            ersatzfahrzeug: ersatzfahrzeugData // NEU
                         }
                     };
 
@@ -4693,7 +4844,8 @@
                     kalkulationData: {
                         ersatzteile: ersatzteileData,
                         arbeitslohn: arbeitslohnData,
-                        lackierung: lackierungData
+                        lackierung: lackierungData,
+                        ersatzfahrzeug: ersatzfahrzeugData // NEU
                     }
                 };
 
@@ -5537,6 +5689,63 @@
                 doc.setTextColor(233, 30, 99);
                 doc.text('Summe Lackierung:', margin + 105, y);
                 doc.text(lackierungSum.toFixed(2) + ' EUR', margin + 155, y);
+                y += 12;
+            }
+
+            // ============================================
+            // 4d. ERSATZFAHRZEUG TABELLE (aus kalkulationData)
+            // ============================================
+            const ersatzfahrzeug = kvaData.kalkulationData?.ersatzfahrzeug;
+
+            if (ersatzfahrzeug && ersatzfahrzeug.kennzeichen) {
+                checkPageBreak(50);
+
+                doc.setTextColor(255, 152, 0); // Orange
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text('Ersatzfahrzeug', margin, y);
+                doc.setDrawColor(255, 152, 0);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+
+                // Tabellen-Header
+                doc.setFillColor(255, 152, 0);
+                doc.rect(margin, y, contentWidth, 8, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'bold');
+                doc.text('Kennzeichen', margin + 3, y + 5.5);
+                doc.text('Fahrzeug', margin + 45, y + 5.5);
+                doc.text('Tagesmiete', margin + 100, y + 5.5);
+                doc.text('Tage', margin + 135, y + 5.5);
+                doc.text('Gesamt', margin + 155, y + 5.5);
+                y += 10;
+
+                // Datenzeile
+                doc.setTextColor(0, 0, 0);
+                doc.setFont(undefined, 'normal');
+                doc.setFontSize(8);
+
+                const bg = 250;
+                doc.setFillColor(bg, bg, bg);
+                doc.rect(margin, y - 4, contentWidth, 7, 'F');
+
+                doc.text(String(ersatzfahrzeug.kennzeichen || '-'), margin + 3, y);
+                doc.text(String(ersatzfahrzeug.fahrzeug || '-').substring(0, 30), margin + 45, y);
+                doc.text((parseFloat(ersatzfahrzeug.tagesmiete || 0)).toFixed(2) + ' EUR', margin + 100, y);
+                doc.text(String(ersatzfahrzeug.tage || 0), margin + 138, y);
+                doc.setFont(undefined, 'bold');
+                doc.text((parseFloat(ersatzfahrzeug.gesamtpreis || 0)).toFixed(2) + ' EUR', margin + 155, y);
+                doc.setFont(undefined, 'normal');
+                y += 7;
+
+                // Summe
+                y += 2;
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(10);
+                doc.setTextColor(255, 152, 0);
+                doc.text('Summe Ersatzfahrzeug:', margin + 95, y);
+                doc.text((parseFloat(ersatzfahrzeug.gesamtpreis || 0)).toFixed(2) + ' EUR', margin + 155, y);
                 y += 12;
             }
 
