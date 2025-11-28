@@ -4276,6 +4276,9 @@
                     // Grund: anfrageId ≠ fahrzeugId → Transfer erfolgt in meine-anfragen.html nach Fahrzeug-Erstellung
                     // See Fix #49 (Error #5) - Ersatzteile werden mit korrekter fahrzeugId in meine-anfragen.html gespeichert
 
+                    // 🆕 2025-11-28: Varianten-PDFs automatisch generieren und hochladen
+                    await generateAndUploadVariantPDFs(kvaData, anfrage, anfrageId);
+
                     // Success anzeigen
                     document.getElementById('contentArea').style.display = 'none';
                     document.getElementById('successMessage').classList.add('show');
@@ -4418,6 +4421,9 @@
                 // ❌ REMOVED FIX #48 Call (Error #5): Ersatzteile-Transfer HIER ist FALSCH!
                 // Grund: anfrageId ≠ fahrzeugId → Transfer erfolgt in meine-anfragen.html nach Fahrzeug-Erstellung
                 // See Fix #49 (Error #5) - Ersatzteile werden mit korrekter fahrzeugId in meine-anfragen.html gespeichert
+
+                // 🆕 2025-11-28: Varianten-PDFs automatisch generieren und hochladen
+                await generateAndUploadVariantPDFs(kvaData, anfrage, anfrageId);
 
                 // Success anzeigen
                 document.getElementById('contentArea').style.display = 'none';
@@ -4832,6 +4838,360 @@
             } catch (error) {
                 console.error('❌ Fehler beim Erstellen des KVA-PDF:', error);
                 alert('❌ Fehler beim Erstellen des PDF: ' + error.message);
+            }
+        }
+
+        // ============================================
+        // 🆕 PDF GENERATION - Varianten-PDFs (Zubehör + Original)
+        // ============================================
+
+        /**
+         * Generiert ein PDF für eine spezifische Variante (zubehoer oder original)
+         * @param {string} variantType - 'zubehoer' oder 'original'
+         * @param {object} kvaData - KVA-Daten inkl. varianten
+         * @param {object} anfrageData - Anfrage-Daten (Kunde, Fahrzeug)
+         * @param {object} settings - Werkstatt-Settings
+         * @returns {Promise<Blob>} PDF als Blob
+         */
+        async function generateVariantPDF(variantType, kvaData, anfrageData, settings) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            // Varianten-Label
+            const isZubehoer = variantType === 'zubehoer';
+            const variantLabel = isZubehoer
+                ? 'Angebot - Zubehörteile (Budget)'
+                : 'Angebot - Originalteile (Premium)';
+            const variantColor = isZubehoer ? [255, 152, 0] : [0, 51, 102]; // Orange / Blau
+
+            // Header mit Logo & Werkstatt Name
+            doc.setFillColor(variantColor[0], variantColor[1], variantColor[2]);
+            doc.rect(0, 0, 210, 45, 'F');
+
+            // Logo (left side if available)
+            if (settings.profil.logoUrl) {
+                try {
+                    doc.addImage(settings.profil.logoUrl, 'PNG', 15, 10, 35, 20);
+                } catch (error) {
+                    console.warn('⚠️ Logo konnte nicht geladen werden:', error);
+                }
+            }
+
+            // Title & Werkstatt Name
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(20);
+            doc.text(variantLabel, 105, 18, { align: 'center' });
+            doc.setFontSize(11);
+            doc.text(settings.profil.name, 105, 28, { align: 'center' });
+
+            // Contact info in header
+            doc.setFontSize(8);
+            doc.text(settings.profil.adresse, 105, 35, { align: 'center' });
+            doc.text(`Tel: ${settings.profil.telefon} | Email: ${settings.profil.email}`, 105, 40, { align: 'center' });
+
+            // Main Content
+            doc.setTextColor(0, 0, 0);
+            let y = 55;
+
+            // Date
+            doc.setFontSize(10);
+            doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, 15, y);
+            y += 12;
+
+            // Fahrzeug-Daten
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Fahrzeugdaten', 15, y);
+            y += 8;
+
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Kennzeichen: ${anfrageData.kennzeichen || 'k.A.'}`, 15, y);
+            y += 6;
+            doc.text(`Marke: ${anfrageData.marke || 'k.A.'}`, 15, y);
+            y += 6;
+            doc.text(`Modell: ${anfrageData.modell || 'k.A.'}`, 15, y);
+            y += 12;
+
+            // Kunden-Daten
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Kundendaten', 15, y);
+            y += 8;
+
+            const kundenName = anfrageData.kundenname
+                            || anfrageData.angebotDetails?.kundenname
+                            || anfrageData.kundendaten?.name
+                            || 'k.A.';
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Name: ${kundenName}`, 15, y);
+            y += 6;
+            if (anfrageData.kundenEmail) {
+                doc.text(`Email: ${anfrageData.kundenEmail}`, 15, y);
+                y += 6;
+            }
+            if (anfrageData.telefon) {
+                doc.text(`Telefon: ${anfrageData.telefon}`, 15, y);
+                y += 6;
+            }
+            y += 10;
+
+            // Kostenaufschlüsselung für diese Variante
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('Kostenaufschlüsselung', 15, y);
+            y += 10;
+
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
+
+            // Kosten aus der Variante sammeln
+            const variantData = kvaData.varianten?.[variantType] || {};
+            const costs = collectVariantCostsFromData(variantData);
+
+            if (costs.ersatzteile > 0) {
+                doc.text('Ersatzteile:', 20, y);
+                doc.text(costs.ersatzteile.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 7;
+            }
+            if (costs.arbeitslohn > 0) {
+                doc.text('Arbeitslohn:', 20, y);
+                doc.text(costs.arbeitslohn.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 7;
+            }
+            if (costs.lackierung > 0) {
+                doc.text('Lackierung:', 20, y);
+                doc.text(costs.lackierung.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 7;
+            }
+            if (costs.materialien > 0) {
+                doc.text('Materialien:', 20, y);
+                doc.text(costs.materialien.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 7;
+            }
+            if (costs.montage > 0) {
+                doc.text('Montage:', 20, y);
+                doc.text(costs.montage.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 7;
+            }
+            if (costs.sonstige > 0) {
+                doc.text('Sonstige Leistungen:', 20, y);
+                doc.text(costs.sonstige.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 7;
+            }
+
+            // Ersatzfahrzeug-Kosten (aus KVA)
+            if (kvaData.ersatzfahrzeugKosten && kvaData.ersatzfahrzeugKosten.gesamt > 0) {
+                const efk = kvaData.ersatzfahrzeugKosten;
+                const efLabel = `Ersatzfahrzeug (${efk.tage} Tage × ${efk.tagesmiete.toFixed(2)} €):`;
+                doc.text(efLabel, 20, y);
+                doc.text(efk.gesamt.toFixed(2) + ' €', 185, y, { align: 'right' });
+                y += 7;
+            }
+
+            // Separator line
+            y += 3;
+            doc.setDrawColor(200, 200, 200);
+            doc.line(20, y, 195, y);
+            y += 10;
+
+            // Gesamtpreis berechnen
+            const ersatzfahrzeugKosten = kvaData.ersatzfahrzeugKosten?.gesamt || 0;
+            const gesamtpreis = (variantData.gesamt || 0) + ersatzfahrzeugKosten;
+
+            // Gesamtpreis Box
+            doc.setFillColor(variantColor[0], variantColor[1], variantColor[2]);
+            doc.rect(15, y, 180, 20, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text('Gesamtpreis:', 20, y + 12);
+            doc.text(`${gesamtpreis.toFixed(2)} €`, 185, y + 12, { align: 'right' });
+            doc.setTextColor(0, 0, 0);
+            y += 30;
+
+            // Lieferzeit (wenn vorhanden)
+            if (kvaData.lieferzeit) {
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                doc.text('Lieferzeit:', 15, y);
+                y += 7;
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                doc.text(kvaData.lieferzeit, 15, y);
+                y += 10;
+            }
+
+            // Notizen (if exists)
+            if (kvaData.notizen) {
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                doc.text('Notizen:', 15, y);
+                y += 7;
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                const lines = doc.splitTextToSize(kvaData.notizen, 180);
+                lines.forEach(line => {
+                    doc.text(line, 15, y);
+                    y += 5;
+                });
+            }
+
+            // Footer
+            const pageHeight = doc.internal.pageSize.height;
+            doc.setFontSize(8);
+            doc.setTextColor(120, 120, 120);
+            const footerLine1 = `${settings.profil.name} | ${settings.profil.adresse}`;
+            const footerLine2 = `Tel: ${settings.profil.telefon} | Email: ${settings.profil.email}`;
+            doc.text(footerLine1, 105, pageHeight - 15, { align: 'center' });
+            doc.text(footerLine2, 105, pageHeight - 10, { align: 'center' });
+
+            // Varianten-Badge unten links
+            doc.setFontSize(8);
+            doc.setTextColor(variantColor[0], variantColor[1], variantColor[2]);
+            doc.text(isZubehoer ? '🔧 BUDGET-VARIANTE' : '⭐ PREMIUM-VARIANTE', 15, pageHeight - 10);
+
+            console.log(`✅ ${variantType}-PDF generiert, Gesamtpreis: ${gesamtpreis.toFixed(2)} €`);
+
+            return doc.output('blob');
+        }
+
+        /**
+         * Sammelt Kosten aus den Varianten-Daten (nach Kategorie)
+         * @param {object} variantData - Daten einer Variante aus kvaData.varianten[variantType]
+         * @returns {object} Kosten nach Kategorie
+         */
+        function collectVariantCostsFromData(variantData) {
+            const costs = {
+                ersatzteile: 0,
+                arbeitslohn: 0,
+                lackierung: 0,
+                materialien: 0,
+                montage: 0,
+                sonstige: 0
+            };
+
+            Object.entries(variantData).forEach(([key, value]) => {
+                if (key === 'gesamt' || typeof value !== 'number') return;
+
+                // Pattern: "serviceTyp_kategorie" z.B. "reifen_ersatzteile", "lackier_arbeitslohn"
+                if (key.includes('_ersatzteile') || key.includes('ersatzteile')) {
+                    costs.ersatzteile += value;
+                } else if (key.includes('_arbeitslohn') || key.includes('arbeitslohn')) {
+                    costs.arbeitslohn += value;
+                } else if (key.includes('_lackierung') || key.includes('lackierung')) {
+                    costs.lackierung += value;
+                } else if (key.includes('_materialien') || key.includes('materialien')) {
+                    costs.materialien += value;
+                } else if (key.includes('_montage') || key.includes('montage')) {
+                    costs.montage += value;
+                } else {
+                    costs.sonstige += value;
+                }
+            });
+
+            return costs;
+        }
+
+        /**
+         * Lädt PDF zu Firebase Storage hoch
+         * @param {Blob} blob - PDF als Blob
+         * @param {string} fileName - Dateiname für das PDF
+         * @returns {Promise<string>} Download-URL
+         */
+        async function uploadPdfToStorage(blob, fileName) {
+            const storage = firebase.storage();
+            const storageRef = storage.ref();
+            const pdfRef = storageRef.child(`angebote/${window.werkstattId}/${fileName}`);
+
+            console.log(`📤 Lade PDF hoch: ${fileName}...`);
+
+            await pdfRef.put(blob, { contentType: 'application/pdf' });
+            const downloadUrl = await pdfRef.getDownloadURL();
+
+            console.log(`✅ PDF hochgeladen: ${downloadUrl}`);
+            return downloadUrl;
+        }
+
+        /**
+         * Generiert und speichert beide Varianten-PDFs nach KVA-Erstellung
+         * @param {object} kvaData - KVA-Daten
+         * @param {object} anfrageData - Anfrage-Daten
+         * @param {string} anfrageId - Anfrage-ID für Firestore Update
+         */
+        async function generateAndUploadVariantPDFs(kvaData, anfrageData, anfrageId) {
+            try {
+                console.log('📄 Starte Generierung der Varianten-PDFs...');
+
+                // Settings laden
+                let settings = null;
+                try {
+                    settings = await window.settingsManager.loadSettings();
+                } catch (error) {
+                    console.warn('⚠️ Settings konnten nicht geladen werden, verwende Fallback');
+                    settings = {
+                        profil: {
+                            name: 'Auto-Lackierzentrum Mosbach',
+                            logoUrl: null,
+                            adresse: 'Industriestraße 1, 74821 Mosbach',
+                            telefon: '+49 6261 123456',
+                            email: 'info@auto-lackierzentrum.de'
+                        }
+                    };
+                }
+
+                const kennzeichen = (anfrageData.kennzeichen || 'k.A.').replace(/\s/g, '_');
+                const datum = new Date().toISOString().split('T')[0];
+                const updateData = {};
+
+                // Prüfe welche Varianten vorhanden sind
+                const hasZubehoer = kvaData.varianten?.zubehoer && Object.keys(kvaData.varianten.zubehoer).length > 0;
+                const hasOriginal = kvaData.varianten?.original && Object.keys(kvaData.varianten.original).length > 0;
+
+                // Zubehör-PDF generieren (wenn vorhanden)
+                if (hasZubehoer) {
+                    const zubehoerBlob = await generateVariantPDF('zubehoer', kvaData, anfrageData, settings);
+                    const zubehoerFileName = `Angebot_Zubehoer_${kennzeichen}_${datum}.pdf`;
+                    const zubehoerUrl = await uploadPdfToStorage(zubehoerBlob, zubehoerFileName);
+
+                    const ersatzfahrzeugKosten = kvaData.ersatzfahrzeugKosten?.gesamt || 0;
+                    updateData.angebotPdfZubehoer = {
+                        url: zubehoerUrl,
+                        fileName: zubehoerFileName,
+                        generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        preis: (kvaData.varianten.zubehoer.gesamt || 0) + ersatzfahrzeugKosten
+                    };
+                    console.log(`✅ Zubehör-PDF gespeichert: ${zubehoerFileName}`);
+                }
+
+                // Original-PDF generieren (wenn vorhanden)
+                if (hasOriginal) {
+                    const originalBlob = await generateVariantPDF('original', kvaData, anfrageData, settings);
+                    const originalFileName = `Angebot_Original_${kennzeichen}_${datum}.pdf`;
+                    const originalUrl = await uploadPdfToStorage(originalBlob, originalFileName);
+
+                    const ersatzfahrzeugKosten = kvaData.ersatzfahrzeugKosten?.gesamt || 0;
+                    updateData.angebotPdfOriginal = {
+                        url: originalUrl,
+                        fileName: originalFileName,
+                        generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        preis: (kvaData.varianten.original.gesamt || 0) + ersatzfahrzeugKosten
+                    };
+                    console.log(`✅ Original-PDF gespeichert: ${originalFileName}`);
+                }
+
+                // PDF-URLs in Firestore speichern (wenn mindestens ein PDF erstellt wurde)
+                if (Object.keys(updateData).length > 0) {
+                    await window.getCollection('partnerAnfragen').doc(anfrageId).update(updateData);
+                    console.log('✅ PDF-URLs in Firestore gespeichert:', Object.keys(updateData));
+                } else {
+                    console.log('⚠️ Keine Varianten-PDFs generiert (keine Varianten vorhanden)');
+                }
+
+            } catch (error) {
+                console.error('❌ Fehler beim Generieren der Varianten-PDFs:', error);
+                // Nicht werfen - PDF-Fehler sollte KVA nicht blockieren
             }
         }
     </script>

@@ -2126,13 +2126,77 @@
                 `;
             }
 
-            // 📄 PDF Angebot Display (2025-11-22): Show PDF Angebot if available
+            // 📄 PDF Angebot Display (2025-11-28): Show both variant PDFs if available
             // Only display when status is 'kva_gesendet' or later (beauftragt, in_arbeit, fertig)
             const pdfStatuses = ['kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
-            if (anfrage.angebotPdfUrl && pdfStatuses.includes(anfrage.status)) {
+            const hasVariantPdfs = anfrage.angebotPdfZubehoer || anfrage.angebotPdfOriginal;
+            const hasLegacyPdf = anfrage.angebotPdfUrl;
+
+            if (pdfStatuses.includes(anfrage.status) && (hasVariantPdfs || hasLegacyPdf)) {
                 html += `
                     <div class="detail-section pdf-viewer-section">
-                        <h2>📄 Ihr Angebot (PDF)</h2>
+                        <h2>📄 Ihre Angebote</h2>
+                `;
+
+                // 🆕 NEU 2025-11-28: Zwei separate Varianten-PDFs
+                if (hasVariantPdfs) {
+                    html += `
+                        <p style="color: var(--color-text-secondary); margin: 10px 0; font-size: 14px;">
+                            Wählen Sie Ihre bevorzugte Variante:
+                        </p>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                    `;
+
+                    // Zubehör-PDF Card
+                    if (anfrage.angebotPdfZubehoer) {
+                        const zubehoer = anfrage.angebotPdfZubehoer;
+                        const zubehoerPreis = typeof zubehoer.preis === 'number'
+                            ? zubehoer.preis.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
+                            : 'k.A.';
+                        html += `
+                            <div class="pdf-variant-card" style="background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); padding: 20px; border-radius: 12px; border: 2px solid #ff9800; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.2);">
+                                <h3 style="color: #e65100; margin-bottom: 12px; font-size: 16px;">🔧 Zubehörteile</h3>
+                                <p style="color: #f57c00; font-size: 12px; margin-bottom: 8px;">Budget-Variante</p>
+                                <div style="font-size: 28px; font-weight: bold; color: #e65100; margin-bottom: 15px;">
+                                    ${zubehoerPreis}
+                                </div>
+                                <a href="${zubehoer.url}" download="${zubehoer.fileName || 'Angebot_Zubehoer.pdf'}"
+                                   class="btn-pdf" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 16px; background: #ff9800; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s;">
+                                    <span>📥</span>
+                                    <span>PDF herunterladen</span>
+                                </a>
+                            </div>
+                        `;
+                    }
+
+                    // Original-PDF Card
+                    if (anfrage.angebotPdfOriginal) {
+                        const original = anfrage.angebotPdfOriginal;
+                        const originalPreis = typeof original.preis === 'number'
+                            ? original.preis.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
+                            : 'k.A.';
+                        html += `
+                            <div class="pdf-variant-card" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 20px; border-radius: 12px; border: 2px solid #003366; box-shadow: 0 4px 12px rgba(0, 51, 102, 0.2);">
+                                <h3 style="color: #003366; margin-bottom: 12px; font-size: 16px;">⭐ Originalteile</h3>
+                                <p style="color: #1565c0; font-size: 12px; margin-bottom: 8px;">Premium-Variante</p>
+                                <div style="font-size: 28px; font-weight: bold; color: #003366; margin-bottom: 15px;">
+                                    ${originalPreis}
+                                </div>
+                                <a href="${original.url}" download="${original.fileName || 'Angebot_Original.pdf'}"
+                                   class="btn-pdf" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 16px; background: #003366; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s;">
+                                    <span>📥</span>
+                                    <span>PDF herunterladen</span>
+                                </a>
+                            </div>
+                        `;
+                    }
+
+                    html += `</div>`;
+                }
+
+                // Legacy: Single PDF (Backwards Compatibility)
+                else if (hasLegacyPdf) {
+                    html += `
                         <p style="color: var(--color-text-secondary); margin-top: 10px; font-size: 14px;">
                             ${anfrage.angebotPdfFileName || 'Angebot.pdf'}
                             ${anfrage.angebotPdfGeneratedAt ? `
@@ -2151,8 +2215,10 @@
                                 <span>PDF herunterladen</span>
                             </a>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
+
+                html += `</div>`;
             }
 
             // 🆕 MULTI-SERVICE (2025-11-13): Service-Status-Timeline (nur für Multi-Service)
