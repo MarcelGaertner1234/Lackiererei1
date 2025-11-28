@@ -1254,7 +1254,28 @@
             }
 
             try {
-                await window.getCollection('fahrzeuge').doc(currentFahrzeugId).update({
+                const fahrzeugRef = window.getCollection('fahrzeuge').doc(currentFahrzeugId);
+
+                // 🔧 FIX Pipeline-Check (2025-11-28): Optimistic Locking
+                // Prüfe ob Status noch "offen" ist, bevor wir updaten
+                // Verhindert: Admin markiert "bezahlt" während Kollege storniert hat
+                const currentDoc = await fahrzeugRef.get();
+                const currentStatus = currentDoc.data()?.rechnung?.zahlungsstatus;
+
+                if (currentStatus !== 'offen') {
+                    const statusLabels = {
+                        'bezahlt': 'bereits bezahlt',
+                        'storniert': 'storniert',
+                        'ueberfaellig': 'überfällig'
+                    };
+                    const statusLabel = statusLabels[currentStatus] || currentStatus;
+                    toast.error(`❌ Rechnung kann nicht als bezahlt markiert werden!\n\nAktueller Status: ${statusLabel}`);
+                    closeBezahltModal();
+                    await loadRechnungen();  // Liste aktualisieren
+                    return;
+                }
+
+                await fahrzeugRef.update({
                     'rechnung.zahlungsstatus': 'bezahlt',
                     'rechnung.bezahltAm': firebase.firestore.Timestamp.fromDate(new Date(datum)),
                     'rechnung.bezahltVon': firebase.auth().currentUser?.displayName || firebase.auth().currentUser?.email || 'Admin',
