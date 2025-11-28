@@ -1024,30 +1024,40 @@
                      + parseFloat(kosten.materialien || 0);
             }
 
-            // ⚠️ SOURCE 4: pdfImport.editedData (PARTIAL - PDF import)
-            // 🆕 FIX (2025-11-29): Erweiterte Datenquellen-Kette (Partner speichert in kva.pdfImport)
-            const pdfData = fahrzeug.pdfImport?.editedData || fahrzeug.kva?.pdfImport?.editedData;
-            if (pdfData) {
-                let kosten = 0;
-                const data = pdfData;
+            // ⚠️ SOURCE 4: pdfImport.editedData + kalkulationData (ERWEITERT)
+            // 🆕 FIX (2025-11-29): Erweiterte Datenquellen-Kette für ALLE Kategorien
+            const pdfData = fahrzeug.pdfImport?.editedData || {};
+            const kvaEditedData = fahrzeug.kva?.pdfImport?.editedData || {};
+            const kvaKalkulation = fahrzeug.kva?.kalkulationData || {};
+            const fahrzeugKalkulation = fahrzeug.kalkulationData || {};
 
-                if (data.ersatzteile) {
-                    kosten += data.ersatzteile.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+            const ersatzteile = pdfData.ersatzteile || kvaEditedData.ersatzteile || kvaKalkulation.ersatzteile || fahrzeugKalkulation.ersatzteile || [];
+            const arbeitslohn = pdfData.arbeitslohn || kvaKalkulation.arbeitslohn || fahrzeugKalkulation.arbeitslohn || [];
+            const lackierung = pdfData.lackierung || kvaKalkulation.lackierung || fahrzeugKalkulation.lackierung || [];
+            const materialien = pdfData.materialien || kvaKalkulation.materialien || fahrzeugKalkulation.materialien || [];
+
+            const hasData = ersatzteile.length > 0 || arbeitslohn.length > 0 || lackierung.length > 0 || materialien.length > 0;
+
+            if (hasData) {
+                let kosten = 0;
+
+                if (ersatzteile.length > 0) {
+                    kosten += ersatzteile.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
                 }
-                if (data.arbeitslohn) {
-                    kosten += data.arbeitslohn.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                if (arbeitslohn.length > 0) {
+                    kosten += arbeitslohn.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
                 }
-                if (data.lackierung) {
-                    kosten += data.lackierung.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                if (lackierung.length > 0) {
+                    kosten += lackierung.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
                 }
-                if (data.materialien) {
-                    kosten += data.materialien.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                if (materialien.length > 0) {
+                    kosten += materialien.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
                 }
 
                 // Add nachbestellungen (material orders)
                 if (fahrzeug.nachbestellungen && Array.isArray(fahrzeug.nachbestellungen)) {
                     kosten += fahrzeug.nachbestellungen.reduce((sum, bestellung) => {
-                        return sum + (bestellung.gesamtpreis || 0);
+                        return sum + (parseFloat(bestellung.gesamtpreis) || 0);
                     }, 0);
                 }
 

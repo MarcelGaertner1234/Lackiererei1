@@ -992,31 +992,47 @@
             let totalErsatzfahrzeug = 0; // 🆕 NEU 2025-11-27
 
             filtered.forEach(f => {
-                // 🆕 FIX (2025-11-29): Erweiterte Datenquellen-Kette
-                // Partner-KVA speichert in: f.kva.pdfImport.editedData
-                // Annahme.html speichert in: f.pdfImport.editedData
-                // Entwurf speichert in: f.pdfImport.editedData
-                const data = f.pdfImport?.editedData
-                          || f.kva?.pdfImport?.editedData
-                          || {};
+                // 🆕 FIX (2025-11-29): Erweiterte Datenquellen-Kette für JEDE Kategorie
+                // Problem: Verschiedene Pipelines speichern an verschiedenen Orten:
+                // - Partner-KVA: f.kva.kalkulationData (primär) + f.kva.pdfImport.editedData (nur ersatzteile)
+                // - Annahme.html: f.pdfImport.editedData
+                // - Entwurf: f.pdfImport.editedData
+                // - Fahrzeug direkt: f.kalkulationData
 
-                // Ersatzteile
-                if (data.ersatzteile) {
-                    data.ersatzteile.forEach(item => {
-                        const key = `${item.teilenummer || 'Unbekannt'}_${item.bezeichnung || 'Unbekannt'}`;
+                // Primäre Datenquelle (für Werkstatt-Flows)
+                const pdfData = f.pdfImport?.editedData || {};
+
+                // Sekundäre Datenquellen (für Partner-KVA Flows)
+                const kvaEditedData = f.kva?.pdfImport?.editedData || {};
+                const kvaKalkulation = f.kva?.kalkulationData || {};
+                const fahrzeugKalkulation = f.kalkulationData || {};
+
+                // Ersatzteile - Erweiterte Fallback-Kette
+                const ersatzteile = pdfData.ersatzteile
+                    || kvaEditedData.ersatzteile
+                    || kvaKalkulation.ersatzteile
+                    || fahrzeugKalkulation.ersatzteile
+                    || [];
+                if (ersatzteile.length > 0) {
+                    ersatzteile.forEach(item => {
+                        const key = `${item.teilenummer || item.etn || 'Unbekannt'}_${item.bezeichnung || item.benennung || 'Unbekannt'}`;
                         if (!aggregated.ersatzteile[key]) {
                             aggregated.ersatzteile[key] = { ...item, count: 0, total: 0 };
                         }
-                        aggregated.ersatzteile[key].count += parseInt(item.anzahl || 1);
+                        aggregated.ersatzteile[key].count += parseInt(item.anzahl || item.menge || 1);
                         aggregated.ersatzteile[key].total += parseFloat(item.gesamtpreis || 0);
                         totalErsatzteile += parseFloat(item.gesamtpreis || 0);
                     });
                 }
 
-                // Arbeitslohn
-                if (data.arbeitslohn) {
-                    data.arbeitslohn.forEach(item => {
-                        const key = item.arbeitstyp || 'Unbekannt';
+                // Arbeitslohn - Erweiterte Fallback-Kette
+                const arbeitslohn = pdfData.arbeitslohn
+                    || kvaKalkulation.arbeitslohn
+                    || fahrzeugKalkulation.arbeitslohn
+                    || [];
+                if (arbeitslohn.length > 0) {
+                    arbeitslohn.forEach(item => {
+                        const key = item.arbeitstyp || item.beschreibung || 'Unbekannt';
                         if (!aggregated.arbeitslohn[key]) {
                             aggregated.arbeitslohn[key] = { arbeitstyp: key, count: 0, stunden: 0, total: 0 };
                         }
@@ -1028,10 +1044,14 @@
                     });
                 }
 
-                // Lackierung
-                if (data.lackierung) {
-                    data.lackierung.forEach(item => {
-                        const key = item.teil || 'Unbekannt';
+                // Lackierung - Erweiterte Fallback-Kette
+                const lackierung = pdfData.lackierung
+                    || kvaKalkulation.lackierung
+                    || fahrzeugKalkulation.lackierung
+                    || [];
+                if (lackierung.length > 0) {
+                    lackierung.forEach(item => {
+                        const key = item.teil || item.beschreibung || 'Unbekannt';
                         if (!aggregated.lackierung[key]) {
                             aggregated.lackierung[key] = { teil: key, count: 0, total: 0 };
                         }
@@ -1042,10 +1062,14 @@
                 }
 
                 // Materialien (ERWEITERT 2025-11-12: Geplante + Nachbestellte)
-                // 1. Geplante Materialien (aus PDF-Import)
-                if (data.materialien) {
-                    data.materialien.forEach(item => {
-                        const key = item.materialTyp || 'Unbekannt';
+                // 1. Geplante Materialien - Erweiterte Fallback-Kette
+                const materialien = pdfData.materialien
+                    || kvaKalkulation.materialien
+                    || fahrzeugKalkulation.materialien
+                    || [];
+                if (materialien.length > 0) {
+                    materialien.forEach(item => {
+                        const key = item.materialTyp || item.beschreibung || 'Unbekannt';
                         if (!aggregated.materialien[key]) {
                             aggregated.materialien[key] = { materialTyp: key, count: 0, menge: 0, total: 0, einheit: item.einheit };
                         }
@@ -1071,10 +1095,11 @@
                     });
                 }
 
-                // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten (aus kalkulationData)
+                // 🆕 NEU 2025-11-27: Ersatzfahrzeug-Kosten - Erweiterte Fallback-Kette
                 // 🔧 GAP-4 (2025-11-27): Legacy-Feldnamen Mapping für ältere Dokumente
-                const ersatzfahrzeugData = f.kalkulationData?.ersatzfahrzeug
-                    || data.ersatzfahrzeug
+                const ersatzfahrzeugData = fahrzeugKalkulation.ersatzfahrzeug
+                    || kvaKalkulation.ersatzfahrzeug
+                    || pdfData.ersatzfahrzeug
                     || f.kva?.ersatzfahrzeugKosten          // Legacy: KVA-Format
                     || f.zugewiesenesErsatzfahrzeug         // Legacy: Altes Feld
                     || null;
