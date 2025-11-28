@@ -4846,10 +4846,12 @@
         // ============================================
 
         /**
-         * Generiert ein PDF für eine spezifische Variante (zubehoer oder original)
+         * Generiert ein professionelles PDF für eine Variante (Zubehör oder Original)
+         * Design basierend auf Referenz-PDF "Kalkulation & Angebot"
+         * Features: Schadenfotos-Galerie, Ersatzteile-Tabelle, MwSt.-Berechnung
          * @param {string} variantType - 'zubehoer' oder 'original'
-         * @param {object} kvaData - KVA-Daten inkl. varianten
-         * @param {object} anfrageData - Anfrage-Daten (Kunde, Fahrzeug)
+         * @param {object} kvaData - KVA-Daten inkl. varianten, pdfImport
+         * @param {object} anfrageData - Anfrage-Daten (Kunde, Fahrzeug, Fotos)
          * @param {object} settings - Werkstatt-Settings
          * @returns {Promise<Blob>} PDF als Blob
          */
@@ -4857,202 +4859,405 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            // Varianten-Label
+            // Varianten-Farben
             const isZubehoer = variantType === 'zubehoer';
+            const headerColor = isZubehoer ? [255, 152, 0] : [0, 51, 102]; // Orange / Blau
             const variantLabel = isZubehoer
                 ? 'Angebot - Zubehörteile (Budget)'
                 : 'Angebot - Originalteile (Premium)';
-            const variantColor = isZubehoer ? [255, 152, 0] : [0, 51, 102]; // Orange / Blau
 
-            // Header mit Logo & Werkstatt Name
-            doc.setFillColor(variantColor[0], variantColor[1], variantColor[2]);
-            doc.rect(0, 0, 210, 45, 'F');
+            let y = 0;
+            const pageWidth = 210;
+            const pageHeight = doc.internal.pageSize.height;
+            const margin = 15;
+            const contentWidth = pageWidth - (2 * margin);
 
-            // Logo (left side if available)
-            if (settings.profil.logoUrl) {
+            // Helper: Neue Seite wenn nötig
+            function checkPageBreak(requiredSpace = 40) {
+                if (y > pageHeight - requiredSpace) {
+                    doc.addPage();
+                    y = 20;
+                    return true;
+                }
+                return false;
+            }
+
+            // Helper: Footer auf jeder Seite
+            function addFooter() {
+                doc.setFontSize(8);
+                doc.setTextColor(100, 100, 100);
+                doc.text(`Erstellt am: ${new Date().toLocaleString('de-DE')}`, 105, pageHeight - 15, { align: 'center' });
+                doc.text(`${settings.profil?.name || 'Auto-Lackierzentrum'} - Fahrzeugannahme-System`, 105, pageHeight - 10, { align: 'center' });
+                doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+                doc.text(isZubehoer ? 'BUDGET-VARIANTE' : 'PREMIUM-VARIANTE', margin, pageHeight - 10);
+            }
+
+            // ============================================
+            // 1. HEADER (Logo + Titel)
+            // ============================================
+            doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+            doc.rect(0, 0, pageWidth, 40, 'F');
+
+            // Logo laden (wenn vorhanden)
+            if (settings.profil?.logoUrl) {
                 try {
-                    doc.addImage(settings.profil.logoUrl, 'PNG', 15, 10, 35, 20);
-                } catch (error) {
-                    console.warn('⚠️ Logo konnte nicht geladen werden:', error);
+                    doc.addImage(settings.profil.logoUrl, 'PNG', margin, 8, 30, 24);
+                } catch (e) {
+                    console.warn('Logo konnte nicht geladen werden:', e);
                 }
             }
 
-            // Title & Werkstatt Name
+            // Titel
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(20);
+            doc.setFontSize(18);
             doc.text(variantLabel, 105, 18, { align: 'center' });
-            doc.setFontSize(11);
-            doc.text(settings.profil.name, 105, 28, { align: 'center' });
-
-            // Contact info in header
-            doc.setFontSize(8);
-            doc.text(settings.profil.adresse, 105, 35, { align: 'center' });
-            doc.text(`Tel: ${settings.profil.telefon} | Email: ${settings.profil.email}`, 105, 40, { align: 'center' });
-
-            // Main Content
-            doc.setTextColor(0, 0, 0);
-            let y = 55;
-
-            // Date
             doc.setFontSize(10);
-            doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, 15, y);
-            y += 12;
+            doc.text(settings.profil?.name || 'Auto-Lackierzentrum', 105, 28, { align: 'center' });
+            if (settings.profil?.adresse) {
+                doc.setFontSize(8);
+                doc.text(settings.profil.adresse, 105, 35, { align: 'center' });
+            }
+            y = 50;
 
-            // Fahrzeug-Daten
+            // Datum rechts oben
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
+            doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, pageWidth - margin, y, { align: 'right' });
+            y += 10;
+
+            // ============================================
+            // 2. FAHRZEUGDATEN (Tabellen-Stil)
+            // ============================================
+            doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
             doc.setFontSize(14);
             doc.setFont(undefined, 'bold');
-            doc.text('Fahrzeugdaten', 15, y);
-            y += 8;
+            doc.text('Fahrzeugdaten', margin, y);
+            doc.setDrawColor(headerColor[0], headerColor[1], headerColor[2]);
+            doc.line(margin, y + 2, pageWidth - margin, y + 2);
+            y += 10;
 
-            doc.setFontSize(11);
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
-            doc.text(`Kennzeichen: ${anfrageData.kennzeichen || 'k.A.'}`, 15, y);
-            y += 6;
-            doc.text(`Marke: ${anfrageData.marke || 'k.A.'}`, 15, y);
-            y += 6;
-            doc.text(`Modell: ${anfrageData.modell || 'k.A.'}`, 15, y);
-            y += 12;
 
-            // Kunden-Daten
-            doc.setFontSize(14);
-            doc.setFont(undefined, 'bold');
-            doc.text('Kundendaten', 15, y);
-            y += 8;
-
+            // Kundenname aus verschiedenen Quellen
             const kundenName = anfrageData.kundenname
                             || anfrageData.angebotDetails?.kundenname
                             || anfrageData.kundendaten?.name
                             || 'k.A.';
-            doc.setFontSize(11);
-            doc.setFont(undefined, 'normal');
-            doc.text(`Name: ${kundenName}`, 15, y);
-            y += 6;
-            if (anfrageData.kundenEmail) {
-                doc.text(`Email: ${anfrageData.kundenEmail}`, 15, y);
-                y += 6;
-            }
-            if (anfrageData.telefon) {
-                doc.text(`Telefon: ${anfrageData.telefon}`, 15, y);
-                y += 6;
-            }
-            y += 10;
 
-            // Kostenaufschlüsselung für diese Variante
+            const fahrzeugData = [
+                ['Kennzeichen:', anfrageData.kennzeichen || 'k.A.'],
+                ['Kunde:', kundenName],
+                ['Email:', anfrageData.kundenEmail || 'k.A.'],
+                ['Telefon:', anfrageData.telefon || 'k.A.'],
+                ['Fahrzeug:', `${anfrageData.marke || ''} ${anfrageData.modell || ''}`.trim() || 'k.A.'],
+                ['Baujahr:', anfrageData.baujahr || 'k.A.'],
+                ['KM-Stand:', anfrageData.kmStand ? `${anfrageData.kmStand} km` : 'k.A.']
+            ];
+
+            fahrzeugData.forEach(([label, value]) => {
+                doc.setFont(undefined, 'bold');
+                doc.text(label, margin + 5, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(String(value), 60, y);
+                y += 6;
+            });
+            y += 5;
+
+            // ============================================
+            // 3. SCHADENFOTOS (2-spaltige Galerie)
+            // ============================================
+            const photos = anfrageData.serviceData?.photos
+                        || anfrageData.photoUrls
+                        || anfrageData.photos
+                        || [];
+
+            if (photos.length > 0) {
+                checkPageBreak(100);
+
+                doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text(`Schadenfotos (${photos.length})`, margin, y);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 10;
+
+                // 2 Spalten Layout
+                const photoWidth = 85;
+                const photoHeight = 60;
+                const gap = 10;
+                const maxPhotos = Math.min(photos.length, 6); // Max 6 Fotos
+
+                for (let i = 0; i < maxPhotos; i++) {
+                    const col = i % 2;
+                    const row = Math.floor(i / 2);
+
+                    // Neue Seite nach 4 Fotos (2 Reihen)
+                    if (i > 0 && i % 4 === 0) {
+                        doc.addPage();
+                        y = 20;
+                    }
+
+                    const x = margin + col * (photoWidth + gap);
+                    const photoY = y + row * (photoHeight + 15);
+
+                    try {
+                        // Foto laden und einfügen
+                        doc.addImage(photos[i], 'JPEG', x, photoY, photoWidth, photoHeight);
+                        // Beschriftung unter dem Foto
+                        doc.setFontSize(8);
+                        doc.setTextColor(100, 100, 100);
+                        doc.text(`Foto ${i + 1}`, x + photoWidth / 2, photoY + photoHeight + 5, { align: 'center' });
+                    } catch (e) {
+                        console.warn(`Foto ${i + 1} konnte nicht geladen werden:`, e);
+                        // Platzhalter-Box bei Fehler
+                        doc.setFillColor(240, 240, 240);
+                        doc.rect(x, photoY, photoWidth, photoHeight, 'F');
+                        doc.setTextColor(150, 150, 150);
+                        doc.setFontSize(10);
+                        doc.text(`Foto ${i + 1}`, x + photoWidth / 2, photoY + photoHeight / 2, { align: 'center' });
+                    }
+                }
+
+                // Y-Position nach Fotos anpassen
+                const photoRows = Math.ceil(Math.min(maxPhotos, 4) / 2);
+                y += photoRows * (photoHeight + 15) + 10;
+            }
+
+            // ============================================
+            // 4. ERSATZTEILE TABELLE (aus PDF-Import)
+            // ============================================
+            const ersatzteile = kvaData.pdfImport?.editedData?.ersatzteile || [];
+
+            if (ersatzteile.length > 0) {
+                checkPageBreak(60);
+
+                doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text('Ersatzteile', margin, y);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+
+                // Tabellen-Header
+                doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+                doc.rect(margin, y, contentWidth, 8, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'bold');
+                doc.text('ETN', margin + 3, y + 5.5);
+                doc.text('Benennung', margin + 35, y + 5.5);
+                doc.text('Anz.', margin + 105, y + 5.5);
+                doc.text('Einzelpreis', margin + 120, y + 5.5);
+                doc.text('Gesamt', margin + 155, y + 5.5);
+                y += 10;
+
+                // Tabellen-Zeilen
+                doc.setTextColor(0, 0, 0);
+                doc.setFont(undefined, 'normal');
+                let ersatzteileSum = 0;
+
+                ersatzteile.forEach((teil, i) => {
+                    checkPageBreak(15);
+
+                    // Alternating row background
+                    const bg = i % 2 === 0 ? 250 : 255;
+                    doc.setFillColor(bg, bg, bg);
+                    doc.rect(margin, y - 4, contentWidth, 7, 'F');
+
+                    doc.setFontSize(8);
+                    doc.text(String(teil.etn || teil.artikelNr || ''), margin + 3, y);
+                    doc.text(String(teil.benennung || teil.bezeichnung || '').substring(0, 30), margin + 35, y);
+                    doc.text(String(teil.anzahl || teil.menge || 1), margin + 108, y);
+                    doc.text((parseFloat(teil.einzelpreis || teil.preis || 0)).toFixed(2) + ' EUR', margin + 120, y);
+                    const gesamtpreis = parseFloat(teil.gesamtpreis || (teil.anzahl || 1) * (teil.einzelpreis || 0) || 0);
+                    doc.text(gesamtpreis.toFixed(2) + ' EUR', margin + 155, y);
+                    ersatzteileSum += gesamtpreis;
+                    y += 7;
+                });
+
+                // Summe
+                y += 2;
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(10);
+                doc.text('Summe Ersatzteile:', margin + 105, y);
+                doc.text(ersatzteileSum.toFixed(2) + ' EUR', margin + 155, y);
+                y += 12;
+            }
+
+            // ============================================
+            // 5. KOSTENAUFSCHLÜSSELUNG (Arbeitslohn, Lackierung, etc.)
+            // ============================================
+            checkPageBreak(60);
+
+            doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
             doc.setFontSize(14);
             doc.setFont(undefined, 'bold');
-            doc.text('Kostenaufschlüsselung', 15, y);
+            doc.text('Kostenaufschluesselung', margin, y);
+            doc.line(margin, y + 2, pageWidth - margin, y + 2);
             y += 10;
-
-            doc.setFontSize(11);
-            doc.setFont(undefined, 'normal');
 
             // Kosten aus der Variante sammeln
             const variantData = kvaData.varianten?.[variantType] || {};
             const costs = collectVariantCostsFromData(variantData);
 
-            if (costs.ersatzteile > 0) {
-                doc.text('Ersatzteile:', 20, y);
-                doc.text(costs.ersatzteile.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 7;
-            }
-            if (costs.arbeitslohn > 0) {
-                doc.text('Arbeitslohn:', 20, y);
-                doc.text(costs.arbeitslohn.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 7;
-            }
-            if (costs.lackierung > 0) {
-                doc.text('Lackierung:', 20, y);
-                doc.text(costs.lackierung.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 7;
-            }
-            if (costs.materialien > 0) {
-                doc.text('Materialien:', 20, y);
-                doc.text(costs.materialien.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 7;
-            }
-            if (costs.montage > 0) {
-                doc.text('Montage:', 20, y);
-                doc.text(costs.montage.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 7;
-            }
-            if (costs.sonstige > 0) {
-                doc.text('Sonstige Leistungen:', 20, y);
-                doc.text(costs.sonstige.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 7;
-            }
-
-            // Ersatzfahrzeug-Kosten (aus KVA)
-            if (kvaData.ersatzfahrzeugKosten && kvaData.ersatzfahrzeugKosten.gesamt > 0) {
-                const efk = kvaData.ersatzfahrzeugKosten;
-                const efLabel = `Ersatzfahrzeug (${efk.tage} Tage × ${efk.tagesmiete.toFixed(2)} €):`;
-                doc.text(efLabel, 20, y);
-                doc.text(efk.gesamt.toFixed(2) + ' €', 185, y, { align: 'right' });
-                y += 7;
-            }
-
-            // Separator line
-            y += 3;
-            doc.setDrawColor(200, 200, 200);
-            doc.line(20, y, 195, y);
-            y += 10;
-
-            // Gesamtpreis berechnen
-            const ersatzfahrzeugKosten = kvaData.ersatzfahrzeugKosten?.gesamt || 0;
-            const gesamtpreis = (variantData.gesamt || 0) + ersatzfahrzeugKosten;
-
-            // Gesamtpreis Box
-            doc.setFillColor(variantColor[0], variantColor[1], variantColor[2]);
-            doc.rect(15, y, 180, 20, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(16);
-            doc.setFont(undefined, 'bold');
-            doc.text('Gesamtpreis:', 20, y + 12);
-            doc.text(`${gesamtpreis.toFixed(2)} €`, 185, y + 12, { align: 'right' });
             doc.setTextColor(0, 0, 0);
-            y += 30;
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
 
-            // Lieferzeit (wenn vorhanden)
-            if (kvaData.lieferzeit) {
-                doc.setFontSize(12);
-                doc.setFont(undefined, 'bold');
-                doc.text('Lieferzeit:', 15, y);
-                y += 7;
-                doc.setFontSize(10);
-                doc.setFont(undefined, 'normal');
-                doc.text(kvaData.lieferzeit, 15, y);
-                y += 10;
+            const costItems = [
+                { label: 'Montage:', value: costs.montage },
+                { label: 'Sonstige Leistungen:', value: costs.sonstige },
+                { label: 'Arbeitslohn:', value: costs.arbeitslohn },
+                { label: 'Lackierung:', value: costs.lackierung },
+                { label: 'Materialien:', value: costs.materialien }
+            ];
+
+            // Nur Ersatzteile anzeigen wenn keine aus PDF-Import
+            if (ersatzteile.length === 0 && costs.ersatzteile > 0) {
+                costItems.unshift({ label: 'Ersatzteile:', value: costs.ersatzteile });
             }
 
-            // Notizen (if exists)
-            if (kvaData.notizen) {
+            costItems.forEach(item => {
+                if (item.value > 0) {
+                    doc.text(item.label, margin + 5, y);
+                    doc.text(item.value.toFixed(2) + ' EUR', pageWidth - margin, y, { align: 'right' });
+                    y += 7;
+                }
+            });
+            y += 5;
+
+            // ============================================
+            // 6. ERSATZFAHRZEUG-KOSTEN (Gelbe Highlight-Box)
+            // ============================================
+            if (kvaData.ersatzfahrzeugKosten && kvaData.ersatzfahrzeugKosten.gesamt > 0) {
+                checkPageBreak(45);
+
+                const efk = kvaData.ersatzfahrzeugKosten;
+
+                // Gelbe/Goldene Highlight-Box
+                doc.setFillColor(255, 243, 224);
+                doc.rect(margin, y, contentWidth, 30, 'F');
+                doc.setDrawColor(255, 152, 0);
+                doc.setLineWidth(1);
+                doc.rect(margin, y, contentWidth, 30, 'S');
+                doc.setLineWidth(0.2);
+
+                doc.setTextColor(255, 152, 0);
                 doc.setFontSize(12);
                 doc.setFont(undefined, 'bold');
-                doc.text('Notizen:', 15, y);
+                doc.text('Ersatzfahrzeug-Kosten', margin + 5, y + 8);
+
+                // Details
+                doc.setFontSize(10);
+                doc.setTextColor(0, 0, 0);
+                doc.setFont(undefined, 'normal');
+                const efLabel = efk.kennzeichen || 'Leihfahrzeug';
+                doc.text(efLabel, margin + 5, y + 18);
+                doc.text(`${(efk.tagesmiete || 0).toFixed(2)} EUR/Tag`, margin + 70, y + 18);
+                doc.text(`${efk.tage || 0} Tage`, margin + 115, y + 18);
+                doc.setFont(undefined, 'bold');
+                doc.text(`${(efk.gesamt || 0).toFixed(2)} EUR`, pageWidth - margin - 5, y + 18, { align: 'right' });
+
+                y += 40;
+            }
+
+            // ============================================
+            // 7. LIEFERZEIT (wenn vorhanden)
+            // ============================================
+            if (kvaData.lieferzeit) {
+                checkPageBreak(25);
+
+                doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                doc.text('Lieferzeit:', margin, y);
                 y += 7;
                 doc.setFontSize(10);
+                doc.setTextColor(0, 0, 0);
                 doc.setFont(undefined, 'normal');
-                const lines = doc.splitTextToSize(kvaData.notizen, 180);
+                doc.text(kvaData.lieferzeit, margin, y);
+                y += 12;
+            }
+
+            // ============================================
+            // 8. SUMMEN-BOX (Netto, MwSt., Brutto)
+            // ============================================
+            checkPageBreak(50);
+
+            // Netto berechnen
+            const ersatzfahrzeugKosten = kvaData.ersatzfahrzeugKosten?.gesamt || 0;
+            const netto = (variantData.gesamt || 0) + ersatzfahrzeugKosten;
+            const mwst = netto * 0.19;
+            const brutto = netto + mwst;
+
+            // Grauer Kasten
+            doc.setFillColor(245, 245, 245);
+            doc.rect(margin, y, contentWidth, 40, 'F');
+
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'normal');
+
+            // Netto
+            doc.text('Netto-Summe:', margin + 100, y + 10);
+            doc.text(netto.toFixed(2) + ' EUR', pageWidth - margin - 5, y + 10, { align: 'right' });
+
+            // MwSt.
+            doc.text('MwSt. (19%):', margin + 100, y + 18);
+            doc.text(mwst.toFixed(2) + ' EUR', pageWidth - margin - 5, y + 18, { align: 'right' });
+
+            // Trennlinie
+            doc.setDrawColor(headerColor[0], headerColor[1], headerColor[2]);
+            doc.line(margin + 100, y + 22, pageWidth - margin - 5, y + 22);
+
+            // Brutto (hervorgehoben)
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+            doc.text('Gesamt-Betrag:', margin + 100, y + 32);
+            doc.text(brutto.toFixed(2) + ' EUR', pageWidth - margin - 5, y + 32, { align: 'right' });
+
+            y += 50;
+
+            // ============================================
+            // 9. NOTIZEN (wenn vorhanden)
+            // ============================================
+            if (kvaData.notizen) {
+                checkPageBreak(30);
+
+                doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'bold');
+                doc.text('Notizen:', margin, y);
+                y += 7;
+
+                doc.setFontSize(10);
+                doc.setTextColor(0, 0, 0);
+                doc.setFont(undefined, 'normal');
+                const lines = doc.splitTextToSize(kvaData.notizen, contentWidth);
                 lines.forEach(line => {
-                    doc.text(line, 15, y);
+                    checkPageBreak(10);
+                    doc.text(line, margin, y);
                     y += 5;
                 });
             }
 
-            // Footer
-            const pageHeight = doc.internal.pageSize.height;
-            doc.setFontSize(8);
-            doc.setTextColor(120, 120, 120);
-            const footerLine1 = `${settings.profil.name} | ${settings.profil.adresse}`;
-            const footerLine2 = `Tel: ${settings.profil.telefon} | Email: ${settings.profil.email}`;
-            doc.text(footerLine1, 105, pageHeight - 15, { align: 'center' });
-            doc.text(footerLine2, 105, pageHeight - 10, { align: 'center' });
+            // ============================================
+            // 10. FOOTER auf allen Seiten
+            // ============================================
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                doc.setPage(i);
+                addFooter();
+                // Seitenzahl
+                doc.setFontSize(8);
+                doc.setTextColor(100, 100, 100);
+                doc.text(`Seite ${i} von ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+            }
 
-            // Varianten-Badge unten links
-            doc.setFontSize(8);
-            doc.setTextColor(variantColor[0], variantColor[1], variantColor[2]);
-            doc.text(isZubehoer ? '🔧 BUDGET-VARIANTE' : '⭐ PREMIUM-VARIANTE', 15, pageHeight - 10);
-
-            console.log(`✅ ${variantType}-PDF generiert, Gesamtpreis: ${gesamtpreis.toFixed(2)} €`);
+            console.log(`PDF generiert: ${variantType}, Brutto: ${brutto.toFixed(2)} EUR`);
 
             return doc.output('blob');
         }
