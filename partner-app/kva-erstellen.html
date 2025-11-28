@@ -6041,6 +6041,18 @@
                         }
                     });
 
+                    // 🆕 FIX (2025-11-28): Manuell editierten Ersatzfahrzeug-Preis synchronisieren
+                    // Wenn der User das EF-Input-Feld manuell geändert hat, diesen Wert in ersatzfahrzeugData übernehmen
+                    const manuellerEFPreis = variantData.ersatzfahrzeug || 0;
+                    if (ersatzfahrzeugData && manuellerEFPreis > 0 && manuellerEFPreis !== ersatzfahrzeugData.gesamtpreis) {
+                        console.log(`🚙 [SYNC] Manueller EF-Preis (${manuellerEFPreis}€) überschreibt berechneten (${ersatzfahrzeugData.gesamtpreis}€)`);
+                        ersatzfahrzeugData.gesamtpreis = manuellerEFPreis;
+                        // Tagesmiete anpassen (wenn Tage bekannt)
+                        if (ersatzfahrzeugData.tage > 0) {
+                            ersatzfahrzeugData.tagesmiete = manuellerEFPreis / ersatzfahrzeugData.tage;
+                        }
+                    }
+
                     // Nur überschreiben wenn konvertierte Daten vorhanden
                     if (convertedErsatzteile.length > 0 || convertedArbeitslohn.length > 0 || convertedLackierung.length > 0) {
                         kvaData.kalkulationData = {
@@ -7110,7 +7122,9 @@
             // 7. LIEFERZEIT (wenn vorhanden)
             // ============================================
             if (kvaData.lieferzeit) {
-                checkPageBreak(25);
+                // 🆕 FIX (2025-11-28): Lieferzeit + Summen-Box zusammen prüfen (75px = 25 + 50)
+                // Verhindert dass Summen-Box allein auf neuer Seite erscheint
+                checkPageBreak(75);
 
                 doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
                 doc.setFontSize(12);
@@ -7120,11 +7134,14 @@
                 doc.setFontSize(10);
                 doc.setTextColor(0, 0, 0);
                 doc.setFont(undefined, 'normal');
-                // 🆕 FIX (2025-11-28): Emojis entfernen (jsPDF kann keine Emojis rendern)
+                // 🆕 FIX (2025-11-28): Alle Emojis entfernen (jsPDF kann keine Emojis rendern)
                 const lieferzeitClean = kvaData.lieferzeit
-                    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')  // Emojis entfernen
+                    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')  // Alle Emojis (erweitert bis 1FAFF für 🛞 etc.)
                     .replace(/[\u{2600}-\u{26FF}]/gu, '')    // Misc Symbols
                     .replace(/[\u{2700}-\u{27BF}]/gu, '')    // Dingbats
+                    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')    // Variation Selectors
+                    .replace(/[\u{200D}]/gu, '')             // Zero Width Joiner
+                    .replace(/\s+/g, ' ')                    // Mehrfache Leerzeichen entfernen
                     .trim();
                 doc.text(lieferzeitClean, margin, y);
                 y += 12;
