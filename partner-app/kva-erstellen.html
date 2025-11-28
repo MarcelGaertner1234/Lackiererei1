@@ -4121,8 +4121,8 @@
                     label: '🚙 Ersatzfahrzeug (€)',
                     type: 'number',
                     required: false,
-                    readonly: true,  // 🔧 Phase 8: Auto-sync aus Leihfahrzeug-Berechnung
-                    tooltip: 'Automatisch berechnet aus Leihfahrzeug-Auswahl'
+                    readonly: false,  // 🆕 FIX (2025-11-28): Manuell editierbar (war: readonly: true)
+                    tooltip: 'Kosten für Ersatzfahrzeug (automatisch berechnet, manuell anpassbar)'
                 });
             }
 
@@ -4232,8 +4232,8 @@
                     label: '🚙 Ersatzfahrzeug (€)',
                     type: 'number',
                     required: false,
-                    readonly: true,  // 🔧 Phase 8: Auto-sync aus Leihfahrzeug-Berechnung
-                    tooltip: 'Automatisch berechnet aus Leihfahrzeug-Auswahl'
+                    readonly: false,  // 🆕 FIX (2025-11-28): Manuell editierbar (war: readonly: true)
+                    tooltip: 'Kosten für Ersatzfahrzeug (automatisch berechnet, manuell anpassbar)'
                 });
             }
 
@@ -6700,9 +6700,11 @@
             // ============================================
             // 3. SCHADENFOTOS (2-spaltige Galerie) - FIX: Base64-Konvertierung
             // ============================================
+            // 🆕 FIX (2025-11-28): Partner-Anfragen speichern Fotos unter "fotos" (nicht "photos")
             const photoUrls = anfrageData.serviceData?.photos
                         || anfrageData.photoUrls
                         || anfrageData.photos
+                        || anfrageData.fotos  // 🆕 Partner-Anfragen verwenden "fotos"
                         || [];
 
             if (photoUrls.length > 0) {
@@ -7257,21 +7259,39 @@
             try {
                 console.log('📄 Starte Generierung der Varianten-PDFs...');
 
-                // Settings laden
+                // Settings laden (mit verbessertem Fallback)
                 let settings = null;
                 try {
                     settings = await window.settingsManager.loadSettings();
+                    console.log('✅ Settings via settingsManager geladen:', settings?.profil?.name, 'Logo:', settings?.profil?.logoUrl ? 'vorhanden' : 'fehlt');
                 } catch (error) {
-                    console.warn('⚠️ Settings konnten nicht geladen werden, verwende Fallback');
-                    settings = {
-                        profil: {
-                            name: 'Auto-Lackierzentrum Mosbach',
-                            logoUrl: null,
-                            adresse: 'Industriestraße 1, 74821 Mosbach',
-                            telefon: '+49 6261 123456',
-                            email: 'info@auto-lackierzentrum.de'
+                    console.warn('⚠️ settingsManager fehlgeschlagen, versuche direkten Firestore-Zugriff...');
+
+                    // 🆕 FIX (2025-11-28): Direkt aus Firestore laden wenn settingsManager fehlschlägt
+                    try {
+                        const werkstattId = window.werkstattId || 'mosbach';
+                        const settingsDoc = await window.db.collection(`einstellungen_${werkstattId}`).doc('config').get();
+                        if (settingsDoc.exists) {
+                            settings = settingsDoc.data();
+                            console.log('✅ Settings via Firestore geladen:', settings?.profil?.name, 'Logo:', settings?.profil?.logoUrl ? 'vorhanden' : 'fehlt');
                         }
-                    };
+                    } catch (fsError) {
+                        console.warn('⚠️ Firestore-Fallback fehlgeschlagen:', fsError);
+                    }
+
+                    // Letzter Fallback: Statische Werte
+                    if (!settings) {
+                        settings = {
+                            profil: {
+                                name: 'Auto-Lackierzentrum Mosbach',
+                                logoUrl: null,
+                                adresse: 'Industriestraße 1, 74821 Mosbach',
+                                telefon: '+49 6261 123456',
+                                email: 'info@auto-lackierzentrum.de'
+                            }
+                        };
+                        console.warn('⚠️ Verwende statischen Fallback für Settings');
+                    }
                 }
 
                 const kennzeichen = (anfrageData.kennzeichen || 'k.A.').replace(/\s/g, '_');
