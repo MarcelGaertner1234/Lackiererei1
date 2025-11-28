@@ -1705,6 +1705,7 @@
             transition: all 0.2s ease;
             cursor: pointer;
             position: relative;  /* Für Hover-Info */
+            overflow: visible;  /* 🎯 PHASE 6.8: Popup darf aus Container herausragen! */
         }
 
         .preis-option:not(.empfohlen):hover {
@@ -1738,69 +1739,50 @@
 
         /* ✅ ULTIMATIVER FIX: Komplett isoliertes Tooltip (keine Parent-Vererbung) */
         .preis-option .preis-hover-info {
+            /* 🎯 PHASE 6.8: Position UNTER dem Button statt darüber! */
             display: none;
             position: absolute;
-            bottom: calc(100% + 10px);
+            top: calc(100% + 5px);  /* 5px UNTER dem Button */
             left: 50%;
             transform: translateX(-50%);
 
-            /* 🛡️ NUCLEAR OPTION: Komplett undurchsichtiger schwarzer Hintergrund */
-            background: rgb(0, 0, 0) !important;
-            background-color: rgb(0, 0, 0) !important;
-            -webkit-background-clip: padding-box !important;
-            background-clip: padding-box !important;
+            /* Kompakter schwarzer Hintergrund */
+            background: rgb(0, 0, 0);
+            color: rgb(255, 255, 255);
 
-            /* 🎯 KRITISCH: Eigener Stacking Context */
-            isolation: isolate !important;
-            contain: paint !important;
-
-            /* FORCE: Absolut KEIN Blur */
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            filter: none !important;
-
-            /* FORCE: 100% Opazität */
-            opacity: 1 !important;
-            mix-blend-mode: normal !important;
-
-            /* Visual & Text */
-            color: rgb(255, 255, 255) !important;
-            border-radius: 10px;
-            padding: 16px;
-            min-width: 220px;
-            max-width: calc(100vw - 40px) !important;
+            /* 🎯 PHASE 6.8: Kleinere Größe (160px statt 220px) */
+            border-radius: 8px;
+            padding: 10px 12px;
+            min-width: 160px;
+            max-width: 180px;
             overflow-wrap: break-word;
             word-break: break-word;
+            font-size: 11px;
 
-            /* FORCE: Über ALLEN Ebenen */
-            z-index: 2147483647 !important;
+            /* Vernünftiger z-index (nicht max-int!) */
+            z-index: 100;
 
-            /* Solider schwarzer Rand für zusätzliche Abgrenzung */
-            border: 2px solid rgb(0, 0, 0) !important;
-            outline: 1px solid rgba(255, 255, 255, 0.2) !important;
+            /* Dezenter Rand */
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 
-            box-shadow:
-                0 8px 24px rgba(0,0,0,0.95),
-                0 0 0 3px rgba(0,0,0,1),
-                inset 0 0 0 1px rgba(255,255,255,0.15);
-
-            animation: fadeInUp 0.2s ease;
-            pointer-events: auto;
+            /* 🎯 KRITISCH: pointer-events: none damit Buttons nicht blockiert werden! */
+            pointer-events: none;
         }
 
         .preis-option:hover .preis-hover-info {
             display: block;
         }
 
-        /* Pfeil nach unten (zeigt zum Preis-Button) */
+        /* 🎯 PHASE 6.8: Pfeil nach OBEN (zeigt zum Preis-Button darüber) */
         .preis-hover-info::after {
             content: '';
             position: absolute;
-            top: 100%;
+            bottom: 100%;  /* Pfeil oben am Popup */
             left: 50%;
             transform: translateX(-50%);
-            border: 8px solid transparent;
-            border-top-color: #000000;
+            border: 6px solid transparent;
+            border-bottom-color: #000000;  /* Pfeil zeigt nach OBEN */
         }
 
         .preis-hover-info h4 {
@@ -1945,165 +1927,12 @@
     <!-- 🎯 PORTAL PATTERN: Popup an <body> anh\u00e4ngen (entfernt ALLE Parent-Effekte!) -->
     <script>
         // 🎯 Portal Pattern als Funktion (wird nach Karten-Rendering aufgerufen)
-        function initPortalPattern() {
-            console.log('');
-            console.log('🎯 PORTAL PATTERN wird initialisiert...');
-            if (window.DEBUG) console.log('🔍 Suche nach .preis-option Elementen...');
-
-            const preisOptions = document.querySelectorAll('.preis-option');
-            console.log(`✅ Gefunden: ${preisOptions.length} Preis-Optionen`);
-
-            if (preisOptions.length === 0) {
-                console.warn('⚠️  Keine .preis-option Elemente gefunden! Render-Reihenfolge prüfen!');
-                return;
-            }
-
-            let portalCount = 0;
-
-            preisOptions.forEach((option, index) => {
-                    const popup = option.querySelector('.preis-hover-info');
-                    if (!popup) {
-                        console.log(`⚠️  Option ${index}: Kein Popup gefunden`);
-                        return;
-                    }
-
-                    // ID für Referenz
-                    const popupId = 'popup-portal-' + index;
-                    option.dataset.popupId = popupId;
-                    popup.dataset.popupId = popupId;
-
-                    // 🎯 KRITISCH: Jedes Popup bekommt seinen EIGENEN Timeout!
-                    popup.hideTimeout = null;
-
-                    // KRITISCH: Popup aus Parent entfernen!
-                    popup.remove();
-
-                    // KRITISCH: An <body> anhängen!
-                    document.body.appendChild(popup);
-
-                    // 🎯 PHASE 6.5: Inline-Styles setzen, da CSS-Selector nicht mehr greift!
-                    // Der Selector ".preis-option .preis-hover-info" matched nicht mehr,
-                    // weil Popup jetzt Kind von <body> ist, nicht mehr von .preis-option
-                    popup.style.position = 'fixed';
-                    popup.style.display = 'none';
-                    popup.style.background = 'rgb(0, 0, 0)';
-                    popup.style.backgroundColor = 'rgb(0, 0, 0)';
-                    popup.style.color = 'rgb(255, 255, 255)';
-                    popup.style.zIndex = '2147483647';
-                    popup.style.borderRadius = '10px';
-                    popup.style.padding = '16px';
-                    popup.style.minWidth = '220px';
-                    popup.style.maxWidth = 'calc(100vw - 40px)';
-                    popup.style.border = '2px solid rgb(0, 0, 0)';
-                    popup.style.outline = '1px solid rgba(255, 255, 255, 0.2)';
-                    popup.style.boxShadow = '0 8px 24px rgba(0,0,0,0.95), 0 0 0 3px rgba(0,0,0,1), inset 0 0 0 1px rgba(255,255,255,0.15)';
-                    popup.style.pointerEvents = 'none';  // KRITISCH: 'none' damit Popup die Buttons nicht blockiert!
-                    popup.style.opacity = '1';
-                    popup.style.backdropFilter = 'none';
-                    popup.style.webkitBackdropFilter = 'none';
-                    popup.style.isolation = 'isolate';
-
-                    portalCount++;
-                    console.log(`✅ Portal ${portalCount}: Popup "${popupId}" an <body> angehängt`);
-
-                    // 🎯 HOVER INTENT PATTERN: Button mouseenter
-                    option.addEventListener('mouseenter', function(e) {
-                        console.log('🖱️  MOUSEENTER auf Preis-Button!');
-
-                        const rect = this.getBoundingClientRect();
-                        const popupId = this.dataset.popupId;
-                        console.log(`   → Suche Popup mit ID: "${popupId}"`);
-
-                        const targetPopup = document.querySelector(`[data-popup-id="${popupId}"]`);
-                        console.log(`   → Popup gefunden:`, targetPopup ? 'JA ✅' : 'NEIN ❌');
-
-                        if (!targetPopup) {
-                            console.error(`❌ Popup "${popupId}" nicht gefunden!`);
-                            return;
-                        }
-
-                        // 🎯 Cancel any pending hide für DIESES Popup
-                        if (targetPopup.hideTimeout) {
-                            clearTimeout(targetPopup.hideTimeout);
-                            targetPopup.hideTimeout = null;
-                            console.log('   → Versteck-Timer abgebrochen');
-                        }
-
-                        // 🎯 PHASE 6.7: Popup UNTER dem Button positionieren (nicht darüber!)
-                        // Grund: Bei Position ÜBER dem Button verdeckt das 220px breite Popup
-                        // den Nachbar-Button visuell komplett!
-                        const left = rect.left + (rect.width / 2);
-                        const top = rect.bottom + 10;  // 10px UNTER dem Button
-
-                        console.log(`   → Button Position: top=${rect.top}px, bottom=${rect.bottom}px, left=${rect.left}px, width=${rect.width}px`);
-                        console.log(`   → Popup Position: top=${top}px (UNTER Button), left=${left}px`);
-                        console.log(`   → Viewport: width=${window.innerWidth}px, height=${window.innerHeight}px`);
-
-                        // KRITISCH: bottom zurücksetzen! (sonst Konflikt mit top)
-                        targetPopup.style.bottom = 'auto';
-                        targetPopup.style.top = top + 'px';
-                        targetPopup.style.left = left + 'px';
-                        targetPopup.style.transform = 'translate(-50%, 0)';  // Nicht nach oben verschieben!
-                        targetPopup.style.display = 'block';
-
-                        console.log(`   → Display gesetzt: "${targetPopup.style.display}"`);
-                        console.log(`   → Popup sollte JETZT sichtbar sein! 🎉`);
-                        console.log(`   → Falls NICHT sichtbar: Prüfe ob top=${top}px im Viewport ist (0 bis ${window.innerHeight}px)`);
-
-                        // Edge Detection (PHASE 6.7: Jetzt auch für unteren Rand!)
-                        requestAnimationFrame(() => {
-                            const popupRect = targetPopup.getBoundingClientRect();
-
-                            // 🎯 PHASE 6.7: Unterer Rand - Popup ÜBER Button anzeigen als Fallback
-                            if (popupRect.bottom > window.innerHeight - 20) {
-                                targetPopup.style.top = (rect.top - 10) + 'px';
-                                targetPopup.style.transform = 'translate(-50%, -100%)';
-                                console.log(`   → Edge Detection: Unterer Rand - Popup jetzt ÜBER Button`);
-                            }
-
-                            // Rechter Rand
-                            if (popupRect.right > window.innerWidth - 20) {
-                                targetPopup.style.left = 'auto';
-                                targetPopup.style.right = '20px';
-                                targetPopup.style.transform = 'none';
-                                console.log(`   → Edge Detection: Rechter Rand - Position korrigiert`);
-                            } else if (popupRect.left < 20) {
-                                targetPopup.style.left = '20px';
-                                targetPopup.style.transform = 'none';
-                                console.log(`   → Edge Detection: Linker Rand - Position korrigiert`);
-                            }
-                        });
-                    });
-
-                    // 🎯 HOVER INTENT PATTERN: Button mouseleave (mit Delay!)
-                    option.addEventListener('mouseleave', function() {
-                        const popupId = this.dataset.popupId;
-                        const targetPopup = document.querySelector(`[data-popup-id="${popupId}"]`);
-
-                        if (!targetPopup) return;
-
-                        console.log('👋 MOUSELEAVE von Preis-Button → Verstecke in 300ms...');
-
-                        // 🎯 Verstecke DIESES Popup mit Delay (gibt User Zeit, Maus zum Popup zu bewegen)
-                        targetPopup.hideTimeout = setTimeout(() => {
-                            targetPopup.style.display = 'none';
-                            console.log('   → Popup versteckt (nach Delay)');
-                            targetPopup.hideTimeout = null;
-                        }, 300);  // 300ms Delay
-                    });
-
-                    // ❌ POPUP mouseenter/mouseleave Events ENTFERNT!
-                    // Grund: pointer-events: none verhindert dass Popup Mouse Events empfängt
-                    // Das ist GEWOLLT! Popup soll Button-Events nicht blockieren!
-            });
-
-            console.log('');
-            console.log(`🎯 PORTAL PATTERN abgeschlossen: ${portalCount} Popups an <body> angehängt`);
-            console.log('   → Popups haben KEINE problematischen Parents mehr!');
-            console.log('   → backdrop-filter, mix-blend-mode wirken NICHT mehr!');
-            console.log('');
-        }
-        // ← initPortalPattern() Funktion Ende
+        // 🎯 PHASE 6.8: initPortalPattern() KOMPLETT GELÖSCHT!
+        // Grund: Portal-Pattern verursachte mehr Probleme als es löste:
+        // - Phase 6.4-6.7 versuchten verschiedene Fixes
+        // - Buttons verschwanden beim Hovern komplett aus dem Bild
+        // - Edge Detection machte Fixes wieder rückgängig
+        // Lösung: Reines CSS-Hover mit kleinerer Popup-Position UNTER dem Button
     </script>
 
     <style>
@@ -4680,7 +4509,7 @@
                 kanbanBoard.style.display = 'grid';
                 console.log('✅ switchView: Showing Kacheln view (grid)');
                 renderKanban();
-                initPortalPattern(); // 🎯 Phase 6.4: Aktiviere Portal-Pattern für opake Tooltips
+                // 🎯 PHASE 6.8: Portal-Pattern ENTFERNT - Reines CSS-Hover stattdessen!
             } else if (view === 'liste') {
                 listeView.style.display = 'block';
                 console.log('✅ switchView: Showing Liste view (block)');
