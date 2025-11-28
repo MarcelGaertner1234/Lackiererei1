@@ -3121,6 +3121,67 @@
         }
 
         /**
+         * 🆕 FIX (2025-11-29): Erstellt Bestellungen aus Ersatzteilen für Kanban-Anzeige
+         * Identisch zur Funktion in meine-anfragen.html
+         * @param {Array} ersatzteile - Array von Ersatzteilen
+         * @param {string} kennzeichen - Kennzeichen des Fahrzeugs
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @returns {number} Anzahl erstellter Bestellungen
+         */
+        async function createBestellungenFromErsatzteile(ersatzteile, kennzeichen, fahrzeugId) {
+            if (!ersatzteile || ersatzteile.length === 0) {
+                console.log('ℹ️ Keine Ersatzteile zum Konvertieren');
+                return 0;
+            }
+
+            console.log(`📦 [ENTWURF] Erstelle ${ersatzteile.length} Bestellungen aus Ersatzteilen...`);
+
+            let bestellungenCreated = 0;
+            const batch = db.batch();
+
+            for (const teil of ersatzteile) {
+                try {
+                    const bestellungId = `best_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                    const bestellungData = {
+                        id: bestellungId,
+                        fahrzeugId: String(fahrzeugId),
+                        kennzeichen: kennzeichen || 'k.A.',
+                        werkstattId: window.werkstattId,
+
+                        // Ersatzteil-Daten
+                        etn: teil.etn || '',
+                        benennung: teil.benennung || 'Ersatzteil',
+                        anzahl: teil.anzahl || 1,
+                        einzelpreis: teil.einzelpreis || 0,
+                        gesamtpreis: teil.gesamtpreis || 0,
+
+                        // Bestellungs-Metadaten
+                        status: 'offen',  // offen → bestellt → angeliefert
+                        quelle: 'entwurf',
+                        erstelltAm: new Date().toISOString(),
+                        timestamp: Date.now()
+                    };
+
+                    const docRef = window.getCollection('bestellungen').doc(bestellungId);
+                    batch.set(docRef, bestellungData);
+                    bestellungenCreated++;
+                } catch (error) {
+                    console.error('❌ Fehler beim Erstellen der Bestellung:', teil, error);
+                }
+            }
+
+            try {
+                await batch.commit();
+                console.log(`✅ ${bestellungenCreated} Bestellungen erfolgreich erstellt (Quelle: Entwurf)`);
+                return bestellungenCreated;
+            } catch (error) {
+                console.error('❌ Batch-Commit für Bestellungen fehlgeschlagen:', error);
+                return 0;
+            }
+        }
+
+        /**
          * Speichert Arbeitslohn in zentrale Arbeitslohn-DB (arbeitslohn_{werkstattId})
          * Ermöglicht spätere Durchschnittspreise und Standard-Tätigkeiten
          * @param {Array} arbeitslohn - Array von Arbeitslohn-Positionen
@@ -3499,6 +3560,18 @@
                     // ✅ Phase 1: Ersatzteile speichern
                     if (ersatzteileData && ersatzteileData.length > 0) {
                         await saveErsatzteileToCentralDB(ersatzteileData, currentEntwurfId, kennzeichen, kundenname);
+
+                        // 🆕 FIX (2025-11-29): Bestellungen für Kanban erstellen
+                        try {
+                            const bestellungenCount = await createBestellungenFromErsatzteile(
+                                ersatzteileData,
+                                kennzeichen,
+                                currentEntwurfId
+                            );
+                            console.log(`   ✅ ${bestellungenCount} Bestellungen für Kanban erstellt`);
+                        } catch (bestellungError) {
+                            console.error('⚠️ Bestellungen-Erstellung fehlgeschlagen (nicht kritisch):', bestellungError);
+                        }
                     }
 
                     // ✅ Phase 2: Arbeitslohn speichern

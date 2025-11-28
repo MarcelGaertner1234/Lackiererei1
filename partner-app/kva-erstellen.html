@@ -5814,6 +5814,63 @@
                         gewaehlteVariante: kvaData.gewaehlteVariante
                     });
 
+                    // ============================================
+                    // 🆕 FIX (2025-11-29): variantTableData Ersatzteile auch in pdfImport speichern
+                    // MULTI-SERVICE VERSION (identisch zu Single-Service Fix)
+                    // ============================================
+                    const allManualErsatzteileMS = [];
+
+                    // Sammle Ersatzteile aus allen Varianten-Tabellen (inkl. Service-spezifische)
+                    Object.keys(variantTableData).forEach(variant => {
+                        // Direct ersatzteile (Single-Service style)
+                        const variantErsatzteile = variantTableData[variant]?.ersatzteile || [];
+                        variantErsatzteile.forEach(teil => {
+                            if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
+                                allManualErsatzteileMS.push({
+                                    ...teil,
+                                    variante: variant,
+                                    quelle: 'variantTable'
+                                });
+                            }
+                        });
+
+                        // Multi-Service: _services Layer
+                        const services = variantTableData[variant]?._services || {};
+                        Object.keys(services).forEach(serviceTyp => {
+                            const serviceErsatzteile = services[serviceTyp]?.ersatzteile || [];
+                            serviceErsatzteile.forEach(teil => {
+                                if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
+                                    allManualErsatzteileMS.push({
+                                        ...teil,
+                                        variante: variant,
+                                        serviceTyp: serviceTyp,
+                                        quelle: 'variantTable_service'
+                                    });
+                                }
+                            });
+                        });
+                    });
+
+                    // Auch globale ersatzteileData hinzufügen
+                    if (ersatzteileData && ersatzteileData.length > 0) {
+                        ersatzteileData.forEach(teil => {
+                            if (!allManualErsatzteileMS.some(e => e.benennung === teil.benennung && e.gesamtpreis === teil.gesamtpreis)) {
+                                allManualErsatzteileMS.push({
+                                    ...teil,
+                                    quelle: 'ersatzteileData'
+                                });
+                            }
+                        });
+                    }
+
+                    // In pdfImport.editedData speichern
+                    if (allManualErsatzteileMS.length > 0) {
+                        kvaData.pdfImport = kvaData.pdfImport || {};
+                        kvaData.pdfImport.editedData = kvaData.pdfImport.editedData || {};
+                        kvaData.pdfImport.editedData.ersatzteile = allManualErsatzteileMS;
+                        console.log(`📦 [MULTI-SERVICE ERSATZTEILE-FIX] ${allManualErsatzteileMS.length} Ersatzteile in pdfImport.editedData gespeichert`);
+                    }
+
                     // KVA speichern
                     await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                         kva: kvaData,
