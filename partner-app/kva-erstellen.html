@@ -6384,6 +6384,58 @@
         // ============================================
 
         /**
+         * 🆕 Helper: Lädt ein Bild (URL) und konvertiert es zu Base64 für jsPDF
+         * Löst das CORS-Problem und ermöglicht Einbettung von Firebase Storage URLs
+         * @param {string} imageUrl - URL des Bildes (z.B. Firebase Storage URL)
+         * @param {string} format - Ausgabeformat ('PNG' oder 'JPEG')
+         * @param {number} timeout - Timeout in ms (default: 5000)
+         * @returns {Promise<string|null>} Base64 Data-URL oder null bei Fehler
+         */
+        async function loadImageAsBase64(imageUrl, format = 'PNG', timeout = 5000) {
+            if (!imageUrl) return null;
+
+            // Wenn bereits Base64, direkt zurückgeben
+            if (imageUrl.startsWith('data:')) {
+                return imageUrl;
+            }
+
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';  // CORS-Header anfordern
+
+                const timeoutId = setTimeout(() => {
+                    console.warn('⏱️ Image loading timeout:', imageUrl.substring(0, 50) + '...');
+                    resolve(null);
+                }, timeout);
+
+                img.onload = () => {
+                    clearTimeout(timeoutId);
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        const base64 = canvas.toDataURL(`image/${format.toLowerCase()}`);
+                        console.log('✅ Image loaded as Base64:', imageUrl.substring(0, 50) + '...');
+                        resolve(base64);
+                    } catch (e) {
+                        console.warn('⚠️ Canvas conversion failed (CORS?):', e.message);
+                        resolve(null);
+                    }
+                };
+
+                img.onerror = (error) => {
+                    clearTimeout(timeoutId);
+                    console.warn('⚠️ Image load error:', imageUrl.substring(0, 50) + '...', error);
+                    resolve(null);
+                };
+
+                img.src = imageUrl;
+            });
+        }
+
+        /**
          * Generiert ein professionelles PDF für eine Variante (Zubehör oder Original)
          * Design basierend auf Referenz-PDF "Kalkulation & Angebot"
          * Features: Schadenfotos-Galerie, Ersatzteile-Tabelle, MwSt.-Berechnung
@@ -6452,24 +6504,30 @@
             doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
             doc.rect(0, 0, pageWidth, 40, 'F');
 
-            // Logo laden (wenn vorhanden)
+            // Logo laden (wenn vorhanden) - FIX: Base64-Konvertierung für jsPDF
+            let logoLoaded = false;
             if (settings.profil?.logoUrl) {
                 try {
-                    doc.addImage(settings.profil.logoUrl, 'PNG', margin, 8, 30, 24);
+                    const logoBase64 = await loadImageAsBase64(settings.profil.logoUrl, 'PNG');
+                    if (logoBase64) {
+                        doc.addImage(logoBase64, 'PNG', margin, 8, 30, 24);
+                        logoLoaded = true;
+                        console.log('✅ Logo erfolgreich in PDF eingebettet');
+                    }
                 } catch (e) {
-                    console.warn('Logo konnte nicht geladen werden:', e);
+                    console.warn('⚠️ Logo konnte nicht geladen werden:', e);
                 }
             }
 
-            // Titel
+            // Titel - Position angepasst wenn Logo vorhanden
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(18);
-            doc.text(variantLabel, 105, 18, { align: 'center' });
+            doc.text(variantLabel, logoLoaded ? 115 : 105, 18, { align: logoLoaded ? 'left' : 'center' });
             doc.setFontSize(10);
-            doc.text(settings.profil?.name || 'Auto-Lackierzentrum', 105, 28, { align: 'center' });
+            doc.text(settings.profil?.name || 'Auto-Lackierzentrum', logoLoaded ? 115 : 105, 28, { align: logoLoaded ? 'left' : 'center' });
             if (settings.profil?.adresse) {
                 doc.setFontSize(8);
-                doc.text(settings.profil.adresse, 105, 35, { align: 'center' });
+                doc.text(settings.profil.adresse, logoLoaded ? 115 : 105, 35, { align: logoLoaded ? 'left' : 'center' });
             }
             y = 50;
 
@@ -6520,57 +6578,68 @@
             y += 5;
 
             // ============================================
-            // 3. SCHADENFOTOS (2-spaltige Galerie)
+            // 3. SCHADENFOTOS (2-spaltige Galerie) - FIX: Base64-Konvertierung
             // ============================================
-            const photos = anfrageData.serviceData?.photos
+            const photoUrls = anfrageData.serviceData?.photos
                         || anfrageData.photoUrls
                         || anfrageData.photos
                         || [];
 
-            if (photos.length > 0) {
+            if (photoUrls.length > 0) {
                 checkPageBreak(100);
 
                 doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
                 doc.setFontSize(14);
                 doc.setFont(undefined, 'bold');
-                doc.text(`Schadenfotos (${photos.length})`, margin, y);
+                doc.text(`Schadenfotos (${photoUrls.length})`, margin, y);
                 doc.line(margin, y + 2, pageWidth - margin, y + 2);
                 y += 10;
+
+                // FIX: Fotos parallel als Base64 laden (mit Timeout pro Foto)
+                console.log(`📸 Lade ${photoUrls.length} Fotos als Base64...`);
+                const photoPromises = photoUrls.slice(0, 9).map(url => loadImageAsBase64(url, 'JPEG', 8000));
+                const photosBase64 = await Promise.all(photoPromises);
+                const validPhotos = photosBase64.filter(p => p !== null);
+                console.log(`✅ ${validPhotos.length}/${photoUrls.length} Fotos erfolgreich geladen`);
 
                 // 2 Spalten Layout
                 const photoWidth = 85;
                 const photoHeight = 60;
                 const gap = 10;
-                const maxPhotos = Math.min(photos.length, 6); // Max 6 Fotos
+                const maxPhotos = Math.min(validPhotos.length, 6); // Max 6 Fotos im PDF
 
+                let photosOnCurrentPage = 0;
                 for (let i = 0; i < maxPhotos; i++) {
                     const col = i % 2;
-                    const row = Math.floor(i / 2);
+                    const row = Math.floor(photosOnCurrentPage / 2);
 
                     // Neue Seite nach 4 Fotos (2 Reihen)
-                    if (i > 0 && i % 4 === 0) {
+                    if (photosOnCurrentPage > 0 && photosOnCurrentPage % 4 === 0) {
                         doc.addPage();
                         y = 20;
+                        photosOnCurrentPage = 0;
                     }
 
                     const x = margin + col * (photoWidth + gap);
                     const photoY = y + row * (photoHeight + 15);
 
                     try {
-                        // Foto laden und einfügen
-                        doc.addImage(photos[i], 'JPEG', x, photoY, photoWidth, photoHeight);
+                        // Foto aus Base64 einfügen
+                        doc.addImage(validPhotos[i], 'JPEG', x, photoY, photoWidth, photoHeight);
                         // Beschriftung unter dem Foto
                         doc.setFontSize(8);
                         doc.setTextColor(100, 100, 100);
                         doc.text(`Foto ${i + 1}`, x + photoWidth / 2, photoY + photoHeight + 5, { align: 'center' });
+                        photosOnCurrentPage++;
                     } catch (e) {
-                        console.warn(`Foto ${i + 1} konnte nicht geladen werden:`, e);
+                        console.warn(`Foto ${i + 1} konnte nicht eingebettet werden:`, e);
                         // Platzhalter-Box bei Fehler
                         doc.setFillColor(240, 240, 240);
                         doc.rect(x, photoY, photoWidth, photoHeight, 'F');
                         doc.setTextColor(150, 150, 150);
                         doc.setFontSize(10);
                         doc.text(`Foto ${i + 1}`, x + photoWidth / 2, photoY + photoHeight / 2, { align: 'center' });
+                        photosOnCurrentPage++;
                     }
                 }
 
