@@ -3083,28 +3083,18 @@
         function updateVariantSum(variant) {
             let netto = 0;
 
-            // Multi-Service: Alle Services summieren
-            const services = variantTableData[variant]?._services || {};
-            Object.values(services).forEach(serviceData => {
-                ['ersatzteile', 'arbeitslohn', 'lackierung'].forEach(type => {
-                    (serviceData[type] || []).forEach(entry => {
-                        netto += entry.gesamtpreis || 0;
-                    });
-                });
+            // 🔧 FIX Phase 4.1: Direkt vom DOM lesen (wie berechneVarianten())
+            // Das ist konsistent mit berechneVarianten() und funktioniert für Single-Service
+            const inputSelector = `input[id^="${variant}_"]`;
+            const inputs = document.querySelectorAll(inputSelector);
+
+            inputs.forEach(input => {
+                // Nur numerische Werte summieren
+                const value = parseFloat(input.value) || 0;
+                netto += value;
             });
 
-            // Single-Service: Direkt aus variantTableData lesen
-            if (Object.keys(services).length === 0) {
-                ['ersatzteile', 'arbeitslohn', 'lackierung'].forEach(type => {
-                    (variantTableData[variant]?.[type] || []).forEach(entry => {
-                        netto += entry.gesamtpreis || 0;
-                    });
-                });
-            }
-
-            // Ersatzfahrzeug hinzufügen
-            const ef = variantTableData[variant]?.ersatzfahrzeug;
-            if (ef) netto += ef.gesamtpreis || 0;
+            console.log(`📊 [UPDATE-SUM] ${variant}: ${netto.toFixed(2)} € (${inputs.length} Inputs)`);
 
             // MwSt berechnen
             const mwst = netto * 0.19;
@@ -3969,6 +3959,13 @@
                 });
                 renderVariantTables([...allVariants]);
 
+                // 🔧 FIX Phase 4.1: Initial MwSt-Übersicht berechnen (Multi-Service)
+                setTimeout(() => {
+                    ['original', 'zubehoer'].forEach(variant => {
+                        updateVariantSum(variant);
+                    });
+                }, 100); // Kurze Verzögerung damit DOM fertig gerendert ist
+
                 // Early return - Multi-Service Rendering fertig
                 console.log('✅ [MULTI-SERVICE RENDER] Abgeschlossen für', anfrage.serviceLabels.length, 'Services');
                 return;
@@ -4059,6 +4056,13 @@
 
             // 🆕 Varianten-Tabellen für Single-Service rendern
             renderVariantTables(variantConfig.variants);
+
+            // 🔧 FIX Phase 4.1: Initial MwSt-Übersicht berechnen (Single-Service)
+            setTimeout(() => {
+                ['original', 'zubehoer'].forEach(variant => {
+                    updateVariantSum(variant);
+                });
+            }, 100); // Kurze Verzögerung damit DOM fertig gerendert ist
         }
 
         // 🆕 PHASE 2: Neue Funktion mit direkten label + warning Parametern
@@ -5532,6 +5536,12 @@
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 }) + ' €';
+            });
+
+            // 🔧 FIX Phase 4.1: MwSt-Übersicht aktualisieren
+            // Nach jeder Berechnung updateVariantSum() aufrufen für Netto/MwSt/Brutto
+            ['original', 'zubehoer'].forEach(variant => {
+                updateVariantSum(variant);
             });
         }
 
