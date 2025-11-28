@@ -2972,11 +2972,66 @@
             verfuegbareLeihfahrzeuge.forEach(fahrzeug => {
                 const option = document.createElement('option');
                 option.value = fahrzeug.id;
-                option.textContent = `${fahrzeug.kennzeichen} - ${fahrzeug.marke} ${fahrzeug.modell} (${fahrzeug.kraftstoff || 'k.A.'})`;
+                // 🆕 2025-11-28: Tagesmiete als data-Attribut für Berechnung
+                const tagesmiete = fahrzeug.tagesmiete || 50; // Default 50€/Tag
+                option.dataset.tagesmiete = tagesmiete;
+                option.dataset.kennzeichen = fahrzeug.kennzeichen;
+                option.textContent = `${fahrzeug.kennzeichen} - ${fahrzeug.marke} ${fahrzeug.modell} (${tagesmiete}€/Tag)`;
                 dropdown.appendChild(option);
             });
 
             console.log('🚗 [KVA] Leihfahrzeug-Dropdown aktualisiert:', verfuegbareLeihfahrzeuge.length, 'Optionen');
+        }
+
+        // ============================================
+        // 🆕 NEU 2025-11-28: ERSATZFAHRZEUG-KOSTENBERECHNUNG
+        // Berechnet automatisch: Tagesmiete × Tage = Gesamtkosten
+        // ============================================
+
+        // Event-Handler für Fahrzeug-Auswahl
+        function onLeihfahrzeugChange() {
+            const dropdown = document.getElementById('leihfahrzeugSelect');
+            const selectedOption = dropdown?.selectedOptions?.[0];
+            const tagesmiete = parseFloat(selectedOption?.dataset?.tagesmiete) || 0;
+            const tagesmieteAnzeige = document.getElementById('tagesmieteAnzeige');
+
+            // Tagesmiete anzeigen
+            if (tagesmieteAnzeige) {
+                tagesmieteAnzeige.textContent = tagesmiete > 0 ? `${tagesmiete.toFixed(2)} €/Tag` : '-- €/Tag';
+            }
+
+            berechneErsatzfahrzeugKosten();
+        }
+
+        // Ersatzfahrzeug-Kosten berechnen: Tagesmiete × Tage
+        function berechneErsatzfahrzeugKosten() {
+            const dropdown = document.getElementById('leihfahrzeugSelect');
+            const tageInput = document.getElementById('leihfahrzeugTage');
+            const kostenAnzeige = document.getElementById('ersatzfahrzeugKostenAnzeige');
+
+            const selectedOption = dropdown?.selectedOptions?.[0];
+            const tagesmiete = parseFloat(selectedOption?.dataset?.tagesmiete) || 0;
+            const tage = parseInt(tageInput?.value) || 0;
+            const gesamt = tagesmiete * tage;
+
+            // Kosten-Anzeige aktualisieren
+            if (kostenAnzeige) {
+                kostenAnzeige.textContent = `= ${gesamt.toFixed(2)} €`;
+                kostenAnzeige.style.color = gesamt > 0 ? '#2e7d32' : '#666';
+            }
+
+            // 🔄 In ALLE Varianten-Felder "Ersatzfahrzeug (€)" übertragen
+            const ersatzfahrzeugInputs = document.querySelectorAll('[id$="_ersatzfahrzeug"]');
+            ersatzfahrzeugInputs.forEach(input => {
+                input.value = gesamt.toFixed(2);
+            });
+
+            // Varianten-Summen neu berechnen
+            if (typeof berechneVarianten === 'function') {
+                berechneVarianten();
+            }
+
+            console.log('🚙 [KVA] Ersatzfahrzeug-Kosten berechnet:', { tagesmiete, tage, gesamt });
         }
 
         function displayAnfrageInfo() {
@@ -3243,9 +3298,10 @@
                             ${anfrage.ersatzfahrzeugGewuenscht ? `
                                 <div style="grid-column: span 2;">
                                     <strong>🚙 Ersatzfahrzeug:</strong>
-                                    <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
-                                        <select id="leihfahrzeugSelect" style="
+                                    <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                        <select id="leihfahrzeugSelect" onchange="onLeihfahrzeugChange()" style="
                                             flex: 1;
+                                            min-width: 200px;
                                             padding: 8px 12px;
                                             border: 2px solid #9c27b0;
                                             border-radius: 6px;
@@ -3255,8 +3311,17 @@
                                         ">
                                             <option value="">-- Lädt Leihfahrzeuge... --</option>
                                         </select>
+                                        <!-- 🆕 2025-11-28: Tagesmiete-Anzeige -->
+                                        <span id="tagesmieteAnzeige" style="
+                                            font-size: 12px;
+                                            color: #9c27b0;
+                                            font-weight: 600;
+                                            min-width: 70px;
+                                        ">-- €/Tag</span>
+                                        <span style="font-size: 12px; color: #666;">×</span>
                                         <!-- 🆕 NEU 2025-11-27: Geschätzte Mietdauer für KVA -->
-                                        <input type="number" id="leihfahrzeugTage" min="1" value="3" style="
+                                        <input type="number" id="leihfahrzeugTage" min="1" value="3"
+                                            oninput="berechneErsatzfahrzeugKosten()" style="
                                             width: 60px;
                                             padding: 8px;
                                             border: 2px solid #9c27b0;
@@ -3264,7 +3329,18 @@
                                             font-size: 13px;
                                             text-align: center;
                                         " title="Geschätzte Mietdauer">
-                                        <span style="font-size: 12px; color: #666;">Tage (geschätzt)</span>
+                                        <span style="font-size: 12px; color: #666;">Tage</span>
+                                        <!-- 🆕 2025-11-28: Kosten-Anzeige -->
+                                        <span id="ersatzfahrzeugKostenAnzeige" style="
+                                            font-size: 14px;
+                                            font-weight: bold;
+                                            color: #2e7d32;
+                                            background: #e8f5e9;
+                                            padding: 6px 12px;
+                                            border-radius: 6px;
+                                            min-width: 80px;
+                                            text-align: center;
+                                        ">= 0,00 €</span>
                                     </div>
                                 </div>
                             ` : ''}
