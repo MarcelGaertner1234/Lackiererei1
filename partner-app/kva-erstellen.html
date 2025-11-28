@@ -5967,6 +5967,100 @@
                     console.log(`🔧 AUTO-FIX: Nur 1 Variante vorhanden → gewaehlteVariante = "${variantKeys[0]}"`);
                 }
 
+                // ============================================
+                // 🆕 FIX (2025-11-28): Varianten-Felder → kalkulationData konvertieren
+                // Löst Problem: PDFs zeigten nur "Sonstige Leistungen" ohne Details
+                // Konvertiert Summen-Felder in detaillierte Arrays für PDF-Generierung
+                // ============================================
+                const primaryVariant = kvaData.gewaehlteVariante || variantKeys[0] || 'original';
+                const variantData = kvaData.varianten[primaryVariant] || {};
+
+                // Nur konvertieren wenn kalkulationData-Arrays leer sind (keine manuellen Tabellen-Einträge)
+                const hasManualData = ersatzteileData.length > 0 || arbeitslohnData.length > 0 || lackierungData.length > 0;
+
+                if (!hasManualData) {
+                    console.log('📊 [PDF-FIX] Konvertiere Varianten-Felder → kalkulationData für:', primaryVariant);
+
+                    // Arrays für kategorisierte Daten
+                    const convertedErsatzteile = [];
+                    const convertedArbeitslohn = [];
+                    const convertedLackierung = [];
+
+                    // Durchlaufe alle Felder der Variante (außer 'gesamt')
+                    Object.entries(variantData).forEach(([fieldName, value]) => {
+                        if (fieldName === 'gesamt' || value === 0 || !value) return;
+
+                        // Mapping nachschlagen
+                        const mapping = FIELD_TO_TABLE_MAPPING[fieldName];
+
+                        if (mapping) {
+                            // Bekanntes Feld → in richtige Tabelle kategorisieren
+                            if (mapping.table === 'ersatzteile') {
+                                convertedErsatzteile.push({
+                                    etn: '',
+                                    benennung: mapping.label || fieldName,
+                                    anzahl: 1,
+                                    einzelpreis: value,
+                                    gesamtpreis: value
+                                });
+                            } else if (mapping.table === 'arbeitslohn') {
+                                convertedArbeitslohn.push({
+                                    position: mapping.label || fieldName,
+                                    art: mapping.art || 'Sonstiges',
+                                    stunden: 1,
+                                    stundensatz: value,
+                                    gesamtpreis: value
+                                });
+                            } else if (mapping.table === 'lackierung') {
+                                convertedLackierung.push({
+                                    position: mapping.label || fieldName,
+                                    bereich: mapping.bereich || 'Gesamt',
+                                    stunden: 1,
+                                    stundensatz: value,
+                                    gesamtpreis: value
+                                });
+                            }
+                            // 'ersatzfahrzeug' wird separat über ersatzfahrzeugData behandelt
+                        } else {
+                            // Unbekanntes Feld → als "Sonstige Leistung" in Arbeitslohn
+                            const readableLabel = fieldName
+                                .replace(/_/g, ' ')
+                                .replace(/([A-Z])/g, ' $1')
+                                .trim()
+                                .split(' ')
+                                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                                .join(' ');
+
+                            convertedArbeitslohn.push({
+                                position: readableLabel,
+                                art: 'Sonstiges',
+                                stunden: 1,
+                                stundensatz: value,
+                                gesamtpreis: value
+                            });
+                        }
+                    });
+
+                    // Nur überschreiben wenn konvertierte Daten vorhanden
+                    if (convertedErsatzteile.length > 0 || convertedArbeitslohn.length > 0 || convertedLackierung.length > 0) {
+                        kvaData.kalkulationData = {
+                            ersatzteile: convertedErsatzteile,
+                            arbeitslohn: convertedArbeitslohn,
+                            lackierung: convertedLackierung,
+                            ersatzfahrzeug: ersatzfahrzeugData
+                        };
+
+                        console.log('✅ [PDF-FIX] kalkulationData konvertiert:', {
+                            ersatzteile: convertedErsatzteile.length,
+                            arbeitslohn: convertedArbeitslohn.length,
+                            lackierung: convertedLackierung.length,
+                            ersatzfahrzeug: ersatzfahrzeugData ? 'vorhanden' : 'keine'
+                        });
+                    }
+                } else {
+                    console.log('📊 [PDF-FIX] Manuelle Tabellen-Daten vorhanden, keine Konvertierung nötig');
+                }
+
                 // KVA speichern und Status auf 'kva_gesendet' setzen
                 await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                     kva: kvaData,
