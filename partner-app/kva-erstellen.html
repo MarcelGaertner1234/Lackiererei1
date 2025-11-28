@@ -2057,11 +2057,11 @@
         // ✅ PHASE 2d: Ersatzfahrzeug-Tabellen-Management
         let ersatzfahrzeugData = null; // Single object (nicht Array) - nur ein Ersatzfahrzeug möglich
 
-        // ✅ NEU: Varianten-spezifische Tabellendaten für Sync
+        // ✅ NEU: Varianten-spezifische Tabellendaten für Sync (inkl. Ersatzfahrzeug pro Variante)
         let variantTableData = {
-            original: { ersatzteile: [], arbeitslohn: [], lackierung: [] },
-            zubehoer: { ersatzteile: [], arbeitslohn: [], lackierung: [] },
-            partner: { ersatzteile: [], arbeitslohn: [], lackierung: [] }
+            original: { ersatzteile: [], arbeitslohn: [], lackierung: [], ersatzfahrzeug: null },
+            zubehoer: { ersatzteile: [], arbeitslohn: [], lackierung: [], ersatzfahrzeug: null },
+            partner: { ersatzteile: [], arbeitslohn: [], lackierung: [], ersatzfahrzeug: null }
         };
 
         // Aktive Varianten (dynamisch basierend auf Service)
@@ -2112,7 +2112,9 @@
             // Sonstige Felder (werden NICHT synchronisiert - bleiben nur oben)
             'sonstiges': null,
             'abholservice': null,
-            'ersatzfahrzeug': null  // Hat eigene Tabelle
+
+            // Ersatzfahrzeug (wird pro Variante in Kostenaufschlüsselung angezeigt)
+            'ersatzfahrzeug': { table: 'ersatzfahrzeug', label: 'Ersatzfahrzeug' }
         };
 
         // ============================================
@@ -2252,6 +2254,35 @@
                             </table>
                         </div>
                     </div>
+
+                    <!-- Ersatzfahrzeug für diese Variante -->
+                    <div id="ersatzfahrzeugSection_${variant}" style="margin-top: 15px;">
+                        <h4 style="color: ${style.textColor}; font-size: 14px; margin: 0 0 10px 0;">
+                            🚗 Ersatzfahrzeug
+                        </h4>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                <thead>
+                                    <tr style="background: rgba(0,0,0,0.1);">
+                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border};">Kennzeichen</th>
+                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border};">Fahrzeug</th>
+                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border}; text-align: right;">Tagesmiete</th>
+                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border}; text-align: center;">Tage</th>
+                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border}; text-align: right;">Gesamtpreis</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ersatzfahrzeugTableBody_${variant}">
+                                    <tr><td colspan="5" style="text-align: center; color: #999; padding: 10px;">Kein Ersatzfahrzeug</td></tr>
+                                </tbody>
+                                <tfoot style="background: rgba(0,0,0,0.05);">
+                                    <tr>
+                                        <td colspan="4" style="padding: 6px; text-align: right; font-weight: 600;">SUMME:</td>
+                                        <td style="padding: 6px; text-align: right; color: ${style.textColor}; font-weight: 600;" id="ersatzfahrzeugSumme_${variant}">0,00 €</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
                 </div>
                 `;
             });
@@ -2279,6 +2310,27 @@
             if (!mapping) return; // Feld nicht gemappt
 
             const tableType = mapping.table;
+
+            // Spezialbehandlung für Ersatzfahrzeug (ist ein einzelnes Objekt, kein Array)
+            if (tableType === 'ersatzfahrzeug') {
+                if (value === 0) {
+                    variantTableData[variant].ersatzfahrzeug = null;
+                } else {
+                    // Ersatzfahrzeug-Daten aus globaler Auswahl übernehmen
+                    const globalErsatzfahrzeug = ersatzfahrzeugData;
+                    variantTableData[variant].ersatzfahrzeug = {
+                        kennzeichen: globalErsatzfahrzeug?.kennzeichen || '-',
+                        fahrzeug: globalErsatzfahrzeug?.fahrzeug || (globalErsatzfahrzeug?.marke ? globalErsatzfahrzeug.marke + ' ' + globalErsatzfahrzeug.modell : '-'),
+                        tagesmiete: globalErsatzfahrzeug?.tagesmiete || 0,
+                        tage: globalErsatzfahrzeug?.tage || (globalErsatzfahrzeug?.tagesmiete ? Math.ceil(value / globalErsatzfahrzeug.tagesmiete) : 0),
+                        gesamtpreis: value,
+                        syncSource: inputId,
+                        isAutoSync: true
+                    };
+                }
+                renderVariantErsatzfahrzeug(variant);
+                return;
+            }
 
             // Existierenden Eintrag finden oder neuen erstellen
             const tableData = variantTableData[variant][tableType];
@@ -2361,34 +2413,75 @@
                                 <input type="text" value="${entry.etn || ''}"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'etn', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
-                                       placeholder="ETN" ${entry.isAutoSync ? '' : ''}>
+                                       placeholder="ETN">
                             </td>
-                            <td style="padding: 4px; font-size: 11px;">${entry.benennung || ''}</td>
+                            <td style="padding: 4px;">
+                                <input type="text" value="${entry.benennung || ''}"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'benennung', this.value)"
+                                       style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
+                                       placeholder="Benennung">
+                            </td>
                             <td style="padding: 4px; text-align: center;">
                                 <input type="number" value="${entry.anzahl || 1}" min="1"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'anzahl', this.value)"
                                        style="width: 50px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: center; font-size: 11px;">
                             </td>
-                            <td style="padding: 4px; text-align: right; font-size: 11px;">${(entry.einzelpreis || 0).toFixed(2)} €</td>
-                            <td style="padding: 4px; text-align: right; font-weight: 600; font-size: 11px; color: #28a745;">${(entry.gesamtpreis || 0).toFixed(2)} €</td>
+                            <td style="padding: 4px;">
+                                <input type="number" value="${entry.einzelpreis || 0}" step="0.01" min="0"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'einzelpreis', this.value)"
+                                       style="width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: right; font-size: 11px;">
+                            </td>
+                            <td style="padding: 4px;">
+                                <input type="number" value="${entry.gesamtpreis || 0}" step="0.01" min="0"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'gesamtpreis', this.value)"
+                                       style="width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: right; font-size: 11px; font-weight: 600; color: #28a745;">
+                            </td>
                             <td style="padding: 4px; text-align: center;">${syncBadge}</td>
                         </tr>
                     `;
                 } else if (tableType === 'arbeitslohn') {
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
-                            <td style="padding: 4px; font-size: 11px;">${entry.position || ''}</td>
-                            <td style="padding: 4px; font-size: 11px;">${entry.art || ''}</td>
-                            <td style="padding: 4px; text-align: right; font-weight: 600; font-size: 11px; color: #28a745;">${(entry.gesamtpreis || 0).toFixed(2)} €</td>
+                            <td style="padding: 4px;">
+                                <input type="text" value="${entry.position || ''}"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'position', this.value)"
+                                       style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
+                                       placeholder="Position">
+                            </td>
+                            <td style="padding: 4px;">
+                                <input type="text" value="${entry.art || ''}"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'art', this.value)"
+                                       style="width: 80px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
+                                       placeholder="Art">
+                            </td>
+                            <td style="padding: 4px;">
+                                <input type="number" value="${entry.gesamtpreis || 0}" step="0.01" min="0"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'gesamtpreis', this.value)"
+                                       style="width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: right; font-size: 11px; font-weight: 600; color: #28a745;">
+                            </td>
                             <td style="padding: 4px; text-align: center;">${syncBadge}</td>
                         </tr>
                     `;
                 } else if (tableType === 'lackierung') {
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
-                            <td style="padding: 4px; font-size: 11px;">${entry.position || ''}</td>
-                            <td style="padding: 4px; font-size: 11px;">${entry.bereich || ''}</td>
-                            <td style="padding: 4px; text-align: right; font-weight: 600; font-size: 11px; color: #28a745;">${(entry.gesamtpreis || 0).toFixed(2)} €</td>
+                            <td style="padding: 4px;">
+                                <input type="text" value="${entry.position || ''}"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'position', this.value)"
+                                       style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
+                                       placeholder="Position">
+                            </td>
+                            <td style="padding: 4px;">
+                                <input type="text" value="${entry.bereich || ''}"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'bereich', this.value)"
+                                       style="width: 80px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
+                                       placeholder="Bereich">
+                            </td>
+                            <td style="padding: 4px;">
+                                <input type="number" value="${entry.gesamtpreis || 0}" step="0.01" min="0"
+                                       onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'gesamtpreis', this.value)"
+                                       style="width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: right; font-size: 11px; font-weight: 600; color: #28a745;">
+                            </td>
                             <td style="padding: 4px; text-align: center;">${syncBadge}</td>
                         </tr>
                     `;
@@ -2469,6 +2562,82 @@
                 isAutoSync: false
             });
             renderVariantTable(variant, 'lackierung');
+        }
+
+        /**
+         * Rendert die Ersatzfahrzeug-Tabelle einer Variante
+         * @param {string} variant - Varianten-Typ ('original', 'zubehoer', 'partner')
+         */
+        function renderVariantErsatzfahrzeug(variant) {
+            const tableBody = document.getElementById(`ersatzfahrzeugTableBody_${variant}`);
+            const sumSpan = document.getElementById(`ersatzfahrzeugSumme_${variant}`);
+            const data = variantTableData[variant]?.ersatzfahrzeug;
+
+            if (!tableBody) return;
+
+            if (!data || data.gesamtpreis === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999; padding: 10px;">Kein Ersatzfahrzeug</td></tr>';
+                if (sumSpan) sumSpan.textContent = '0,00 €';
+                return;
+            }
+
+            tableBody.innerHTML = `
+                <tr style="background: rgba(76, 175, 80, 0.1);">
+                    <td style="padding: 4px;">
+                        <input type="text" value="${data.kennzeichen || ''}"
+                               onchange="updateVariantErsatzfahrzeug('${variant}', 'kennzeichen', this.value)"
+                               style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
+                               placeholder="Kennzeichen">
+                    </td>
+                    <td style="padding: 4px;">
+                        <input type="text" value="${data.fahrzeug || ''}"
+                               onchange="updateVariantErsatzfahrzeug('${variant}', 'fahrzeug', this.value)"
+                               style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
+                               placeholder="Fahrzeug">
+                    </td>
+                    <td style="padding: 4px;">
+                        <input type="number" value="${data.tagesmiete || 0}" step="0.01" min="0"
+                               onchange="updateVariantErsatzfahrzeug('${variant}', 'tagesmiete', this.value)"
+                               style="width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: right; font-size: 11px;">
+                    </td>
+                    <td style="padding: 4px; text-align: center;">
+                        <input type="number" value="${data.tage || 0}" min="0"
+                               onchange="updateVariantErsatzfahrzeug('${variant}', 'tage', this.value)"
+                               style="width: 50px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: center; font-size: 11px;">
+                    </td>
+                    <td style="padding: 4px;">
+                        <input type="number" value="${data.gesamtpreis || 0}" step="0.01" min="0"
+                               onchange="updateVariantErsatzfahrzeug('${variant}', 'gesamtpreis', this.value)"
+                               style="width: 70px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; text-align: right; font-size: 11px; font-weight: 600; color: #28a745;">
+                    </td>
+                </tr>
+            `;
+
+            if (sumSpan) sumSpan.textContent = (data.gesamtpreis || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
+
+        /**
+         * Aktualisiert das Ersatzfahrzeug einer Variante
+         * @param {string} variant - Varianten-Typ
+         * @param {string} field - Feld ('kennzeichen', 'fahrzeug', 'tagesmiete', 'tage', 'gesamtpreis')
+         * @param {string|number} value - Neuer Wert
+         */
+        function updateVariantErsatzfahrzeug(variant, field, value) {
+            const data = variantTableData[variant]?.ersatzfahrzeug;
+            if (!data) return;
+
+            const numValue = parseFloat(value) || 0;
+
+            if (field === 'tage' || field === 'tagesmiete') {
+                data[field] = numValue;
+                data.gesamtpreis = (data.tage || 0) * (data.tagesmiete || 0);
+            } else if (field === 'gesamtpreis') {
+                data.gesamtpreis = numValue;
+            } else {
+                data[field] = value;
+            }
+
+            renderVariantErsatzfahrzeug(variant);
         }
 
         // ============================================
