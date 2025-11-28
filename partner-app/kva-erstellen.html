@@ -835,99 +835,106 @@
                 name: 'Reifen-Service',
                 icon: '🛞',
 
-                // 🆕 PHASE 1: Dynamische Varianten-Generierung basierend auf serviceData.art
+                // 🆕 Multi-Select Support: serviceData.art kann Array oder String sein
                 generateVariants: function(serviceData) {
-                    const art = serviceData?.art || 'wechsel';
+                    // Backwards-compatible: String → Array
+                    let arts = serviceData?.art || ['wechsel'];
+                    if (typeof arts === 'string') arts = [arts];
                     const anzahl = serviceData?.anzahl || '4';
 
-                    console.log('🛞 [REIFEN] Generiere Varianten für art:', art, 'anzahl:', anzahl);
+                    console.log('🛞 [REIFEN] Generiere Varianten für arts (Multi-Select):', arts, 'anzahl:', anzahl);
 
-                    if (art === 'bestellung') {
-                        // Partner will NEUE Reifen bestellen
+                    // Art Labels für Zusammenfassung
+                    const artLabels = {
+                        wechsel: 'Reifenwechsel',
+                        bestellung: 'Reifen-Bestellung',
+                        montage: 'Montage',
+                        einlagerung: 'Einlagerung'
+                    };
+
+                    // Check welche Services ausgewählt sind
+                    const hasBestellung = arts.includes('bestellung');
+                    const hasWechsel = arts.includes('wechsel');
+                    const hasMontage = arts.includes('montage');
+                    const hasEinlagerung = arts.includes('einlagerung');
+
+                    // Kombinierte Felder für alle ausgewählten Services
+                    let combinedFields = [];
+
+                    // Bestellung-Felder (wenn ausgewählt)
+                    if (hasBestellung) {
+                        combinedFields.push(
+                            { id: 'reifensatz', label: `Reifensatz (${anzahl} Reifen) (€)`, type: 'number', required: true }
+                        );
+                    }
+
+                    // Reifenwechsel-Feld (wenn ausgewählt, aber NICHT wenn Montage auch gewählt)
+                    if (hasWechsel && !hasMontage) {
+                        combinedFields.push(
+                            { id: 'reifenwechsel', label: `Reifenwechsel (${anzahl} Reifen) (€)`, type: 'number', required: true }
+                        );
+                    }
+
+                    // Montage-Feld (wenn ausgewählt oder wenn Bestellung)
+                    if (hasMontage || hasBestellung) {
+                        combinedFields.push(
+                            { id: 'montage', label: `Montage & Wuchten (${anzahl} Reifen) (€)`, type: 'number', required: true }
+                        );
+                    }
+
+                    // Wuchten separat (nur wenn Wechsel ohne Montage/Bestellung)
+                    if (hasWechsel && !hasMontage && !hasBestellung) {
+                        combinedFields.push(
+                            { id: 'wuchten', label: 'Wuchten (falls notwendig) (€)', type: 'number', required: false }
+                        );
+                    }
+
+                    // Einlagerung-Felder (wenn ausgewählt)
+                    if (hasEinlagerung) {
+                        combinedFields.push(
+                            { id: 'einlagerung', label: 'Einlagerung (pro Saison) (€)', type: 'number', required: true },
+                            { id: 'reinigung', label: 'Reinigung vor Einlagerung (€)', type: 'number', required: false }
+                        );
+                    }
+
+                    // Standard-Felder für alle
+                    combinedFields.push(
+                        { id: 'ventile', label: 'Neue Ventile (€)', type: 'number', required: false },
+                        { id: 'entsorgung', label: 'Altreifenentsorgung (€)', type: 'number', required: false },
+                        { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
+                    );
+
+                    // Label für die gewählten Services
+                    const serviceLabel = arts.map(a => artLabels[a] || a).join(' + ');
+
+                    // Varianten-Struktur (Original + Budget bei Bestellung)
+                    if (hasBestellung) {
                         return {
                             variants: ['original', 'zubehoer'],
                             labels: {
-                                original: 'Variante 1: Markenreifen (Continental, Michelin, Bridgestone)',
-                                zubehoer: 'Variante 2: Budget-Reifen (Zweitmarken)'
+                                original: `Variante 1: Premium (${serviceLabel})`,
+                                zubehoer: `Variante 2: Budget (${serviceLabel})`
                             },
                             warnings: {
                                 zubehoer: '⚠️ Günstigere Reifen mit geringerer Lebensdauer und Grip'
                             },
                             fields: {
-                                original: [
-                                    { id: 'reifensatz', label: `Reifensatz Premium (${anzahl} Reifen) (€)`, type: 'number', required: true },
-                                    { id: 'montage', label: 'Montage & Wuchten (€)', type: 'number', required: true },
-                                    { id: 'ventile', label: 'Neue Ventile (€)', type: 'number', required: false },
-                                    { id: 'entsorgung', label: 'Altreifenentsorgung (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ],
-                                zubehoer: [
-                                    { id: 'reifensatz', label: `Reifensatz Budget (${anzahl} Reifen) (€)`, type: 'number', required: true },
-                                    { id: 'montage', label: 'Montage & Wuchten (€)', type: 'number', required: true },
-                                    { id: 'ventile', label: 'Neue Ventile (€)', type: 'number', required: false },
-                                    { id: 'entsorgung', label: 'Altreifenentsorgung (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
+                                original: combinedFields,
+                                zubehoer: combinedFields
                             }
                         };
-
-                    } else if (art === 'montage') {
-                        // Partner bringt EIGENE Reifen, wir montieren nur
+                    } else {
                         return {
                             variants: ['original'],
                             labels: {
-                                original: 'Montage mitgebrachter Reifen'
+                                original: serviceLabel
                             },
                             warnings: {},
                             fields: {
-                                original: [
-                                    { id: 'montage', label: `Montage auf Felgen (${anzahl} Reifen) (€)`, type: 'number', required: true },
-                                    { id: 'wuchten', label: 'Wuchten (€)', type: 'number', required: true },
-                                    { id: 'ventile', label: 'Neue Ventile (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else if (art === 'wechsel') {
-                        // Sommer ↔ Winter Wechsel (Reifen bereits vorhanden)
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Reifenwechsel (Sommer ↔ Winter)'
-                            },
-                            warnings: {},
-                            fields: {
-                                original: [
-                                    { id: 'reifenwechsel', label: `Reifenwechsel (${anzahl} Reifen) (€)`, type: 'number', required: true },
-                                    { id: 'wuchten', label: 'Wuchten (falls notwendig) (€)', type: 'number', required: false },
-                                    { id: 'ventile', label: 'Ventile prüfen (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
-                            }
-                        };
-
-                    } else if (art === 'einlagerung') {
-                        // Reifen-Lagerung
-                        return {
-                            variants: ['original'],
-                            labels: {
-                                original: 'Reifen-Einlagerung'
-                            },
-                            warnings: {},
-                            fields: {
-                                original: [
-                                    { id: 'einlagerung', label: 'Einlagerung (pro Saison) (€)', type: 'number', required: true },
-                                    { id: 'reinigung', label: 'Reinigung vor Einlagerung (€)', type: 'number', required: false },
-                                    { id: 'sonstiges', label: 'Sonstiges (€)', type: 'number', required: false }
-                                ]
+                                original: combinedFields
                             }
                         };
                     }
-
-                    // Fallback: Wenn art unbekannt
-                    console.warn('⚠️ [REIFEN] Unbekannte art:', art, '- verwende Fallback');
-                    return this.getDefaultVariants();
                 },
 
                 getDefaultVariants: function() {
@@ -3696,14 +3703,18 @@
         // ============================================
         // HILFSFUNKTIONEN FÜR FORMATIERUNG
         // ============================================
+        // Multi-Select Support: art kann Array oder String sein
         function formatServiceArt(art) {
             const labels = {
-                'wechsel': 'Reifenwechsel (Sommer ↔ Winter)',
-                'bestellung': 'Neue Reifen bestellen + Montage',
-                'montage': 'Montage mitgebrachter Reifen',
-                'einlagerung': 'Reifen-Einlagerung'
+                'wechsel': 'Reifenwechsel',
+                'bestellung': 'Reifen-Bestellung',
+                'montage': 'Montage',
+                'einlagerung': 'Einlagerung'
             };
-            return labels[art] || art || 'k.A.';
+            // Backwards-compatible: Handle both String and Array
+            if (!art) return 'k.A.';
+            const arts = Array.isArray(art) ? art : [art];
+            return arts.map(a => labels[a] || a).join(' + ');
         }
 
         function formatReifenTyp(typ) {

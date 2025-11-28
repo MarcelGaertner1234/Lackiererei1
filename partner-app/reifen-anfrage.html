@@ -426,6 +426,15 @@
             line-height: 1.5;
         }
 
+        /* Checkbox Options (Multi-Select) - gleiche Styles wie Radio */
+        .checkbox-group { display: flex; flex-direction: column; gap: 10px; }
+        .checkbox-option { padding: 15px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: all 0.2s; background: white; }
+        .checkbox-option:hover { border-color: #003366; background: #f0f9ff; }
+        .checkbox-option.selected { border-color: #003366; background: #e3f2fd; box-shadow: 0 4px 12px rgba(0,51,102,0.1); }
+        .checkbox-option input { display: none; }
+        .checkbox-option .label { font-weight: 600; color: #333; font-size: 14px; margin-bottom: 4px; }
+        .checkbox-option .description { font-size: 12px; color: #999; line-height: 1.5; }
+
         /* Termin Options */
         .termin-grid {
             display: grid;
@@ -1123,25 +1132,25 @@
                     <span>Service-Art</span>
                 </div>
                 <div class="form-group">
-                    <label>Welche Dienstleistung wird benötigt?</label>
-                    <div class="radio-group">
-                        <label class="radio-option selected" onclick="selectServiceArt(this, 'wechsel')">
-                            <input type="radio" name="serviceArt" value="wechsel" checked>
+                    <label>Welche Dienstleistungen werden benötigt? <span style="color: var(--text-secondary); font-size: 0.85em;">(Mehrfachauswahl möglich)</span></label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-option selected" onclick="toggleServiceArt(this)">
+                            <input type="checkbox" name="serviceArt" value="wechsel" checked>
                             <div class="label">Reifenwechsel</div>
                             <div class="description">Sommer ↔ Winter Wechsel</div>
                         </label>
-                        <label class="radio-option" onclick="selectServiceArt(this, 'bestellung')">
-                            <input type="radio" name="serviceArt" value="bestellung">
+                        <label class="checkbox-option" onclick="toggleServiceArt(this)">
+                            <input type="checkbox" name="serviceArt" value="bestellung">
                             <div class="label">🛒 Reifen-Bestellung</div>
                             <div class="description">Neue Reifen bestellen & montieren</div>
                         </label>
-                        <label class="radio-option" onclick="selectServiceArt(this, 'montage')">
-                            <input type="radio" name="serviceArt" value="montage">
+                        <label class="checkbox-option" onclick="toggleServiceArt(this)">
+                            <input type="checkbox" name="serviceArt" value="montage">
                             <div class="label">🔩 Montage</div>
                             <div class="description">Reifen auf Felgen montieren</div>
                         </label>
-                        <label class="radio-option" onclick="selectServiceArt(this, 'einlagerung')">
-                            <input type="radio" name="serviceArt" value="einlagerung">
+                        <label class="checkbox-option" onclick="toggleServiceArt(this)">
+                            <input type="checkbox" name="serviceArt" value="einlagerung">
                             <div class="label">📦 Einlagerung</div>
                             <div class="description">Reifenlagerung (Sommer/Winter)</div>
                         </label>
@@ -1795,14 +1804,18 @@
             element.querySelector('input').checked = true;
         }
 
+        // Multi-Select Toggle für Service-Art (Mehrfachauswahl möglich)
+        function toggleServiceArt(element) {
+            const checkbox = element.querySelector('input[type="checkbox"]');
+            // Toggle checkbox state
+            checkbox.checked = !checkbox.checked;
+            // Toggle visual state
+            element.classList.toggle('selected', checkbox.checked);
+        }
+
+        // Legacy-Funktion für Backwards-Compatibility
         function selectServiceArt(element, value) {
-            document.querySelectorAll('.radio-option').forEach(opt => {
-                if (opt.querySelector('input[name="serviceArt"]')) {
-                    opt.classList.remove('selected');
-                }
-            });
-            element.classList.add('selected');
-            element.querySelector('input').checked = true;
+            toggleServiceArt(element);
         }
 
         // Smart Termine laden
@@ -1908,7 +1921,14 @@
             const summaryContent = document.getElementById('summaryContent');
             const referenzType = document.querySelector('input[name="referenzType"]:checked').value;
             const reifenTyp = document.querySelector('input[name="reifenTyp"]:checked').value;
-            const serviceArt = document.querySelector('input[name="serviceArt"]:checked').value;
+            // Multi-Select: Alle ausgewählten Service-Arten als Array
+            const serviceArtCheckboxes = document.querySelectorAll('input[name="serviceArt"]:checked');
+            const serviceArtArray = Array.from(serviceArtCheckboxes).map(cb => cb.value);
+            // Mindestens eine Option muss gewählt sein
+            if (serviceArtArray.length === 0) {
+                showToast('Bitte wählen Sie mindestens eine Service-Art aus', 'error');
+                return;
+            }
             const termin = document.querySelector('input[name="anliefertermin"]:checked');
 
             let html = '';
@@ -1966,10 +1986,14 @@
                 </div>
             `;
 
-            // Service-Art
-            const serviceArtLabel = serviceArt === 'wechsel' ? 'Reifenwechsel' :
-                                    serviceArt === 'bestellung' ? '🛒 Reifen-Bestellung' :
-                                    serviceArt === 'montage' ? '🔩 Montage' : '📦 Einlagerung';
+            // Service-Art (Multi-Select)
+            const artLabels = {
+                wechsel: 'Reifenwechsel',
+                bestellung: '🛒 Reifen-Bestellung',
+                montage: '🔩 Montage',
+                einlagerung: '📦 Einlagerung'
+            };
+            const serviceArtLabel = serviceArtArray.map(a => artLabels[a]).join(' + ');
             html += `
                 <div class="summary-section">
                     <h3> Service-Art</h3>
@@ -2063,6 +2087,9 @@
                 const identificationType = document.querySelector('input[name="identificationType"]:checked').value;
                 const lieferoption = document.querySelector('input[name="lieferoption"]:checked').value;
 
+                // Multi-Select: Alle ausgewählten Service-Arten als Array
+                const serviceArtArray = Array.from(document.querySelectorAll('input[name="serviceArt"]:checked')).map(cb => cb.value);
+
                 // Fahrzeugschein-Fotos komprimieren (falls vorhanden)
                 let compressedFahrzeugscheinFotos = [];
                 if (fahrzeugscheinPhotos.length > 0) {
@@ -2102,7 +2129,7 @@
                     // Reifen-Daten (serviceData-Objekt für KVA-Anzeige)
                     serviceData: {
                         typ: document.querySelector('input[name="reifenTyp"]:checked').value,
-                        art: document.querySelector('input[name="serviceArt"]:checked').value,
+                        art: serviceArtArray,  // Multi-Select Array: ['wechsel', 'einlagerung']
                         dimension: document.getElementById('reifenDimension').value || null,
                         anzahl: document.getElementById('reifenAnzahl').value,
                         info: document.getElementById('anmerkungen').value || null
