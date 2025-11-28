@@ -4376,9 +4376,10 @@ exports.sendEntwurfEmail = functions
         console.log(`✅ Entwurf-Email sent via AWS SES to: ${kundenEmail}`);
 
         // Log to Firestore
+        // 🔧 FIX Bug #3 (2025-11-28): subject war undefined - jetzt korrekt definiert
         await db.collection("email_logs").add({
           to: kundenEmail,
-          subject: subject,
+          subject: `🚗 Ihr Kosten-Voranschlag für ${kennzeichen}`,
           trigger: "entwurf_email",
           fahrzeugId: fahrzeugId || null,
           kennzeichen: kennzeichen,

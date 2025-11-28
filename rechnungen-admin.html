@@ -1488,18 +1488,31 @@
                 const rabattInfo = await loadPartnerRabatt(partnerAnfrageId);
 
                 // 🆕 2025-11-28: Beträge berechnen - BEIDE Rabattarten unterstützen
-                const rabattProzent = rabattInfo.prozent || 0;
-                const rabattBetragFix = rabattInfo.betrag || 0;  // Fixer Bonus-Abzug
-                const rabattBetragProzent = bruttoPreis * (rabattProzent / 100);  // Prozent-Rabatt
-                const gesamtRabatt = rabattBetragProzent + rabattBetragFix;
-                const nettoBetrag = bruttoPreis - gesamtRabatt;
+                // 🔧 FIX Bug #4 (2025-11-28): Type Coercion Safety - parseFloat + || 0 für NaN-Prevention
+                const rabattProzent = parseFloat(rabattInfo.prozent) || 0;
+                const rabattBetragFix = parseFloat(rabattInfo.betrag) || 0;  // Fixer Bonus-Abzug
+                const rabattBetragProzent = (bruttoPreis * (rabattProzent / 100)) || 0;  // Prozent-Rabatt
+                const gesamtRabatt = (rabattBetragProzent + rabattBetragFix) || 0;
+                const nettoBetrag = (bruttoPreis - gesamtRabatt) || bruttoPreis;  // Fallback auf bruttoPreis
 
                 // Rechnungsnummer generieren
                 const rechnungsnummer = await generateUniqueRechnungsnummer();
 
-                // Werkstatt-Settings laden für PDF-Daten (Bank, Steuer, etc.)
-                await window.settingsManager?.loadSettings();
-                const settings = window.settingsManager?.getCurrentSettings();
+                // 🔧 FIX Bug #2 (2025-11-28): Werkstatt-Settings mit Error Handling laden
+                let settings = null;
+                try {
+                    await window.settingsManager?.loadSettings();
+                    settings = window.settingsManager?.getCurrentSettings();
+
+                    // Validierung: Bank-Daten müssen vorhanden sein
+                    if (!settings?.bank?.iban) {
+                        console.warn('⚠️ Keine IBAN in Settings gefunden - Rechnung wird ohne Bankdaten erstellt');
+                    }
+                } catch (settingsError) {
+                    console.error('❌ Fehler beim Laden der Werkstatt-Settings:', settingsError);
+                    // Warnung anzeigen, aber fortfahren (Rechnung wird ohne Settings erstellt)
+                    alert('⚠️ Werkstatt-Einstellungen konnten nicht geladen werden.\n\nDie Rechnung wird erstellt, aber möglicherweise fehlen Bankdaten im PDF.\n\nBitte prüfen Sie die Rechnung vor dem Versand!');
+                }
 
                 // Rechnung-Objekt
                 const jetzt = firebase.firestore.Timestamp.now();
@@ -1535,6 +1548,15 @@
                         rechnungsConfig: settings?.rechnungsConfig || {}
                     }
                 };
+
+                // 🔧 FIX Bug #1 (2025-11-28): Multi-Service Breakdown hinzufügen
+                // Gleiche Logik wie in kanban.html für konsistente PDF-Darstellung
+                if (fahrzeugData.kva?.breakdown && fahrzeugData.kva?.isMultiService) {
+                    rechnung.serviceBreakdown = fahrzeugData.kva.breakdown;
+                    rechnung.serviceLabels = fahrzeugData.kva.serviceLabels || {};
+                    rechnung.isMultiService = true;
+                    console.log('📊 Multi-Service Breakdown hinzugefügt:', Object.keys(fahrzeugData.kva.breakdown));
+                }
 
                 // Firestore Update
                 await window.getCollection('fahrzeuge').doc(fahrzeugId).update({
