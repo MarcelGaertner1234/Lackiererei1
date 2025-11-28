@@ -5341,12 +5341,28 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
 
-            // Varianten-Farben
-            const isZubehoer = variantType === 'zubehoer';
-            const headerColor = isZubehoer ? [255, 152, 0] : [0, 51, 102]; // Orange / Blau
-            const variantLabel = isZubehoer
-                ? 'Angebot - Zubehörteile (Budget)'
-                : 'Angebot - Originalteile (Premium)';
+            // Varianten-Konfiguration (zubehoer, original, partner)
+            const variantConfig = {
+                zubehoer: {
+                    color: [255, 152, 0],  // Orange
+                    label: 'Angebot - Zubehörteile (Budget)',
+                    footerLabel: 'BUDGET-VARIANTE'
+                },
+                original: {
+                    color: [0, 51, 102],   // Blau
+                    label: 'Angebot - Originalteile (Premium)',
+                    footerLabel: 'PREMIUM-VARIANTE'
+                },
+                partner: {
+                    color: [46, 125, 50],  // Grün (#2e7d32)
+                    label: 'Angebot - Partner-Ersatzteil',
+                    footerLabel: 'PARTNER-VARIANTE'
+                }
+            };
+
+            const config = variantConfig[variantType] || variantConfig.zubehoer;
+            const headerColor = config.color;
+            const variantLabel = config.label;
 
             let y = 0;
             const pageWidth = 210;
@@ -5371,7 +5387,7 @@
                 doc.text(`Erstellt am: ${new Date().toLocaleString('de-DE')}`, 105, pageHeight - 15, { align: 'center' });
                 doc.text(`${settings.profil?.name || 'Auto-Lackierzentrum'} - Fahrzeugannahme-System`, 105, pageHeight - 10, { align: 'center' });
                 doc.setTextColor(headerColor[0], headerColor[1], headerColor[2]);
-                doc.text(isZubehoer ? 'BUDGET-VARIANTE' : 'PREMIUM-VARIANTE', margin, pageHeight - 10);
+                doc.text(config.footerLabel, margin, pageHeight - 10);
             }
 
             // ============================================
@@ -6016,6 +6032,7 @@
                 // Prüfe welche Varianten vorhanden sind
                 const hasZubehoer = kvaData.varianten?.zubehoer && Object.keys(kvaData.varianten.zubehoer).length > 0;
                 const hasOriginal = kvaData.varianten?.original && Object.keys(kvaData.varianten.original).length > 0;
+                const hasPartner = kvaData.varianten?.partner && Object.keys(kvaData.varianten.partner).length > 0;
 
                 // Zubehör-PDF generieren (wenn vorhanden)
                 if (hasZubehoer) {
@@ -6047,6 +6064,22 @@
                         preis: (kvaData.varianten.original.gesamt || 0) + ersatzfahrzeugKosten
                     };
                     console.log(`✅ Original-PDF gespeichert: ${originalFileName}`);
+                }
+
+                // Partner-PDF generieren (wenn vorhanden)
+                if (hasPartner) {
+                    const partnerBlob = await generateVariantPDF('partner', kvaData, anfrageData, settings);
+                    const partnerFileName = `Angebot_Partner_${kennzeichen}_${datum}.pdf`;
+                    const partnerUrl = await uploadPdfToStorage(partnerBlob, partnerFileName);
+
+                    const ersatzfahrzeugKosten = kvaData.ersatzfahrzeugKosten?.gesamt || 0;
+                    updateData.angebotPdfPartner = {
+                        url: partnerUrl,
+                        fileName: partnerFileName,
+                        generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        preis: (kvaData.varianten.partner.gesamt || 0) + ersatzfahrzeugKosten
+                    };
+                    console.log(`✅ Partner-PDF gespeichert: ${partnerFileName}`);
                 }
 
                 // PDF-URLs in Firestore speichern (wenn mindestens ein PDF erstellt wurde)
