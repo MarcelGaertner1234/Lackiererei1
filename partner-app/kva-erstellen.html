@@ -6078,6 +6078,48 @@
                     console.log('📊 [PDF-FIX] Manuelle Tabellen-Daten vorhanden, keine Konvertierung nötig');
                 }
 
+                // ============================================
+                // 🆕 FIX (2025-11-29): variantTableData Ersatzteile auch in pdfImport speichern
+                // Löst Problem: Manuell eingegebene Ersatzteile (ETN, Benennung) wurden nicht
+                // nach Kundenannahme in die Bestellungen-Collection übertragen
+                // ============================================
+                const allManualErsatzteile = [];
+
+                // Sammle Ersatzteile aus allen Varianten-Tabellen
+                Object.keys(variantTableData).forEach(variant => {
+                    const variantErsatzteile = variantTableData[variant]?.ersatzteile || [];
+                    variantErsatzteile.forEach(teil => {
+                        // Nur nicht-leere Einträge mit Benennung oder ETN
+                        if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
+                            allManualErsatzteile.push({
+                                ...teil,
+                                variante: variant,  // Tracking welche Variante
+                                quelle: 'variantTable'  // Für Debugging
+                            });
+                        }
+                    });
+                });
+
+                // Auch konvertierte Ersatzteile hinzufügen (wenn vorhanden)
+                const kalkulationErsatzteile = kvaData.kalkulationData?.ersatzteile || [];
+                kalkulationErsatzteile.forEach(teil => {
+                    if (!allManualErsatzteile.some(e => e.benennung === teil.benennung && e.gesamtpreis === teil.gesamtpreis)) {
+                        allManualErsatzteile.push({
+                            ...teil,
+                            quelle: 'kalkulationData'
+                        });
+                    }
+                });
+
+                // In pdfImport.editedData speichern (für annehmenKVA in meine-anfragen.html)
+                if (allManualErsatzteile.length > 0) {
+                    kvaData.pdfImport = kvaData.pdfImport || {};
+                    kvaData.pdfImport.editedData = kvaData.pdfImport.editedData || {};
+                    kvaData.pdfImport.editedData.ersatzteile = allManualErsatzteile;
+                    console.log(`📦 [ERSATZTEILE-FIX] ${allManualErsatzteile.length} Ersatzteile in pdfImport.editedData gespeichert:`,
+                        allManualErsatzteile.map(e => `${e.etn || 'k.A.'}: ${e.benennung} (${e.gesamtpreis}€)`));
+                }
+
                 // KVA speichern und Status auf 'kva_gesendet' setzen
                 await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                     kva: kvaData,
