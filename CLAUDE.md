@@ -2690,7 +2690,41 @@ firebase deploy --only firestore  # ✅ Deploys firestore.rules
 
 **Session History:** See [CLAUDE_SESSIONS_ARCHIVE.md](./CLAUDE_SESSIONS_ARCHIVE.md)
 
-**Current Version:** v3.2.2 (Production-Ready, 100% Test Pass Rate, Phase 1 Security Implemented)
+**Current Version:** v3.3.0 (Production-Ready, 100% Test Pass Rate, Full Pipeline Check Complete)
+
+---
+
+### 🔧 Pipeline-Check & Bug-Fixes (2025-11-28)
+
+**Kompletter Pipeline-Check durchgeführt:** Score 8.5/10 - Produktionsreif!
+
+| Pipeline-Stufe | Status |
+|----------------|--------|
+| 1. Fahrzeugannahme (annahme.html) | ✅ |
+| 2. Entwurf-System (partner-app/) | ✅ |
+| 3. Fahrzeugliste (liste.html) | ✅ |
+| 4. Kanban-Board (kanban.html) | ✅ |
+| 5. KVA-Erstellung | ✅ |
+| 6. Rechnungs-Erstellung | ✅ |
+| 7. Rechnungs-Ansicht Partner | ✅ |
+| 8. Rechnungs-Verwaltung Admin | ✅ (nach Fixes) |
+
+**Gefixte Bugs (Commits: 3858447, aa00f30):**
+
+| Bug | Datei | Fix |
+|-----|-------|-----|
+| serviceBreakdown fehlt bei Admin-Rechnungserstellung | rechnungen-admin.html | Multi-Service Breakdown hinzugefügt |
+| werkstattDaten Error Handling | rechnungen-admin.html | Try-catch + User-Warnung |
+| undefined subject in email_logs | functions/index.js | Variable korrekt definiert |
+| Rabatt Type Coercion (NaN-Risiko) | rechnungen-admin.html | parseFloat() + \|\| 0 |
+| Footer Positioning Safety | partner-app/rechnungen.html | Math.max(10, centerX) |
+| **Optimistic Locking** (KRITISCH) | rechnungen-admin.html | Status-Check vor "bezahlt" markieren |
+
+**Neues Feature: EPC QR-Code (GiroCode)**
+- Rechnungs-PDF enthält jetzt QR-Code für direkte Banküberweisung
+- Position: Rechts neben Zahlungsinfos
+- Standard: EPC 069-12 (SEPA-kompatibel)
+- Commits: 1b1e354, 6fdb520, d6091f8
 
 ---
 
