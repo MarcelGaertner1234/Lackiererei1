@@ -3222,6 +3222,7 @@
         function generateKalkulationPositions(allParts) {
             // Positionen aus den gewählten Teilen + Reparaturen generieren
             aktuelleKalkulation.positionen = [];
+            aktuelleKalkulation.materialien = []; // Material zurücksetzen
             aktuelleKalkulation.kundenName = kalkWizardData.fahrzeug.kunde;
             aktuelleKalkulation.kennzeichen = kalkWizardData.fahrzeug.kennzeichen;
 
@@ -3229,53 +3230,179 @@
                 item.reparaturen.forEach(repair => {
                     const positionName = `${item.teil} ${repair}`;
 
-                    // Preis aus Katalog suchen oder Standardpreis
-                    let preis = getPreisFromKatalog(item.teil, repair);
+                    // Stunden und Stundensatz holen
+                    const arbeitsDaten = getArbeitsDaten(item.teil, repair);
 
                     aktuelleKalkulation.positionen.push({
                         id: Date.now() + Math.random(),
                         name: positionName,
                         teil: item.teil,
                         arbeit: repair,
-                        preis: preis,
+                        stunden: arbeitsDaten.stunden,
+                        stundensatz: arbeitsDaten.stundensatz,
+                        preis: arbeitsDaten.stunden * arbeitsDaten.stundensatz,
                         menge: 1
+                    });
+
+                    // Automatisch Material hinzufügen
+                    const materialListe = getMaterialFuerArbeit(item.teil, repair);
+                    materialListe.forEach(mat => {
+                        // Prüfen ob Material schon existiert
+                        const existing = aktuelleKalkulation.materialien.find(m => m.name === mat.name);
+                        if (existing) {
+                            existing.menge += mat.menge;
+                        } else {
+                            aktuelleKalkulation.materialien.push({
+                                id: Date.now() + Math.random(),
+                                ...mat
+                            });
+                        }
                     });
                 });
             });
 
-            // Positionen rendern
+            // Positionen und Material rendern
             renderPositionenNew();
+            renderMaterialienNew();
             berechneGesamtsumme();
         }
 
-        function getPreisFromKatalog(teil, arbeit) {
-            // Versuche Preis aus Katalog zu finden
-            const searchTerm = `${teil} ${arbeit}`.toLowerCase();
+        // Stunden und Stundensatz pro Arbeit/Teil
+        function getArbeitsDaten(teil, arbeit) {
+            // Stundensätze aus Einstellungen
+            const stundensatzLack = kalkulationSaetze?.stundensatzLack || 85;
+            const stundensatzKarosserie = kalkulationSaetze?.stundensatzKarosserie || 95;
+            const stundensatzMechanik = kalkulationSaetze?.stundensatzMechanik || 85;
 
-            for (const item of katalogData) {
-                if (item.name && item.name.toLowerCase().includes(teil.toLowerCase()) &&
-                    item.name.toLowerCase().includes(arbeit.toLowerCase())) {
-                    return item.preis || 0;
+            // Standard-Arbeitszeiten (in Stunden) nach Arbeit und Teilgröße
+            const arbeitszeiten = {
+                'lackieren': {
+                    'Stoßfänger': 3.0, 'Motorhaube': 3.5, 'Kotflügel': 2.5, 'Tür': 3.0,
+                    'Dach': 4.0, 'Heckklappe': 3.0, 'Seitenteil': 3.5, 'Schweller': 2.0,
+                    'Seitenspiegel': 0.5, 'default': 2.5
+                },
+                'demontieren': {
+                    'Stoßfänger': 0.5, 'Motorhaube': 0.3, 'Kotflügel': 0.8, 'Tür': 0.5,
+                    'Heckklappe': 0.4, 'Seitenspiegel': 0.2, 'default': 0.5
+                },
+                'montieren': {
+                    'Stoßfänger': 0.5, 'Motorhaube': 0.3, 'Kotflügel': 0.8, 'Tür': 0.5,
+                    'Heckklappe': 0.4, 'Seitenspiegel': 0.2, 'default': 0.5
+                },
+                'grundieren': {
+                    'default': 1.0
+                },
+                'spachteln': {
+                    'klein': 0.5, 'mittel': 1.0, 'gross': 2.0, 'default': 1.0
+                },
+                'schleifen': {
+                    'default': 0.75
+                },
+                'austauschen': {
+                    'Stoßfänger': 1.5, 'Motorhaube': 1.0, 'Kotflügel': 2.0, 'Tür': 2.5,
+                    'Heckklappe': 1.5, 'Seitenspiegel': 0.5, 'default': 1.5
+                },
+                'spot-repair': {
+                    'default': 1.5
+                },
+                'polieren': {
+                    'default': 1.0
+                },
+                'ausbeulen': {
+                    'klein': 1.0, 'mittel': 2.0, 'gross': 3.5, 'default': 2.0
+                },
+                'schweissen': {
+                    'default': 1.5
+                },
+                'kleben': {
+                    'default': 0.75
                 }
-            }
-
-            // Standardpreise nach Arbeit
-            const standardPreise = {
-                'lackieren': 250,
-                'demontieren': 45,
-                'montieren': 45,
-                'grundieren': 85,
-                'spachteln': 120,
-                'schleifen': 65,
-                'austauschen': 150,
-                'spot-repair': 180,
-                'polieren': 95,
-                'ausbeulen': 200,
-                'schweissen': 150,
-                'kleben': 75
             };
 
-            return standardPreise[arbeit] || 100;
+            // Stundensatz nach Arbeit
+            const stundensatzMap = {
+                'lackieren': stundensatzLack,
+                'grundieren': stundensatzLack,
+                'polieren': stundensatzLack,
+                'spot-repair': stundensatzLack,
+                'demontieren': stundensatzMechanik,
+                'montieren': stundensatzMechanik,
+                'austauschen': stundensatzKarosserie,
+                'spachteln': stundensatzKarosserie,
+                'schleifen': stundensatzKarosserie,
+                'ausbeulen': stundensatzKarosserie,
+                'schweissen': stundensatzKarosserie,
+                'kleben': stundensatzKarosserie
+            };
+
+            // Stunden berechnen
+            let stunden = 1.0;
+            const arbeitZeiten = arbeitszeiten[arbeit] || {};
+
+            // Suche nach passendem Teil
+            for (const [key, value] of Object.entries(arbeitZeiten)) {
+                if (key !== 'default' && teil.toLowerCase().includes(key.toLowerCase())) {
+                    stunden = value;
+                    break;
+                }
+            }
+            if (stunden === 1.0 && arbeitZeiten.default) {
+                stunden = arbeitZeiten.default;
+            }
+
+            return {
+                stunden: stunden,
+                stundensatz: stundensatzMap[arbeit] || 85
+            };
+        }
+
+        // Material automatisch basierend auf Arbeit
+        function getMaterialFuerArbeit(teil, arbeit) {
+            const materialVorschlaege = {
+                'lackieren': [
+                    { name: 'Basislack (gemischt)', menge: 0.3, einheit: 'Liter', einzelpreis: 85, preis: 25.50 },
+                    { name: 'Klarlack 2K', menge: 0.2, einheit: 'Liter', einzelpreis: 65, preis: 13.00 },
+                    { name: 'Härter', menge: 0.1, einheit: 'Liter', einzelpreis: 45, preis: 4.50 },
+                    { name: 'Verdünnung', menge: 0.1, einheit: 'Liter', einzelpreis: 25, preis: 2.50 }
+                ],
+                'grundieren': [
+                    { name: 'Füller/Grundierung 2K', menge: 0.2, einheit: 'Liter', einzelpreis: 55, preis: 11.00 },
+                    { name: 'Härter Füller', menge: 0.1, einheit: 'Liter', einzelpreis: 40, preis: 4.00 }
+                ],
+                'spachteln': [
+                    { name: 'Feinspachtel', menge: 0.15, einheit: 'kg', einzelpreis: 28, preis: 4.20 },
+                    { name: 'Härterpaste', menge: 0.02, einheit: 'kg', einzelpreis: 35, preis: 0.70 }
+                ],
+                'schleifen': [
+                    { name: 'Schleifpapier Set (P80-P800)', menge: 1, einheit: 'Set', einzelpreis: 8.50, preis: 8.50 },
+                    { name: 'Schleifvlies', menge: 2, einheit: 'Stück', einzelpreis: 2.50, preis: 5.00 }
+                ],
+                'polieren': [
+                    { name: 'Polierpaste Schleif', menge: 0.05, einheit: 'Liter', einzelpreis: 45, preis: 2.25 },
+                    { name: 'Polierpaste Hochglanz', menge: 0.05, einheit: 'Liter', einzelpreis: 55, preis: 2.75 },
+                    { name: 'Polierschwamm', menge: 1, einheit: 'Stück', einzelpreis: 12, preis: 12.00 }
+                ],
+                'spot-repair': [
+                    { name: 'Spot-Repair Lack Set', menge: 1, einheit: 'Set', einzelpreis: 35, preis: 35.00 },
+                    { name: 'Spot-Blender', menge: 0.1, einheit: 'Liter', einzelpreis: 48, preis: 4.80 }
+                ],
+                'kleben': [
+                    { name: 'Kunststoffkleber 2K', menge: 1, einheit: 'Set', einzelpreis: 28, preis: 28.00 },
+                    { name: 'Kunststoff-Primer', menge: 0.05, einheit: 'Liter', einzelpreis: 38, preis: 1.90 }
+                ],
+                'schweissen': [
+                    { name: 'Schweißdraht', menge: 0.5, einheit: 'kg', einzelpreis: 18, preis: 9.00 },
+                    { name: 'Schweißgas CO2', menge: 1, einheit: 'Pauschale', einzelpreis: 15, preis: 15.00 }
+                ],
+                'demontieren': [
+                    { name: 'Clips/Befestigungen (Reserve)', menge: 1, einheit: 'Set', einzelpreis: 8, preis: 8.00 }
+                ],
+                'montieren': [
+                    { name: 'Clips/Befestigungen neu', menge: 1, einheit: 'Set', einzelpreis: 12, preis: 12.00 }
+                ]
+            };
+
+            return materialVorschlaege[arbeit] || [];
         }
 
         function renderPositionenNew() {
@@ -3296,7 +3423,9 @@
                         <thead>
                             <tr>
                                 <th>Position</th>
-                                <th>Preis</th>
+                                <th style="text-align: center;">Stunden</th>
+                                <th style="text-align: center;">€/Std.</th>
+                                <th style="text-align: right;">Preis</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -3304,12 +3433,24 @@
                             ${aktuelleKalkulation.positionen.map((pos, index) => `
                                 <tr>
                                     <td>${pos.name}</td>
-                                    <td>
+                                    <td style="text-align: center;">
                                         <input type="number"
-                                               value="${pos.preis.toFixed(2)}"
-                                               onchange="updatePositionPreis(${index}, this.value)"
-                                               style="width: 100px; text-align: right;">
-                                        €
+                                               value="${pos.stunden.toFixed(2)}"
+                                               step="0.25"
+                                               min="0"
+                                               onchange="updatePositionStunden(${index}, this.value)"
+                                               style="width: 70px; text-align: center;">
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <input type="number"
+                                               value="${pos.stundensatz.toFixed(2)}"
+                                               step="5"
+                                               min="0"
+                                               onchange="updatePositionStundensatz(${index}, this.value)"
+                                               style="width: 70px; text-align: center;">
+                                    </td>
+                                    <td style="text-align: right; font-weight: 600;">
+                                        ${pos.preis.toFixed(2).replace('.', ',')} €
                                     </td>
                                     <td>
                                         <button class="btn btn-sm btn-error" onclick="removePositionNew(${index})">
@@ -3326,6 +3467,83 @@
             feather.replace();
         }
 
+        function renderMaterialienNew() {
+            const container = document.getElementById('materialListe');
+            if (!container) return;
+
+            if (aktuelleKalkulation.materialien.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="package"></i>
+                        <h3>Kein Material</h3>
+                        <p>Material wird automatisch basierend auf den Arbeiten hinzugefügt</p>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Material</th>
+                                <th style="text-align: center;">Menge</th>
+                                <th style="text-align: center;">Einheit</th>
+                                <th style="text-align: right;">Preis</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${aktuelleKalkulation.materialien.map((mat, index) => `
+                                <tr>
+                                    <td>${mat.name}</td>
+                                    <td style="text-align: center;">
+                                        <input type="number"
+                                               value="${mat.menge}"
+                                               step="0.1"
+                                               min="0"
+                                               onchange="updateMaterialMenge(${index}, this.value)"
+                                               style="width: 60px; text-align: center;">
+                                    </td>
+                                    <td style="text-align: center;">${mat.einheit}</td>
+                                    <td style="text-align: right;">
+                                        <input type="number"
+                                               value="${mat.preis.toFixed(2)}"
+                                               step="0.50"
+                                               min="0"
+                                               onchange="updateMaterialPreis(${index}, this.value)"
+                                               style="width: 80px; text-align: right;">
+                                        €
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-error" onclick="removeMaterialNew(${index})">
+                                            <i data-feather="trash-2"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            feather.replace();
+        }
+
+        function updatePositionStunden(index, value) {
+            const pos = aktuelleKalkulation.positionen[index];
+            pos.stunden = parseFloat(value) || 0;
+            pos.preis = pos.stunden * pos.stundensatz;
+            renderPositionenNew();
+            berechneGesamtsumme();
+        }
+
+        function updatePositionStundensatz(index, value) {
+            const pos = aktuelleKalkulation.positionen[index];
+            pos.stundensatz = parseFloat(value) || 0;
+            pos.preis = pos.stunden * pos.stundensatz;
+            renderPositionenNew();
+            berechneGesamtsumme();
+        }
+
         function updatePositionPreis(index, value) {
             aktuelleKalkulation.positionen[index].preis = parseFloat(value) || 0;
             berechneGesamtsumme();
@@ -3334,6 +3552,26 @@
         function removePositionNew(index) {
             aktuelleKalkulation.positionen.splice(index, 1);
             renderPositionenNew();
+            berechneGesamtsumme();
+        }
+
+        function updateMaterialMenge(index, value) {
+            const mat = aktuelleKalkulation.materialien[index];
+            mat.menge = parseFloat(value) || 0;
+            mat.preis = mat.menge * (mat.einzelpreis || mat.preis / (mat.menge || 1));
+            renderMaterialienNew();
+            berechneGesamtsumme();
+        }
+
+        function updateMaterialPreis(index, value) {
+            aktuelleKalkulation.materialien[index].preis = parseFloat(value) || 0;
+            renderMaterialienNew();
+            berechneGesamtsumme();
+        }
+
+        function removeMaterialNew(index) {
+            aktuelleKalkulation.materialien.splice(index, 1);
+            renderMaterialienNew();
             berechneGesamtsumme();
         }
 
