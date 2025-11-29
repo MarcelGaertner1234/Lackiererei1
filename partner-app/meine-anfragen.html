@@ -3764,6 +3764,12 @@
                 return chunks;
             };
 
+            // 🆕 FIX (2025-11-29): KRITISCHER BUG - Mehrere Anfragen mit gleichem Kennzeichen
+            // PROBLEM: fahrzeugMap.set(kennzeichen, ...) überschreibt bei gleichem Kennzeichen
+            //          → Alle Anfragen zeigen denselben Status!
+            // LÖSUNG: Primär nach anfrageId verknüpfen, Kennzeichen nur als Fallback
+            const anfrageIdMap = new Map(); // anfrageId → fahrzeug (PRIMÄR)
+
             try {
                 // Batch Query 1: Kennzeichen
                 if (kennzeichen.length > 0) {
@@ -3780,16 +3786,25 @@
 
                         snapshot.forEach(doc => {
                             const data = doc.data();
-                            fahrzeugMap.set(data.kennzeichen, {
-                                id: doc.id,
-                                ...data
-                            });
+                            const fahrzeugObj = { id: doc.id, ...data };
+
+                            // 🆕 FIX: PRIMÄR nach anfrageId speichern (eindeutig!)
+                            if (data.anfrageId) {
+                                anfrageIdMap.set(data.anfrageId, fahrzeugObj);
+                            }
+
+                            // FALLBACK: Kennzeichen (für alte Fahrzeuge ohne anfrageId)
+                            // Nur speichern wenn NOCH NICHT vorhanden (erstes gewinnt)
+                            if (!fahrzeugMap.has(data.kennzeichen)) {
+                                fahrzeugMap.set(data.kennzeichen, fahrzeugObj);
+                            }
                         });
 
                         totalLoaded += snapshot.size;
                     }
 
                     console.log(`✅ Batch Query (Kennzeichen): ${totalLoaded} Fahrzeuge geladen in ${kennzeichenBatches.length} Queries`);
+                    console.log(`   📊 AnfrageId-Map: ${anfrageIdMap.size} Einträge, Kennzeichen-Map: ${fahrzeugMap.size} Einträge`);
                 }
 
                 // Batch Query 2: Auftragsnummern (Fallback)
@@ -3807,10 +3822,14 @@
 
                         snapshot.forEach(doc => {
                             const data = doc.data();
-                            fahrzeugMap.set(data.auftragsnummer, {
-                                id: doc.id,
-                                ...data
-                            });
+                            const fahrzeugObj = { id: doc.id, ...data };
+
+                            // 🆕 FIX (2025-11-29): Auch bei Auftragsnummern-Query anfrageId speichern
+                            if (data.anfrageId) {
+                                anfrageIdMap.set(data.anfrageId, fahrzeugObj);
+                            }
+
+                            fahrzeugMap.set(data.auftragsnummer, fahrzeugObj);
                         });
 
                         totalLoaded += snapshot.size;
@@ -3826,6 +3845,7 @@
             }
 
             // SCHRITT 3: Verknüpfe Fahrzeuge mit Anfragen (O(1) Lookup via Map!)
+            // 🆕 FIX (2025-11-29): PRIORITÄT - anfrageId > Kennzeichen
             let verknuepft = 0;
             let nichtGefunden = 0;
             const anfrageForRetry = []; // Anfragen die retry brauchen
@@ -3833,9 +3853,20 @@
             anfragen.forEach(anfrage => {
                 let fahrzeug = null;
 
-                if (anfrage.kennzeichen) {
+                // 🆕 FIX: PRIORITÄT 1 - Suche nach anfrageId (eindeutig!)
+                if (anfrage.id && anfrageIdMap.has(anfrage.id)) {
+                    fahrzeug = anfrageIdMap.get(anfrage.id);
+                    console.log(`✅ Fahrzeug verknüpft via anfrageId: ${anfrage.id} → ${anfrage.kennzeichen}`);
+                }
+                // PRIORITÄT 2 - Fallback: Kennzeichen (für alte Anfragen)
+                else if (anfrage.kennzeichen) {
                     fahrzeug = fahrzeugMap.get(anfrage.kennzeichen.toUpperCase());
-                } else if (anfrage.auftragsnummer) {
+                    if (fahrzeug) {
+                        console.log(`⚠️ Fahrzeug verknüpft via Kennzeichen (Fallback): ${anfrage.kennzeichen}`);
+                    }
+                }
+                // PRIORITÄT 3 - Fallback: Auftragsnummer
+                else if (anfrage.auftragsnummer) {
                     fahrzeug = fahrzeugMap.get(anfrage.auftragsnummer);
                 }
 
@@ -3845,7 +3876,7 @@
                     console.log(`✅ Fahrzeug verknüpft: ${anfrage.kennzeichen || anfrage.auftragsnummer} → prozessStatus: ${anfrage.fahrzeug.prozessStatus}`);
                 } else {
                     nichtGefunden++;
-                    console.log(`ℹ️ Kein Fahrzeug gefunden für: ${anfrage.kennzeichen || anfrage.auftragsnummer}`);
+                    console.log(`ℹ️ Kein Fahrzeug gefunden für: ${anfrage.id} (${anfrage.kennzeichen || anfrage.auftragsnummer})`);
 
                     // ✅ FIX: RETRY-LOGIC für Anfragen mit fahrzeugAngelegt Flag
                     // Problem: Firestore hat Indexing-Delay (1-10 Sekunden)
