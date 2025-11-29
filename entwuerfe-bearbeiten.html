@@ -1495,6 +1495,15 @@
                 // Load drafts
                 await loadOffeneEntwuerfe();
 
+                // 🔧 FIX Nov 29, 2025: URL-Parameter ?id= verarbeiten (von kalkulation.html)
+                const urlParams = new URLSearchParams(window.location.search);
+                const entwurfIdFromUrl = urlParams.get('id');
+                if (entwurfIdFromUrl) {
+                    console.log('📌 URL-Parameter gefunden, lade Entwurf direkt:', entwurfIdFromUrl);
+                    // Entwurf direkt laden (auch wenn Status != 'offen')
+                    await loadEntwurfById(entwurfIdFromUrl);
+                }
+
                 // 🚗 Ersatzfahrzeug Toggle initialisieren (FIX: Nov 27, 2025)
                 initErsatzfahrzeugToggle();
 
@@ -2006,6 +2015,59 @@
         }
 
         // ============================================
+        // LOAD ENTWURF BY ID (Direct from Firestore)
+        // 🔧 FIX Nov 29, 2025: Für URL-Parameter von kalkulation.html
+        // ============================================
+
+        async function loadEntwurfById(entwurfId) {
+            try {
+                console.log('📥 Lade Entwurf direkt aus Firestore:', entwurfId);
+
+                const werkstattId = window.werkstattId;
+                const collectionName = `partnerAnfragen_${werkstattId}`;
+
+                const doc = await window.db.collection(collectionName).doc(entwurfId).get();
+
+                if (!doc.exists) {
+                    console.error('❌ Entwurf nicht gefunden:', entwurfId);
+                    showToast('⚠️ Entwurf nicht gefunden', 'error');
+                    return;
+                }
+
+                const entwurfData = { id: doc.id, ...doc.data() };
+                console.log('✅ Entwurf geladen:', entwurfData);
+
+                // Add to offeneEntwuerfe array if not already there
+                if (!offeneEntwuerfe.find(e => e.id === entwurfId)) {
+                    offeneEntwuerfe.push(entwurfData);
+
+                    // Update dropdown
+                    const dropdown = document.getElementById('entwurfDropdown');
+                    const option = document.createElement('option');
+                    option.value = entwurfId;
+                    option.textContent = `${entwurfData.kennzeichen || 'Ohne Kennzeichen'} - ${entwurfData.kundenname || 'Unbekannt'} (aus Kalkulation)`;
+                    dropdown.appendChild(option);
+                }
+
+                // Select in dropdown
+                document.getElementById('entwurfDropdown').value = entwurfId;
+
+                // Load the entwurf (reuse existing function logic)
+                currentEntwurf = entwurfData;
+                currentEntwurfId = entwurfId;
+
+                // Trigger loadEntwurf to fill the form
+                await loadEntwurf();
+
+                showToast('✅ Entwurf aus Kalkulation geladen', 'success');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Entwurfs:', error);
+                showToast('❌ Fehler beim Laden: ' + error.message, 'error');
+            }
+        }
+
+        // ============================================
         // LOAD ENTWURF (Fill Form)
         // ============================================
 
@@ -2029,12 +2091,15 @@
                     return;
                 }
 
-                // Find entwurf
-                currentEntwurf = offeneEntwuerfe.find(e => String(e.id) === String(selectedId));
-                currentEntwurfId = selectedId;
+                // 🔧 FIX Nov 29, 2025: Wenn currentEntwurf bereits gesetzt ist (von loadEntwurfById), nutzen
+                if (!currentEntwurf || String(currentEntwurf.id) !== String(selectedId)) {
+                    // Find entwurf from loaded array
+                    currentEntwurf = offeneEntwuerfe.find(e => String(e.id) === String(selectedId));
+                    currentEntwurfId = selectedId;
 
-                if (!currentEntwurf) {
-                    throw new Error('Entwurf nicht gefunden');
+                    if (!currentEntwurf) {
+                        throw new Error('Entwurf nicht gefunden');
+                    }
                 }
 
                 console.log('📝 Lade Entwurf:', currentEntwurf);
