@@ -8587,23 +8587,37 @@ REGELN:
 
         // Kontext für Ersatzteilsuche aktualisieren (wird beim Laden von Step 5 aufgerufen)
         function updateKIErsatzteilKontext() {
-            // Fahrzeug-Info
+            // Fahrzeug-Info - KORREKTE Feldnamen aus kalkWizardData.fahrzeug
             const fahrzeugEl = document.getElementById('kiKontextFahrzeug');
             if (fahrzeugEl) {
-                const marke = kalkWizardData.fahrzeugMarke || '';
-                const modell = kalkWizardData.fahrzeugModell || '';
-                const baujahr = kalkWizardData.fahrzeugBaujahr || '';
-                fahrzeugEl.textContent = `${marke} ${modell} ${baujahr ? '(' + baujahr + ')' : ''}`.trim() || '-';
+                const marke = kalkWizardData.fahrzeug?.marke || '';
+                const modell = kalkWizardData.fahrzeug?.modell || '';
+                const baujahr = kalkWizardData.fahrzeug?.baujahr || '';
+                const kennzeichen = kalkWizardData.fahrzeug?.kennzeichen || '';
+                let fahrzeugText = `${marke} ${modell}`.trim();
+                if (baujahr) fahrzeugText += ` (${baujahr})`;
+                if (kennzeichen) fahrzeugText += ` - ${kennzeichen}`;
+                fahrzeugEl.textContent = fahrzeugText || '-';
+                console.log('🚗 KI-Kontext Fahrzeug:', fahrzeugText);
             }
 
-            // Teile-Info
+            // Teile-Info - KORREKTE Feldnamen: teil (nicht name), reparaturen (nicht arbeiten)
             const teileEl = document.getElementById('kiKontextTeile');
             if (teileEl) {
-                const teile = (kalkWizardData.teile || [])
-                    .filter(t => t.ersatzteil || t.arbeiten?.includes('ersetzen') || t.arbeiten?.includes('austauschen'))
-                    .map(t => t.name);
-                teileEl.textContent = teile.length > 0 ? teile.join(', ') : 'Keine Ersatzteile benötigt';
+                const teileZuErsetzen = (kalkWizardData.teile || []).filter(t => {
+                    const reparaturen = t.reparaturen || t.arbeiten || [];
+                    return t.needsErsatzteil ||
+                        reparaturen.includes('ersetzen') ||
+                        reparaturen.includes('austauschen') ||
+                        reparaturen.includes('wechseln');
+                }).map(t => t.teil || t.name);
+
+                teileEl.textContent = teileZuErsetzen.length > 0 ? teileZuErsetzen.join(', ') : 'Keine Ersatzteile benötigt';
+                console.log('📦 KI-Kontext Teile:', teileZuErsetzen);
             }
+
+            console.log('📋 kalkWizardData.teile:', kalkWizardData.teile);
+            console.log('📋 kalkWizardData.fahrzeug:', kalkWizardData.fahrzeug);
         }
 
         // KI-Ersatzteilsuche starten
@@ -8662,12 +8676,15 @@ REGELN:
             if (loading) loading.style.display = 'flex';
             if (results) results.style.display = 'none';
 
+            // KORREKTE Feldnamen aus kalkWizardData.fahrzeug
             const fahrzeug = {
-                marke: kalkWizardData.fahrzeugMarke || '',
-                modell: kalkWizardData.fahrzeugModell || '',
-                baujahr: kalkWizardData.fahrzeugBaujahr || '',
-                kennzeichen: kalkWizardData.fahrzeugKennzeichen || ''
+                marke: kalkWizardData.fahrzeug?.marke || '',
+                modell: kalkWizardData.fahrzeug?.modell || '',
+                baujahr: kalkWizardData.fahrzeug?.baujahr || '',
+                kennzeichen: kalkWizardData.fahrzeug?.kennzeichen || ''
             };
+
+            console.log('🚗 Fahrzeug für KI-Suche:', fahrzeug);
 
             console.log('🔍 Starte KI-Ersatzteilsuche für:', teileZuErsetzen);
 
@@ -9148,17 +9165,24 @@ Generiere realistische Angebote von deutschen Ersatzteil-Shops.`
 
             console.log('📋 Step 5 - Teile zu ersetzen:', teileZuErsetzen);
 
-            // KI-Kontext aktualisieren
+            // KI-Kontext aktualisieren - KORREKTE Feldnamen aus kalkWizardData.fahrzeug
             const kontextFahrzeug = document.getElementById('kiKontextFahrzeug');
             const kontextTeile = document.getElementById('kiKontextTeile');
 
             if (kontextFahrzeug) {
-                kontextFahrzeug.textContent = `${kalkWizardData.fahrzeugMarke || '-'} ${kalkWizardData.fahrzeugModell || ''} ${kalkWizardData.fahrzeugBaujahr || ''}`.trim() || '-';
+                const marke = kalkWizardData.fahrzeug?.marke || '';
+                const modell = kalkWizardData.fahrzeug?.modell || '';
+                const baujahr = kalkWizardData.fahrzeug?.baujahr || '';
+                const kennzeichen = kalkWizardData.fahrzeug?.kennzeichen || '';
+                let fahrzeugText = `${marke} ${modell}`.trim();
+                if (baujahr) fahrzeugText += ` (${baujahr})`;
+                if (kennzeichen) fahrzeugText += ` - ${kennzeichen}`;
+                kontextFahrzeug.textContent = fahrzeugText || '-';
             }
 
             if (kontextTeile) {
                 if (teileZuErsetzen.length > 0) {
-                    kontextTeile.textContent = teileZuErsetzen.map(t => t.teil).join(', ');
+                    kontextTeile.textContent = teileZuErsetzen.map(t => t.teil || t.name).join(', ');
                 } else {
                     kontextTeile.textContent = 'Keine Teile zum Ersetzen ausgewählt';
                 }
