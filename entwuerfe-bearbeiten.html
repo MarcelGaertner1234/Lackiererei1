@@ -3235,11 +3235,14 @@
                     const ersatzteilId = 'et_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
                     // Zentrale Ersatzteil-Daten
+                    // 🔧 FIX (2025-11-29): Erweiterte Feld-Mapping-Kette für kalkulation.html Kompatibilität
+                    const einzelpreis = parseFloat(teil.einzelpreis || teil.preis) || 0;
+                    const anzahl = parseInt(teil.anzahl || teil.menge) || 1;
                     const ersatzteilData = {
                         id: ersatzteilId,
-                        etn: teil.etn || '',
-                        benennung: teil.benennung || '',
-                        einzelpreis: teil.einzelpreis || 0,
+                        etn: teil.etn || teil.teilenummer || '',
+                        benennung: teil.benennung || teil.name || '',
+                        einzelpreis: einzelpreis,
                         // Referenz-Daten
                         fahrzeugId: fahrzeugId,
                         kennzeichen: kennzeichen,
@@ -3251,8 +3254,11 @@
                         createdByUserId: userId,  // 🆕 FIX: User-ID für eindeutige Zuordnung
                         createdByEmail: userEmail,  // 🆕 FIX: Email für Compliance
                         // Optional: Anzahl aus diesem spezifischen Auftrag
-                        anzahlInAuftrag: teil.anzahl || 1,
-                        gesamtpreisInAuftrag: teil.gesamtpreis || 0
+                        anzahlInAuftrag: anzahl,
+                        gesamtpreisInAuftrag: parseFloat(teil.gesamtpreis) || (einzelpreis * anzahl),
+                        // 🔧 FIX (2025-11-29): Lieferant und Link aus kalkulation.html
+                        lieferant: teil.lieferant || null,
+                        bestellLink: teil.bestellLink || null
                     };
 
                     // In Batch hinzufügen
@@ -3299,25 +3305,33 @@
                 try {
                     const bestellungId = `best_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+                    // 🔧 FIX (2025-11-29): Erweiterte Feld-Mapping-Kette für kalkulation.html Kompatibilität
+                    const einzelpreis = parseFloat(teil.einzelpreis || teil.preis) || 0;
+                    const menge = parseInt(teil.anzahl || teil.menge) || 1;
                     const bestellungData = {
                         id: bestellungId,
                         fahrzeugId: String(fahrzeugId),
                         kennzeichen: kennzeichen || 'k.A.',
                         werkstattId: window.werkstattId,
 
-                        // Ersatzteil-Daten
-                        etn: teil.etn || '',
-                        benennung: teil.benennung || 'Ersatzteil',
-                        anzahl: teil.anzahl || 1,
-                        einzelpreis: teil.einzelpreis || 0,
-                        gesamtpreis: teil.gesamtpreis || 0,
+                        // Ersatzteil-Daten (mit Fallback-Kette)
+                        etn: teil.etn || teil.teilenummer || '',
+                        benennung: teil.benennung || teil.name || 'Ersatzteil',
+                        menge: menge,  // 🔧 FIX: 'menge' statt 'anzahl' für material.html Kompatibilität
+                        einzelpreis: einzelpreis,
+                        gesamtpreis: parseFloat(teil.gesamtpreis) || (einzelpreis * menge),
 
                         // Bestellungs-Metadaten
                         // 🆕 FIX (2025-11-29): 'bestellt' statt 'offen' für Konsistenz mit meine-anfragen.html
                         status: 'bestellt',  // bestellt → angeliefert (konsistent mit KVA-Pipeline)
-                        quelle: 'entwurf',
-                        erstelltAm: new Date().toISOString(),
-                        timestamp: Date.now()
+                        source: 'entwurf',  // 🔧 FIX: 'source' statt 'quelle' für material.html Badge
+                        bestelltVon: localStorage.getItem('userName') || 'Büro',
+                        bestelltAm: new Date().toISOString(),
+                        createdAt: new Date().toISOString(),
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        // 🔧 FIX (2025-11-29): Lieferant und Link aus kalkulation.html
+                        lieferantName: teil.lieferant || null,
+                        bestellLink: teil.bestellLink || null
                     };
 
                     const docRef = window.getCollection('bestellungen').doc(bestellungId);

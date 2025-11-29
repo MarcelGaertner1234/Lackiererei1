@@ -6066,11 +6066,14 @@
                     const ersatzteilId = 'et_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 
                     // Zentrale Ersatzteil-Daten
+                    // 🔧 FIX (2025-11-29): Erweiterte Feld-Mapping-Kette für kalkulation.html Kompatibilität
+                    const einzelpreis = parseFloat(teil.einzelpreis || teil.preis) || 0;
+                    const anzahl = parseInt(teil.anzahl || teil.menge) || 1;
                     const ersatzteilData = {
                         id: ersatzteilId,
-                        etn: teil.etn || '',
-                        benennung: teil.benennung || '',
-                        einzelpreis: teil.einzelpreis || 0,
+                        etn: teil.etn || teil.teilenummer || '',
+                        benennung: teil.benennung || teil.name || '',
+                        einzelpreis: einzelpreis,
                         // Referenz-Daten
                         fahrzeugId: fahrzeugId,  // ✅ ECHTE fahrzeugId (fzg_timestamp)
                         kennzeichen: kennzeichen,
@@ -6080,8 +6083,11 @@
                         createdAt: new Date().toISOString(),
                         createdBy: userName,
                         // Optional: Anzahl aus diesem spezifischen Auftrag
-                        anzahlInAuftrag: teil.anzahl || 1,
-                        gesamtpreisInAuftrag: teil.gesamtpreis || 0
+                        anzahlInAuftrag: anzahl,
+                        gesamtpreisInAuftrag: parseFloat(teil.gesamtpreis) || (einzelpreis * anzahl),
+                        // 🔧 FIX (2025-11-29): Lieferant und Link aus kalkulation.html
+                        lieferant: teil.lieferant || null,
+                        bestellLink: teil.bestellLink || null
                     };
 
                     // In Batch hinzufügen
@@ -6142,13 +6148,18 @@
                     const bestellungId = 'best_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 
                     // Convert ersatzteil format → bestellung format (mirrors annahme.html structure)
+                    // 🔧 FIX (2025-11-29): Erweiterte Feld-Mapping-Kette für kalkulation.html Kompatibilität
+                    // kalkulation.html verwendet: name, teilenummer, preis, menge, lieferant, bestellLink
+                    // Andere Quellen verwenden: benennung, etn, einzelpreis, anzahl
+                    const einzelpreis = parseFloat(teil.einzelpreis || teil.preis) || 0;
+                    const menge = parseInt(teil.anzahl || teil.menge) || 1;
                     const bestellungData = {
                         id: bestellungId,
-                        etn: teil.etn || '',
-                        benennung: teil.benennung || '',
-                        menge: teil.anzahl || 1,  // ersatzteil uses 'anzahl'
-                        einzelpreis: parseFloat(teil.einzelpreis) || 0,
-                        gesamtpreis: parseFloat(teil.gesamtpreis) || 0,
+                        etn: teil.etn || teil.teilenummer || '',
+                        benennung: teil.benennung || teil.name || '',
+                        menge: menge,
+                        einzelpreis: einzelpreis,
+                        gesamtpreis: parseFloat(teil.gesamtpreis) || (einzelpreis * menge),
                         status: 'bestellt',
                         bestelltVon: userName,
                         bestelltAm: new Date().toISOString(),
@@ -6160,14 +6171,18 @@
                         sourceRequestId: null,
 
                         // Extended fields (2025-11-11)
-                        preisGeschaetzt: parseFloat(teil.einzelpreis) || 0,
-                        lieferantName: null,
+                        // 🔧 FIX (2025-11-29): Lieferant und Bestell-Link aus kalkulation.html übernehmen
+                        preisGeschaetzt: einzelpreis,
+                        lieferantName: teil.lieferant || null,
                         lieferantId: null,
                         bestellnummer: null,
                         lieferdatum: null,
+                        bestellLink: teil.bestellLink || null,  // NEU: Link aus kalkulation.html
                         angeliefertAm: null,
                         angeliefertVon: null,
-                        notizen: `Automatisch erstellt aus KVA-Ersatzteil`,
+                        notizen: teil.bestellLink
+                            ? `Automatisch erstellt aus KVA-Ersatzteil (Link: ${teil.bestellLink})`
+                            : `Automatisch erstellt aus KVA-Ersatzteil`,
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString()
                     };

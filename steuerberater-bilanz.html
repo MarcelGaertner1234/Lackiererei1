@@ -984,19 +984,24 @@
             // ✅ SOURCE 1: kalkulationData (BEST - full itemized breakdown)
             if (fahrzeug.kalkulationData) {
                 const kalkulation = fahrzeug.kalkulationData;
+                // 🔧 FIX (2025-11-29): Support both 'positionen' and 'arbeitslohn' field names
+                // kalkulation.html uses 'positionen', other sources use 'arbeitslohn'
+                const arbeitslohnData = kalkulation.arbeitslohn || kalkulation.positionen || [];
                 const hasData = (
                     (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) ||
-                    (kalkulation.arbeitslohn && kalkulation.arbeitslohn.length > 0) ||
+                    (arbeitslohnData.length > 0) ||
                     (kalkulation.lackierung && kalkulation.lackierung.length > 0) ||
                     (kalkulation.materialien && kalkulation.materialien.length > 0)
                 );
 
                 if (hasData) {
                     let kosten = 0;
-                    kosten += (kalkulation.ersatzteile || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
-                    kosten += (kalkulation.arbeitslohn || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
-                    kosten += (kalkulation.lackierung || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
-                    kosten += (kalkulation.materialien || []).reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
+                    // 🔧 FIX (2025-11-29): Support both 'gesamtpreis' and 'preis' field names
+                    // kalkulation.html uses 'preis', other sources use 'gesamtpreis'
+                    kosten += (kalkulation.ersatzteile || []).reduce((sum, item) => sum + (item.gesamtpreis || item.preis || 0), 0);
+                    kosten += arbeitslohnData.reduce((sum, item) => sum + (item.gesamtpreis || item.preis || 0), 0);
+                    kosten += (kalkulation.lackierung || []).reduce((sum, item) => sum + (item.gesamtpreis || item.preis || 0), 0);
+                    kosten += (kalkulation.materialien || []).reduce((sum, item) => sum + (item.gesamtpreis || item.preis || 0), 0);
                     // 🚗 FIX (2025-11-27): Ersatzfahrzeug-Kosten einbeziehen
                     kosten += parseFloat(kalkulation.ersatzfahrzeug?.gesamt || 0);
                     return kosten;
@@ -1032,7 +1037,8 @@
             const fahrzeugKalkulation = fahrzeug.kalkulationData || {};
 
             const ersatzteile = pdfData.ersatzteile || kvaEditedData.ersatzteile || kvaKalkulation.ersatzteile || fahrzeugKalkulation.ersatzteile || [];
-            const arbeitslohn = pdfData.arbeitslohn || kvaKalkulation.arbeitslohn || fahrzeugKalkulation.arbeitslohn || [];
+            // 🔧 FIX (2025-11-29): Support both 'positionen' and 'arbeitslohn' field names
+            const arbeitslohn = pdfData.arbeitslohn || kvaKalkulation.arbeitslohn || fahrzeugKalkulation.arbeitslohn || kvaKalkulation.positionen || fahrzeugKalkulation.positionen || [];
             const lackierung = pdfData.lackierung || kvaKalkulation.lackierung || fahrzeugKalkulation.lackierung || [];
             const materialien = pdfData.materialien || kvaKalkulation.materialien || fahrzeugKalkulation.materialien || [];
 
@@ -1040,18 +1046,19 @@
 
             if (hasData) {
                 let kosten = 0;
+                // 🔧 FIX (2025-11-29): Support both 'gesamtpreis' and 'preis' field names
 
                 if (ersatzteile.length > 0) {
-                    kosten += ersatzteile.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
+                    kosten += ersatzteile.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis || item.preis) || 0), 0);
                 }
                 if (arbeitslohn.length > 0) {
-                    kosten += arbeitslohn.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
+                    kosten += arbeitslohn.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis || item.preis) || 0), 0);
                 }
                 if (lackierung.length > 0) {
-                    kosten += lackierung.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
+                    kosten += lackierung.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis || item.preis) || 0), 0);
                 }
                 if (materialien.length > 0) {
-                    kosten += materialien.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis) || 0), 0);
+                    kosten += materialien.reduce((sum, item) => sum + (parseFloat(item.gesamtpreis || item.preis) || 0), 0);
                 }
 
                 // Add nachbestellungen (material orders)
