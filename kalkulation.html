@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧮 Kalkulation - Fahrzeugannahme App</title>
+
+    <!-- 🌓 FOUC Prevention: Load Theme BEFORE CSS -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
+    <!-- Design System CSS -->
+    <link rel="stylesheet" href="design-system.css">
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="animations.css">
+    <link rel="stylesheet" href="mobile-first.css">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="listener-registry.js"></script>
+    <script src="js/auth-manager.js"></script>
+
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <!-- jsPDF für PDF-Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        /* ============================================
+           🧮 KALKULATION PAGE SPECIFIC STYLES
+           ============================================ */
+
+        body {
+            min-height: 100vh;
+            background: var(--color-background);
+        }
+
+        .page-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: var(--space-6);
+        }
+
+        /* Header */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-8);
+            flex-wrap: wrap;
+            gap: var(--space-4);
+        }
+
+        .page-header-left {
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+        }
+
+        .back-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-button);
+            color: var(--color-text-primary);
+            cursor: pointer;
+            transition: all var(--duration-base) var(--ease-out);
+        }
+
+        .back-button:hover {
+            background: var(--color-primary);
+            color: white;
+            transform: translateX(-2px);
+        }
+
+        .page-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .page-title h1 {
+            font-size: var(--font-size-2xl);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+            margin: 0;
+        }
+
+        .page-title .badge {
+            background: var(--color-primary);
+            color: white;
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-full);
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-medium);
+        }
+
+        /* Tab Navigation */
+        .tab-navigation {
+            display: flex;
+            gap: var(--space-2);
+            background: var(--color-surface);
+            padding: var(--space-2);
+            border-radius: var(--radius-card);
+            border: 1px solid var(--color-border-glass);
+            margin-bottom: var(--space-6);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tab-button {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-3) var(--space-5);
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-button);
+            color: var(--color-text-secondary);
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            cursor: pointer;
+            transition: all var(--duration-base) var(--ease-out);
+            white-space: nowrap;
+        }
+
+        .tab-button:hover {
+            background: rgba(var(--color-primary-rgb), 0.1);
+            color: var(--color-primary);
+        }
+
+        .tab-button.active {
+            background: var(--color-primary);
+            color: white;
+            box-shadow: var(--shadow-primary);
+        }
+
+        .tab-button i {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s var(--ease-out);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Content Cards */
+        .content-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-card);
+            padding: var(--space-6);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+        }
+
+        .content-card__header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-6);
+            flex-wrap: wrap;
+            gap: var(--space-4);
+        }
+
+        .content-card__title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .content-card__title h2 {
+            font-size: var(--font-size-xl);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+            margin: 0;
+        }
+
+        .content-card__title i {
+            color: var(--color-primary);
+        }
+
+        /* Form Styles */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--space-5);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+        }
+
+        .form-group label {
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            color: var(--color-text-primary);
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-input);
+            font-size: var(--font-size-base);
+            color: var(--color-text-primary);
+            transition: all var(--duration-base) var(--ease-out);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: var(--shadow-focus);
+        }
+
+        .form-group .input-suffix {
+            position: relative;
+        }
+
+        .form-group .input-suffix input {
+            padding-right: var(--space-12);
+        }
+
+        .form-group .input-suffix span {
+            position: absolute;
+            right: var(--space-4);
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--color-text-secondary);
+            font-size: var(--font-size-sm);
+        }
+
+        .form-group small {
+            font-size: var(--font-size-xs);
+            color: var(--color-text-secondary);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2);
+            padding: var(--space-3) var(--space-5);
+            border: none;
+            border-radius: var(--radius-button);
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            cursor: pointer;
+            transition: all var(--duration-base) var(--ease-out);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+            color: white;
+            box-shadow: var(--shadow-primary);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-secondary {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            color: var(--color-text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #34c759 0%, #30b350 100%);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(52, 199, 89, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: var(--space-4);
+            text-align: left;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .data-table th {
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: rgba(var(--color-primary-rgb), 0.05);
+        }
+
+        .data-table td {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+        }
+
+        .data-table tr:hover td {
+            background: rgba(var(--color-primary-rgb), 0.03);
+        }
+
+        .data-table .actions {
+            display: flex;
+            gap: var(--space-2);
+        }
+
+        .data-table .btn-icon {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border-radius: var(--radius-button);
+        }
+
+        .data-table .btn-icon i {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: var(--space-12);
+            color: var(--color-text-secondary);
+        }
+
+        .empty-state i {
+            width: 48px;
+            height: 48px;
+            margin-bottom: var(--space-4);
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-medium);
+            margin-bottom: var(--space-2);
+            color: var(--color-text-primary);
+        }
+
+        .empty-state p {
+            font-size: var(--font-size-sm);
+            margin-bottom: var(--space-6);
+        }
+
+        /* Search & Filter */
+        .search-filter-bar {
+            display: flex;
+            gap: var(--space-4);
+            margin-bottom: var(--space-6);
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            position: relative;
+        }
+
+        .search-input i {
+            position: absolute;
+            left: var(--space-4);
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--color-text-secondary);
+            width: 18px;
+            height: 18px;
+        }
+
+        .search-input input {
+            width: 100%;
+            padding: var(--space-3) var(--space-4) var(--space-3) var(--space-12);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-input);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+        }
+
+        .search-input input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: var(--shadow-focus);
+        }
+
+        /* Category Groups */
+        .category-group {
+            margin-bottom: var(--space-6);
+        }
+
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            background: rgba(var(--color-primary-rgb), 0.1);
+            border-radius: var(--radius-button);
+            margin-bottom: var(--space-3);
+        }
+
+        .category-header h3 {
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-primary);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .category-header .count {
+            background: var(--color-primary);
+            color: white;
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-full);
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-medium);
+        }
+
+        /* Kalkulation Summary */
+        .kalkulation-summary {
+            background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.1) 0%, rgba(var(--color-primary-rgb), 0.05) 100%);
+            border: 1px solid rgba(var(--color-primary-rgb), 0.2);
+            border-radius: var(--radius-card);
+            padding: var(--space-6);
+            margin-top: var(--space-6);
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-2) 0;
+        }
+
+        .summary-row.total {
+            border-top: 2px solid var(--color-border);
+            margin-top: var(--space-4);
+            padding-top: var(--space-4);
+            font-size: var(--font-size-xl);
+            font-weight: var(--font-weight-bold);
+        }
+
+        .summary-row .label {
+            color: var(--color-text-secondary);
+        }
+
+        .summary-row .value {
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+        }
+
+        .summary-row.total .value {
+            color: var(--color-primary);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: var(--space-6);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-card);
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: modalSlideIn 0.3s var(--ease-out);
+        }
+
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: scale(0.95) translateY(-20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-5) var(--space-6);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .modal-header h3 {
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+            margin: 0;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-button);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--duration-base) var(--ease-out);
+        }
+
+        .modal-close:hover {
+            background: var(--color-error);
+            color: white;
+        }
+
+        .modal-body {
+            padding: var(--space-6);
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-3);
+            padding: var(--space-5) var(--space-6);
+            border-top: 1px solid var(--color-border);
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: var(--space-6);
+            right: var(--space-6);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+
+        .toast {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-4) var(--space-5);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-card);
+            box-shadow: var(--shadow-lg);
+            animation: toastSlideIn 0.3s var(--ease-out);
+        }
+
+        .toast.success {
+            border-left: 4px solid #34c759;
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--color-error);
+        }
+
+        .toast.info {
+            border-left: 4px solid var(--color-primary);
+        }
+
+        @keyframes toastSlideIn {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .page-container {
+                padding: var(--space-4);
+            }
+
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .tab-navigation {
+                width: 100%;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .content-card__header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .data-table {
+                display: block;
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <!-- Header -->
+        <header class="page-header">
+            <div class="page-header-left">
+                <button class="back-button" onclick="safeNavigate('index.html')" title="Zurück zum Dashboard">
+                    <i data-feather="arrow-left"></i>
+                </button>
+                <div class="page-title">
+                    <h1>🧮 Kalkulation</h1>
+                    <span class="badge">NEU</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tab-navigation">
+            <button class="tab-button active" data-tab="kalkulation" onclick="switchTab('kalkulation')">
+                <i data-feather="calculator"></i>
+                <span>Neue Kalkulation</span>
+            </button>
+            <button class="tab-button" data-tab="katalog" onclick="switchTab('katalog')">
+                <i data-feather="book"></i>
+                <span>Arbeitswert-Katalog</span>
+            </button>
+            <button class="tab-button" data-tab="saetze" onclick="switchTab('saetze')">
+                <i data-feather="dollar-sign"></i>
+                <span>Stundensätze</span>
+            </button>
+            <button class="tab-button" data-tab="material" onclick="switchTab('material')">
+                <i data-feather="package"></i>
+                <span>Material</span>
+            </button>
+            <button class="tab-button" data-tab="historie" onclick="switchTab('historie')">
+                <i data-feather="clock"></i>
+                <span>Historie</span>
+            </button>
+        </nav>
+
+        <!-- ============================================ -->
+        <!-- TAB 1: Neue Kalkulation erstellen -->
+        <!-- ============================================ -->
+        <section id="tab-kalkulation" class="tab-content active">
+            <div class="content-card">
+                <div class="content-card__header">
+                    <div class="content-card__title">
+                        <i data-feather="calculator"></i>
+                        <h2>Neue Kalkulation erstellen</h2>
+                    </div>
+                </div>
+
+                <!-- Fahrzeug auswählen -->
+                <div class="form-group" style="max-width: 500px; margin-bottom: var(--space-6);">
+                    <label for="fahrzeugSelect">Fahrzeug auswählen</label>
+                    <select id="fahrzeugSelect">
+                        <option value="">-- Fahrzeug wählen --</option>
+                    </select>
+                    <small>Oder erstellen Sie eine freie Kalkulation ohne Fahrzeugbezug</small>
+                </div>
+
+                <div id="kalkulationContent" style="display: none;">
+                    <!-- Arbeitspositionen -->
+                    <div class="content-card" style="margin-bottom: var(--space-6);">
+                        <div class="content-card__header">
+                            <div class="content-card__title">
+                                <i data-feather="tool"></i>
+                                <h2>Arbeitspositionen</h2>
+                            </div>
+                            <button class="btn btn-primary" onclick="openPositionModal()">
+                                <i data-feather="plus"></i>
+                                Position hinzufügen
+                            </button>
+                        </div>
+
+                        <div id="positionenListe">
+                            <div class="empty-state">
+                                <i data-feather="clipboard"></i>
+                                <h3>Keine Positionen</h3>
+                                <p>Fügen Sie Arbeitspositionen aus dem Katalog hinzu</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Material -->
+                    <div class="content-card" style="margin-bottom: var(--space-6);">
+                        <div class="content-card__header">
+                            <div class="content-card__title">
+                                <i data-feather="package"></i>
+                                <h2>Material</h2>
+                            </div>
+                            <button class="btn btn-primary" onclick="openMaterialModal()">
+                                <i data-feather="plus"></i>
+                                Material hinzufügen
+                            </button>
+                        </div>
+
+                        <div id="materialListe">
+                            <div class="empty-state">
+                                <i data-feather="box"></i>
+                                <h3>Kein Material</h3>
+                                <p>Fügen Sie Materialien aus dem Katalog hinzu</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zusammenfassung -->
+                    <div class="kalkulation-summary">
+                        <div class="summary-row">
+                            <span class="label">Summe Arbeit (netto)</span>
+                            <span class="value" id="summeArbeit">0,00 €</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Summe Material (netto)</span>
+                            <span class="value" id="summeMaterial">0,00 €</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">Zwischensumme (netto)</span>
+                            <span class="value" id="summeNetto">0,00 €</span>
+                        </div>
+                        <div class="summary-row">
+                            <span class="label">MwSt. <span id="mwstSatzDisplay">19</span>%</span>
+                            <span class="value" id="summeMwst">0,00 €</span>
+                        </div>
+                        <div class="summary-row total">
+                            <span class="label">Gesamtbetrag (brutto)</span>
+                            <span class="value" id="summeBrutto">0,00 €</span>
+                        </div>
+                    </div>
+
+                    <!-- Aktionen -->
+                    <div style="display: flex; gap: var(--space-4); margin-top: var(--space-6); flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="saveKalkulationEntwurf()">
+                            <i data-feather="save"></i>
+                            Als Entwurf speichern
+                        </button>
+                        <button class="btn btn-primary" onclick="exportKalkulationPDF()">
+                            <i data-feather="file-text"></i>
+                            PDF exportieren
+                        </button>
+                        <button class="btn btn-success" onclick="sendKalkulationEmail()">
+                            <i data-feather="send"></i>
+                            Per E-Mail senden
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Freie Kalkulation starten -->
+                <div id="freieKalkulationStart">
+                    <button class="btn btn-secondary" onclick="startFreieKalkulation()">
+                        <i data-feather="edit-3"></i>
+                        Freie Kalkulation ohne Fahrzeug starten
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- TAB 2: Arbeitswert-Katalog -->
+        <!-- ============================================ -->
+        <section id="tab-katalog" class="tab-content">
+            <div class="content-card">
+                <div class="content-card__header">
+                    <div class="content-card__title">
+                        <i data-feather="book"></i>
+                        <h2>Arbeitswert-Katalog</h2>
+                    </div>
+                    <button class="btn btn-primary" onclick="openKatalogModal()">
+                        <i data-feather="plus"></i>
+                        Neue Position
+                    </button>
+                </div>
+
+                <!-- Search & Filter -->
+                <div class="search-filter-bar">
+                    <div class="search-input">
+                        <i data-feather="search"></i>
+                        <input type="text" id="katalogSearch" placeholder="Suchen..." oninput="filterKatalog()">
+                    </div>
+                    <select id="katalogFilter" onchange="filterKatalog()">
+                        <option value="">Alle Kategorien</option>
+                        <option value="Karosserie">Karosserie</option>
+                        <option value="Lackierung">Lackierung</option>
+                        <option value="Mechanik">Mechanik</option>
+                        <option value="Elektrik">Elektrik</option>
+                        <option value="Sonstiges">Sonstiges</option>
+                    </select>
+                </div>
+
+                <div id="katalogListe">
+                    <div class="empty-state">
+                        <i data-feather="book-open"></i>
+                        <h3>Katalog leer</h3>
+                        <p>Erstellen Sie Ihren ersten Arbeitswert-Eintrag</p>
+                        <button class="btn btn-primary" onclick="seedKatalog()">
+                            <i data-feather="download"></i>
+                            Standard-Katalog laden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- TAB 3: Stundensätze -->
+        <!-- ============================================ -->
+        <section id="tab-saetze" class="tab-content">
+            <div class="content-card">
+                <div class="content-card__header">
+                    <div class="content-card__title">
+                        <i data-feather="dollar-sign"></i>
+                        <h2>Stundensätze & Einstellungen</h2>
+                    </div>
+                </div>
+
+                <form id="saetzeForm" onsubmit="saveSaetze(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="stundensatzLack">Lackierarbeiten</label>
+                            <div class="input-suffix">
+                                <input type="number" id="stundensatzLack" step="0.01" min="0" value="95.00" required>
+                                <span>€/Std</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="stundensatzKarosserie">Karosseriearbeiten</label>
+                            <div class="input-suffix">
+                                <input type="number" id="stundensatzKarosserie" step="0.01" min="0" value="85.00" required>
+                                <span>€/Std</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="stundensatzMechanik">Mechanik/Elektrik</label>
+                            <div class="input-suffix">
+                                <input type="number" id="stundensatzMechanik" step="0.01" min="0" value="75.00" required>
+                                <span>€/Std</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="stundensatzSonstige">Sonstige Arbeiten</label>
+                            <div class="input-suffix">
+                                <input type="number" id="stundensatzSonstige" step="0.01" min="0" value="65.00" required>
+                                <span>€/Std</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr style="margin: var(--space-8) 0; border: none; border-top: 1px solid var(--color-border);">
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="awInMinuten">1 Arbeitswert (AW) entspricht</label>
+                            <div class="input-suffix">
+                                <input type="number" id="awInMinuten" step="1" min="1" value="5" required>
+                                <span>Minuten</span>
+                            </div>
+                            <small>Branchenstandard: 5 Minuten pro AW</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="mwstSatz">Mehrwertsteuersatz</label>
+                            <div class="input-suffix">
+                                <input type="number" id="mwstSatz" step="0.1" min="0" value="19" required>
+                                <span>%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: var(--space-6);">
+                        <button type="submit" class="btn btn-success" id="saveSaetzeBtn">
+                            <i data-feather="save"></i>
+                            Einstellungen speichern
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- TAB 4: Material-Katalog -->
+        <!-- ============================================ -->
+        <section id="tab-material" class="tab-content">
+            <div class="content-card">
+                <div class="content-card__header">
+                    <div class="content-card__title">
+                        <i data-feather="package"></i>
+                        <h2>Material-Katalog</h2>
+                    </div>
+                    <button class="btn btn-primary" onclick="openMaterialKatalogModal()">
+                        <i data-feather="plus"></i>
+                        Neues Material
+                    </button>
+                </div>
+
+                <!-- Search & Filter -->
+                <div class="search-filter-bar">
+                    <div class="search-input">
+                        <i data-feather="search"></i>
+                        <input type="text" id="materialSearch" placeholder="Suchen..." oninput="filterMaterial()">
+                    </div>
+                    <select id="materialFilter" onchange="filterMaterial()">
+                        <option value="">Alle Kategorien</option>
+                        <option value="Lackmaterial">Lackmaterial</option>
+                        <option value="Verbrauchsmaterial">Verbrauchsmaterial</option>
+                        <option value="Ersatzteile">Ersatzteile</option>
+                        <option value="Sonstiges">Sonstiges</option>
+                    </select>
+                </div>
+
+                <div id="materialKatalogListe">
+                    <div class="empty-state">
+                        <i data-feather="package"></i>
+                        <h3>Material-Katalog leer</h3>
+                        <p>Erstellen Sie Ihren ersten Material-Eintrag</p>
+                        <button class="btn btn-primary" onclick="seedMaterial()">
+                            <i data-feather="download"></i>
+                            Standard-Material laden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ -->
+        <!-- TAB 5: Historie -->
+        <!-- ============================================ -->
+        <section id="tab-historie" class="tab-content">
+            <div class="content-card">
+                <div class="content-card__header">
+                    <div class="content-card__title">
+                        <i data-feather="clock"></i>
+                        <h2>Kalkulations-Historie</h2>
+                    </div>
+                </div>
+
+                <!-- Search & Filter -->
+                <div class="search-filter-bar">
+                    <div class="search-input">
+                        <i data-feather="search"></i>
+                        <input type="text" id="historieSearch" placeholder="Kennzeichen oder Kunde suchen...">
+                    </div>
+                    <select id="historieFilter">
+                        <option value="">Alle Status</option>
+                        <option value="entwurf">Entwurf</option>
+                        <option value="gesendet">Gesendet</option>
+                        <option value="akzeptiert">Akzeptiert</option>
+                        <option value="abgelehnt">Abgelehnt</option>
+                    </select>
+                </div>
+
+                <div id="historieListe">
+                    <div class="empty-state">
+                        <i data-feather="file-text"></i>
+                        <h3>Keine Kalkulationen</h3>
+                        <p>Ihre erstellten Kalkulationen erscheinen hier</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ============================================ -->
+    <!-- MODALS -->
+    <!-- ============================================ -->
+
+    <!-- Modal: Katalog-Position hinzufügen/bearbeiten -->
+    <div class="modal-overlay" id="katalogModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="katalogModalTitle">Neue Position</h3>
+                <button class="modal-close" onclick="closeModal('katalogModal')">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="katalogForm" onsubmit="saveKatalogPosition(event)">
+                    <input type="hidden" id="katalogPositionId">
+
+                    <div class="form-group">
+                        <label for="positionName">Bezeichnung *</label>
+                        <input type="text" id="positionName" required placeholder="z.B. Stoßfänger vorne dem./mont.">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="positionKategorie">Kategorie *</label>
+                        <select id="positionKategorie" required>
+                            <option value="">-- Wählen --</option>
+                            <option value="Karosserie">Karosserie</option>
+                            <option value="Lackierung">Lackierung</option>
+                            <option value="Mechanik">Mechanik</option>
+                            <option value="Elektrik">Elektrik</option>
+                            <option value="Sonstiges">Sonstiges</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="positionAW">Arbeitswerte (AW) *</label>
+                        <input type="number" id="positionAW" step="0.5" min="0.5" required placeholder="z.B. 8.5">
+                        <small>1 AW = 5 Minuten (Standard)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="positionBeschreibung">Beschreibung (optional)</label>
+                        <input type="text" id="positionBeschreibung" placeholder="Zusätzliche Infos...">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('katalogModal')">Abbrechen</button>
+                <button type="submit" form="katalogForm" class="btn btn-primary">
+                    <i data-feather="save"></i>
+                    Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Material hinzufügen/bearbeiten -->
+    <div class="modal-overlay" id="materialKatalogModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="materialModalTitle">Neues Material</h3>
+                <button class="modal-close" onclick="closeModal('materialKatalogModal')">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="materialForm" onsubmit="saveMaterialPosition(event)">
+                    <input type="hidden" id="materialPositionId">
+
+                    <div class="form-group">
+                        <label for="materialName">Bezeichnung *</label>
+                        <input type="text" id="materialName" required placeholder="z.B. Basislack 1L">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="materialKategorie">Kategorie *</label>
+                        <select id="materialKategorie" required>
+                            <option value="">-- Wählen --</option>
+                            <option value="Lackmaterial">Lackmaterial</option>
+                            <option value="Verbrauchsmaterial">Verbrauchsmaterial</option>
+                            <option value="Ersatzteile">Ersatzteile</option>
+                            <option value="Sonstiges">Sonstiges</option>
+                        </select>
+                    </div>
+
+                    <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                        <div class="form-group">
+                            <label for="materialEK">Einkaufspreis (EK)</label>
+                            <div class="input-suffix">
+                                <input type="number" id="materialEK" step="0.01" min="0" placeholder="0.00">
+                                <span>€</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="materialVK">Verkaufspreis (VK) *</label>
+                            <div class="input-suffix">
+                                <input type="number" id="materialVK" step="0.01" min="0" required placeholder="0.00">
+                                <span>€</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="materialEinheit">Einheit</label>
+                        <select id="materialEinheit">
+                            <option value="Stück">Stück</option>
+                            <option value="Liter">Liter</option>
+                            <option value="kg">kg</option>
+                            <option value="Set">Set</option>
+                            <option value="Meter">Meter</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('materialKatalogModal')">Abbrechen</button>
+                <button type="submit" form="materialForm" class="btn btn-primary">
+                    <i data-feather="save"></i>
+                    Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+
+        let kalkulationSaetze = {
+            stundensatzLack: 95.00,
+            stundensatzKarosserie: 85.00,
+            stundensatzMechanik: 75.00,
+            stundensatzSonstige: 65.00,
+            awInMinuten: 5,
+            mwstSatz: 19
+        };
+
+        let katalogData = [];
+        let materialData = [];
+        let aktuelleKalkulation = {
+            positionen: [],
+            materialien: [],
+            fahrzeugId: null,
+            kundenName: '',
+            kennzeichen: ''
+        };
+
+        // Initialize Feather Icons
+        feather.replace();
+
+        // Wait for Firebase
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await window.initFirebase();
+                console.log('✅ Firebase initialisiert');
+
+                // Load saved settings
+                await loadSaetze();
+                await loadKatalog();
+                await loadMaterial();
+                await loadFahrzeuge();
+
+                // Check URL params for tab
+                const urlParams = new URLSearchParams(window.location.search);
+                const tab = urlParams.get('tab');
+                if (tab) {
+                    switchTab(tab);
+                }
+
+                console.log('✅ Kalkulation-Modul geladen');
+            } catch (error) {
+                console.error('❌ Fehler beim Initialisieren:', error);
+                showToast('Fehler beim Laden der Daten', 'error');
+            }
+        });
+
+        // ============================================
+        // TAB NAVIGATION
+        // ============================================
+
+        function switchTab(tabId) {
+            // Update buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.tab === tabId) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+
+            // Update URL without reload
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tabId);
+            window.history.replaceState({}, '', url);
+        }
+
+        // ============================================
+        // STUNDENSÄTZE (TAB 3)
+        // ============================================
+
+        async function loadSaetze() {
+            try {
+                const doc = await window.getCollection('kalkulation_saetze').doc('config').get();
+                if (doc.exists) {
+                    kalkulationSaetze = { ...kalkulationSaetze, ...doc.data() };
+
+                    // Update form fields
+                    document.getElementById('stundensatzLack').value = kalkulationSaetze.stundensatzLack;
+                    document.getElementById('stundensatzKarosserie').value = kalkulationSaetze.stundensatzKarosserie;
+                    document.getElementById('stundensatzMechanik').value = kalkulationSaetze.stundensatzMechanik;
+                    document.getElementById('stundensatzSonstige').value = kalkulationSaetze.stundensatzSonstige;
+                    document.getElementById('awInMinuten').value = kalkulationSaetze.awInMinuten;
+                    document.getElementById('mwstSatz').value = kalkulationSaetze.mwstSatz;
+
+                    console.log('✅ Stundensätze geladen');
+                }
+            } catch (error) {
+                console.warn('⚠️ Stundensätze nicht gefunden, verwende Standardwerte');
+            }
+        }
+
+        async function saveSaetze(event) {
+            event.preventDefault();
+
+            const btn = document.getElementById('saveSaetzeBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i data-feather="loader"></i> Speichert...';
+            feather.replace();
+
+            try {
+                kalkulationSaetze = {
+                    stundensatzLack: parseFloat(document.getElementById('stundensatzLack').value) || 95,
+                    stundensatzKarosserie: parseFloat(document.getElementById('stundensatzKarosserie').value) || 85,
+                    stundensatzMechanik: parseFloat(document.getElementById('stundensatzMechanik').value) || 75,
+                    stundensatzSonstige: parseFloat(document.getElementById('stundensatzSonstige').value) || 65,
+                    awInMinuten: parseInt(document.getElementById('awInMinuten').value) || 5,
+                    mwstSatz: parseFloat(document.getElementById('mwstSatz').value) || 19,
+                    updatedAt: new Date().toISOString()
+                };
+
+                await window.getCollection('kalkulation_saetze').doc('config').set(kalkulationSaetze);
+
+                showToast('Einstellungen gespeichert!', 'success');
+                console.log('✅ Stundensätze gespeichert:', kalkulationSaetze);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                showToast('Fehler beim Speichern', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-feather="save"></i> Einstellungen speichern';
+                feather.replace();
+            }
+        }
+
+        // ============================================
+        // ARBEITSWERT-KATALOG (TAB 2)
+        // ============================================
+
+        async function loadKatalog() {
+            try {
+                const snapshot = await window.getCollection('kalkulation_katalog')
+                    .orderBy('kategorie')
+                    .orderBy('name')
+                    .get();
+
+                katalogData = [];
+                snapshot.forEach(doc => {
+                    katalogData.push({ id: doc.id, ...doc.data() });
+                });
+
+                renderKatalog();
+                console.log(`✅ ${katalogData.length} Katalog-Einträge geladen`);
+            } catch (error) {
+                console.warn('⚠️ Katalog nicht gefunden:', error);
+            }
+        }
+
+        function renderKatalog() {
+            const container = document.getElementById('katalogListe');
+
+            if (katalogData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="book-open"></i>
+                        <h3>Katalog leer</h3>
+                        <p>Erstellen Sie Ihren ersten Arbeitswert-Eintrag</p>
+                        <button class="btn btn-primary" onclick="seedKatalog()">
+                            <i data-feather="download"></i>
+                            Standard-Katalog laden
+                        </button>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+
+            // Group by category
+            const grouped = {};
+            katalogData.forEach(item => {
+                const kat = item.kategorie || 'Sonstiges';
+                if (!grouped[kat]) grouped[kat] = [];
+                grouped[kat].push(item);
+            });
+
+            let html = '';
+            Object.keys(grouped).sort().forEach(kategorie => {
+                const items = grouped[kategorie];
+                html += `
+                    <div class="category-group">
+                        <div class="category-header">
+                            <h3>${kategorie}</h3>
+                            <span class="count">${items.length}</span>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Bezeichnung</th>
+                                    <th>AW</th>
+                                    <th>Zeit</th>
+                                    <th>Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${items.map(item => `
+                                    <tr>
+                                        <td>${item.name}</td>
+                                        <td>${item.arbeitswerte} AW</td>
+                                        <td>~${Math.round(item.arbeitswerte * kalkulationSaetze.awInMinuten)} Min</td>
+                                        <td class="actions">
+                                            <button class="btn btn-icon btn-secondary" onclick="editKatalogPosition('${item.id}')" title="Bearbeiten">
+                                                <i data-feather="edit-2"></i>
+                                            </button>
+                                            <button class="btn btn-icon btn-secondary" onclick="deleteKatalogPosition('${item.id}')" title="Löschen" style="color: var(--color-error);">
+                                                <i data-feather="trash-2"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            feather.replace();
+        }
+
+        function filterKatalog() {
+            const search = document.getElementById('katalogSearch').value.toLowerCase();
+            const filter = document.getElementById('katalogFilter').value;
+
+            // TODO: Implement filtering
+            console.log('Filter:', search, filter);
+        }
+
+        function openKatalogModal(positionId = null) {
+            document.getElementById('katalogModalTitle').textContent = positionId ? 'Position bearbeiten' : 'Neue Position';
+            document.getElementById('katalogPositionId').value = positionId || '';
+            document.getElementById('katalogForm').reset();
+
+            if (positionId) {
+                const position = katalogData.find(p => p.id === positionId);
+                if (position) {
+                    document.getElementById('positionName').value = position.name || '';
+                    document.getElementById('positionKategorie').value = position.kategorie || '';
+                    document.getElementById('positionAW').value = position.arbeitswerte || '';
+                    document.getElementById('positionBeschreibung').value = position.beschreibung || '';
+                }
+            }
+
+            document.getElementById('katalogModal').classList.add('active');
+            feather.replace();
+        }
+
+        function editKatalogPosition(positionId) {
+            openKatalogModal(positionId);
+        }
+
+        async function saveKatalogPosition(event) {
+            event.preventDefault();
+
+            const positionId = document.getElementById('katalogPositionId').value;
+            const data = {
+                name: document.getElementById('positionName').value.trim(),
+                kategorie: document.getElementById('positionKategorie').value,
+                arbeitswerte: parseFloat(document.getElementById('positionAW').value) || 0,
+                beschreibung: document.getElementById('positionBeschreibung').value.trim(),
+                updatedAt: new Date().toISOString()
+            };
+
+            try {
+                if (positionId) {
+                    await window.getCollection('kalkulation_katalog').doc(positionId).update(data);
+                    showToast('Position aktualisiert', 'success');
+                } else {
+                    data.createdAt = new Date().toISOString();
+                    await window.getCollection('kalkulation_katalog').add(data);
+                    showToast('Position erstellt', 'success');
+                }
+
+                closeModal('katalogModal');
+                await loadKatalog();
+
+            } catch (error) {
+                console.error('❌ Fehler:', error);
+                showToast('Fehler beim Speichern', 'error');
+            }
+        }
+
+        async function deleteKatalogPosition(positionId) {
+            if (!confirm('Position wirklich löschen?')) return;
+
+            try {
+                await window.getCollection('kalkulation_katalog').doc(positionId).delete();
+                showToast('Position gelöscht', 'success');
+                await loadKatalog();
+            } catch (error) {
+                console.error('❌ Fehler:', error);
+                showToast('Fehler beim Löschen', 'error');
+            }
+        }
+
+        async function seedKatalog() {
+            const SEED_DATA = [
+                // DEMONTAGE/MONTAGE
+                { name: "Stoßfänger vorne dem./mont.", kategorie: "Karosserie", arbeitswerte: 8.5 },
+                { name: "Stoßfänger hinten dem./mont.", kategorie: "Karosserie", arbeitswerte: 7.0 },
+                { name: "Kotflügel vorne dem./mont.", kategorie: "Karosserie", arbeitswerte: 12.0 },
+                { name: "Motorhaube dem./mont.", kategorie: "Karosserie", arbeitswerte: 4.0 },
+                { name: "Tür dem./mont.", kategorie: "Karosserie", arbeitswerte: 8.0 },
+                { name: "Heckklappe dem./mont.", kategorie: "Karosserie", arbeitswerte: 6.0 },
+                { name: "Seitenspiegel dem./mont.", kategorie: "Karosserie", arbeitswerte: 2.0 },
+                { name: "Schweller-Verkleidung dem./mont.", kategorie: "Karosserie", arbeitswerte: 3.0 },
+
+                // LACKIERUNG
+                { name: "Stoßfänger lackieren", kategorie: "Lackierung", arbeitswerte: 6.0 },
+                { name: "Kotflügel lackieren", kategorie: "Lackierung", arbeitswerte: 8.0 },
+                { name: "Motorhaube lackieren", kategorie: "Lackierung", arbeitswerte: 10.0 },
+                { name: "Tür lackieren", kategorie: "Lackierung", arbeitswerte: 9.0 },
+                { name: "Dach lackieren", kategorie: "Lackierung", arbeitswerte: 12.0 },
+                { name: "Heckklappe lackieren", kategorie: "Lackierung", arbeitswerte: 8.0 },
+                { name: "Seitenteil lackieren", kategorie: "Lackierung", arbeitswerte: 10.0 },
+                { name: "Spot-Repair (klein)", kategorie: "Lackierung", arbeitswerte: 4.0 },
+                { name: "Spot-Repair (mittel)", kategorie: "Lackierung", arbeitswerte: 6.0 },
+                { name: "Spot-Repair (groß)", kategorie: "Lackierung", arbeitswerte: 8.0 },
+
+                // KAROSSERIEARBEITEN
+                { name: "Delle ausbeulen (klein)", kategorie: "Karosserie", arbeitswerte: 6.0 },
+                { name: "Delle ausbeulen (mittel)", kategorie: "Karosserie", arbeitswerte: 10.0 },
+                { name: "Delle ausbeulen (groß)", kategorie: "Karosserie", arbeitswerte: 16.0 },
+                { name: "Spachteln & Schleifen", kategorie: "Karosserie", arbeitswerte: 8.0 },
+                { name: "Grundierung auftragen", kategorie: "Lackierung", arbeitswerte: 4.0 },
+                { name: "Füller auftragen", kategorie: "Lackierung", arbeitswerte: 3.0 },
+
+                // MECHANIK
+                { name: "Scheinwerfer einstellen", kategorie: "Mechanik", arbeitswerte: 2.0 },
+                { name: "Stoßdämpfer wechseln (pro Stück)", kategorie: "Mechanik", arbeitswerte: 6.0 },
+
+                // SONSTIGES
+                { name: "Fahrzeug waschen & aufbereiten", kategorie: "Sonstiges", arbeitswerte: 4.0 },
+                { name: "Polieren (Fahrzeug komplett)", kategorie: "Sonstiges", arbeitswerte: 12.0 },
+            ];
+
+            try {
+                const batch = window.db.batch();
+                const collectionRef = window.getCollection('kalkulation_katalog');
+
+                SEED_DATA.forEach(item => {
+                    const docRef = collectionRef.doc();
+                    batch.set(docRef, {
+                        ...item,
+                        createdAt: new Date().toISOString()
+                    });
+                });
+
+                await batch.commit();
+                showToast(`${SEED_DATA.length} Positionen geladen`, 'success');
+                await loadKatalog();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Standard-Katalogs:', error);
+                showToast('Fehler beim Laden', 'error');
+            }
+        }
+
+        // ============================================
+        // MATERIAL-KATALOG (TAB 4)
+        // ============================================
+
+        async function loadMaterial() {
+            try {
+                const snapshot = await window.getCollection('kalkulation_material')
+                    .orderBy('kategorie')
+                    .orderBy('name')
+                    .get();
+
+                materialData = [];
+                snapshot.forEach(doc => {
+                    materialData.push({ id: doc.id, ...doc.data() });
+                });
+
+                renderMaterialKatalog();
+                console.log(`✅ ${materialData.length} Material-Einträge geladen`);
+            } catch (error) {
+                console.warn('⚠️ Material nicht gefunden:', error);
+            }
+        }
+
+        function renderMaterialKatalog() {
+            const container = document.getElementById('materialKatalogListe');
+
+            if (materialData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="package"></i>
+                        <h3>Material-Katalog leer</h3>
+                        <p>Erstellen Sie Ihren ersten Material-Eintrag</p>
+                        <button class="btn btn-primary" onclick="seedMaterial()">
+                            <i data-feather="download"></i>
+                            Standard-Material laden
+                        </button>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+
+            // Group by category
+            const grouped = {};
+            materialData.forEach(item => {
+                const kat = item.kategorie || 'Sonstiges';
+                if (!grouped[kat]) grouped[kat] = [];
+                grouped[kat].push(item);
+            });
+
+            let html = '';
+            Object.keys(grouped).sort().forEach(kategorie => {
+                const items = grouped[kategorie];
+                html += `
+                    <div class="category-group">
+                        <div class="category-header">
+                            <h3>${kategorie}</h3>
+                            <span class="count">${items.length}</span>
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Bezeichnung</th>
+                                    <th>EK</th>
+                                    <th>VK</th>
+                                    <th>Marge</th>
+                                    <th>Einheit</th>
+                                    <th>Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${items.map(item => {
+                                    const marge = item.einkaufspreis > 0
+                                        ? Math.round(((item.verkaufspreis - item.einkaufspreis) / item.einkaufspreis) * 100)
+                                        : '-';
+                                    return `
+                                        <tr>
+                                            <td>${item.name}</td>
+                                            <td>${item.einkaufspreis ? item.einkaufspreis.toFixed(2) + ' €' : '-'}</td>
+                                            <td>${item.verkaufspreis.toFixed(2)} €</td>
+                                            <td>${marge}%</td>
+                                            <td>${item.einheit || 'Stück'}</td>
+                                            <td class="actions">
+                                                <button class="btn btn-icon btn-secondary" onclick="editMaterialPosition('${item.id}')" title="Bearbeiten">
+                                                    <i data-feather="edit-2"></i>
+                                                </button>
+                                                <button class="btn btn-icon btn-secondary" onclick="deleteMaterialPosition('${item.id}')" title="Löschen" style="color: var(--color-error);">
+                                                    <i data-feather="trash-2"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            feather.replace();
+        }
+
+        function openMaterialKatalogModal(positionId = null) {
+            document.getElementById('materialModalTitle').textContent = positionId ? 'Material bearbeiten' : 'Neues Material';
+            document.getElementById('materialPositionId').value = positionId || '';
+            document.getElementById('materialForm').reset();
+
+            if (positionId) {
+                const item = materialData.find(p => p.id === positionId);
+                if (item) {
+                    document.getElementById('materialName').value = item.name || '';
+                    document.getElementById('materialKategorie').value = item.kategorie || '';
+                    document.getElementById('materialEK').value = item.einkaufspreis || '';
+                    document.getElementById('materialVK').value = item.verkaufspreis || '';
+                    document.getElementById('materialEinheit').value = item.einheit || 'Stück';
+                }
+            }
+
+            document.getElementById('materialKatalogModal').classList.add('active');
+            feather.replace();
+        }
+
+        function editMaterialPosition(positionId) {
+            openMaterialKatalogModal(positionId);
+        }
+
+        async function saveMaterialPosition(event) {
+            event.preventDefault();
+
+            const positionId = document.getElementById('materialPositionId').value;
+            const data = {
+                name: document.getElementById('materialName').value.trim(),
+                kategorie: document.getElementById('materialKategorie').value,
+                einkaufspreis: parseFloat(document.getElementById('materialEK').value) || 0,
+                verkaufspreis: parseFloat(document.getElementById('materialVK').value) || 0,
+                einheit: document.getElementById('materialEinheit').value,
+                updatedAt: new Date().toISOString()
+            };
+
+            try {
+                if (positionId) {
+                    await window.getCollection('kalkulation_material').doc(positionId).update(data);
+                    showToast('Material aktualisiert', 'success');
+                } else {
+                    data.createdAt = new Date().toISOString();
+                    await window.getCollection('kalkulation_material').add(data);
+                    showToast('Material erstellt', 'success');
+                }
+
+                closeModal('materialKatalogModal');
+                await loadMaterial();
+
+            } catch (error) {
+                console.error('❌ Fehler:', error);
+                showToast('Fehler beim Speichern', 'error');
+            }
+        }
+
+        async function deleteMaterialPosition(positionId) {
+            if (!confirm('Material wirklich löschen?')) return;
+
+            try {
+                await window.getCollection('kalkulation_material').doc(positionId).delete();
+                showToast('Material gelöscht', 'success');
+                await loadMaterial();
+            } catch (error) {
+                console.error('❌ Fehler:', error);
+                showToast('Fehler beim Löschen', 'error');
+            }
+        }
+
+        async function seedMaterial() {
+            const SEED_DATA = [
+                // LACKMATERIAL
+                { name: "Grundierung 1L", kategorie: "Lackmaterial", einkaufspreis: 25.00, verkaufspreis: 45.00, einheit: "Liter" },
+                { name: "Basislack (nach Farbcode)", kategorie: "Lackmaterial", einkaufspreis: 45.00, verkaufspreis: 89.00, einheit: "Liter" },
+                { name: "Klarlack 2K 1L", kategorie: "Lackmaterial", einkaufspreis: 35.00, verkaufspreis: 65.00, einheit: "Liter" },
+                { name: "Härter 0.5L", kategorie: "Lackmaterial", einkaufspreis: 18.00, verkaufspreis: 32.00, einheit: "Liter" },
+                { name: "Verdünnung 1L", kategorie: "Lackmaterial", einkaufspreis: 12.00, verkaufspreis: 22.00, einheit: "Liter" },
+                { name: "Füller 1L", kategorie: "Lackmaterial", einkaufspreis: 22.00, verkaufspreis: 42.00, einheit: "Liter" },
+
+                // VERBRAUCHSMATERIAL
+                { name: "Schleifpapier Set P80-P2000", kategorie: "Verbrauchsmaterial", einkaufspreis: 8.00, verkaufspreis: 15.00, einheit: "Set" },
+                { name: "Abdeckpapier Rolle", kategorie: "Verbrauchsmaterial", einkaufspreis: 12.00, verkaufspreis: 22.00, einheit: "Stück" },
+                { name: "Abklebeband 50m", kategorie: "Verbrauchsmaterial", einkaufspreis: 4.00, verkaufspreis: 8.00, einheit: "Stück" },
+                { name: "Schleifvlies", kategorie: "Verbrauchsmaterial", einkaufspreis: 3.00, verkaufspreis: 6.00, einheit: "Stück" },
+                { name: "Polierpaste (Grob)", kategorie: "Verbrauchsmaterial", einkaufspreis: 15.00, verkaufspreis: 28.00, einheit: "Stück" },
+                { name: "Polierpaste (Fein)", kategorie: "Verbrauchsmaterial", einkaufspreis: 18.00, verkaufspreis: 32.00, einheit: "Stück" },
+                { name: "Silikonentferner 1L", kategorie: "Verbrauchsmaterial", einkaufspreis: 8.00, verkaufspreis: 15.00, einheit: "Liter" },
+                { name: "Reinigungstücher 100 Stk", kategorie: "Verbrauchsmaterial", einkaufspreis: 5.00, verkaufspreis: 10.00, einheit: "Set" },
+
+                // SONSTIGES
+                { name: "Spachtelmasse 1kg", kategorie: "Sonstiges", einkaufspreis: 12.00, verkaufspreis: 24.00, einheit: "kg" },
+                { name: "Glasfaserspachtel 500g", kategorie: "Sonstiges", einkaufspreis: 15.00, verkaufspreis: 28.00, einheit: "Stück" },
+            ];
+
+            try {
+                const batch = window.db.batch();
+                const collectionRef = window.getCollection('kalkulation_material');
+
+                SEED_DATA.forEach(item => {
+                    const docRef = collectionRef.doc();
+                    batch.set(docRef, {
+                        ...item,
+                        createdAt: new Date().toISOString()
+                    });
+                });
+
+                await batch.commit();
+                showToast(`${SEED_DATA.length} Materialien geladen`, 'success');
+                await loadMaterial();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden des Standard-Materials:', error);
+                showToast('Fehler beim Laden', 'error');
+            }
+        }
+
+        function filterMaterial() {
+            // TODO: Implement filtering
+        }
+
+        // ============================================
+        // FAHRZEUGE LADEN (TAB 1)
+        // ============================================
+
+        async function loadFahrzeuge() {
+            try {
+                const snapshot = await window.getCollection('fahrzeuge')
+                    .where('status', 'in', ['offen', 'in_arbeit', 'warte_teile', 'terminiert'])
+                    .orderBy('annahmedatum', 'desc')
+                    .limit(50)
+                    .get();
+
+                const select = document.getElementById('fahrzeugSelect');
+                select.innerHTML = '<option value="">-- Fahrzeug wählen --</option>';
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const option = document.createElement('option');
+                    option.value = doc.id;
+                    option.textContent = `${data.kennzeichen || 'Ohne Kennzeichen'} - ${data.fahrzeugmodell || 'Unbekannt'} - ${data.kundenname || 'Ohne Kunde'}`;
+                    select.appendChild(option);
+                });
+
+                // Add change handler
+                select.addEventListener('change', (e) => {
+                    if (e.target.value) {
+                        const fahrzeug = snapshot.docs.find(d => d.id === e.target.value);
+                        if (fahrzeug) {
+                            aktuelleKalkulation.fahrzeugId = fahrzeug.id;
+                            aktuelleKalkulation.kennzeichen = fahrzeug.data().kennzeichen || '';
+                            aktuelleKalkulation.kundenName = fahrzeug.data().kundenname || '';
+                            document.getElementById('kalkulationContent').style.display = 'block';
+                            document.getElementById('freieKalkulationStart').style.display = 'none';
+                        }
+                    } else {
+                        document.getElementById('kalkulationContent').style.display = 'none';
+                        document.getElementById('freieKalkulationStart').style.display = 'block';
+                    }
+                });
+
+                console.log(`✅ ${snapshot.size} Fahrzeuge geladen`);
+
+            } catch (error) {
+                console.warn('⚠️ Fahrzeuge konnten nicht geladen werden:', error);
+            }
+        }
+
+        function startFreieKalkulation() {
+            aktuelleKalkulation.fahrzeugId = null;
+            aktuelleKalkulation.kennzeichen = 'Freie Kalkulation';
+            aktuelleKalkulation.kundenName = '';
+            document.getElementById('kalkulationContent').style.display = 'block';
+            document.getElementById('freieKalkulationStart').style.display = 'none';
+            document.getElementById('fahrzeugSelect').value = '';
+        }
+
+        // ============================================
+        // KALKULATION ERSTELLEN (TAB 1)
+        // ============================================
+
+        function openPositionModal() {
+            // TODO: Open modal to add positions from catalog
+            showToast('Position hinzufügen - Coming soon!', 'info');
+        }
+
+        function openMaterialModal() {
+            // TODO: Open modal to add material from catalog
+            showToast('Material hinzufügen - Coming soon!', 'info');
+        }
+
+        function updateKalkulationSummary() {
+            // TODO: Calculate and update summary
+        }
+
+        function saveKalkulationEntwurf() {
+            showToast('Als Entwurf speichern - Coming soon!', 'info');
+        }
+
+        function exportKalkulationPDF() {
+            showToast('PDF Export - Coming soon!', 'info');
+        }
+
+        function sendKalkulationEmail() {
+            showToast('Email senden - Coming soon!', 'info');
+        }
+
+        // ============================================
+        // HELPER FUNCTIONS
+        // ============================================
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <i data-feather="${type === 'success' ? 'check-circle' : type === 'error' ? 'alert-circle' : 'info'}"></i>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            feather.replace();
+
+            setTimeout(() => {
+                toast.style.animation = 'toastSlideIn 0.3s var(--ease-out) reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Close modal on overlay click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('active');
+                }
+            });
+        });
+
+        // ESC key to close modals
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+                    modal.classList.remove('active');
+                });
+            }
+        });
+    </script>
+</body>
+</html>
