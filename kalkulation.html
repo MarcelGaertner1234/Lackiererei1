@@ -10192,33 +10192,193 @@
             loading.style.display = 'block';
             result.style.display = 'none';
 
-            // Simulierte KI-Analyse (da echte API-Integration einen API-Key benötigt)
-            // In Produktion würde hier GPT-4 Vision aufgerufen werden
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            try {
+                // OpenAI API Key aus SettingsManager holen
+                let apiKey = '';
+                if (window.settingsManager?.currentSettings?.systemConfig?.openaiKey) {
+                    apiKey = window.settingsManager.currentSettings.systemConfig.openaiKey;
+                } else {
+                    // Fallback: Direkt aus Firestore laden
+                    const db = firebase.firestore();
+                    const settingsDoc = await db.collection('settings').doc(window.werkstattId).get();
+                    if (settingsDoc.exists) {
+                        apiKey = settingsDoc.data()?.systemConfig?.openaiKey || '';
+                    }
+                }
 
-            // Simulierte Ergebnisse basierend auf typischen Schäden
-            kiErkannteSchaeden = [
-                { teil: 'Stoßfänger vorne', schaden: 'Kratzer', confidence: 0.92, repairType: 'lackieren' },
-                { teil: 'Kotflügel links', schaden: 'Delle', confidence: 0.85, repairType: 'ausbeulen' },
-                { teil: 'Motorhaube', schaden: 'Steinschlag', confidence: 0.78, repairType: 'spotrepair' }
-            ];
+                if (!apiKey) {
+                    throw new Error('OpenAI API-Key nicht konfiguriert. Bitte in Admin-Einstellungen hinterlegen.');
+                }
 
-            renderKIErgebnisse();
+                // Bilder für GPT-4 Vision vorbereiten (max 4 Bilder)
+                const imagesToAnalyze = uploadedFotos.slice(0, 4);
+
+                const imageContents = imagesToAnalyze.map(base64 => ({
+                    type: 'image_url',
+                    image_url: {
+                        url: base64,
+                        detail: 'high'
+                    }
+                }));
+
+                // GPT-4 Vision API aufrufen
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: `Du bist ein Experte für Fahrzeugschaden-Analyse in einer Lackierwerkstatt.
+Analysiere die Bilder und identifiziere alle sichtbaren Schäden am Fahrzeug.
+
+WICHTIG: Antworte NUR im folgenden JSON-Format (keine Markdown, keine Erklärungen):
+{
+  "schaeden": [
+    {
+      "teil": "Bezeichnung des Fahrzeugteils (z.B. Stoßfänger vorne, Kotflügel links, Motorhaube)",
+      "schaden": "Art des Schadens (z.B. Kratzer, Delle, Steinschlag, Rost, Riss, Lackabplatzer)",
+      "schweregrad": "leicht/mittel/schwer",
+      "repairType": "lackieren/ausbeulen/spotrepair/ersetzen/polieren",
+      "confidence": 0.0-1.0
+    }
+  ],
+  "zusammenfassung": "Kurze Zusammenfassung des Gesamtschadens"
+}
+
+Fahrzeugteile die du erkennen kannst:
+- Stoßfänger vorne/hinten
+- Kotflügel links/rechts vorne/hinten
+- Motorhaube, Dach, Kofferraum
+- Türen (Fahrertür, Beifahrertür, hinten links/rechts)
+- Schweller links/rechts
+- A-Säule, B-Säule, C-Säule
+- Außenspiegel links/rechts
+- Felgen/Räder`
+                            },
+                            {
+                                role: 'user',
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: 'Analysiere diese Fahrzeugbilder und identifiziere alle sichtbaren Schäden. Gib das Ergebnis als JSON zurück.'
+                                    },
+                                    ...imageContents
+                                ]
+                            }
+                        ],
+                        max_tokens: 1500,
+                        temperature: 0.3
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || 'API-Fehler');
+                }
+
+                const data = await response.json();
+                const content = data.choices?.[0]?.message?.content || '';
+
+                // JSON aus der Antwort extrahieren
+                let analysisResult;
+                try {
+                    // Versuche direkt zu parsen
+                    analysisResult = JSON.parse(content);
+                } catch {
+                    // Fallback: JSON aus Markdown-Block extrahieren
+                    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) ||
+                                     content.match(/\{[\s\S]*"schaeden"[\s\S]*\}/);
+                    if (jsonMatch) {
+                        analysisResult = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+                    } else {
+                        throw new Error('Konnte KI-Antwort nicht parsen');
+                    }
+                }
+
+                // Ergebnisse in das erwartete Format konvertieren
+                kiErkannteSchaeden = (analysisResult.schaeden || []).map(s => ({
+                    teil: s.teil,
+                    schaden: s.schaden,
+                    schweregrad: s.schweregrad || 'mittel',
+                    confidence: s.confidence || 0.8,
+                    repairType: s.repairType || 'lackieren'
+                }));
+
+                if (kiErkannteSchaeden.length === 0) {
+                    showToast('Keine eindeutigen Schäden erkannt. Bitte andere Bilder hochladen.', 'info');
+                } else {
+                    // Zusammenfassung anzeigen wenn vorhanden
+                    if (analysisResult.zusammenfassung) {
+                        console.log('📋 KI-Zusammenfassung:', analysisResult.zusammenfassung);
+                    }
+                    showToast(`${kiErkannteSchaeden.length} Schäden erkannt!`, 'success');
+                }
+
+                renderKIErgebnisse();
+
+            } catch (error) {
+                console.error('❌ KI-Analyse Fehler:', error);
+                showToast(`KI-Analyse fehlgeschlagen: ${error.message}`, 'error');
+
+                // Fallback: Zeige Hinweis zur manuellen Eingabe
+                kiErkannteSchaeden = [];
+                const liste = document.getElementById('kiSchaedenListe');
+                if (liste) {
+                    liste.innerHTML = `
+                        <div class="empty-state" style="padding: var(--space-4);">
+                            <i data-feather="alert-circle"></i>
+                            <p>${error.message}</p>
+                            <p class="text-muted">Bitte wählen Sie die beschädigten Teile manuell in der 2D-Ansicht aus.</p>
+                        </div>
+                    `;
+                    feather.replace();
+                }
+            }
 
             loading.style.display = 'none';
             result.style.display = 'block';
             feather.replace();
-
-            showToast('KI-Analyse abgeschlossen', 'success');
         }
 
         function renderKIErgebnisse() {
             const liste = document.getElementById('kiSchaedenListe');
             if (!liste) return;
 
+            if (kiErkannteSchaeden.length === 0) {
+                liste.innerHTML = `
+                    <div class="empty-state" style="padding: var(--space-4);">
+                        <i data-feather="image"></i>
+                        <p>Keine Schäden erkannt</p>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+
+            const schwereIcons = {
+                'leicht': '🟢',
+                'mittel': '🟡',
+                'schwer': '🔴'
+            };
+
+            const repairLabels = {
+                'lackieren': '🎨 Lackieren',
+                'ausbeulen': '🔧 Ausbeulen (PDR)',
+                'spotrepair': '✨ Spot-Repair',
+                'ersetzen': '🔄 Ersetzen',
+                'polieren': '💫 Polieren'
+            };
+
             liste.innerHTML = kiErkannteSchaeden.map((schaden, index) => {
                 const confidenceClass = schaden.confidence >= 0.85 ? 'high' :
                                        schaden.confidence >= 0.7 ? 'medium' : 'low';
+                const schwereIcon = schwereIcons[schaden.schweregrad] || '🟡';
+                const repairLabel = repairLabels[schaden.repairType] || schaden.repairType;
 
                 return `
                     <div class="ki-schaden-item">
@@ -10226,15 +10386,16 @@
                             <input type="checkbox" id="kiSchaden${index}" checked>
                             <label for="kiSchaden${index}">
                                 <strong>${schaden.teil}</strong> - ${schaden.schaden}
-                                <br><small>Empfehlung: ${schaden.repairType}</small>
+                                <br><small>${schwereIcon} ${schaden.schweregrad || 'mittel'} | ${repairLabel}</small>
                             </label>
                         </div>
                         <span class="ki-schaden-item__confidence ki-schaden-item__confidence--${confidenceClass}">
-                            ${Math.round(schaden.confidence * 100)}% sicher
+                            ${Math.round(schaden.confidence * 100)}%
                         </span>
                     </div>
                 `;
             }).join('');
+            feather.replace();
         }
 
         function applyKISchaeden() {
