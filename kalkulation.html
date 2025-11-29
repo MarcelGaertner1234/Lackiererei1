@@ -5315,15 +5315,19 @@
 
                     <!-- Aktionen -->
                     <div style="display: flex; gap: var(--space-4); margin-top: var(--space-6); flex-wrap: wrap;">
-                        <button class="btn btn-success btn-lg" onclick="createAuftragFromKalkulation()" style="flex: 1; min-width: 200px;">
-                            <i data-feather="check-circle"></i>
-                            Auftrag anlegen
+                        <button class="btn btn-success btn-lg" onclick="saveKVA()" style="flex: 1; min-width: 200px;">
+                            <i data-feather="save"></i>
+                            Kalkulation speichern
                         </button>
                         <button class="btn btn-secondary" onclick="goToStep(1)" style="min-width: 150px;">
                             <i data-feather="arrow-left"></i>
                             Zurück bearbeiten
                         </button>
                     </div>
+                    <p style="margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--color-text-secondary);">
+                        <i data-feather="info" style="width: 14px; height: 14px; vertical-align: middle;"></i>
+                        Die Kalkulation wird im Entwurf gespeichert. Danach können Sie das Angebot an den Kunden versenden.
+                    </p>
                 </div>
 
                 <!-- Freie Kalkulation starten -->
@@ -12485,8 +12489,17 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             }
         }
 
-        // 🆕 NEU: Auftrag direkt aus Kalkulation anlegen
-        async function createAuftragFromKalkulation() {
+        // 🔧 FIX (2025-11-29): Kalkulation in Entwurf speichern
+        // WICHTIG: Speichert NUR in partnerAnfragen - KEIN Fahrzeug wird angelegt!
+        // Fahrzeug wird erst angelegt wenn Kunde das Angebot annimmt (in meine-anfragen.html)
+        async function saveKVA() {
+            // Prüfen ob Entwurf oder Partner-Anfrage ausgewählt
+            const targetId = kalkWizardData.entwurfId || kalkWizardData.partnerAnfrageId;
+            if (!targetId) {
+                showToast('⚠️ Kein Entwurf ausgewählt!\n\nBitte wählen Sie zuerst einen Entwurf aus der Liste.', 'warning');
+                return;
+            }
+
             // Prüfen ob Daten vorhanden
             if (!kalkWizardData.fahrzeug?.marke || !kalkWizardData.fahrzeug?.modell) {
                 showToast('Bitte erst Fahrzeugdaten eingeben', 'warning');
@@ -12517,99 +12530,59 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 const mwst = summeNetto * (mwstSatz / 100);
                 const summeBrutto = summeNetto + mwst;
 
-                // Fahrzeug-Daten für Auftrag
-                const auftragData = {
-                    // Fahrzeug-Stammdaten
-                    marke: kalkWizardData.fahrzeug.marke,
-                    modell: kalkWizardData.fahrzeug.modell,
-                    baujahr: kalkWizardData.fahrzeug.baujahr || '',
-                    kennzeichen: kalkWizardData.fahrzeug.kennzeichen || '',
-                    farbcode: kalkWizardData.fahrzeug.farbcode || '',
-                    fahrgestellnummer: kalkWizardData.fahrzeug.fahrgestellnummer || '',
-
-                    // Kundendaten
-                    kunde: kalkWizardData.fahrzeug.kunde || '',
-                    kundenEmail: kalkWizardData.fahrzeug.kundenEmail || '',
-                    kundenTelefon: kalkWizardData.fahrzeug.kundenTelefon || '',
-
-                    // Service & Teile
-                    serviceTyp: kalkWizardData.serviceArt || 'lackier',
-                    teile: kalkWizardData.teile,
+                // Kalkulationsdaten für Entwurf
+                const kalkulationData = {
+                    positionen: aktuelleKalkulation.positionen,
+                    materialien: aktuelleKalkulation.materialien,
                     ersatzteile: kalkWizardData.ersatzteile || [],
-
-                    // Kalkulation
-                    kalkulation: {
-                        positionen: aktuelleKalkulation.positionen,
-                        materialien: aktuelleKalkulation.materialien,
-                        ersatzteile: kalkWizardData.ersatzteile || [],
-                        summeArbeit,
-                        summeMaterial,
-                        summeErsatzteile,
-                        summeNetto,
-                        mwstSatz,
-                        mwst,
-                        summeBrutto
-                    },
-
-                    // Status
-                    status: 'angenommen',
-                    statusText: 'Auftrag angelegt',
-
-                    // Meta
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    erstelltDurch: 'kalkulation',
-                    werkstattId: window.werkstattId,
-
-                    // Verknüpfungen
-                    entwurfId: kalkWizardData.entwurfId || null,
-                    partnerAnfrageId: kalkWizardData.partnerAnfrageId || null
+                    summeArbeit,
+                    summeMaterial,
+                    summeErsatzteile,
+                    summeNetto,
+                    mwstSatz,
+                    mwst,
+                    summeBrutto
                 };
 
-                // Auftrag in Fahrzeuge-Collection speichern
-                const docRef = await window.getCollection('fahrzeuge').add(auftragData);
-                console.log('✅ Auftrag angelegt:', docRef.id);
+                // Update-Daten für partnerAnfragen
+                const updateData = {
+                    // Kalkulation speichern (für entwuerfe-bearbeiten.html)
+                    kalkulation: kalkulationData,
 
-                // Wenn von Partner-Anfrage oder Entwurf → Status UND Kalkulationsdaten aktualisieren
-                if (kalkWizardData.partnerAnfrageId) {
-                    await window.getCollection('partnerAnfragen').doc(kalkWizardData.partnerAnfrageId).update({
-                        status: 'angenommen',
-                        statusText: 'Auftrag angelegt',
-                        fahrzeugId: docRef.id,
-                        angenommenAm: firebase.firestore.FieldValue.serverTimestamp(),
-                        // 🆕 Kalkulation zurück speichern für entwuerfe-bearbeiten.html
-                        kalkulation: auftragData.kalkulation,
-                        ersatzteile: kalkWizardData.ersatzteile || [],
-                        teile: kalkWizardData.teile || []
-                    });
-                }
+                    // Teile & Ersatzteile auf Root-Ebene (für einfachen Zugriff)
+                    teile: kalkWizardData.teile || [],
+                    ersatzteile: kalkWizardData.ersatzteile || [],
 
-                if (kalkWizardData.entwurfId) {
-                    await window.getCollection('partnerAnfragen').doc(kalkWizardData.entwurfId).update({
-                        status: 'angenommen',
-                        fahrzeugId: docRef.id,
-                        angenommenAm: firebase.firestore.FieldValue.serverTimestamp(),
-                        // 🆕 Kalkulation zurück speichern für entwuerfe-bearbeiten.html
-                        kalkulation: auftragData.kalkulation,
-                        ersatzteile: kalkWizardData.ersatzteile || [],
-                        teile: kalkWizardData.teile || []
-                    });
-                }
+                    // Status: Kalkulation erstellt (NICHT kva_gesendet - das macht entwuerfe-bearbeiten.html!)
+                    kalkulationErstelltAm: firebase.firestore.FieldValue.serverTimestamp(),
+                    kalkulationErstelltDurch: window.currentUser?.displayName || window.currentUser?.email || 'Meister',
 
-                showToast('✅ Auftrag erfolgreich angelegt!', 'success');
+                    // Vereinbarter Preis (brutto) für Angebot
+                    vereinbarterPreis: summeBrutto,
 
-                // Zur Fahrzeugliste weiterleiten
+                    // Metadata
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                // In partnerAnfragen updaten (Entwurf oder Partner-Anfrage)
+                console.log(`📝 Speichere Kalkulation in partnerAnfragen/${targetId}...`);
+                await window.getCollection('partnerAnfragen').doc(targetId).update(updateData);
+                console.log('✅ Kalkulation in Entwurf gespeichert');
+
+                showToast('✅ Kalkulation erfolgreich gespeichert!\n\nWeiter zu "Entwürfe bearbeiten" um das Angebot zu versenden.', 'success', 5000);
+
+                // Nach 2 Sekunden zu entwuerfe-bearbeiten.html weiterleiten
                 setTimeout(() => {
                     if (typeof safeNavigate === 'function') {
-                        safeNavigate('liste.html');
+                        safeNavigate(`entwuerfe-bearbeiten.html?id=${targetId}`);
                     } else {
-                        window.location.href = 'liste.html';
+                        window.location.href = `entwuerfe-bearbeiten.html?id=${targetId}`;
                     }
-                }, 1500);
+                }, 2000);
 
             } catch (error) {
-                console.error('❌ Fehler beim Anlegen des Auftrags:', error);
-                showToast('Fehler beim Anlegen des Auftrags: ' + error.message, 'error');
+                console.error('❌ Fehler beim Speichern der Kalkulation:', error);
+                showToast('Fehler beim Speichern: ' + error.message, 'error');
             }
         }
 
