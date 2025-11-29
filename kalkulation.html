@@ -6820,10 +6820,27 @@
             // Problem: Ohne diesen Code müssen bereits eingegebene Details nochmal eingegeben werden
             kalkWizardData.serviceDetailsPerService = {};
 
+            // 🔧 Feldnamen-Mapping (annahme.html → kalkulation.html SERVICE_CONFIG)
+            // annahme.html verwendet teilweise andere Feldnamen als SERVICE_CONFIG.zusatzfelder
+            const normalizeServiceDetails = (details) => {
+                if (!details || typeof details !== 'object') return {};
+                const normalized = { ...details };
+
+                // Reifen-Mapping
+                if (normalized.reifentyp !== undefined) {
+                    normalized.reifenTyp = normalized.reifentyp;
+                    delete normalized.reifentyp;
+                }
+                // reifenanzahl gibt es nicht in kalkulation.html, aber wir behalten es trotzdem
+
+                console.log('📋 Normalisierte Service-Details:', normalized);
+                return normalized;
+            };
+
             // 1. Primary Service Details laden
             const primaryService = kalkWizardData.services[0];
             if (selectedEntwurf.serviceDetails && typeof selectedEntwurf.serviceDetails === 'object') {
-                kalkWizardData.serviceDetailsPerService[primaryService] = { ...selectedEntwurf.serviceDetails };
+                kalkWizardData.serviceDetailsPerService[primaryService] = normalizeServiceDetails(selectedEntwurf.serviceDetails);
                 console.log(`📋 Primary Service "${primaryService}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[primaryService]);
             }
 
@@ -6831,7 +6848,7 @@
             if (kalkWizardData.additionalServicesFromEntwurf.length > 0) {
                 kalkWizardData.additionalServicesFromEntwurf.forEach(addService => {
                     if (addService.serviceTyp && addService.serviceDetails && typeof addService.serviceDetails === 'object') {
-                        kalkWizardData.serviceDetailsPerService[addService.serviceTyp] = { ...addService.serviceDetails };
+                        kalkWizardData.serviceDetailsPerService[addService.serviceTyp] = normalizeServiceDetails(addService.serviceDetails);
                         console.log(`📋 Additional Service "${addService.serviceTyp}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[addService.serviceTyp]);
                     }
                 });
@@ -7998,6 +8015,53 @@ REGELN:
             } else {
                 kalkWizardData.additionalServicesFromEntwurf = [];
             }
+
+            // 🔧 FIX (2025-11-30): Service-Details aus Partner-Anfrage in serviceDetailsPerService vorausfüllen
+            // Feldnamen-Mapping (annahme.html/partner-app → kalkulation.html SERVICE_CONFIG)
+            const normalizeServiceDetailsPartner = (details) => {
+                if (!details || typeof details !== 'object') return {};
+                const normalized = { ...details };
+
+                // Reifen-Mapping
+                if (normalized.reifentyp !== undefined) {
+                    normalized.reifenTyp = normalized.reifentyp;
+                    delete normalized.reifentyp;
+                }
+
+                console.log('📋 Normalisierte Partner-Service-Details:', normalized);
+                return normalized;
+            };
+
+            // 1. Primary Service Details laden (aus serviceData oder serviceDetails)
+            const primaryServicePartner = kalkWizardData.services[0];
+            const primaryDetails = selectedPartnerAnfrage.serviceDetails || selectedPartnerAnfrage.serviceData || {};
+            if (primaryDetails && typeof primaryDetails === 'object' && Object.keys(primaryDetails).length > 0) {
+                kalkWizardData.serviceDetailsPerService[primaryServicePartner] = normalizeServiceDetailsPartner(primaryDetails);
+                console.log(`📋 Partner Primary Service "${primaryServicePartner}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[primaryServicePartner]);
+            }
+
+            // 2. Additional Services Details laden
+            if (kalkWizardData.additionalServicesFromEntwurf.length > 0) {
+                kalkWizardData.additionalServicesFromEntwurf.forEach(addService => {
+                    if (addService.serviceTyp && addService.serviceDetails && typeof addService.serviceDetails === 'object') {
+                        kalkWizardData.serviceDetailsPerService[addService.serviceTyp] = normalizeServiceDetailsPartner(addService.serviceDetails);
+                        console.log(`📋 Partner Additional Service "${addService.serviceTyp}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[addService.serviceTyp]);
+                    }
+                });
+            }
+
+            // 3. Falls bereits serviceDetailsPerService vom vorherigen Kalkulations-Durchlauf existiert (Priorität!)
+            if (selectedPartnerAnfrage.serviceDetailsPerService && typeof selectedPartnerAnfrage.serviceDetailsPerService === 'object') {
+                Object.keys(selectedPartnerAnfrage.serviceDetailsPerService).forEach(serviceKey => {
+                    kalkWizardData.serviceDetailsPerService[serviceKey] = {
+                        ...kalkWizardData.serviceDetailsPerService[serviceKey],
+                        ...selectedPartnerAnfrage.serviceDetailsPerService[serviceKey]
+                    };
+                    console.log(`📋 Partner Kalkulations-Details für "${serviceKey}" übernommen:`, kalkWizardData.serviceDetailsPerService[serviceKey]);
+                });
+            }
+
+            console.log('✅ Partner serviceDetailsPerService vollständig geladen:', kalkWizardData.serviceDetailsPerService);
 
             console.log(`🆕 Partner-Anfrage Multi-Service Modus: ${kalkWizardData.isMultiService ? 'JA' : 'NEIN'}, Services:`, kalkWizardData.services);
 
