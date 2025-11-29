@@ -8768,187 +8768,237 @@ REGELN:
         }
 
         // Online-Suche für ein einzelnes Teil
-        async function searchErsatzteilOnline(teilName, fahrzeug) {
-            // Suchquery zusammenstellen
-            const searchQuery = `${fahrzeug.marke} ${fahrzeug.modell} ${teilName} Ersatzteil kaufen Preis`;
+        // ============================================
+        // 🔍 ERSATZTEIL-SUCHE MIT ECHTEN SHOP-LINKS
+        // ============================================
 
+        // Echte Shop-URLs für Ersatzteilsuche
+        const ERSATZTEIL_SHOPS = {
+            'eBay': {
+                name: 'eBay Kleinanzeigen & Motors',
+                icon: '🛒',
+                color: '#e53238',
+                buildUrl: (teil, fahrzeug) => {
+                    const query = `${fahrzeug.marke} ${fahrzeug.modell} ${teil}`.trim();
+                    return `https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent(query)}&_sacat=6028`;
+                },
+                beschreibung: 'Gebraucht & Neu, oft günstig'
+            },
+            'Autodoc': {
+                name: 'Autodoc',
+                icon: '🚗',
+                color: '#ff6600',
+                buildUrl: (teil, fahrzeug) => {
+                    const query = `${fahrzeug.marke} ${fahrzeug.modell} ${teil}`.trim();
+                    return `https://www.autodoc.de/search?keyword=${encodeURIComponent(query)}`;
+                },
+                beschreibung: 'Große Auswahl, schneller Versand'
+            },
+            'kfzteile24': {
+                name: 'kfzteile24',
+                icon: '🔧',
+                color: '#0066cc',
+                buildUrl: (teil, fahrzeug) => {
+                    const query = `${fahrzeug.marke} ${fahrzeug.modell} ${teil}`.trim();
+                    return `https://www.kfzteile24.de/suche/${encodeURIComponent(query)}`;
+                },
+                beschreibung: 'OE & Aftermarket Teile'
+            },
+            'Daparto': {
+                name: 'Daparto',
+                icon: '⚙️',
+                color: '#00aa00',
+                buildUrl: (teil, fahrzeug) => {
+                    const query = `${fahrzeug.marke} ${fahrzeug.modell} ${teil}`.trim();
+                    return `https://www.daparto.de/Suche?s=${encodeURIComponent(query)}`;
+                },
+                beschreibung: 'Preisvergleich vieler Anbieter'
+            },
+            'Autoteile-Markt': {
+                name: 'Autoteile-Markt.de',
+                icon: '🏪',
+                color: '#993399',
+                buildUrl: (teil, fahrzeug) => {
+                    const query = `${fahrzeug.marke} ${fahrzeug.modell} ${teil}`.trim();
+                    return `https://www.autoteile-markt.de/suche?q=${encodeURIComponent(query)}`;
+                },
+                beschreibung: 'Gebrauchtteile von Verwertern'
+            }
+        };
+
+        // Generiert echte Such-Links für alle Shops
+        function generateShopSearchLinks(teilName, fahrzeug) {
+            console.log('🔗 Generiere Such-Links für:', teilName, fahrzeug);
+
+            return Object.entries(ERSATZTEIL_SHOPS).map(([key, shop], idx) => ({
+                id: `link-${key}-${teilName.replace(/\s+/g, '-')}-${Date.now()}`,
+                teilName: teilName,
+                shop: shop.name,
+                shopKey: key,
+                icon: shop.icon,
+                color: shop.color,
+                titel: `${teilName} bei ${shop.name} suchen`,
+                beschreibung: shop.beschreibung,
+                url: shop.buildUrl(teilName, fahrzeug),
+                isDirectLink: true,  // Markierung: Das ist ein echter Link!
+                selected: false
+            }));
+        }
+
+        // Hauptfunktion: Sucht Ersatzteile online
+        async function searchErsatzteilOnline(teilName, fahrzeug) {
+            const searchQuery = `${fahrzeug.marke} ${fahrzeug.modell} ${teilName}`;
             console.log('🔎 Suche:', searchQuery);
 
-            // API-Key für OpenAI holen
-            let apiKey = '';
-            if (window.settingsManager?.currentSettings?.systemConfig?.openaiKey) {
-                apiKey = window.settingsManager.currentSettings.systemConfig.openaiKey;
-            } else {
-                const db = firebase.firestore();
-                const collectionName = `einstellungen_${window.werkstattId}`;
-                const settingsDoc = await db.collection(collectionName).doc('config').get();
-                if (settingsDoc.exists) {
-                    apiKey = settingsDoc.data()?.systemConfig?.openaiKey || '';
-                }
-            }
+            // IMMER echte Shop-Links generieren
+            const shopLinks = generateShopSearchLinks(teilName, fahrzeug);
 
-            if (!apiKey) {
-                // Fallback: Simulierte Ergebnisse basierend auf Teile-Datenbank
-                return generateSimulatedResults(teilName, fahrzeug);
-            }
+            // Versuche eBay API für echte Ergebnisse (wenn API-Key vorhanden)
+            let ebayResults = [];
+            const ebayAppId = await getEbayAppId();
 
-            // GPT-4 für intelligente Preisschätzung basierend auf Marke/Modell
-            try {
-                const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: 'gpt-4o',
-                        messages: [
-                            {
-                                role: 'system',
-                                content: `Du bist ein Experte für Kfz-Ersatzteile und kennst die aktuellen Marktpreise.
-Generiere realistische Ersatzteil-Angebote für deutsche Online-Shops.
-
-Antworte NUR im JSON-Format:
-{
-  "angebote": [
-    {
-      "shop": "Shop-Name (z.B. Autodoc, kfzteile24, eBay, Daparto)",
-      "titel": "Genaue Bezeichnung des Teils",
-      "teilenummer": "OE-Nummer oder Herstellernummer",
-      "qualitaet": "OE/Aftermarket/Gebraucht",
-      "preis": 123.45,
-      "versand": 5.99,
-      "lieferzeit": "1-3 Werktage",
-      "verfuegbar": true,
-      "url": "https://beispiel-shop.de/teil"
-    }
-  ]
-}
-
-Regeln:
-1. Generiere 3-5 realistische Angebote pro Teil
-2. Preise sollen marktüblich für das Fahrzeug sein (Premium-Marken teurer)
-3. Mix aus OE-Qualität, Aftermarket und ggf. Gebraucht
-4. Echte deutsche Shop-Namen verwenden
-5. Lieferzeiten und Verfügbarkeit realistisch`
-                            },
-                            {
-                                role: 'user',
-                                content: `Finde Ersatzteil-Angebote für:
-Fahrzeug: ${fahrzeug.marke} ${fahrzeug.modell} ${fahrzeug.baujahr ? '(Baujahr ' + fahrzeug.baujahr + ')' : ''}
-Gesuchtes Teil: ${teilName}
-
-Generiere realistische Angebote von deutschen Ersatzteil-Shops.`
-                            }
-                        ],
-                        max_tokens: 1500,
-                        temperature: 0.7
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error('API-Fehler');
-                }
-
-                const data = await response.json();
-                const content = data.choices?.[0]?.message?.content || '';
-
-                // JSON parsen
-                let result;
+            if (ebayAppId) {
                 try {
-                    result = JSON.parse(content);
-                } catch {
-                    const jsonMatch = content.match(/\{[\s\S]*"angebote"[\s\S]*\}/);
-                    if (jsonMatch) {
-                        result = JSON.parse(jsonMatch[0]);
-                    } else {
-                        return generateSimulatedResults(teilName, fahrzeug);
-                    }
+                    ebayResults = await searchEbayAPI(teilName, fahrzeug, ebayAppId);
+                    console.log('✅ eBay API Ergebnisse:', ebayResults.length);
+                } catch (error) {
+                    console.warn('⚠️ eBay API fehlgeschlagen:', error);
                 }
+            }
 
-                // Angebote mit Metadaten versehen
-                return (result.angebote || []).map((a, idx) => ({
-                    id: `${teilName.replace(/\s+/g, '-')}-${idx}-${Date.now()}`,
+            // GPT-Preisschätzung als Zusatz (mit GESCHÄTZT-Label)
+            let preisSchaetzung = null;
+            const openaiKey = await getOpenAIKey();
+
+            if (openaiKey) {
+                try {
+                    preisSchaetzung = await getGPTPreisSchaetzung(teilName, fahrzeug, openaiKey);
+                    console.log('💡 GPT Preisschätzung:', preisSchaetzung);
+                } catch (error) {
+                    console.warn('⚠️ GPT Schätzung fehlgeschlagen:', error);
+                }
+            }
+
+            // Kombiniere alle Ergebnisse
+            const allResults = [
+                ...ebayResults,
+                ...shopLinks
+            ];
+
+            // Preisschätzung als Info-Objekt hinzufügen (falls vorhanden)
+            if (preisSchaetzung) {
+                allResults.unshift({
+                    id: `schaetzung-${teilName.replace(/\s+/g, '-')}-${Date.now()}`,
                     teilName: teilName,
-                    shop: a.shop,
-                    titel: a.titel,
-                    teilenummer: a.teilenummer,
-                    qualitaet: a.qualitaet,
-                    preis: parseFloat(a.preis) || 0,
-                    versand: parseFloat(a.versand) || 0,
-                    lieferzeit: a.lieferzeit,
-                    verfuegbar: a.verfuegbar !== false,
-                    url: a.url,
+                    shop: '💡 KI-Preisschätzung',
+                    titel: `${teilName} - Marktpreis-Schätzung`,
+                    beschreibung: preisSchaetzung.erklaerung || 'Basierend auf aktuellen Marktdaten',
+                    preis: preisSchaetzung.mittelpreis,
+                    preisVon: preisSchaetzung.preisVon,
+                    preisBis: preisSchaetzung.preisBis,
+                    isSchaetzung: true,  // Markierung: Das ist eine Schätzung!
                     selected: false
-                }));
+                });
+            }
 
-            } catch (error) {
-                console.warn('⚠️ API-Suche fehlgeschlagen, verwende Simulation:', error);
-                return generateSimulatedResults(teilName, fahrzeug);
+            return allResults;
+        }
+
+        // eBay API Key aus Einstellungen holen
+        async function getEbayAppId() {
+            try {
+                if (window.settingsManager?.currentSettings?.systemConfig?.ebayAppId) {
+                    return window.settingsManager.currentSettings.systemConfig.ebayAppId;
+                }
+                const db = firebase.firestore();
+                const settingsDoc = await db.collection(`einstellungen_${window.werkstattId}`).doc('config').get();
+                return settingsDoc.exists ? settingsDoc.data()?.systemConfig?.ebayAppId : null;
+            } catch (e) {
+                return null;
             }
         }
 
-        // Simulierte Ergebnisse wenn keine API verfügbar
-        function generateSimulatedResults(teilName, fahrzeug) {
-            const shops = [
-                { name: 'Autodoc', faktor: 1.0 },
-                { name: 'kfzteile24', faktor: 1.05 },
-                { name: 'Daparto', faktor: 0.95 },
-                { name: 'eBay Motors', faktor: 0.85 },
-                { name: 'Pkwteile.de', faktor: 1.02 }
-            ];
-
-            // Basis-Preise nach Teile-Typ
-            const basisPreise = {
-                'Stoßfänger': 180,
-                'Kotflügel': 120,
-                'Motorhaube': 250,
-                'Tür': 300,
-                'Scheinwerfer': 150,
-                'Rücklicht': 80,
-                'Spiegel': 60,
-                'Schweller': 100,
-                'Heckklappe': 280,
-                'Frontscheibe': 200,
-                'default': 100
-            };
-
-            // Premium-Faktor für Marke
-            const markenFaktor = {
-                'BMW': 1.5, 'Mercedes': 1.6, 'Audi': 1.4, 'Porsche': 2.0,
-                'VW': 1.0, 'Opel': 0.9, 'Ford': 0.95, 'Seat': 0.95, 'Skoda': 0.95
-            };
-
-            let basisPreis = basisPreise.default;
-            for (const [key, preis] of Object.entries(basisPreise)) {
-                if (teilName.toLowerCase().includes(key.toLowerCase())) {
-                    basisPreis = preis;
-                    break;
+        // OpenAI Key aus Einstellungen holen
+        async function getOpenAIKey() {
+            try {
+                if (window.settingsManager?.currentSettings?.systemConfig?.openaiKey) {
+                    return window.settingsManager.currentSettings.systemConfig.openaiKey;
                 }
+                const db = firebase.firestore();
+                const settingsDoc = await db.collection(`einstellungen_${window.werkstattId}`).doc('config').get();
+                return settingsDoc.exists ? settingsDoc.data()?.systemConfig?.openaiKey : null;
+            } catch (e) {
+                return null;
             }
+        }
 
-            const mFaktor = markenFaktor[fahrzeug.marke] || 1.0;
+        // eBay Finding API - Echte Suchergebnisse
+        async function searchEbayAPI(teilName, fahrzeug, appId) {
+            const query = `${fahrzeug.marke} ${fahrzeug.modell} ${teilName}`;
 
-            return shops.slice(0, 4).map((shop, idx) => {
-                const qualitaet = idx === 0 ? 'OE' : (idx === 3 ? 'Gebraucht' : 'Aftermarket');
-                const qualFaktor = qualitaet === 'OE' ? 1.3 : (qualitaet === 'Gebraucht' ? 0.5 : 1.0);
-                const preis = Math.round(basisPreis * mFaktor * shop.faktor * qualFaktor * (0.9 + Math.random() * 0.2) * 100) / 100;
+            // eBay Finding API (CORS-Problem: muss über Backend laufen)
+            // Für jetzt: Direkte Links zu eBay Suche
+            console.log('ℹ️ eBay API benötigt Backend-Proxy wegen CORS');
 
-                return {
-                    id: `${teilName.replace(/\s+/g, '-')}-${idx}-${Date.now()}`,
-                    teilName: teilName,
-                    shop: shop.name,
-                    titel: `${teilName} für ${fahrzeug.marke} ${fahrzeug.modell}`,
-                    teilenummer: `OE-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-                    qualitaet: qualitaet,
-                    preis: preis,
-                    versand: idx === 0 ? 0 : (Math.round(Math.random() * 10 * 100) / 100),
-                    lieferzeit: ['1-2 Werktage', '2-3 Werktage', '3-5 Werktage', '1-2 Wochen'][Math.floor(Math.random() * 4)],
-                    verfuegbar: Math.random() > 0.2,
-                    url: `https://${shop.name.toLowerCase().replace(/\s+/g, '')}.de/suche?q=${encodeURIComponent(teilName)}`,
-                    selected: false
-                };
+            // Placeholder für zukünftige Backend-Integration
+            return [];
+        }
+
+        // GPT-4 für Preisschätzung (NICHT für fake Angebote!)
+        async function getGPTPreisSchaetzung(teilName, fahrzeug, apiKey) {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Du bist ein Experte für Kfz-Ersatzteile.
+Gib eine REALISTISCHE Preisschätzung basierend auf deinem Wissen über den deutschen Markt.
+
+WICHTIG: Dies ist NUR eine Schätzung! Antworte NUR im JSON-Format:
+{
+    "preisVon": 50,
+    "preisBis": 150,
+    "mittelpreis": 100,
+    "erklaerung": "Kurze Erklärung warum dieser Preis"
+}
+
+Berücksichtige:
+- Marke (Premium-Marken teurer)
+- Teil-Typ (Karosserie, Mechanik, etc.)
+- Qualität (OE vs Aftermarket)
+- Deutscher Markt 2024`
+                        },
+                        {
+                            role: 'user',
+                            content: `Schätze den Marktpreis für:
+Fahrzeug: ${fahrzeug.marke} ${fahrzeug.modell} ${fahrzeug.baujahr || ''}
+Teil: ${teilName}
+
+Gib eine realistische Preisspanne für den deutschen Markt.`
+                        }
+                    ],
+                    max_tokens: 300,
+                    temperature: 0.3
+                })
             });
+
+            if (!response.ok) throw new Error('API-Fehler');
+
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content || '';
+
+            try {
+                return JSON.parse(content);
+            } catch {
+                const jsonMatch = content.match(/\{[\s\S]*\}/);
+                return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+            }
         }
 
         // Ergebnisse rendern (gruppiert nach Teil)
@@ -8957,7 +9007,11 @@ Generiere realistische Angebote von deutschen Ersatzteil-Shops.`
             const countEl = document.getElementById('kiResultsCount');
             if (!container) return;
 
-            if (countEl) countEl.textContent = kiErsatzteileAngebote.length;
+            // Zähle nur echte Shop-Links (nicht Schätzungen)
+            const shopLinks = kiErsatzteileAngebote.filter(a => a.isDirectLink);
+            const schaetzungen = kiErsatzteileAngebote.filter(a => a.isSchaetzung);
+
+            if (countEl) countEl.textContent = `${shopLinks.length} Shop-Links`;
 
             // Nach Teilname gruppieren
             const grouped = {};
@@ -8966,25 +9020,85 @@ Generiere realistische Angebote von deutschen Ersatzteil-Shops.`
                 grouped[a.teilName].push(a);
             });
 
-            container.innerHTML = Object.entries(grouped).map(([teilName, angebote]) => `
+            container.innerHTML = Object.entries(grouped).map(([teilName, angebote]) => {
+                const links = angebote.filter(a => a.isDirectLink);
+                const schaetzung = angebote.find(a => a.isSchaetzung);
+
+                return `
                 <div class="ki-teil-gruppe">
                     <div class="ki-teil-gruppe__header">
                         <div class="ki-teil-gruppe__name">
                             <i data-feather="package"></i>
                             ${teilName}
                         </div>
-                        <div class="ki-teil-gruppe__angebote">${angebote.length} Angebote</div>
+                        <div class="ki-teil-gruppe__angebote">${links.length} Shops</div>
                     </div>
-                    ${angebote.map(a => renderKIAngebot(a)).join('')}
+
+                    ${schaetzung ? renderPreisSchaetzung(schaetzung) : ''}
+
+                    <div class="ki-shop-links-header" style="padding: 8px 16px; background: #f8f9fa; border-bottom: 1px solid #e9ecef; font-weight: 600; color: #495057;">
+                        🔗 Direkt zu den Shops (echte Links):
+                    </div>
+
+                    ${links.map(a => renderShopLink(a)).join('')}
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
             updateKIErsatzteileSelection();
             if (typeof feather !== 'undefined') feather.replace();
         }
 
-        // Einzelnes Angebot rendern
+        // KI-Preisschätzung rendern (mit GESCHÄTZT-Label!)
+        function renderPreisSchaetzung(schaetzung) {
+            return `
+                <div class="ki-preisschaetzung" style="background: linear-gradient(135deg, #fff3cd, #ffeeba); padding: 16px; border-radius: 8px; margin: 8px 16px; border-left: 4px solid #ffc107;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="font-size: 1.5em;">💡</span>
+                        <strong style="color: #856404;">KI-Preisschätzung</strong>
+                        <span style="background: #ffc107; color: #000; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;">GESCHÄTZT</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;">
+                        <span style="font-size: 1.3em; font-weight: 700; color: #856404;">
+                            ${schaetzung.preisVon?.toFixed(0) || '?'} € - ${schaetzung.preisBis?.toFixed(0) || '?'} €
+                        </span>
+                        <span style="color: #856404; font-size: 0.9em;">(Mittel: ~${schaetzung.preis?.toFixed(0) || '?'} €)</span>
+                    </div>
+                    <p style="margin: 0; font-size: 0.85em; color: #6c757d;">
+                        ${schaetzung.beschreibung || 'Basierend auf aktuellen Marktdaten'}
+                    </p>
+                    <p style="margin: 4px 0 0 0; font-size: 0.75em; color: #999; font-style: italic;">
+                        ⚠️ Dies ist nur eine Schätzung! Bitte Preise in den Shops unten vergleichen.
+                    </p>
+                </div>
+            `;
+        }
+
+        // Shop-Link rendern (echter Link zum Shop!)
+        function renderShopLink(link) {
+            return `
+                <a href="${link.url}" target="_blank" class="ki-shop-link" style="display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e9ecef; text-decoration: none; color: inherit; transition: background 0.2s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                    <span style="font-size: 1.5em; margin-right: 12px;">${link.icon}</span>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: ${link.color};">${link.shop}</div>
+                        <div style="font-size: 0.85em; color: #6c757d;">${link.beschreibung}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 16px; font-size: 0.8em; font-weight: 600;">
+                            Jetzt suchen
+                        </span>
+                        <i data-feather="external-link" style="width: 16px; height: 16px; color: #6c757d;"></i>
+                    </div>
+                </a>
+            `;
+        }
+
+        // Legacy: Einzelnes Angebot rendern (für eBay API Ergebnisse)
         function renderKIAngebot(angebot) {
+            // Wenn es ein direkter Link ist, nutze die neue Darstellung
+            if (angebot.isDirectLink) return renderShopLink(angebot);
+            if (angebot.isSchaetzung) return renderPreisSchaetzung(angebot);
+
             const isSelected = selectedKIErsatzteile.has(angebot.id);
             const gesamtPreis = angebot.preis + (angebot.versand || 0);
             const qualBadgeClass = angebot.qualitaet === 'OE' ? 'ki-badge--oe' :
@@ -8998,12 +9112,12 @@ Generiere realistische Angebote von deutschen Ersatzteil-Shops.`
                     <div class="ki-angebot__info">
                         <div class="ki-angebot__title">${angebot.titel}</div>
                         <div class="ki-angebot__details">
-                            <span class="ki-badge ${qualBadgeClass}">${angebot.qualitaet}</span>
+                            <span class="ki-badge ${qualBadgeClass}">${angebot.qualitaet || 'Unbekannt'}</span>
                             ${angebot.teilenummer ? `<span>Nr: ${angebot.teilenummer}</span>` : ''}
                             <span class="ki-badge ${angebot.verfuegbar ? 'ki-badge--lieferbar' : 'ki-badge--bestellen'}">
                                 ${angebot.verfuegbar ? '✓ Lieferbar' : '⏱ Bestellbar'}
                             </span>
-                            <span>${angebot.lieferzeit}</span>
+                            <span>${angebot.lieferzeit || ''}</span>
                         </div>
                     </div>
                     <div class="ki-angebot__anbieter">
