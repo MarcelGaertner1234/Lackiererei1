@@ -5716,15 +5716,17 @@
                 await window.firebaseInitialized;
                 const werkstattId = window.werkstattId;
                 if (!werkstattId || !ersatzteil.name) return;
-
-                const collectionName = window.getCollection ? window.getCollection('ersatzteile') : `ersatzteile_${werkstattId}`;
+                if (!window.getCollection) {
+                    console.warn('⏳ saveErsatzteilToDB: getCollection nicht verfügbar');
+                    return;
+                }
 
                 // Fahrzeug-Info aus aktuellem Wizard
                 const fahrzeugMarke = kalkWizardData.fahrzeug?.marke || '';
                 const fahrzeugModell = kalkWizardData.fahrzeug?.modell || '';
 
                 // Prüfen ob Ersatzteil schon existiert (nach Name + Teilenummer)
-                const existing = await db.collection(collectionName)
+                const existing = await window.getCollection('ersatzteile')
                     .where('name', '==', ersatzteil.name)
                     .where('teilenummer', '==', ersatzteil.teilenummer || '')
                     .limit(1)
@@ -5817,7 +5819,7 @@
                         werkstattId: werkstattId
                     };
 
-                    await db.collection(collectionName).add(neuesErsatzteil);
+                    await window.getCollection('ersatzteile').add(neuesErsatzteil);
                     console.log('📦 Neues Ersatzteil gespeichert:', ersatzteil.name);
 
                     // Lokale DB aktualisieren
@@ -9448,6 +9450,19 @@
             // Warte auf Firebase
             if (window.firebaseInitialized) {
                 await window.firebaseInitialized;
+            }
+
+            // 🆕 FIX: Warte auf werkstattId (Auth-Manager setzt diese nach Auth-State-Änderung)
+            let werkstattAttempts = 0;
+            while (!window.werkstattId && werkstattAttempts < 50) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                werkstattAttempts++;
+            }
+
+            if (!window.werkstattId) {
+                console.warn('⚠️ initKalkulationPage: werkstattId nicht verfügbar nach 5s');
+            } else {
+                console.log('✅ initKalkulationPage: werkstattId =', window.werkstattId);
             }
 
             // Fahrzeuge aus DB laden
