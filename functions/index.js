@@ -4886,7 +4886,17 @@ function createAngebotHTML(entwurf, werkstattId, logoData = null) {
   const ersatzteile = kalkulationData.ersatzteile || [];
   const arbeitslohn = kalkulationData.arbeitslohn || [];
   const lackierung = kalkulationData.lackierung || [];
-  const materialien = kalkulationData.materialien || [];
+  // 🔧 FIX Nov 29, 2025: Materialien-Mapping für kalkulation.html Datenstruktur
+  // kalkulation.html speichert: materialTyp/name, menge, einheit, einheitspreis, gesamtpreis
+  // PDF erwartet: kategorie, bezeichnung, menge, einzelpreis, gesamtpreis
+  const rawMaterialien = kalkulationData.materialien || [];
+  const materialien = rawMaterialien.map(item => ({
+    kategorie: item.kategorie || item.einheit || '',
+    bezeichnung: item.bezeichnung || item.materialTyp || item.name || item.typ || '',
+    menge: item.menge || 0,
+    einzelpreis: item.einzelpreis || item.einheitspreis || item.verkaufspreis || 0,
+    gesamtpreis: item.gesamtpreis || item.preis || 0
+  }));
 
   // 🚗 FIX (2025-11-27): Ersatzfahrzeug-Kosten aus kalkulationData extrahieren
   const ersatzfahrzeug = kalkulationData.ersatzfahrzeug || null;
