@@ -6624,11 +6624,17 @@
                     // ✅ FIX #41 (2025-11-19): Create Bestellungen documents from Entwurf pipeline
                     // AFTER transaction succeeds, create individual bestellungen docs
                     // This ensures kanban.html can query them via fahrzeugId
-                    if (anfrage.pdfImport?.bestellungen && anfrage.pdfImport.bestellungen.length > 0) {
+                    // 🆕 FIX (2025-11-29): Korrekter Feldname-Pfad für Ersatzteile/Bestellungen
+                    // Priorität: pdfImport.editedData.ersatzteile → kalkulationData.ersatzteile → pdfImport.bestellungen (legacy)
+                    const bestellungenSource = anfrage.pdfImport?.editedData?.ersatzteile
+                        || anfrage.kalkulationData?.ersatzteile
+                        || anfrage.pdfImport?.bestellungen  // Legacy fallback
+                        || [];
+                    if (bestellungenSource.length > 0) {
                         try {
                             console.log('📦 ENTWURF-PIPELINE: Erstelle Bestellungen-Dokumente...');
                             const bestellungenCount = await createBestellungenFromEntwurf(
-                                anfrage.pdfImport.bestellungen,
+                                bestellungenSource,
                                 anfrage.kennzeichen,
                                 fahrzeugData.id
                             );
@@ -6640,7 +6646,7 @@
                             console.warn('   → Bitte Bestellungen manuell nachtragen.');
                         }
                     } else {
-                        console.log('ℹ️ Keine Bestellungen zum Übertragen (pdfImport?.bestellungen leer)');
+                        console.log('ℹ️ Keine Bestellungen zum Übertragen (ersatzteile/bestellungen leer)');
                     }
                 } catch (transactionError) {
                     console.error('❌ TRANSACTION FEHLGESCHLAGEN!', transactionError);
@@ -7509,9 +7515,12 @@
                 // 🔧 FIX (2025-11-22): Sanitize kalkulationData to prevent Firestore Date object errors
                 // CRITICAL: kalkulationData may contain nested Date objects from Entwurf/Angebot system
                 // 🆕 FIX GAP-3 (2025-11-27): ersatzfahrzeugKosten aus KVA in kalkulationData übertragen
+                // 🆕 FIX (2025-11-29): ersatzfahrzeug AUCH sanitizen (könnte Date objects enthalten)
                 kalkulationData: {
                     ...sanitizeKalkulationDataForFirestore(anfrage.kalkulationData || {}),
-                    ersatzfahrzeug: anfrage.kva?.ersatzfahrzeugKosten || anfrage.kalkulationData?.ersatzfahrzeug || null
+                    ersatzfahrzeug: sanitizeKalkulationDataForFirestore(
+                        anfrage.kva?.ersatzfahrzeugKosten || anfrage.kalkulationData?.ersatzfahrzeug || null
+                    )
                 },
 
                 // ✅ FIX #41 (2025-11-19): Bestellungen from Entwurf pipeline
@@ -7531,8 +7540,10 @@
                 partnerId: anfrage.partnerId || '',
                 partnerName: anfrage.partnerName || '',
                 partnerEmail: anfrage.partnerEmail || partner?.email || '',
-                kundenEmail: anfrage.partnerEmail || partner?.email || '', // 🆕 BUGFIX 2025-11-04 (FIX #32): Same as partnerEmail (Partner = Kunde in diesem Flow)
-                kundenTelefon: anfrage.telefon || anfrage.kundenTelefon || anfrage.partnerTelefon || '',  // ✅ FIX #12: Telefon mapping
+                // 🆕 FIX (2025-11-29): Erweiterte Fallback-Kette für kundenEmail
+                kundenEmail: anfrage.kundenEmail || anfrage.email || anfrage.partnerEmail || partner?.email || '',
+                // 🆕 FIX (2025-11-29): Erweiterte Fallback-Kette für kundenTelefon
+                kundenTelefon: anfrage.kundenTelefon || anfrage.telefon || anfrage.partnerTelefon || anfrage.kundendaten?.telefon || '',
                 anfrageId: anfrage.id, // Referenz zur Partner-Anfrage
 
                 // Photos & Signature (WERDEN SEPARAT IN SUBCOLLECTION GESPEICHERT)
