@@ -6687,6 +6687,35 @@
                 rechnung.isMultiService = true;
             }
 
+            // 🆕 FIX (2025-11-29): werkstattDaten für PDF einfrieren
+            // PROBLEM: Service-Auswahl-Pipeline PDFs fehlten:
+            //   - Steuernummer, IBAN/BIC/Bank, QR-Code, Footer (GmbH/GF/HRB)
+            // LÖSUNG: Identisch zu rechnungen-admin.html Zeile 1564-1570
+            try {
+                const settings = await window.settingsManager.loadSettings();
+                if (settings) {
+                    rechnung.werkstattDaten = {
+                        profil: settings.profil || {},
+                        bank: settings.bank || {},
+                        steuer: settings.steuer || {},
+                        rechtliches: settings.rechtliches || {},
+                        rechnungsConfig: settings.rechnungsConfig || {}
+                    };
+                    console.log('   ✅ werkstattDaten eingefroren:', Object.keys(rechnung.werkstattDaten));
+                }
+            } catch (settingsError) {
+                console.warn('   ⚠️ werkstattDaten konnten nicht geladen werden:', settingsError);
+                // Nicht werfen - Rechnung funktioniert auch ohne (mit Fallback-Werten im PDF)
+            }
+
+            // 🆕 FIX (2025-11-29): kalkulationData für PDF-Aufschlüsselung übertragen
+            // PROBLEM: Kalkulationsaufschlüsselung zeigte "Zwischensumme: 0.00€"
+            // LÖSUNG: kalkulationData aus fahrzeugData übertragen (wenn vorhanden)
+            if (fahrzeugData.kalkulationData) {
+                rechnung.kalkulationData = fahrzeugData.kalkulationData;
+                console.log('   ✅ kalkulationData übertragen:', Object.keys(fahrzeugData.kalkulationData));
+            }
+
             console.log('✅ [autoCreateRechnung] Rechnung erstellt:', rechnung);
             // 🆕 2025-11-28: Return Object mit rechnung + rabattInfo für pendingRabatt-Löschung
             return { rechnung, rabattInfo };

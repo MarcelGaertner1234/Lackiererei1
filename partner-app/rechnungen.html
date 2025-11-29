@@ -984,9 +984,14 @@
          * @returns {Object} { source, quality, data: { ersatzteile, arbeitslohn, lackierung, materialien } }
          */
         async function getKalkulationDataForInvoice(fahrzeug) {
+            // 🆕 FIX (2025-11-29): Auch rechnung.kalkulationData prüfen
+            // PROBLEM: Service-Auswahl-Pipeline speichert kalkulationData in rechnung statt fahrzeug
+            // LÖSUNG: Zuerst rechnung.kalkulationData prüfen, dann fahrzeug.kalkulationData
+            const kalkulationSource = fahrzeug.rechnung?.kalkulationData || fahrzeug.kalkulationData;
+
             // ✅ SOURCE 1: Entwurf kalkulationData (BEST - full itemized breakdown)
-            if (fahrzeug.kalkulationData) {
-                const kalkulation = fahrzeug.kalkulationData;
+            if (kalkulationSource) {
+                const kalkulation = kalkulationSource;
                 const hasData = (
                     (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) ||
                     (kalkulation.arbeitslohn && kalkulation.arbeitslohn.length > 0) ||
@@ -1587,9 +1592,16 @@
                     doc.setFont(undefined, 'normal');
                     doc.setFontSize(9);
 
-                    // Kennzeichen
+                    // Kennzeichen mit Marke/Modell (falls vorhanden)
+                    // 🆕 FIX (2025-11-29): Marke/Modell aus verschiedenen Quellen laden
                     if (ersatzfahrzeugData.kennzeichen) {
-                        doc.text(`Fahrzeug: ${ersatzfahrzeugData.kennzeichen}`, 20, y);
+                        // Versuche Marke/Modell aus ersatzfahrzeugData oder Leihfahrzeug-Daten zu holen
+                        const marke = ersatzfahrzeugData.marke || ersatzfahrzeugData.fahrzeugMarke || '';
+                        const modell = ersatzfahrzeugData.modell || ersatzfahrzeugData.fahrzeugModell || '';
+                        const fahrzeugLabel = (marke || modell)
+                            ? `${marke} ${modell} (${ersatzfahrzeugData.kennzeichen})`.trim()
+                            : ersatzfahrzeugData.kennzeichen;
+                        doc.text(`Fahrzeug: ${fahrzeugLabel}`, 20, y);
                         y += 5;
                     }
 
