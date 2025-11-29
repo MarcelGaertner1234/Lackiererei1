@@ -8144,20 +8144,43 @@ REGELN:
                 nextBtn.disabled = checkedRepairs.length === 0;
             }
 
-            // Ersatzteil-Eingabe bei 'austauschen' oder 'ersetzen' anzeigen
+            // NEU: Ersatzteil-Formular wird NICHT mehr in Schritt 4 angezeigt
+            // Die Ersatzteil-Suche erfolgt in Schritt 5 (KI-Suche oder manuell)
+            // Hier nur Info anzeigen, dass Ersatzteil in Schritt 5 gesucht wird
             const ersatzteilForm = document.getElementById('ersatzteilInlineForm');
-            if (ersatzteilForm) {
-                const needsErsatzteil = Array.from(checkedRepairs).some(cb =>
-                    ['austauschen', 'ersetzen', 'wechseln'].includes(cb.value.toLowerCase())
-                );
-                ersatzteilForm.style.display = needsErsatzteil ? 'block' : 'none';
+            const ersatzteilHinweis = document.getElementById('ersatzteilHinweis');
 
-                // Wenn angezeigt, setze Teilname als Vorschlag
-                if (needsErsatzteil && kalkWizardData.currentPart) {
-                    const nameInput = document.getElementById('ersatzteilInlineName');
-                    if (nameInput && !nameInput.value) {
-                        nameInput.value = kalkWizardData.currentPart;
-                    }
+            const needsErsatzteil = Array.from(checkedRepairs).some(cb =>
+                ['austauschen', 'ersetzen', 'wechseln'].includes(cb.value.toLowerCase())
+            );
+
+            // Formular verstecken (wird in Schritt 5 erledigt)
+            if (ersatzteilForm) {
+                ersatzteilForm.style.display = 'none';
+            }
+
+            // Hinweis anzeigen wenn Ersatzteil benötigt wird
+            if (ersatzteilHinweis) {
+                ersatzteilHinweis.style.display = needsErsatzteil ? 'block' : 'none';
+            } else if (needsErsatzteil) {
+                // Hinweis dynamisch erstellen falls nicht vorhanden
+                const hinweisDiv = document.createElement('div');
+                hinweisDiv.id = 'ersatzteilHinweis';
+                hinweisDiv.className = 'ersatzteil-hinweis';
+                hinweisDiv.innerHTML = `
+                    <div style="background: linear-gradient(135deg, #fef3c7, #fde68a); padding: var(--space-3); border-radius: var(--radius-card); margin-top: var(--space-3); border-left: 4px solid #f59e0b;">
+                        <p style="margin: 0; color: #92400e; font-weight: 500;">
+                            <span style="font-size: 1.2em;">🔍</span>
+                            <strong>Ersatzteil wird in Schritt 5 gesucht</strong>
+                        </p>
+                        <p style="margin: var(--space-1) 0 0 0; font-size: var(--font-size-sm); color: #78350f;">
+                            Die KI sucht automatisch nach dem besten Angebot für "${kalkWizardData.currentPart}" oder Sie können manuell suchen.
+                        </p>
+                    </div>
+                `;
+                const repairGrid = document.getElementById('repairOptionsGrid');
+                if (repairGrid) {
+                    repairGrid.parentNode.insertBefore(hinweisDiv, repairGrid.nextSibling);
                 }
             }
         }
@@ -8172,52 +8195,26 @@ REGELN:
                 return;
             }
 
-            // Prüfen ob ein Ersatzteil hinzugefügt wurde (bei austauschen/ersetzen)
-            let ersatzteil = null;
+            // NEU: Prüfen ob Ersatzteil benötigt wird (wird in Schritt 5 gesucht)
             const needsErsatzteil = repairs.some(r => ['austauschen', 'ersetzen', 'wechseln'].includes(r.toLowerCase()));
-            if (needsErsatzteil) {
-                const ersatzteilName = document.getElementById('ersatzteilInlineName')?.value?.trim();
-                const ersatzteilTeilenr = document.getElementById('ersatzteilInlineTeilenr')?.value?.trim();
-                const ersatzteilPreis = parseFloat(document.getElementById('ersatzteilInlinePreis')?.value) || 0;
-                const ersatzteilLieferant = document.getElementById('ersatzteilInlineLieferant')?.value || '';
-
-                if (ersatzteilName) {
-                    ersatzteil = {
-                        name: ersatzteilName,
-                        teilenummer: ersatzteilTeilenr,
-                        preis: ersatzteilPreis,
-                        lieferant: ersatzteilLieferant,
-                        menge: 1,
-                        zuTeil: kalkWizardData.currentPart
-                    };
-
-                    // Zur Ersatzteile-Liste hinzufügen
-                    kalkWizardData.ersatzteile.push(ersatzteil);
-
-                    // In Datenbank speichern (async)
-                    saveErsatzteilToDB(ersatzteil);
-                }
-            }
 
             // Teil zur Liste hinzufügen
+            // ersatzteil ist erstmal null - wird in Schritt 5 ausgefüllt
             kalkWizardData.teile.push({
                 teil: kalkWizardData.currentPart,
                 reparaturen: repairs,
-                ersatzteil: ersatzteil
+                ersatzteil: null,  // Wird in Schritt 5 per KI-Suche oder manuell gesetzt
+                needsErsatzteil: needsErsatzteil  // Flag für Schritt 5
             });
+
+            console.log('📦 Teil hinzugefügt:', kalkWizardData.currentPart, 'Reparaturen:', repairs, 'Braucht Ersatzteil:', needsErsatzteil);
 
             // Formularfelder zurücksetzen
             document.querySelectorAll('input[name="repair"]').forEach(cb => cb.checked = false);
-            const inlineNameEl = document.getElementById('ersatzteilInlineName');
-            const inlineTeilenrEl = document.getElementById('ersatzteilInlineTeilenr');
-            const inlinePreisEl = document.getElementById('ersatzteilInlinePreis');
-            const inlineLieferantEl = document.getElementById('ersatzteilInlineLieferant');
-            const inlineFormEl = document.getElementById('ersatzteilInlineForm');
-            if (inlineNameEl) inlineNameEl.value = '';
-            if (inlineTeilenrEl) inlineTeilenrEl.value = '';
-            if (inlinePreisEl) inlinePreisEl.value = '';
-            if (inlineLieferantEl) inlineLieferantEl.value = '';
-            if (inlineFormEl) inlineFormEl.style.display = 'none';
+
+            // Ersatzteil-Hinweis entfernen falls vorhanden
+            const hinweis = document.getElementById('ersatzteilHinweis');
+            if (hinweis) hinweis.remove();
 
             // CurrentPart zurücksetzen
             kalkWizardData.currentPart = null;
@@ -8618,7 +8615,7 @@ REGELN:
 
             // Teile ermitteln die ersetzt werden müssen
             // Hinweis: teile können verschiedene Strukturen haben:
-            // - Von Step 3/4: { teil: "Name", reparaturen: ["ersetzen", ...], ersatzteil: {...} }
+            // - Von Step 3/4: { teil: "Name", reparaturen: ["ersetzen", ...], needsErsatzteil: true }
             // - Von KI-Analyse: { name: "Name", arbeiten: ["ersetzen", ...] }
             const teileZuErsetzen = [];
 
@@ -8628,14 +8625,15 @@ REGELN:
                 // Reparaturen können in 'reparaturen' oder 'arbeiten' sein
                 const reparaturen = t.reparaturen || t.arbeiten || [];
 
-                // Prüfen ob ersetzt werden soll
-                const sollErsetzen = t.ersatzteil ||
+                // Prüfen ob ersetzt werden soll (3 Wege)
+                const sollErsetzen = t.needsErsatzteil ||  // NEU: Flag aus Schritt 4
                     reparaturen.includes('ersetzen') ||
-                    reparaturen.includes('austauschen');
+                    reparaturen.includes('austauschen') ||
+                    reparaturen.includes('wechseln');
 
                 if (sollErsetzen && teilName && !teileZuErsetzen.includes(teilName)) {
                     teileZuErsetzen.push(teilName);
-                    console.log('📦 Teil zum Ersetzen gefunden:', teilName, 'Reparaturen:', reparaturen);
+                    console.log('📦 Teil zum Ersetzen gefunden:', teilName, 'Reparaturen:', reparaturen, 'Flag:', t.needsErsatzteil);
                 }
             });
 
@@ -9139,29 +9137,70 @@ Generiere realistische Angebote von deutschen Ersatzteil-Shops.`
 
         // Step 5: Ersatzteile-Übersicht aktualisieren
         function updateStep5Ersatzteile() {
+            // NEU: Teile die ersetzt werden müssen (aus Schritt 4)
+            const teileZuErsetzen = kalkWizardData.teile.filter(t => {
+                const reparaturen = t.reparaturen || [];
+                return t.needsErsatzteil ||
+                    reparaturen.includes('ersetzen') ||
+                    reparaturen.includes('austauschen') ||
+                    reparaturen.includes('wechseln');
+            });
+
+            console.log('📋 Step 5 - Teile zu ersetzen:', teileZuErsetzen);
+
+            // KI-Kontext aktualisieren
+            const kontextFahrzeug = document.getElementById('kiKontextFahrzeug');
+            const kontextTeile = document.getElementById('kiKontextTeile');
+
+            if (kontextFahrzeug) {
+                kontextFahrzeug.textContent = `${kalkWizardData.fahrzeugMarke || '-'} ${kalkWizardData.fahrzeugModell || ''} ${kalkWizardData.fahrzeugBaujahr || ''}`.trim() || '-';
+            }
+
+            if (kontextTeile) {
+                if (teileZuErsetzen.length > 0) {
+                    kontextTeile.textContent = teileZuErsetzen.map(t => t.teil).join(', ');
+                } else {
+                    kontextTeile.textContent = 'Keine Teile zum Ersetzen ausgewählt';
+                }
+            }
+
             // Ersatzteile aus Reparaturen anzeigen
             const fromRepairsList = document.getElementById('ersatzteileFromRepairsList');
             if (fromRepairsList) {
-                const ersatzteileAusReparaturen = kalkWizardData.teile
-                    .filter(t => t.ersatzteil)
-                    .map(t => t.ersatzteil);
-
-                if (ersatzteileAusReparaturen.length === 0) {
-                    fromRepairsList.innerHTML = '<p class="no-items-hint">Keine Ersatzteile aus Reparaturen hinzugefügt</p>';
+                // Zeige Teile die ein Ersatzteil brauchen
+                if (teileZuErsetzen.length === 0) {
+                    fromRepairsList.innerHTML = '<p class="no-items-hint">Keine Ersatzteile aus Reparaturen benötigt</p>';
                 } else {
-                    fromRepairsList.innerHTML = ersatzteileAusReparaturen.map(e => `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); background: rgba(var(--color-primary-rgb), 0.05); border-radius: var(--radius-button); margin-bottom: var(--space-2);">
+                    fromRepairsList.innerHTML = teileZuErsetzen.map((t, idx) => {
+                        const hasErsatzteil = t.ersatzteil && t.ersatzteil.name;
+                        return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); background: ${hasErsatzteil ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)'}; border-radius: var(--radius-button); margin-bottom: var(--space-2); border-left: 4px solid ${hasErsatzteil ? '#10b981' : '#f59e0b'};">
                             <div>
-                                <strong>${e.name}</strong>
-                                <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary); display: block;">
-                                    ${e.teilenummer ? `Nr: ${e.teilenummer}` : ''}
-                                    ${e.lieferant ? `| ${e.lieferant}` : ''}
-                                    | Für: ${e.zuTeil || '-'}
+                                <strong style="display: flex; align-items: center; gap: 8px;">
+                                    <span>${hasErsatzteil ? '✅' : '🔍'}</span>
+                                    ${t.teil}
+                                </strong>
+                                <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary); display: block; margin-top: 4px;">
+                                    ${t.reparaturen.join(', ')}
                                 </span>
+                                ${hasErsatzteil ? `
+                                    <span style="font-size: var(--font-size-xs); color: #10b981; display: block; margin-top: 4px;">
+                                        Ersatzteil: ${t.ersatzteil.name} - ${(t.ersatzteil.preis || 0).toFixed(2)} € (${t.ersatzteil.lieferant || 'Unbekannt'})
+                                    </span>
+                                ` : `
+                                    <span style="font-size: var(--font-size-xs); color: #f59e0b; display: block; margin-top: 4px;">
+                                        ⚠️ Ersatzteil noch nicht zugewiesen - KI-Suche starten oder manuell hinzufügen
+                                    </span>
+                                `}
                             </div>
-                            <span style="font-weight: var(--font-weight-semibold);">${(e.preis || 0).toFixed(2)} €</span>
+                            ${hasErsatzteil ? `
+                                <span style="font-weight: var(--font-weight-semibold); color: #10b981;">${(t.ersatzteil.preis || 0).toFixed(2)} €</span>
+                            ` : `
+                                <span style="background: #f59e0b; color: white; padding: 4px 12px; border-radius: 12px; font-size: var(--font-size-xs); font-weight: 600;">OFFEN</span>
+                            `}
                         </div>
-                    `).join('');
+                    `;
+                    }).join('');
                 }
             }
 
