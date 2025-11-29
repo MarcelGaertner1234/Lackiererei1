@@ -1337,6 +1337,22 @@
                     </small>
                 </div>
 
+                <!-- 🆕 DESIGN-GALERIE (für Folierung/Werbebeklebung aus kalkulation.html) -->
+                <div id="designGallerySection" style="display: none; margin-top: var(--space-6);">
+                    <div class="section-title">
+                        <i data-feather="image"></i>
+                        Hochgeladene Designs (aus Kalkulation)
+                    </div>
+                    <div class="photo-section">
+                        <div class="photo-grid" id="designGallery">
+                            <!-- Dynamisch befüllt -->
+                        </div>
+                        <small style="color: var(--color-text-tertiary); display: block; margin-top: var(--space-2);">
+                            🎨 Diese Designs wurden vom Meister in der Kalkulation hochgeladen
+                        </small>
+                    </div>
+                </div>
+
                 <!-- ACTION BUTTONS -->
                 <div class="action-buttons">
                     <button type="button" class="btn btn-secondary btn-lg" onclick="saveEntwurf()">
@@ -2353,6 +2369,12 @@
                     photos = currentEntwurf.photoUrls;
                     updatePhotoGrid();
                     console.log(`📸 ${photos.length} Fotos geladen (photoUrls)`);
+                }
+
+                // 🆕 Load Design-Galerie (für Folierung/Werbebeklebung aus kalkulation.html)
+                if (currentEntwurf.designUrls && Object.keys(currentEntwurf.designUrls).length > 0) {
+                    renderDesignGallery(currentEntwurf.designUrls);
+                    console.log('🎨 Design-Galerie geladen:', currentEntwurf.designUrls);
                 }
 
                 // ✅ BUG #4 FIX: Check for PDF generation errors
@@ -4199,6 +4221,78 @@
             photos.splice(index, 1);
             updatePhotoGrid();
             showToast('Foto entfernt', 'info', 2000);
+        }
+
+        // 🆕 Design-Galerie rendern (für Folierung/Werbebeklebung aus kalkulation.html)
+        function renderDesignGallery(designUrls) {
+            const section = document.getElementById('designGallerySection');
+            const gallery = document.getElementById('designGallery');
+
+            if (!section || !gallery) return;
+
+            // Alle Designs sammeln
+            let allDesigns = [];
+            for (const [fieldId, files] of Object.entries(designUrls)) {
+                if (Array.isArray(files)) {
+                    files.forEach(f => allDesigns.push({ ...f, fieldId }));
+                }
+            }
+
+            // Keine Designs vorhanden → ausblenden
+            if (allDesigns.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+
+            gallery.innerHTML = allDesigns.map(file => {
+                const isImage = file.type?.startsWith('image/');
+                const imgSrc = file.url || file.base64 || '';
+
+                return `
+                    <div class="photo-item" style="cursor: ${isImage ? 'pointer' : 'default'};"
+                         ${isImage ? `onclick="openDesignLightbox('${imgSrc}')"` : ''}>
+                        ${isImage
+                            ? `<img src="${imgSrc}" alt="${file.name || 'Design'}">`
+                            : `<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 2rem;">${getDesignFileIcon(file.type)}</div>`
+                        }
+                    </div>
+                `;
+            }).join('');
+
+            console.log(`🎨 ${allDesigns.length} Design(s) in Galerie angezeigt`);
+        }
+
+        // Helper: Datei-Icon für Designs
+        function getDesignFileIcon(mimeType) {
+            if (!mimeType) return '📁';
+            if (mimeType.includes('pdf')) return '📄';
+            if (mimeType.includes('illustrator') || mimeType.includes('ai')) return '🎨';
+            if (mimeType.includes('photoshop') || mimeType.includes('psd')) return '🖼️';
+            if (mimeType.includes('svg')) return '✏️';
+            return '📁';
+        }
+
+        // Design-Lightbox öffnen
+        function openDesignLightbox(imgSrc) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.9);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+                cursor: pointer;
+            `;
+            modal.innerHTML = `<img src="${imgSrc}" style="max-width: 90%; max-height: 90%; object-fit: contain; border-radius: 8px;">`;
+            modal.addEventListener('click', () => modal.remove());
+            document.body.appendChild(modal);
         }
 
         // ============================================
