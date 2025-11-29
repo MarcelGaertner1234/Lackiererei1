@@ -8617,9 +8617,27 @@ REGELN:
             const statusText = document.getElementById('kiLoadingStatus');
 
             // Teile ermitteln die ersetzt werden müssen
-            const teileZuErsetzen = (kalkWizardData.teile || [])
-                .filter(t => t.ersatzteil || t.arbeiten?.includes('ersetzen') || t.arbeiten?.includes('austauschen'))
-                .map(t => t.name);
+            // Hinweis: teile können verschiedene Strukturen haben:
+            // - Von Step 3/4: { teil: "Name", reparaturen: ["ersetzen", ...], ersatzteil: {...} }
+            // - Von KI-Analyse: { name: "Name", arbeiten: ["ersetzen", ...] }
+            const teileZuErsetzen = [];
+
+            (kalkWizardData.teile || []).forEach(t => {
+                // Teil-Name kann in 'teil' oder 'name' sein
+                const teilName = t.teil || t.name;
+                // Reparaturen können in 'reparaturen' oder 'arbeiten' sein
+                const reparaturen = t.reparaturen || t.arbeiten || [];
+
+                // Prüfen ob ersetzt werden soll
+                const sollErsetzen = t.ersatzteil ||
+                    reparaturen.includes('ersetzen') ||
+                    reparaturen.includes('austauschen');
+
+                if (sollErsetzen && teilName && !teileZuErsetzen.includes(teilName)) {
+                    teileZuErsetzen.push(teilName);
+                    console.log('📦 Teil zum Ersetzen gefunden:', teilName, 'Reparaturen:', reparaturen);
+                }
+            });
 
             // Auch aus KI-Analyse übernommene Teile
             if (kiErkannteSchaeden && kiErkannteSchaeden.length > 0) {
@@ -8627,13 +8645,17 @@ REGELN:
                     if (s.selected && (s.empfohleneArbeiten?.includes('ersetzen') || s.empfohleneArbeiten?.includes('austauschen'))) {
                         if (!teileZuErsetzen.includes(s.teil)) {
                             teileZuErsetzen.push(s.teil);
+                            console.log('📦 KI-Teil zum Ersetzen:', s.teil);
                         }
                     }
                 });
             }
 
+            console.log('🔍 Gesamt Teile zum Ersetzen:', teileZuErsetzen);
+            console.log('📋 kalkWizardData.teile:', kalkWizardData.teile);
+
             if (teileZuErsetzen.length === 0) {
-                showToast('Keine Ersatzteile zum Suchen gefunden. Bitte zuerst Teile in Schritt 3/4 auswählen.', 'warning');
+                showToast('Keine Ersatzteile zum Suchen gefunden. Bitte "ersetzen" oder "austauschen" in Schritt 4 auswählen.', 'warning');
                 return;
             }
 
