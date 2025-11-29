@@ -1024,6 +1024,54 @@
     <!-- MODALS -->
     <!-- ============================================ -->
 
+    <!-- Modal: Position aus Katalog zur Kalkulation hinzufügen -->
+    <div class="modal-overlay" id="positionAuswahlModal">
+        <div class="modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Position aus Katalog hinzufügen</h3>
+                <button class="modal-close" onclick="closeModal('positionAuswahlModal')">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                <div class="search-input" style="margin-bottom: var(--space-4);">
+                    <i data-feather="search"></i>
+                    <input type="text" id="positionAuswahlSearch" placeholder="Position suchen..." oninput="filterPositionAuswahl()">
+                </div>
+                <div id="positionAuswahlListe">
+                    <!-- Wird dynamisch gefüllt -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('positionAuswahlModal')">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Material aus Katalog zur Kalkulation hinzufügen -->
+    <div class="modal-overlay" id="materialAuswahlModal">
+        <div class="modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Material aus Katalog hinzufügen</h3>
+                <button class="modal-close" onclick="closeModal('materialAuswahlModal')">
+                    <i data-feather="x"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                <div class="search-input" style="margin-bottom: var(--space-4);">
+                    <i data-feather="search"></i>
+                    <input type="text" id="materialAuswahlSearch" placeholder="Material suchen..." oninput="filterMaterialAuswahl()">
+                </div>
+                <div id="materialAuswahlListe">
+                    <!-- Wird dynamisch gefüllt -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('materialAuswahlModal')">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Katalog-Position hinzufügen/bearbeiten -->
     <div class="modal-overlay" id="katalogModal">
         <div class="modal">
@@ -1221,6 +1269,11 @@
             const url = new URL(window.location);
             url.searchParams.set('tab', tabId);
             window.history.replaceState({}, '', url);
+
+            // Load data for specific tabs
+            if (tabId === 'historie') {
+                loadHistorie();
+            }
         }
 
         // ============================================
@@ -1798,29 +1851,688 @@
         // ============================================
 
         function openPositionModal() {
-            // TODO: Open modal to add positions from catalog
-            showToast('Position hinzufügen - Coming soon!', 'info');
+            renderPositionAuswahl();
+            document.getElementById('positionAuswahlModal').classList.add('active');
+            document.getElementById('positionAuswahlSearch').value = '';
+            feather.replace();
         }
+
+        function renderPositionAuswahl(searchFilter = '') {
+            const container = document.getElementById('positionAuswahlListe');
+
+            let filteredData = katalogData;
+            if (searchFilter) {
+                filteredData = katalogData.filter(item =>
+                    item.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                    item.kategorie.toLowerCase().includes(searchFilter.toLowerCase())
+                );
+            }
+
+            if (filteredData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: var(--space-6);">
+                        <p>Keine Positionen gefunden</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group by category
+            const grouped = {};
+            filteredData.forEach(item => {
+                const kat = item.kategorie || 'Sonstiges';
+                if (!grouped[kat]) grouped[kat] = [];
+                grouped[kat].push(item);
+            });
+
+            let html = '';
+            Object.keys(grouped).sort().forEach(kategorie => {
+                html += `<div class="category-header" style="margin-top: var(--space-4);"><h3>${kategorie}</h3></div>`;
+                grouped[kategorie].forEach(item => {
+                    const stundensatz = getStundensatzForKategorie(item.kategorie);
+                    const preis = (item.arbeitswerte * kalkulationSaetze.awInMinuten / 60) * stundensatz;
+                    html += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-bottom: 1px solid var(--color-border); cursor: pointer;"
+                             onclick="addPositionToKalkulation('${item.id}')"
+                             onmouseover="this.style.background='rgba(var(--color-primary-rgb), 0.1)'"
+                             onmouseout="this.style.background='transparent'">
+                            <div>
+                                <strong>${item.name}</strong>
+                                <div style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                                    ${item.arbeitswerte} AW · ~${Math.round(item.arbeitswerte * kalkulationSaetze.awInMinuten)} Min
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <strong style="color: var(--color-primary);">${preis.toFixed(2)} €</strong>
+                                <div style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                                    ${stundensatz.toFixed(2)} €/Std
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+
+            container.innerHTML = html;
+        }
+
+        function filterPositionAuswahl() {
+            const search = document.getElementById('positionAuswahlSearch').value;
+            renderPositionAuswahl(search);
+        }
+
+        function getStundensatzForKategorie(kategorie) {
+            switch (kategorie) {
+                case 'Lackierung': return kalkulationSaetze.stundensatzLack;
+                case 'Karosserie': return kalkulationSaetze.stundensatzKarosserie;
+                case 'Mechanik':
+                case 'Elektrik': return kalkulationSaetze.stundensatzMechanik;
+                default: return kalkulationSaetze.stundensatzSonstige;
+            }
+        }
+
+        function addPositionToKalkulation(positionId) {
+            const position = katalogData.find(p => p.id === positionId);
+            if (!position) return;
+
+            const stundensatz = getStundensatzForKategorie(position.kategorie);
+            const preis = (position.arbeitswerte * kalkulationSaetze.awInMinuten / 60) * stundensatz;
+
+            aktuelleKalkulation.positionen.push({
+                id: Date.now().toString(),
+                katalogId: position.id,
+                name: position.name,
+                kategorie: position.kategorie,
+                arbeitswerte: position.arbeitswerte,
+                stundensatz: stundensatz,
+                preis: preis
+            });
+
+            closeModal('positionAuswahlModal');
+            renderKalkulationPositionen();
+            updateKalkulationSummary();
+            showToast(`"${position.name}" hinzugefügt`, 'success');
+        }
+
+        function removePositionFromKalkulation(positionId) {
+            aktuelleKalkulation.positionen = aktuelleKalkulation.positionen.filter(p => p.id !== positionId);
+            renderKalkulationPositionen();
+            updateKalkulationSummary();
+        }
+
+        function renderKalkulationPositionen() {
+            const container = document.getElementById('positionenListe');
+
+            if (aktuelleKalkulation.positionen.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="clipboard"></i>
+                        <h3>Keine Positionen</h3>
+                        <p>Fügen Sie Arbeitspositionen aus dem Katalog hinzu</p>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+
+            let html = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Position</th>
+                            <th>Kategorie</th>
+                            <th>AW</th>
+                            <th>Stundensatz</th>
+                            <th>Preis</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            aktuelleKalkulation.positionen.forEach((pos, index) => {
+                html += `
+                    <tr>
+                        <td><strong>${index + 1}.</strong> ${pos.name}</td>
+                        <td>${pos.kategorie}</td>
+                        <td>${pos.arbeitswerte} AW</td>
+                        <td>${pos.stundensatz.toFixed(2)} €/Std</td>
+                        <td><strong>${pos.preis.toFixed(2)} €</strong></td>
+                        <td>
+                            <button class="btn btn-icon btn-secondary" onclick="removePositionFromKalkulation('${pos.id}')" title="Entfernen" style="color: var(--color-error);">
+                                <i data-feather="x"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            feather.replace();
+        }
+
+        // ============================================
+        // MATERIAL ZUR KALKULATION HINZUFÜGEN
+        // ============================================
 
         function openMaterialModal() {
-            // TODO: Open modal to add material from catalog
-            showToast('Material hinzufügen - Coming soon!', 'info');
+            renderMaterialAuswahl();
+            document.getElementById('materialAuswahlModal').classList.add('active');
+            document.getElementById('materialAuswahlSearch').value = '';
+            feather.replace();
         }
+
+        function renderMaterialAuswahl(searchFilter = '') {
+            const container = document.getElementById('materialAuswahlListe');
+
+            let filteredData = materialData;
+            if (searchFilter) {
+                filteredData = materialData.filter(item =>
+                    item.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                    item.kategorie.toLowerCase().includes(searchFilter.toLowerCase())
+                );
+            }
+
+            if (filteredData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: var(--space-6);">
+                        <p>Kein Material gefunden</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group by category
+            const grouped = {};
+            filteredData.forEach(item => {
+                const kat = item.kategorie || 'Sonstiges';
+                if (!grouped[kat]) grouped[kat] = [];
+                grouped[kat].push(item);
+            });
+
+            let html = '';
+            Object.keys(grouped).sort().forEach(kategorie => {
+                html += `<div class="category-header" style="margin-top: var(--space-4);"><h3>${kategorie}</h3></div>`;
+                grouped[kategorie].forEach(item => {
+                    html += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-bottom: 1px solid var(--color-border); cursor: pointer;"
+                             onclick="addMaterialToKalkulation('${item.id}')"
+                             onmouseover="this.style.background='rgba(var(--color-primary-rgb), 0.1)'"
+                             onmouseout="this.style.background='transparent'">
+                            <div>
+                                <strong>${item.name}</strong>
+                                <div style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
+                                    ${item.einheit || 'Stück'}
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <strong style="color: var(--color-primary);">${item.verkaufspreis.toFixed(2)} €</strong>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+
+            container.innerHTML = html;
+        }
+
+        function filterMaterialAuswahl() {
+            const search = document.getElementById('materialAuswahlSearch').value;
+            renderMaterialAuswahl(search);
+        }
+
+        function addMaterialToKalkulation(materialId) {
+            const material = materialData.find(m => m.id === materialId);
+            if (!material) return;
+
+            // Check if already exists
+            const existing = aktuelleKalkulation.materialien.find(m => m.katalogId === materialId);
+            if (existing) {
+                existing.menge += 1;
+                existing.preis = existing.menge * existing.einzelpreis;
+            } else {
+                aktuelleKalkulation.materialien.push({
+                    id: Date.now().toString(),
+                    katalogId: material.id,
+                    name: material.name,
+                    kategorie: material.kategorie,
+                    einheit: material.einheit || 'Stück',
+                    einzelpreis: material.verkaufspreis,
+                    menge: 1,
+                    preis: material.verkaufspreis
+                });
+            }
+
+            closeModal('materialAuswahlModal');
+            renderKalkulationMaterial();
+            updateKalkulationSummary();
+            showToast(`"${material.name}" hinzugefügt`, 'success');
+        }
+
+        function removeMaterialFromKalkulation(materialId) {
+            aktuelleKalkulation.materialien = aktuelleKalkulation.materialien.filter(m => m.id !== materialId);
+            renderKalkulationMaterial();
+            updateKalkulationSummary();
+        }
+
+        function updateMaterialMenge(materialId, newMenge) {
+            const material = aktuelleKalkulation.materialien.find(m => m.id === materialId);
+            if (material) {
+                material.menge = Math.max(1, parseInt(newMenge) || 1);
+                material.preis = material.menge * material.einzelpreis;
+                updateKalkulationSummary();
+            }
+        }
+
+        function renderKalkulationMaterial() {
+            const container = document.getElementById('materialListe');
+
+            if (aktuelleKalkulation.materialien.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="box"></i>
+                        <h3>Kein Material</h3>
+                        <p>Fügen Sie Materialien aus dem Katalog hinzu</p>
+                    </div>
+                `;
+                feather.replace();
+                return;
+            }
+
+            let html = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Material</th>
+                            <th>Einzelpreis</th>
+                            <th>Menge</th>
+                            <th>Preis</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            aktuelleKalkulation.materialien.forEach((mat, index) => {
+                html += `
+                    <tr>
+                        <td><strong>${index + 1}.</strong> ${mat.name}</td>
+                        <td>${mat.einzelpreis.toFixed(2)} €/${mat.einheit}</td>
+                        <td>
+                            <input type="number" min="1" value="${mat.menge}"
+                                   style="width: 60px; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-input);"
+                                   onchange="updateMaterialMenge('${mat.id}', this.value)">
+                        </td>
+                        <td><strong>${mat.preis.toFixed(2)} €</strong></td>
+                        <td>
+                            <button class="btn btn-icon btn-secondary" onclick="removeMaterialFromKalkulation('${mat.id}')" title="Entfernen" style="color: var(--color-error);">
+                                <i data-feather="x"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            feather.replace();
+        }
+
+        // ============================================
+        // KALKULATION BERECHNEN & ANZEIGEN
+        // ============================================
 
         function updateKalkulationSummary() {
-            // TODO: Calculate and update summary
+            const summeArbeit = aktuelleKalkulation.positionen.reduce((sum, p) => sum + p.preis, 0);
+            const summeMaterial = aktuelleKalkulation.materialien.reduce((sum, m) => sum + m.preis, 0);
+            const summeNetto = summeArbeit + summeMaterial;
+            const mwst = summeNetto * (kalkulationSaetze.mwstSatz / 100);
+            const summeBrutto = summeNetto + mwst;
+
+            document.getElementById('summeArbeit').textContent = summeArbeit.toFixed(2) + ' €';
+            document.getElementById('summeMaterial').textContent = summeMaterial.toFixed(2) + ' €';
+            document.getElementById('summeNetto').textContent = summeNetto.toFixed(2) + ' €';
+            document.getElementById('mwstSatzDisplay').textContent = kalkulationSaetze.mwstSatz;
+            document.getElementById('summeMwst').textContent = mwst.toFixed(2) + ' €';
+            document.getElementById('summeBrutto').textContent = summeBrutto.toFixed(2) + ' €';
         }
 
-        function saveKalkulationEntwurf() {
-            showToast('Als Entwurf speichern - Coming soon!', 'info');
+        // ============================================
+        // KALKULATION SPEICHERN
+        // ============================================
+
+        async function saveKalkulationEntwurf() {
+            if (aktuelleKalkulation.positionen.length === 0 && aktuelleKalkulation.materialien.length === 0) {
+                showToast('Keine Positionen oder Material vorhanden', 'error');
+                return;
+            }
+
+            try {
+                const summeArbeit = aktuelleKalkulation.positionen.reduce((sum, p) => sum + p.preis, 0);
+                const summeMaterial = aktuelleKalkulation.materialien.reduce((sum, m) => sum + m.preis, 0);
+                const summeNetto = summeArbeit + summeMaterial;
+                const mwst = summeNetto * (kalkulationSaetze.mwstSatz / 100);
+                const summeBrutto = summeNetto + mwst;
+
+                const kalkulationData = {
+                    fahrzeugId: aktuelleKalkulation.fahrzeugId,
+                    kennzeichen: aktuelleKalkulation.kennzeichen,
+                    kundenName: aktuelleKalkulation.kundenName,
+                    positionen: aktuelleKalkulation.positionen,
+                    materialien: aktuelleKalkulation.materialien,
+                    summeArbeit,
+                    summeMaterial,
+                    summeNetto,
+                    mwstSatz: kalkulationSaetze.mwstSatz,
+                    mwst,
+                    summeBrutto,
+                    status: 'entwurf',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+
+                const docRef = await window.getCollection('kalkulationen').add(kalkulationData);
+                showToast('Kalkulation gespeichert!', 'success');
+                console.log('✅ Kalkulation gespeichert:', docRef.id);
+
+                // Reset for new calculation
+                resetKalkulation();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                showToast('Fehler beim Speichern', 'error');
+            }
         }
 
-        function exportKalkulationPDF() {
-            showToast('PDF Export - Coming soon!', 'info');
+        function resetKalkulation() {
+            aktuelleKalkulation = {
+                positionen: [],
+                materialien: [],
+                fahrzeugId: null,
+                kundenName: '',
+                kennzeichen: ''
+            };
+            document.getElementById('fahrzeugSelect').value = '';
+            document.getElementById('kalkulationContent').style.display = 'none';
+            document.getElementById('freieKalkulationStart').style.display = 'block';
+            renderKalkulationPositionen();
+            renderKalkulationMaterial();
+            updateKalkulationSummary();
+        }
+
+        // ============================================
+        // PDF EXPORT
+        // ============================================
+
+        async function exportKalkulationPDF() {
+            if (aktuelleKalkulation.positionen.length === 0 && aktuelleKalkulation.materialien.length === 0) {
+                showToast('Keine Positionen oder Material vorhanden', 'error');
+                return;
+            }
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                const summeArbeit = aktuelleKalkulation.positionen.reduce((sum, p) => sum + p.preis, 0);
+                const summeMaterial = aktuelleKalkulation.materialien.reduce((sum, m) => sum + m.preis, 0);
+                const summeNetto = summeArbeit + summeMaterial;
+                const mwst = summeNetto * (kalkulationSaetze.mwstSatz / 100);
+                const summeBrutto = summeNetto + mwst;
+
+                // Header
+                doc.setFontSize(20);
+                doc.setFont('helvetica', 'bold');
+                doc.text('KOSTENVORANSCHLAG', 105, 20, { align: 'center' });
+
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Datum: ${new Date().toLocaleDateString('de-DE')}`, 20, 35);
+
+                if (aktuelleKalkulation.kennzeichen) {
+                    doc.text(`Kennzeichen: ${aktuelleKalkulation.kennzeichen}`, 20, 42);
+                }
+                if (aktuelleKalkulation.kundenName) {
+                    doc.text(`Kunde: ${aktuelleKalkulation.kundenName}`, 20, 49);
+                }
+
+                let yPos = 65;
+
+                // Arbeitspositionen
+                if (aktuelleKalkulation.positionen.length > 0) {
+                    doc.setFontSize(12);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('ARBEITSPOSITIONEN', 20, yPos);
+                    yPos += 8;
+
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Pos.', 20, yPos);
+                    doc.text('Bezeichnung', 35, yPos);
+                    doc.text('AW', 120, yPos);
+                    doc.text('Preis', 145, yPos);
+                    yPos += 5;
+
+                    doc.setFont('helvetica', 'normal');
+                    aktuelleKalkulation.positionen.forEach((pos, index) => {
+                        doc.text(`${index + 1}.`, 20, yPos);
+                        doc.text(pos.name.substring(0, 45), 35, yPos);
+                        doc.text(`${pos.arbeitswerte}`, 120, yPos);
+                        doc.text(`${pos.preis.toFixed(2)} €`, 145, yPos);
+                        yPos += 6;
+
+                        if (yPos > 270) {
+                            doc.addPage();
+                            yPos = 20;
+                        }
+                    });
+
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`Summe Arbeit: ${summeArbeit.toFixed(2)} €`, 145, yPos, { align: 'right' });
+                    yPos += 12;
+                }
+
+                // Material
+                if (aktuelleKalkulation.materialien.length > 0) {
+                    doc.setFontSize(12);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('MATERIAL', 20, yPos);
+                    yPos += 8;
+
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Pos.', 20, yPos);
+                    doc.text('Bezeichnung', 35, yPos);
+                    doc.text('Menge', 110, yPos);
+                    doc.text('Preis', 145, yPos);
+                    yPos += 5;
+
+                    doc.setFont('helvetica', 'normal');
+                    aktuelleKalkulation.materialien.forEach((mat, index) => {
+                        doc.text(`${index + 1}.`, 20, yPos);
+                        doc.text(mat.name.substring(0, 40), 35, yPos);
+                        doc.text(`${mat.menge} ${mat.einheit}`, 110, yPos);
+                        doc.text(`${mat.preis.toFixed(2)} €`, 145, yPos);
+                        yPos += 6;
+
+                        if (yPos > 270) {
+                            doc.addPage();
+                            yPos = 20;
+                        }
+                    });
+
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`Summe Material: ${summeMaterial.toFixed(2)} €`, 145, yPos, { align: 'right' });
+                    yPos += 15;
+                }
+
+                // Zusammenfassung
+                doc.setDrawColor(0);
+                doc.line(20, yPos - 5, 190, yPos - 5);
+
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.text('Nettobetrag:', 120, yPos);
+                doc.text(`${summeNetto.toFixed(2)} €`, 190, yPos, { align: 'right' });
+                yPos += 6;
+
+                doc.text(`MwSt. ${kalkulationSaetze.mwstSatz}%:`, 120, yPos);
+                doc.text(`${mwst.toFixed(2)} €`, 190, yPos, { align: 'right' });
+                yPos += 8;
+
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.text('GESAMTBETRAG:', 120, yPos);
+                doc.text(`${summeBrutto.toFixed(2)} €`, 190, yPos, { align: 'right' });
+
+                // Footer
+                doc.setFontSize(8);
+                doc.setFont('helvetica', 'normal');
+                doc.text('Dieser Kostenvoranschlag ist unverbindlich. Preisänderungen vorbehalten.', 105, 285, { align: 'center' });
+
+                // Download
+                const filename = `KVA_${aktuelleKalkulation.kennzeichen || 'Frei'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+                doc.save(filename);
+                showToast('PDF exportiert!', 'success');
+
+            } catch (error) {
+                console.error('❌ Fehler beim PDF-Export:', error);
+                showToast('Fehler beim PDF-Export', 'error');
+            }
         }
 
         function sendKalkulationEmail() {
-            showToast('Email senden - Coming soon!', 'info');
+            showToast('Email-Versand wird vorbereitet...', 'info');
+            // For now, just export PDF - email integration would require backend
+            exportKalkulationPDF();
+        }
+
+        // ============================================
+        // HISTORIE LADEN
+        // ============================================
+
+        async function loadHistorie() {
+            try {
+                const snapshot = await window.getCollection('kalkulationen')
+                    .orderBy('createdAt', 'desc')
+                    .limit(50)
+                    .get();
+
+                const container = document.getElementById('historieListe');
+
+                if (snapshot.empty) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <i data-feather="file-text"></i>
+                            <h3>Keine Kalkulationen</h3>
+                            <p>Ihre erstellten Kalkulationen erscheinen hier</p>
+                        </div>
+                    `;
+                    feather.replace();
+                    return;
+                }
+
+                let html = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Datum</th>
+                                <th>Kennzeichen</th>
+                                <th>Kunde</th>
+                                <th>Positionen</th>
+                                <th>Betrag</th>
+                                <th>Status</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const datum = new Date(data.createdAt).toLocaleDateString('de-DE');
+                    const statusBadge = {
+                        'entwurf': '<span style="background: var(--color-warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Entwurf</span>',
+                        'gesendet': '<span style="background: var(--color-primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Gesendet</span>',
+                        'akzeptiert': '<span style="background: var(--color-success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Akzeptiert</span>',
+                        'abgelehnt': '<span style="background: var(--color-error); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Abgelehnt</span>'
+                    };
+
+                    html += `
+                        <tr>
+                            <td>${datum}</td>
+                            <td>${data.kennzeichen || '-'}</td>
+                            <td>${data.kundenName || '-'}</td>
+                            <td>${(data.positionen?.length || 0) + (data.materialien?.length || 0)}</td>
+                            <td><strong>${data.summeBrutto?.toFixed(2) || '0.00'} €</strong></td>
+                            <td>${statusBadge[data.status] || data.status}</td>
+                            <td class="actions">
+                                <button class="btn btn-icon btn-secondary" onclick="loadKalkulationToEdit('${doc.id}')" title="Bearbeiten">
+                                    <i data-feather="edit-2"></i>
+                                </button>
+                                <button class="btn btn-icon btn-secondary" onclick="deleteKalkulation('${doc.id}')" title="Löschen" style="color: var(--color-error);">
+                                    <i data-feather="trash-2"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                container.innerHTML = html;
+                feather.replace();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Historie:', error);
+            }
+        }
+
+        async function deleteKalkulation(kalkulationId) {
+            if (!confirm('Kalkulation wirklich löschen?')) return;
+
+            try {
+                await window.getCollection('kalkulationen').doc(kalkulationId).delete();
+                showToast('Kalkulation gelöscht', 'success');
+                await loadHistorie();
+            } catch (error) {
+                console.error('❌ Fehler beim Löschen:', error);
+                showToast('Fehler beim Löschen', 'error');
+            }
+        }
+
+        async function loadKalkulationToEdit(kalkulationId) {
+            try {
+                const doc = await window.getCollection('kalkulationen').doc(kalkulationId).get();
+                if (!doc.exists) {
+                    showToast('Kalkulation nicht gefunden', 'error');
+                    return;
+                }
+
+                const data = doc.data();
+                aktuelleKalkulation = {
+                    id: doc.id,
+                    positionen: data.positionen || [],
+                    materialien: data.materialien || [],
+                    fahrzeugId: data.fahrzeugId,
+                    kundenName: data.kundenName || '',
+                    kennzeichen: data.kennzeichen || ''
+                };
+
+                // Switch to Kalkulation tab
+                switchTab('kalkulation');
+                document.getElementById('kalkulationContent').style.display = 'block';
+                document.getElementById('freieKalkulationStart').style.display = 'none';
+
+                renderKalkulationPositionen();
+                renderKalkulationMaterial();
+                updateKalkulationSummary();
+                showToast('Kalkulation geladen', 'success');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden:', error);
+                showToast('Fehler beim Laden', 'error');
+            }
         }
 
         // ============================================
