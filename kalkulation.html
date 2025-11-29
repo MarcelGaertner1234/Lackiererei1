@@ -8939,29 +8939,17 @@ REGELN:
                 }
             }
 
-            // Services mit Details filtern
-            const servicesWithDetails = services.filter(service => {
-                const config = SERVICE_CONFIG[service];
-                return config?.zusatzfelder && Object.keys(config.zusatzfelder).length > 0;
-            });
-
-            // Wenn keine Services Details haben → direkt zu Step 3
-            if (servicesWithDetails.length === 0) {
-                console.log('🆕 Keine Services mit Details, gehe direkt zu Step 3');
-                goToStep(3);
-                return;
-            }
-
             let html = '';
 
-            if (isMulti && servicesWithDetails.length > 1) {
-                // 🆕 MULTI-SERVICE: Akkordeons für jeden Service
+            if (isMulti) {
+                // 🆕 MULTI-SERVICE: Akkordeons für JEDEN Service (auch ohne zusatzfelder!)
                 html = '<div class="multi-service-accordions">';
 
-                servicesWithDetails.forEach((service, index) => {
-                    const config = SERVICE_CONFIG[service];
+                services.forEach((service, index) => {
+                    const config = SERVICE_CONFIG[service] || {};
                     const serviceLabel = SERVICE_LABELS[service] || service;
                     const isFirst = index === 0;
+                    const hasDetails = config.zusatzfelder && Object.keys(config.zusatzfelder).length > 0;
 
                     html += `
                         <div class="service-accordion" data-service="${service}">
@@ -8969,7 +8957,7 @@ REGELN:
                                 <div class="service-accordion__title">
                                     <span class="service-accordion__icon">${getServiceIcon(service)}</span>
                                     <span class="service-accordion__label">${serviceLabel}</span>
-                                    <span class="service-accordion__badge">${index + 1}/${servicesWithDetails.length}</span>
+                                    <span class="service-accordion__badge">${index + 1}/${services.length}</span>
                                 </div>
                                 <span class="service-accordion__chevron">
                                     <i data-feather="${isFirst ? 'chevron-up' : 'chevron-down'}"></i>
@@ -8979,9 +8967,29 @@ REGELN:
                                 <div class="service-accordion__form">
                     `;
 
-                    // Felder für diesen Service
-                    for (const [fieldId, fieldConfig] of Object.entries(config.zusatzfelder)) {
-                        html += renderServiceFieldForMulti(service, fieldId, fieldConfig);
+                    if (hasDetails) {
+                        // Felder für diesen Service
+                        for (const [fieldId, fieldConfig] of Object.entries(config.zusatzfelder)) {
+                            html += renderServiceFieldForMulti(service, fieldId, fieldConfig);
+                        }
+                    } else {
+                        // Keine zusätzlichen Felder nötig
+                        html += `
+                            <div class="no-details-info" style="
+                                background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+                                border: 1px solid #86efac;
+                                border-radius: 8px;
+                                padding: 16px;
+                                text-align: center;
+                                color: #166534;
+                            ">
+                                <div style="font-size: 32px; margin-bottom: 8px;">✅</div>
+                                <div style="font-weight: 600;">Keine zusätzlichen Details erforderlich</div>
+                                <div style="font-size: 14px; color: #4ade80; margin-top: 4px;">
+                                    Die Teile und Arbeiten werden in Schritt 3 erfasst
+                                </div>
+                            </div>
+                        `;
                     }
 
                     html += `
@@ -9063,11 +9071,19 @@ REGELN:
 
             } else {
                 // SINGLE-SERVICE: Normales Formular (wie bisher)
-                const service = servicesWithDetails[0];
-                const config = SERVICE_CONFIG[service];
+                const service = services[0];
+                const config = SERVICE_CONFIG[service] || {};
+                const hasDetails = config.zusatzfelder && Object.keys(config.zusatzfelder).length > 0;
 
-                for (const [fieldId, fieldConfig] of Object.entries(config.zusatzfelder)) {
-                    html += renderServiceFieldForMulti(service, fieldId, fieldConfig);
+                if (hasDetails) {
+                    for (const [fieldId, fieldConfig] of Object.entries(config.zusatzfelder)) {
+                        html += renderServiceFieldForMulti(service, fieldId, fieldConfig);
+                    }
+                } else {
+                    // Keine Details nötig → direkt zu Step 3
+                    console.log('🆕 Single-Service ohne zusatzfelder, gehe direkt zu Step 3');
+                    goToStep(3);
+                    return;
                 }
             }
 
@@ -9078,7 +9094,7 @@ REGELN:
 
             // Vorausgefüllte Werte laden
             setTimeout(() => {
-                servicesWithDetails.forEach(service => {
+                services.forEach(service => {
                     const savedDetails = kalkWizardData.serviceDetailsPerService[service];
                     if (savedDetails && typeof savedDetails === 'object') {
                         console.log(`📋 Lade vorausgefüllte Werte für "${service}":`, savedDetails);
