@@ -4409,11 +4409,55 @@
                 status: 'angenommen',
                 // 📦 ANLIEFERUNG (2025-11-27): Wenn Abholservice ODER Ersatzfahrzeug gewünscht → "anlieferung"
                 prozessStatus: (anfrage.abholserviceGewuenscht || anfrage.ersatzfahrzeugGewuenscht) ? 'anlieferung' : 'terminiert',
+
+                // 🆕 FIX (2025-11-29): additionalServices + serviceStatuses aus meine-anfragen.html synchronisiert
+                // KRITISCH für Multi-Service Support im Kanban Board
+                additionalServices: (() => {
+                    if (!Array.isArray(anfrage.serviceTyp) || anfrage.serviceTyp.length <= 1) return [];
+                    return anfrage.serviceTyp.slice(1).map(typ => ({
+                        serviceTyp: typ,
+                        serviceDetails: anfrage.serviceDetails?.[typ] || {}
+                    }));
+                })(),
+                serviceStatuses: (() => {
+                    const initialStatus = (anfrage.abholserviceGewuenscht || anfrage.ersatzfahrzeugGewuenscht) ? 'anlieferung' : 'terminiert';
+                    const statuses = {
+                        [serviceTyp]: {
+                            status: initialStatus,
+                            timestamp: firestoreTimestamp,
+                            statusHistory: [{
+                                status: initialStatus,
+                                timestamp: firestoreTimestamp,
+                                note: 'Partner-Anfrage akzeptiert'
+                            }]
+                        }
+                    };
+                    // Additional Services initialisieren
+                    if (Array.isArray(anfrage.serviceTyp) && anfrage.serviceTyp.length > 1) {
+                        anfrage.serviceTyp.slice(1).forEach(typ => {
+                            statuses[typ] = {
+                                status: initialStatus,
+                                timestamp: firestoreTimestamp,
+                                statusHistory: [{
+                                    status: initialStatus,
+                                    timestamp: firestoreTimestamp,
+                                    note: `Multi-Service: ${typ} initialisiert`
+                                }]
+                            };
+                        });
+                    }
+                    return statuses;
+                })(),
+
                 serviceData: sanitizeKalkulationDataForFirestore(anfrage.serviceData) || {},
+                serviceDetails: sanitizeKalkulationDataForFirestore(anfrage.serviceDetails) || {},  // 🆕 FIX: Backward compatibility
                 // 🆕 FIX GAP-2 (2025-11-27): ersatzfahrzeugKosten aus KVA in kalkulationData übertragen
+                // 🆕 FIX (2025-11-29): ersatzfahrzeug AUCH sanitizen (könnte Date objects enthalten)
                 kalkulationData: {
                     ...sanitizeKalkulationDataForFirestore(anfrage.kalkulationData || {}),
-                    ersatzfahrzeug: anfrage.kva?.ersatzfahrzeugKosten || anfrage.kalkulationData?.ersatzfahrzeug || null
+                    ersatzfahrzeug: sanitizeKalkulationDataForFirestore(
+                        anfrage.kva?.ersatzfahrzeugKosten || anfrage.kalkulationData?.ersatzfahrzeug || null
+                    )
                 },  // ✅ FIX Bug #5j: Missing field (can contain Date objects)
                 geplantesAbnahmeDatum: toSafeDate(anfrage.angebotDetails?.fertigstellungsdatum ||  // ✅ FIX Bug #5j (#15): Angebot finish date (DATE LEAK!)
                     anfrage.kva?.termine?.ende ||
@@ -4506,7 +4550,14 @@
                 partnerId: anfrage.partnerId || '',
                 partnerName: anfrage.partnerName || '',
                 partnerEmail: anfrage.partnerEmail || '',
+                // 🆕 FIX (2025-11-29): Fehlende Felder aus meine-anfragen.html synchronisiert
+                partnerFirma: anfrage.partnerName || '',  // Für Rechnungs-Anzeige
+                kundenEmail: anfrage.kundenEmail || anfrage.email || anfrage.partnerEmail || '',
+                kundenTelefon: anfrage.kundenTelefon || anfrage.telefon || anfrage.partnerTelefon || anfrage.kundendaten?.telefon || '',
+                anfrageId: anfrage.id,  // Referenz zur Partner-Anfrage (für anfrageIdMap in loadFahrzeugeForAnfragen)
                 partnerAnfrageId: anfrage.id,  // ✅ FIX: Standardized field name (was: anfrageId)
+                // 🆕 FIX (2025-11-29): werkstattId KRITISCH für Multi-Tenant Isolation
+                werkstattId: window.werkstattId || null,
                 photoUrls: anfrage.photoUrls || anfrage.schadenfotos || anfrage.fotos || anfrage.photos || [],  // ✅ FIX Bug #11 (2025-11-23): Transfer photos from partnerAnfragen
                 // ✅ FIX Bug #5L: signature always null initially → skip (Transaction doesn't accept null objects)
                 prozessTimestamps: {
