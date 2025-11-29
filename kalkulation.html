@@ -5262,6 +5262,10 @@
                             <span class="value" id="summeMaterial">0,00 €</span>
                         </div>
                         <div class="summary-row">
+                            <span class="label">Summe Ersatzteile (netto)</span>
+                            <span class="value" id="summeErsatzteile">0,00 €</span>
+                        </div>
+                        <div class="summary-row" style="border-top: 1px solid var(--color-border); padding-top: var(--space-2); margin-top: var(--space-2);">
                             <span class="label">Zwischensumme (netto)</span>
                             <span class="value" id="summeNetto">0,00 €</span>
                         </div>
@@ -5277,17 +5281,13 @@
 
                     <!-- Aktionen -->
                     <div style="display: flex; gap: var(--space-4); margin-top: var(--space-6); flex-wrap: wrap;">
-                        <button class="btn btn-secondary" onclick="saveKalkulationEntwurf()">
-                            <i data-feather="save"></i>
-                            Als Entwurf speichern
+                        <button class="btn btn-success btn-lg" onclick="createAuftragFromKalkulation()" style="flex: 1; min-width: 200px;">
+                            <i data-feather="check-circle"></i>
+                            Auftrag anlegen
                         </button>
-                        <button class="btn btn-primary" onclick="exportKalkulationPDF()">
-                            <i data-feather="file-text"></i>
-                            PDF exportieren
-                        </button>
-                        <button class="btn btn-success" onclick="sendKalkulationEmail()">
-                            <i data-feather="send"></i>
-                            Per E-Mail senden
+                        <button class="btn btn-secondary" onclick="goToStep(1)" style="min-width: 150px;">
+                            <i data-feather="arrow-left"></i>
+                            Zurück bearbeiten
                         </button>
                     </div>
                 </div>
@@ -9870,8 +9870,15 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 return sum + (preis * menge);
             }, 0);
 
-            // Netto, MwSt, Brutto
-            const summeNetto = summeArbeit + summeMaterial;
+            // Summe Ersatzteile (NEU!)
+            const summeErsatzteile = (kalkWizardData.ersatzteile || []).reduce((sum, e) => {
+                const preis = parseFloat(e.preis) || 0;
+                const menge = parseFloat(e.menge) || 1;
+                return sum + (preis * menge);
+            }, 0);
+
+            // Netto, MwSt, Brutto (jetzt inkl. Ersatzteile!)
+            const summeNetto = summeArbeit + summeMaterial + summeErsatzteile;
             const mwstSatz = kalkulationSaetze?.mwstSatz || 19;
             const mwst = summeNetto * (mwstSatz / 100);
             const summeBrutto = summeNetto + mwst;
@@ -9879,6 +9886,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             // UI aktualisieren
             const elSummeArbeit = document.getElementById('summeArbeit');
             const elSummeMaterial = document.getElementById('summeMaterial');
+            const elSummeErsatzteile = document.getElementById('summeErsatzteile');
             const elSummeNetto = document.getElementById('summeNetto');
             const elMwstSatz = document.getElementById('mwstSatzDisplay');
             const elSummeMwst = document.getElementById('summeMwst');
@@ -9886,12 +9894,13 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
             if (elSummeArbeit) elSummeArbeit.textContent = summeArbeit.toFixed(2).replace('.', ',') + ' €';
             if (elSummeMaterial) elSummeMaterial.textContent = summeMaterial.toFixed(2).replace('.', ',') + ' €';
+            if (elSummeErsatzteile) elSummeErsatzteile.textContent = summeErsatzteile.toFixed(2).replace('.', ',') + ' €';
             if (elSummeNetto) elSummeNetto.textContent = summeNetto.toFixed(2).replace('.', ',') + ' €';
             if (elMwstSatz) elMwstSatz.textContent = mwstSatz;
             if (elSummeMwst) elSummeMwst.textContent = mwst.toFixed(2).replace('.', ',') + ' €';
             if (elSummeBrutto) elSummeBrutto.textContent = summeBrutto.toFixed(2).replace('.', ',') + ' €';
 
-            console.log('💰 Summen berechnet:', { summeArbeit, summeMaterial, summeNetto, mwst, summeBrutto });
+            console.log('💰 Summen berechnet:', { summeArbeit, summeMaterial, summeErsatzteile, summeNetto, mwst, summeBrutto });
         }
 
         // ============================================
@@ -12428,6 +12437,126 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             } catch (error) {
                 console.error('❌ Fehler beim Speichern:', error);
                 showToast('Fehler beim Speichern', 'error');
+            }
+        }
+
+        // 🆕 NEU: Auftrag direkt aus Kalkulation anlegen
+        async function createAuftragFromKalkulation() {
+            // Prüfen ob Daten vorhanden
+            if (!kalkWizardData.fahrzeug?.marke || !kalkWizardData.fahrzeug?.modell) {
+                showToast('Bitte erst Fahrzeugdaten eingeben', 'warning');
+                return;
+            }
+
+            if (kalkWizardData.teile.length === 0) {
+                showToast('Bitte mindestens ein Teil auswählen', 'warning');
+                return;
+            }
+
+            try {
+                // Summen berechnen
+                const summeArbeit = aktuelleKalkulation.positionen.reduce((sum, p) => {
+                    return sum + ((parseFloat(p.preis) || 0) * (parseFloat(p.menge) || 1));
+                }, 0);
+
+                const summeMaterial = aktuelleKalkulation.materialien.reduce((sum, m) => {
+                    return sum + ((parseFloat(m.preis) || parseFloat(m.verkaufspreis) || 0) * (parseFloat(m.menge) || 1));
+                }, 0);
+
+                const summeErsatzteile = (kalkWizardData.ersatzteile || []).reduce((sum, e) => {
+                    return sum + ((parseFloat(e.preis) || 0) * (parseFloat(e.menge) || 1));
+                }, 0);
+
+                const summeNetto = summeArbeit + summeMaterial + summeErsatzteile;
+                const mwstSatz = kalkulationSaetze?.mwstSatz || 19;
+                const mwst = summeNetto * (mwstSatz / 100);
+                const summeBrutto = summeNetto + mwst;
+
+                // Fahrzeug-Daten für Auftrag
+                const auftragData = {
+                    // Fahrzeug-Stammdaten
+                    marke: kalkWizardData.fahrzeug.marke,
+                    modell: kalkWizardData.fahrzeug.modell,
+                    baujahr: kalkWizardData.fahrzeug.baujahr || '',
+                    kennzeichen: kalkWizardData.fahrzeug.kennzeichen || '',
+                    farbcode: kalkWizardData.fahrzeug.farbcode || '',
+                    fahrgestellnummer: kalkWizardData.fahrzeug.fahrgestellnummer || '',
+
+                    // Kundendaten
+                    kunde: kalkWizardData.fahrzeug.kunde || '',
+                    kundenEmail: kalkWizardData.fahrzeug.kundenEmail || '',
+                    kundenTelefon: kalkWizardData.fahrzeug.kundenTelefon || '',
+
+                    // Service & Teile
+                    serviceTyp: kalkWizardData.serviceArt || 'lackier',
+                    teile: kalkWizardData.teile,
+                    ersatzteile: kalkWizardData.ersatzteile || [],
+
+                    // Kalkulation
+                    kalkulation: {
+                        positionen: aktuelleKalkulation.positionen,
+                        materialien: aktuelleKalkulation.materialien,
+                        ersatzteile: kalkWizardData.ersatzteile || [],
+                        summeArbeit,
+                        summeMaterial,
+                        summeErsatzteile,
+                        summeNetto,
+                        mwstSatz,
+                        mwst,
+                        summeBrutto
+                    },
+
+                    // Status
+                    status: 'angenommen',
+                    statusText: 'Auftrag angelegt',
+
+                    // Meta
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    erstelltDurch: 'kalkulation',
+                    werkstattId: window.werkstattId,
+
+                    // Verknüpfungen
+                    entwurfId: kalkWizardData.entwurfId || null,
+                    partnerAnfrageId: kalkWizardData.partnerAnfrageId || null
+                };
+
+                // Auftrag in Fahrzeuge-Collection speichern
+                const docRef = await window.getCollection('fahrzeuge').add(auftragData);
+                console.log('✅ Auftrag angelegt:', docRef.id);
+
+                // Wenn von Partner-Anfrage oder Entwurf → Status aktualisieren
+                if (kalkWizardData.partnerAnfrageId) {
+                    await window.getCollection('partnerAnfragen').doc(kalkWizardData.partnerAnfrageId).update({
+                        status: 'angenommen',
+                        statusText: 'Auftrag angelegt',
+                        fahrzeugId: docRef.id,
+                        angenommenAm: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+
+                if (kalkWizardData.entwurfId) {
+                    await window.getCollection('partnerAnfragen').doc(kalkWizardData.entwurfId).update({
+                        status: 'angenommen',
+                        fahrzeugId: docRef.id,
+                        angenommenAm: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+
+                showToast('✅ Auftrag erfolgreich angelegt!', 'success');
+
+                // Zur Fahrzeugliste weiterleiten
+                setTimeout(() => {
+                    if (typeof safeNavigate === 'function') {
+                        safeNavigate('liste.html');
+                    } else {
+                        window.location.href = 'liste.html';
+                    }
+                }, 1500);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Anlegen des Auftrags:', error);
+                showToast('Fehler beim Anlegen des Auftrags: ' + error.message, 'error');
             }
         }
 
