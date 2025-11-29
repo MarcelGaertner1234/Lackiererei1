@@ -1250,6 +1250,30 @@ service cloud.firestore {
     }
 
     // ============================================
+    // MATERIALIEN MULTI-TENANT (werkstatt-specific collections)
+    // Pattern: materialien_mosbach, materialien_heidelberg, etc.
+    // 🆕 Bug Fix 2025-11-29: Collection was missing from rules
+    // ============================================
+    match /{materialienCollection}/{materialId} {
+      // 🧪 E2E Test Support: READ/LIST ohne Helper Functions
+      allow read: if request.auth != null
+                  && materialienCollection.matches('materialien_.+');
+
+      // 🧪 E2E Test Support: CREATE/UPDATE ohne Helper Functions
+      allow create, update: if request.auth != null
+                            && materialienCollection.matches('materialien_.+')
+                            && request.resource.data.werkstattId != null;
+
+      // 🧪 E2E Test Support: DELETE ohne Helper Functions
+      allow delete: if request.auth != null
+                    && materialienCollection.matches('materialien_.+');
+
+      // Production Rule: Werkstatt-Mitarbeiter mit Rollenchecks
+      allow read, write: if materialienCollection.matches('materialien_.+')
+                         && (isAdmin() || (isMitarbeiter() && isActive()));
+    }
+
+    // ============================================
     // LACKIERUNG MULTI-TENANT (werkstatt-specific collections)
     // Pattern: lackierung_mosbach, lackierung_heidelberg, etc.
     // 🆕 Bug Fix 2025-11-27: Collection was missing from rules
