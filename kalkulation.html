@@ -37,6 +37,9 @@
     <!-- jsPDF für PDF-Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- Ersatzteile-Datenbank mit OE-Nummern -->
+    <script src="ersatzteile-db.js"></script>
+
     <style>
         /* ============================================
            🧮 KALKULATION PAGE SPECIFIC STYLES
@@ -932,6 +935,139 @@
             color: var(--color-text-secondary);
         }
 
+        /* OE-Nummern Suche */
+        .oe-search-container {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-card);
+            padding: var(--space-5);
+            margin-bottom: var(--space-6);
+        }
+
+        .oe-search-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-4);
+        }
+
+        .oe-search-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-text-primary);
+        }
+
+        .oe-search-stats {
+            font-size: var(--font-size-xs);
+            color: var(--color-text-secondary);
+            background: var(--color-background);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-button);
+        }
+
+        .oe-search-input-group {
+            display: flex;
+            gap: var(--space-3);
+            margin-bottom: var(--space-4);
+        }
+
+        .oe-search-input {
+            flex: 1;
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-background);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-button);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .oe-search-input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+        }
+
+        .oe-search-input::placeholder {
+            color: var(--color-text-secondary);
+        }
+
+        .oe-vehicle-select {
+            display: flex;
+            gap: var(--space-2);
+        }
+
+        .oe-vehicle-select select {
+            padding: var(--space-2) var(--space-3);
+            background: var(--color-background);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-button);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+            cursor: pointer;
+        }
+
+        .oe-results {
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .oe-result-item {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-background);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-button);
+            margin-bottom: var(--space-2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .oe-result-item:hover {
+            border-color: var(--color-primary);
+            background: rgba(var(--color-primary-rgb), 0.05);
+        }
+
+        .oe-result-info {
+            flex: 1;
+        }
+
+        .oe-result-part {
+            font-weight: var(--font-weight-medium);
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-1);
+        }
+
+        .oe-result-vehicle {
+            font-size: var(--font-size-xs);
+            color: var(--color-text-secondary);
+        }
+
+        .oe-result-oe {
+            font-family: monospace;
+            font-size: var(--font-size-sm);
+            background: var(--color-primary);
+            color: white;
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-button);
+            white-space: nowrap;
+        }
+
+        .oe-no-results {
+            text-align: center;
+            padding: var(--space-6);
+            color: var(--color-text-secondary);
+        }
+
+        .oe-no-results i {
+            font-size: 2rem;
+            margin-bottom: var(--space-2);
+            display: block;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .damage-option {
@@ -1453,6 +1589,44 @@
                         <option value="">-- Fahrzeug wählen --</option>
                     </select>
                     <small>Verknüpfen Sie die Kalkulation mit einem Fahrzeug</small>
+                </div>
+
+                <!-- OE-Nummern Ersatzteile-Suche -->
+                <div class="oe-search-container" id="oeSearchContainer">
+                    <div class="oe-search-header">
+                        <div class="oe-search-title">
+                            <span>🔍</span>
+                            <span>Ersatzteile-Suche (OE-Nummern)</span>
+                        </div>
+                        <div class="oe-search-stats" id="oeSearchStats">
+                            Wird geladen...
+                        </div>
+                    </div>
+
+                    <div class="oe-vehicle-select">
+                        <select id="oeMarkeSelect" onchange="updateOeModelle()">
+                            <option value="">Alle Marken</option>
+                        </select>
+                        <select id="oeModellSelect" onchange="performOeSearch()">
+                            <option value="">Alle Modelle</option>
+                        </select>
+                    </div>
+
+                    <div class="oe-search-input-group">
+                        <input type="text"
+                               id="oeSearchInput"
+                               class="oe-search-input"
+                               placeholder="OE-Nummer oder Teilename eingeben (z.B. 5G1941005A oder Stoßfänger)"
+                               oninput="performOeSearch()"
+                               autocomplete="off">
+                    </div>
+
+                    <div class="oe-results" id="oeResults">
+                        <div class="oe-no-results">
+                            <i data-feather="search"></i>
+                            <p>Geben Sie eine OE-Nummer oder einen Teilenamen ein</p>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="kalkulationContent" style="display: none;">
@@ -2120,6 +2294,9 @@
                 // Fahrzeug-Diagramm initialisieren
                 initVehicleDiagram();
 
+                // OE-Nummern Ersatzteile-Suche initialisieren
+                initOeSearch();
+
                 console.log('✅ Kalkulation-Modul geladen');
             } catch (error) {
                 console.error('❌ Fehler beim Initialisieren:', error);
@@ -2501,6 +2678,205 @@
                 dropdown.style.display = 'none';
             }
         });
+
+        // ============================================
+        // 🔍 OE-NUMMERN ERSATZTEILE-SUCHE
+        // ============================================
+
+        let oeSearchTimeout = null;
+
+        function initOeSearch() {
+            // Prüfe ob ERSATZTEILE_DB verfügbar ist
+            if (typeof ERSATZTEILE_DB === 'undefined') {
+                console.error('❌ ERSATZTEILE_DB nicht geladen');
+                document.getElementById('oeSearchStats').textContent = 'Datenbank nicht verfügbar';
+                return;
+            }
+
+            // Statistiken anzeigen
+            const stats = ERSATZTEILE_DB.getStatistiken();
+            document.getElementById('oeSearchStats').textContent =
+                `${stats.marken} Marken | ${stats.modelle} Modelle | ${stats.oeNummern} OE-Nummern`;
+
+            // Marken-Dropdown befüllen
+            const markeSelect = document.getElementById('oeMarkeSelect');
+            markeSelect.innerHTML = '<option value="">Alle Marken</option>';
+
+            Object.keys(ERSATZTEILE_DB.marken).sort().forEach(markenKey => {
+                const marke = ERSATZTEILE_DB.marken[markenKey];
+                const option = document.createElement('option');
+                option.value = markenKey;
+                option.textContent = marke.name;
+                markeSelect.appendChild(option);
+            });
+
+            console.log('✅ OE-Suche initialisiert:', stats);
+        }
+
+        function updateOeModelle() {
+            const markeKey = document.getElementById('oeMarkeSelect').value;
+            const modellSelect = document.getElementById('oeModellSelect');
+            modellSelect.innerHTML = '<option value="">Alle Modelle</option>';
+
+            if (markeKey && ERSATZTEILE_DB.marken[markeKey]) {
+                const marke = ERSATZTEILE_DB.marken[markeKey];
+                Object.keys(marke.modelle).sort().forEach(modellKey => {
+                    const modell = marke.modelle[modellKey];
+                    const option = document.createElement('option');
+                    option.value = modellKey;
+                    option.textContent = `${modell.name} (${modell.baujahre})`;
+                    modellSelect.appendChild(option);
+                });
+            }
+
+            performOeSearch();
+        }
+
+        function performOeSearch() {
+            // Debounce für Performance
+            clearTimeout(oeSearchTimeout);
+            oeSearchTimeout = setTimeout(() => {
+                executeOeSearch();
+            }, 200);
+        }
+
+        function executeOeSearch() {
+            const searchInput = document.getElementById('oeSearchInput').value.trim();
+            const markeKey = document.getElementById('oeMarkeSelect').value;
+            const modellKey = document.getElementById('oeModellSelect').value;
+            const resultsContainer = document.getElementById('oeResults');
+
+            // Keine Suche wenn kein Input
+            if (!searchInput && !markeKey) {
+                resultsContainer.innerHTML = `
+                    <div class="oe-no-results">
+                        <span style="font-size: 2rem;">🔍</span>
+                        <p>Geben Sie eine OE-Nummer oder einen Teilenamen ein</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let ergebnisse = [];
+
+            // Suche nach OE-Nummer
+            if (searchInput.length >= 2) {
+                // Versuche OE-Nummer-Suche
+                const oeResults = ERSATZTEILE_DB.sucheNachOeNummer(searchInput);
+                // Auch Namenssuche
+                const nameResults = ERSATZTEILE_DB.sucheNachName(searchInput);
+
+                // Kombinieren und Duplikate entfernen
+                const combined = [...oeResults];
+                nameResults.forEach(nr => {
+                    const exists = combined.some(or =>
+                        or.marke === nr.marke && or.modell === nr.modell && or.teil === nr.teil
+                    );
+                    if (!exists) combined.push(nr);
+                });
+                ergebnisse = combined;
+            }
+
+            // Fahrzeug-spezifische Suche
+            if (markeKey) {
+                const fahrzeugTeile = ERSATZTEILE_DB.getTeileNachFahrzeug(
+                    ERSATZTEILE_DB.marken[markeKey].name,
+                    modellKey ? ERSATZTEILE_DB.marken[markeKey].modelle[modellKey]?.name : null
+                );
+
+                if (searchInput.length >= 2) {
+                    // Filter bereits gefundene Ergebnisse nach Fahrzeug
+                    ergebnisse = ergebnisse.filter(e =>
+                        e.marke === ERSATZTEILE_DB.marken[markeKey].name &&
+                        (!modellKey || e.modell === ERSATZTEILE_DB.marken[markeKey].modelle[modellKey]?.name)
+                    );
+                } else {
+                    // Zeige alle Teile des Fahrzeugs
+                    ergebnisse = fahrzeugTeile;
+                }
+            }
+
+            // Ergebnisse anzeigen
+            if (ergebnisse.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="oe-no-results">
+                        <span style="font-size: 2rem;">😔</span>
+                        <p>Keine Ergebnisse gefunden</p>
+                        <small>Versuchen Sie einen anderen Suchbegriff</small>
+                    </div>
+                `;
+                return;
+            }
+
+            // Maximal 50 Ergebnisse anzeigen
+            const displayResults = ergebnisse.slice(0, 50);
+
+            resultsContainer.innerHTML = displayResults.map(result => `
+                <div class="oe-result-item" onclick="selectOeResult(this, '${escapeHtml(result.teil)}', '${result.oe_nummer}', '${escapeHtml(result.marke)} ${escapeHtml(result.modell)}')">
+                    <div class="oe-result-info">
+                        <div class="oe-result-part">${result.teil}</div>
+                        <div class="oe-result-vehicle">${result.marke} ${result.modell} (${result.baujahre || 'diverse'})</div>
+                    </div>
+                    <div class="oe-result-oe">${result.oe_nummer}</div>
+                </div>
+            `).join('');
+
+            if (ergebnisse.length > 50) {
+                resultsContainer.innerHTML += `
+                    <div style="text-align: center; padding: var(--space-3); color: var(--color-text-secondary); font-size: var(--font-size-sm);">
+                        ... und ${ergebnisse.length - 50} weitere Ergebnisse
+                    </div>
+                `;
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/[&<>"']/g, function(m) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[m];
+            });
+        }
+
+        function selectOeResult(element, teileName, oeNummer, fahrzeug) {
+            // Markiere als ausgewählt
+            document.querySelectorAll('.oe-result-item').forEach(item => {
+                item.style.borderColor = 'var(--color-border)';
+                item.style.background = 'var(--color-background)';
+            });
+            element.style.borderColor = 'var(--color-success)';
+            element.style.background = 'rgba(52, 199, 89, 0.1)';
+
+            // Erstelle Material-Position mit OE-Nummer
+            const materialName = `${teileName} (OE: ${oeNummer}) - ${fahrzeug}`;
+
+            // Füge als Material hinzu
+            addMaterialWithOe(materialName, oeNummer);
+
+            // Feedback
+            showToast(`✅ ${teileName} hinzugefügt`, 'success');
+        }
+
+        function addMaterialWithOe(name, oeNummer) {
+            const newMaterial = {
+                name: name,
+                kategorie: 'Ersatzteile',
+                menge: 1,
+                einheit: 'Stück',
+                einkaufspreis: 0, // Preis manuell eintragen
+                verkaufspreis: 0, // Preis manuell eintragen
+                oeNummer: oeNummer
+            };
+
+            materialien.push(newMaterial);
+            renderMaterialien();
+            berechneGesamtsumme();
+        }
 
         // ============================================
         // 🎯 3D PART SELECTION (Button-Fallback)
