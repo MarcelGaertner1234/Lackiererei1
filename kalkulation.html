@@ -6816,6 +6816,41 @@
                 kalkWizardData.additionalServicesFromEntwurf = [];
             }
 
+            // 🔧 FIX (2025-11-30): Service-Details aus Entwurf in serviceDetailsPerService vorausfüllen
+            // Problem: Ohne diesen Code müssen bereits eingegebene Details nochmal eingegeben werden
+            kalkWizardData.serviceDetailsPerService = {};
+
+            // 1. Primary Service Details laden
+            const primaryService = kalkWizardData.services[0];
+            if (selectedEntwurf.serviceDetails && typeof selectedEntwurf.serviceDetails === 'object') {
+                kalkWizardData.serviceDetailsPerService[primaryService] = { ...selectedEntwurf.serviceDetails };
+                console.log(`📋 Primary Service "${primaryService}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[primaryService]);
+            }
+
+            // 2. Additional Services Details laden
+            if (kalkWizardData.additionalServicesFromEntwurf.length > 0) {
+                kalkWizardData.additionalServicesFromEntwurf.forEach(addService => {
+                    if (addService.serviceTyp && addService.serviceDetails && typeof addService.serviceDetails === 'object') {
+                        kalkWizardData.serviceDetailsPerService[addService.serviceTyp] = { ...addService.serviceDetails };
+                        console.log(`📋 Additional Service "${addService.serviceTyp}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[addService.serviceTyp]);
+                    }
+                });
+            }
+
+            // 3. Falls bereits serviceDetailsPerService vom vorherigen Kalkulations-Durchlauf existiert (Priorität!)
+            if (selectedEntwurf.serviceDetailsPerService && typeof selectedEntwurf.serviceDetailsPerService === 'object') {
+                Object.keys(selectedEntwurf.serviceDetailsPerService).forEach(serviceKey => {
+                    // Überschreibe mit Kalkulations-Daten (haben Priorität über Entwurf-Daten)
+                    kalkWizardData.serviceDetailsPerService[serviceKey] = {
+                        ...kalkWizardData.serviceDetailsPerService[serviceKey], // Entwurf-Basis
+                        ...selectedEntwurf.serviceDetailsPerService[serviceKey]  // Kalkulations-Override
+                    };
+                    console.log(`📋 Kalkulations-Details für "${serviceKey}" übernommen (Priorität):`, kalkWizardData.serviceDetailsPerService[serviceKey]);
+                });
+            }
+
+            console.log('✅ serviceDetailsPerService vollständig geladen:', kalkWizardData.serviceDetailsPerService);
+
             console.log(`🆕 Multi-Service Modus: ${kalkWizardData.isMultiService ? 'JA' : 'NEIN'}, Services:`, kalkWizardData.services);
 
             // Fotos speichern für Step 3 und 4
@@ -8903,6 +8938,23 @@ REGELN:
 
             // File-Upload Event-Listeners hinzufügen
             setupFileUploadListeners();
+
+            // 🔧 FIX (2025-11-30): Vorausgefüllte Werte aus serviceDetailsPerService laden
+            const savedDetails = kalkWizardData.serviceDetailsPerService[serviceArt];
+            if (savedDetails && typeof savedDetails === 'object') {
+                console.log(`📋 Lade vorausgefüllte Werte für "${serviceArt}":`, savedDetails);
+
+                // Warte kurz, damit DOM vollständig gerendert ist
+                setTimeout(() => {
+                    for (const [fieldId, fieldValue] of Object.entries(savedDetails)) {
+                        const input = document.getElementById(`serviceField_${fieldId}`);
+                        if (input && fieldValue !== undefined && fieldValue !== null) {
+                            input.value = fieldValue;
+                            console.log(`   ✅ Feld "${fieldId}" vorausgefüllt mit: "${fieldValue}"`);
+                        }
+                    }
+                }, 50);
+            }
 
             // Design-Preview ausblenden initial
             if (previewContainer) previewContainer.style.display = 'none';
