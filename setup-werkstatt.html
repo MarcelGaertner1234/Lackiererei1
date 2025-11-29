@@ -27,6 +27,9 @@
     <!-- Feather Icons -->
     <script src="https://unpkg.com/feather-icons"></script>
 
+    <!-- 🆕 FIX (2025-11-29): safeNavigate() für sichere Navigation -->
+    <script src="listener-registry.js"></script>
+
     <style>
         body {
             min-height: 100vh;
@@ -419,7 +422,8 @@
         async function checkOwnerAccess() {
             // Wait for auth state to be loaded
             let attempts = 0;
-            while (!window.authManager || attempts < 20) {
+            // 🆕 FIX (2025-11-29): Logik korrigiert - && statt || (sonst läuft Loop immer 20x)
+            while (!window.authManager && attempts < 20) {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 attempts++;
             }
@@ -603,6 +607,16 @@
             try {
                 console.log('🏢 Erstelle Werkstatt:', name);
 
+                // 🆕 FIX (2025-11-29): Prüfe ob werkstattId bereits existiert
+                const existingWerkstatt = await window.db.collection('users')
+                    .where('werkstattId', '==', werkstattId)
+                    .limit(1)
+                    .get();
+
+                if (!existingWerkstatt.empty) {
+                    throw { code: 'werkstatt-id-exists', message: `Werkstatt-ID "${werkstattId}" ist bereits vergeben! Bitte wählen Sie eine andere ID.` };
+                }
+
                 // 1. Create Firebase Auth account
                 const userCredential = await window.auth.createUserWithEmailAndPassword(email, password);
                 const uid = userCredential.user.uid;
@@ -688,11 +702,14 @@
                 let errorMsg = '❌ Fehler: ' + error.message;
                 if (error.code === 'auth/email-already-in-use') {
                     errorMsg = '❌ Diese Email ist bereits registriert!';
+                } else if (error.code === 'werkstatt-id-exists') {
+                    errorMsg = '❌ ' + error.message;
                 }
 
                 showError('werkstattError', errorMsg);
-
-                // Re-enable button
+            } finally {
+                // 🆕 FIX (2025-11-29): finally-Block stellt sicher dass Button IMMER re-enabled wird
+                // (auch bei Netzwerk-Timeout oder unerwarteten Fehlern)
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i data-feather="home"></i> Werkstatt erstellen';
                 feather.replace();
