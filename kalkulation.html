@@ -7993,9 +7993,22 @@ REGELN:
                     return true;
 
                 case 4:
-                    // Mindestens eine Reparatur muss gewählt sein
-                    const checkedRepairs = document.querySelectorAll('input[name="repair"]:checked');
-                    if (checkedRepairs.length === 0) {
+                    // Fall 1: Es gibt bereits Teile in der Liste → OK, weiter erlaubt
+                    if (kalkWizardData.teile.length > 0) {
+                        // Aber wenn aktuell ein Teil bearbeitet wird, muss auch Reparatur gewählt sein
+                        if (kalkWizardData.currentPart) {
+                            const checkedRepairs = document.querySelectorAll('input[name="repair"]:checked');
+                            if (checkedRepairs.length === 0) {
+                                showToast('Bitte wählen Sie mindestens eine Reparaturart für das aktuelle Teil', 'warning');
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+
+                    // Fall 2: Noch keine Teile → muss aktuelles Teil mit Reparatur haben
+                    const checkedRepairs4 = document.querySelectorAll('input[name="repair"]:checked');
+                    if (checkedRepairs4.length === 0) {
                         showToast('Bitte wählen Sie mindestens eine Reparaturart', 'warning');
                         return false;
                     }
@@ -8059,6 +8072,8 @@ REGELN:
                     }
                     // Dynamische Arbeiten für den gewählten Service laden
                     renderServiceRepairOptions();
+                    // Button-Status aktualisieren (aktivieren wenn schon Teile vorhanden)
+                    updateRepairSelection();
                     break;
 
                 case 5:
@@ -8141,7 +8156,10 @@ REGELN:
             const checkedRepairs = document.querySelectorAll('input[name="repair"]:checked');
             const nextBtn = document.getElementById('btnStep4Next');
             if (nextBtn) {
-                nextBtn.disabled = checkedRepairs.length === 0;
+                // Button aktivieren wenn: Reparaturen gewählt ODER bereits Teile in Liste
+                const hasRepairs = checkedRepairs.length > 0;
+                const hasExistingParts = kalkWizardData.teile.length > 0;
+                nextBtn.disabled = !hasRepairs && !hasExistingParts;
             }
 
             // NEU: Ersatzteil-Formular wird NICHT mehr in Schritt 4 angezeigt
@@ -8234,14 +8252,10 @@ REGELN:
             const repairs = Array.from(document.querySelectorAll('input[name="repair"]:checked'))
                 .map(cb => cb.value);
 
-            if (repairs.length === 0) {
-                showToast('Bitte wählen Sie mindestens eine Reparaturart', 'warning');
-                return;
-            }
-
-            // Prüfen ob aktuelles Teil schon gespeichert wurde
             const currentPart = kalkWizardData.currentPart;
-            if (currentPart) {
+
+            // Fall 1: Aktuelles Teil wird bearbeitet → speichern wenn Reparaturen gewählt
+            if (currentPart && repairs.length > 0) {
                 // Prüfen ob dieses Teil schon in der Liste ist
                 const alreadyExists = kalkWizardData.teile.some(t => t.teil === currentPart);
 
@@ -8260,15 +8274,26 @@ REGELN:
                     console.log('📦 Teil automatisch hinzugefügt:', currentPart, 'Reparaturen:', repairs, 'Braucht Ersatzteil:', needsErsatzteil);
                     showToast(`${currentPart} hinzugefügt`, 'success');
                 }
+
+                // Formularfelder zurücksetzen
+                document.querySelectorAll('input[name="repair"]').forEach(cb => cb.checked = false);
+                kalkWizardData.currentPart = null;
+
+                // Ersatzteil-Hinweis entfernen
+                const hinweis = document.getElementById('ersatzteilHinweis');
+                if (hinweis) hinweis.remove();
             }
 
-            // Formularfelder zurücksetzen
-            document.querySelectorAll('input[name="repair"]').forEach(cb => cb.checked = false);
-            kalkWizardData.currentPart = null;
+            // Fall 2: Kein aktuelles Teil aber Teile in Liste → direkt weiter
+            else if (kalkWizardData.teile.length > 0) {
+                console.log('📋 Bereits Teile vorhanden, gehe direkt zu Schritt 5');
+            }
 
-            // Ersatzteil-Hinweis entfernen
-            const hinweis = document.getElementById('ersatzteilHinweis');
-            if (hinweis) hinweis.remove();
+            // Fall 3: Weder aktuelles Teil noch Teile in Liste → Fehler
+            else {
+                showToast('Bitte wählen Sie mindestens ein Teil und eine Reparaturart', 'warning');
+                return;
+            }
 
             // Zu Schritt 5 gehen
             console.log('📋 Gehe zu Schritt 5 mit Teilen:', kalkWizardData.teile);
