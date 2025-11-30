@@ -2080,38 +2080,29 @@
                 console.log(`✅ Vereinbarter Preis auto-updated: ${bruttoSumme.toFixed(2)} €`);
             }
 
-            // 🆕 FIX (Nov 30, 2025): Varianten-Preise aus Kalkulation BEIBEHALTEN wenn vorhanden
-            // Die Kalkulation enthält bereits vorberechnete Original/Aftermarket Summen
-            // Diese sollen NICHT überschrieben werden, außer der User ändert manuell etwas!
+            // 🆕 FIX (Nov 30, 2025): Varianten-Preise PROPORTIONAL aktualisieren
+            // Die Kalkulation hat Original/Aftermarket Verhältnis - dieses beibehalten!
             const existingOriginal = parseFloat(document.getElementById('summeBruttoOriginal')?.value) || 0;
             const existingAftermarket = parseFloat(document.getElementById('summeBruttoAftermarket')?.value) || 0;
 
-            // Wenn unterschiedliche Varianten-Preise aus Kalkulation vorhanden sind → NICHT überschreiben!
-            // Diese wurden von kalkulation.html berechnet und sind korrekt.
-            if (existingOriginal > 0 && existingAftermarket > 0 && existingOriginal !== existingAftermarket) {
-                // Vorberechnete Varianten aus Kalkulation - NICHT überschreiben!
-                console.log(`📊 Varianten aus Kalkulation beibehalten: Original=${existingOriginal.toFixed(2)}€, Aftermarket=${existingAftermarket.toFixed(2)}€`);
-                // UI muss nicht aktualisiert werden - ist bereits korrekt
-            } else {
-                // Keine vorberechneten Varianten ODER identische Werte - berechne aus Ersatzteilen
-                let ersatzteileOriginalSumme = 0;
-                let ersatzteileAftermarketSumme = 0;
-                ersatzteileData.forEach(t => {
-                    const preisOriginal = parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0;
-                    const preisAftermarket = parseFloat(t.preisAftermarket) || preisOriginal;
-                    ersatzteileOriginalSumme += preisOriginal;
-                    ersatzteileAftermarketSumme += preisAftermarket;
-                });
-
-                const nettoOriginal = basisSumme + ersatzteileOriginalSumme;
-                const bruttoOriginal = nettoOriginal * 1.19;
-
-                const nettoAftermarket = basisSumme + ersatzteileAftermarketSumme;
-                const bruttoAftermarket = nettoAftermarket * 1.19;
-
-                console.log(`📊 Varianten neu berechnet: Original=${bruttoOriginal.toFixed(2)}€, Aftermarket=${bruttoAftermarket.toFixed(2)}€`);
-                updateVariantenPreise(bruttoOriginal, bruttoAftermarket);
+            // Globale Variable für Verhältnis (wird beim Laden des Entwurfs gesetzt)
+            // Falls noch nicht gesetzt, berechne aus Hidden Fields
+            if (!window.variantenRatio && existingOriginal > 0 && existingAftermarket > 0) {
+                window.variantenRatio = existingAftermarket / existingOriginal;
+                console.log(`📊 Varianten-Verhältnis gespeichert: ${(window.variantenRatio * 100).toFixed(1)}%`);
             }
+
+            // Verwende gespeichertes Verhältnis oder fallback auf 1.0
+            const ratio = window.variantenRatio || 1.0;
+
+            // Berechne neue Varianten-Preise basierend auf aktuellem bruttoSumme
+            // Original = bruttoSumme (aktueller Preis)
+            // Aftermarket = bruttoSumme * Verhältnis (proportional günstiger)
+            const newBruttoOriginal = bruttoSumme;
+            const newBruttoAftermarket = bruttoSumme * ratio;
+
+            console.log(`📊 Varianten aktualisiert: Original=${newBruttoOriginal.toFixed(2)}€, Aftermarket=${newBruttoAftermarket.toFixed(2)}€ (Verhältnis: ${(ratio * 100).toFixed(1)}%)`);
+            updateVariantenPreise(newBruttoOriginal, newBruttoAftermarket);
         }
 
         /**
@@ -2699,6 +2690,15 @@
                 const summeBruttoAftermarket = parseFloat(kalkData.summeBruttoAftermarket) || 0;
 
                 console.log('💰 Varianten-Preise:', { summeBruttoOriginal, summeBruttoAftermarket });
+
+                // 🆕 FIX Nov 30, 2025: Verhältnis SOFORT speichern (BEVOR updateKostenaufschluesselung() aufgerufen wird!)
+                // Dieses Verhältnis wird später in updateKostenaufschluesselung() verwendet
+                if (summeBruttoOriginal > 0 && summeBruttoAftermarket > 0) {
+                    window.variantenRatio = summeBruttoAftermarket / summeBruttoOriginal;
+                    console.log(`📊 Varianten-Verhältnis aus Kalkulation: ${(window.variantenRatio * 100).toFixed(1)}%`);
+                } else {
+                    window.variantenRatio = 1.0; // Default: Keine Unterscheidung
+                }
 
                 // Hidden Inputs setzen
                 document.getElementById('summeBruttoOriginal').value = summeBruttoOriginal || '';
