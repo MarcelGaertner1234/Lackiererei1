@@ -6360,6 +6360,44 @@
                         // 🆕 Phase 7: Ersatzfahrzeug-Kosten in gesamt einbeziehen (für konsistente Preise)
                         kvaData.varianten[variantType].gesamt += (kvaData.ersatzfahrzeugKosten?.gesamt || 0);
 
+                        // 🆕 FIX (2025-11-30): kalkulationData PRO VARIANTE speichern für separate PDFs
+                        // Sammle Ersatzteile, Arbeitslohn, Lackierung aus variantTableData
+                        const variantKalkulation = {
+                            ersatzteile: [],
+                            arbeitslohn: [],
+                            lackierung: [],
+                            ersatzfahrzeug: ersatzfahrzeugData
+                        };
+
+                        // Direct ersatzteile (Single-Service style)
+                        if (variantTableData[variantType]?.ersatzteile?.length > 0) {
+                            variantKalkulation.ersatzteile.push(...variantTableData[variantType].ersatzteile);
+                        }
+                        if (variantTableData[variantType]?.arbeitslohn?.length > 0) {
+                            variantKalkulation.arbeitslohn.push(...variantTableData[variantType].arbeitslohn);
+                        }
+                        if (variantTableData[variantType]?.lackierung?.length > 0) {
+                            variantKalkulation.lackierung.push(...variantTableData[variantType].lackierung);
+                        }
+
+                        // Multi-Service: _services Layer
+                        const services = variantTableData[variantType]?._services || {};
+                        Object.values(services).forEach(serviceData => {
+                            if (serviceData?.ersatzteile?.length > 0) {
+                                variantKalkulation.ersatzteile.push(...serviceData.ersatzteile);
+                            }
+                            if (serviceData?.arbeitslohn?.length > 0) {
+                                variantKalkulation.arbeitslohn.push(...serviceData.arbeitslohn);
+                            }
+                            if (serviceData?.lackierung?.length > 0) {
+                                variantKalkulation.lackierung.push(...serviceData.lackierung);
+                            }
+                        });
+
+                        // Speichern in varianten-spezifischer kalkulationData
+                        kvaData.varianten[variantType].kalkulationData = variantKalkulation;
+                        console.log(`📊 [MULTI-SERVICE] ${variantType} kalkulationData: ${variantKalkulation.ersatzteile.length} ET, ${variantKalkulation.arbeitslohn.length} AL, ${variantKalkulation.lackierung.length} LAK`);
+
                         console.log(`💶 [MULTI-SERVICE] ${variantType} gesamt (inkl. EF): ${kvaData.varianten[variantType].gesamt.toFixed(2)} €`);
                     });
 
@@ -7479,10 +7517,15 @@
 
             // ============================================
             // 4. ERSATZTEILE TABELLE (aus kalkulationData ODER PDF-Import)
+            // 🆕 FIX (2025-11-30): Varianten-spezifische kalkulationData priorisieren
             // ============================================
-            // Phase 8 FIX: Prüfe BEIDE Pfade - kalkulationData (primär) und pdfImport (legacy)
-            const ersatzteile = kvaData.kalkulationData?.ersatzteile || kvaData.pdfImport?.editedData?.ersatzteile || [];
-            console.log('📊 [PDF] Ersatzteile geladen:', ersatzteile.length, 'Einträge');
+            // Priorität: varianten[variantType].kalkulationData > kvaData.kalkulationData > pdfImport
+            const variantKalkulation = kvaData.varianten?.[variantType]?.kalkulationData;
+            const ersatzteile = variantKalkulation?.ersatzteile
+                             || kvaData.kalkulationData?.ersatzteile
+                             || kvaData.pdfImport?.editedData?.ersatzteile
+                             || [];
+            console.log(`📊 [PDF ${variantType}] Ersatzteile geladen:`, ersatzteile.length, 'Einträge', variantKalkulation ? '(varianten-spezifisch)' : '(global)');
 
             if (ersatzteile.length > 0) {
                 checkPageBreak(60);
@@ -7542,9 +7585,12 @@
 
             // ============================================
             // 4b. ARBEITSLOHN TABELLE (aus kalkulationData)
+            // 🆕 FIX (2025-11-30): Varianten-spezifische kalkulationData priorisieren
             // ============================================
-            const arbeitslohn = kvaData.kalkulationData?.arbeitslohn || [];
-            console.log('📊 [PDF] Arbeitslohn geladen:', arbeitslohn.length, 'Einträge', arbeitslohn);
+            const arbeitslohn = variantKalkulation?.arbeitslohn
+                             || kvaData.kalkulationData?.arbeitslohn
+                             || [];
+            console.log(`📊 [PDF ${variantType}] Arbeitslohn geladen:`, arbeitslohn.length, 'Einträge', variantKalkulation ? '(varianten-spezifisch)' : '(global)');
 
             if (arbeitslohn.length > 0) {
                 checkPageBreak(60);
@@ -7605,9 +7651,12 @@
 
             // ============================================
             // 4c. LACKIERUNG TABELLE (aus kalkulationData)
+            // 🆕 FIX (2025-11-30): Varianten-spezifische kalkulationData priorisieren
             // ============================================
-            const lackierung = kvaData.kalkulationData?.lackierung || [];
-            console.log('📊 [PDF] Lackierung geladen:', lackierung.length, 'Einträge', lackierung);
+            const lackierung = variantKalkulation?.lackierung
+                            || kvaData.kalkulationData?.lackierung
+                            || [];
+            console.log(`📊 [PDF ${variantType}] Lackierung geladen:`, lackierung.length, 'Einträge', variantKalkulation ? '(varianten-spezifisch)' : '(global)');
 
             if (lackierung.length > 0) {
                 checkPageBreak(60);
