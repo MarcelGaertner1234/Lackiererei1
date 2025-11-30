@@ -4657,75 +4657,122 @@
         // ============================================
         // 🆕 Nov 30, 2025: ERSATZTEILE IN VARIANTEN-TABELLEN ÜBERTRAGEN
         // Füllt die Ersatzteile-Tabellen für Original und Aftermarket Varianten
+        // 🔧 FIX (Nov 30, 2025): Multi-Service Support mit _services Layer
         // ============================================
         function prefillErsatzteileTabellen(ersatzteile) {
             if (!ersatzteile || ersatzteile.length === 0) return;
 
-            // Original Variante: Mit Original-Preisen
-            ersatzteile.forEach(teil => {
-                const originalPreis = parseFloat(teil.preisOriginal) || parseFloat(teil.preis) || 0;
-                const menge = parseInt(teil.menge) || 1;
+            console.log('📦 [PREFILL-TABLES] Ersatzteile laden, isMultiService:', isMultiService);
 
-                variantTableData.original.ersatzteile.push({
-                    etn: teil.teilenummer || '',
-                    benennung: teil.name || teil.benennung || '',
-                    anzahl: menge,
-                    einzelpreis: originalPreis,
-                    gesamtpreis: originalPreis * menge,
-                    isAutoSync: true,  // Markiert als "vom Meister"
-                    lieferant: teil.lieferant || '',
-                    bestellLink: teil.bestellLink || ''
-                });
-            });
+            // 🔧 FIX: Bei Multi-Service intelligente Zuordnung
+            // - Reifen/Felgen → reifen Service (falls vorhanden)
+            // - Andere Ersatzteile → erster Service oder lackier Service
+            let defaultService = null;
+            if (isMultiService && anfrage?.serviceLabels) {
+                // Prüfe ob Reifen-Service vorhanden ist (Ersatzteile sind meist Reifen/Felgen)
+                defaultService = anfrage.serviceLabels.find(s => s === 'reifen') || anfrage.serviceLabels[0];
+            }
 
-            // Aftermarket Variante: Mit Aftermarket-Preisen
-            ersatzteile.forEach(teil => {
-                const aftermarketPreis = parseFloat(teil.preisAftermarket) || parseFloat(teil.preisOriginal) || parseFloat(teil.preis) || 0;
-                const menge = parseInt(teil.menge) || 1;
+            ['original', 'zubehoer'].forEach(variant => {
+                ersatzteile.forEach(teil => {
+                    const isOriginal = variant === 'original';
+                    const preis = isOriginal
+                        ? (parseFloat(teil.preisOriginal) || parseFloat(teil.preis) || 0)
+                        : (parseFloat(teil.preisAftermarket) || parseFloat(teil.preisOriginal) || parseFloat(teil.preis) || 0);
+                    const menge = parseInt(teil.menge) || 1;
 
-                variantTableData.zubehoer.ersatzteile.push({
-                    etn: teil.teilenummer || '',
-                    benennung: teil.name || teil.benennung || '',
-                    anzahl: menge,
-                    einzelpreis: aftermarketPreis,
-                    gesamtpreis: aftermarketPreis * menge,
-                    isAutoSync: true,
-                    lieferant: teil.lieferant || '',
-                    bestellLink: teil.bestellLink || ''
+                    const ersatzteilData = {
+                        etn: teil.teilenummer || '',
+                        benennung: teil.name || teil.benennung || '',
+                        anzahl: menge,
+                        einzelpreis: preis,
+                        gesamtpreis: preis * menge,
+                        isAutoSync: true,
+                        lieferant: teil.lieferant || '',
+                        bestellLink: teil.bestellLink || ''
+                    };
+
+                    // 🆕 Multi-Service: In _services Layer speichern
+                    if (isMultiService && defaultService) {
+                        // Initialisiere _services falls nicht vorhanden
+                        if (!variantTableData[variant]._services[defaultService]) {
+                            variantTableData[variant]._services[defaultService] = {
+                                ersatzteile: [], arbeitslohn: [], lackierung: []
+                            };
+                        }
+                        variantTableData[variant]._services[defaultService].ersatzteile.push(ersatzteilData);
+                    } else {
+                        // Single-Service: Direkt in Root-Level
+                        variantTableData[variant].ersatzteile.push(ersatzteilData);
+                    }
                 });
             });
 
             // Tabellen neu rendern
-            renderVariantTable('original', 'ersatzteile');
-            renderVariantTable('zubehoer', 'ersatzteile');
+            if (isMultiService && defaultService) {
+                // 🔧 FIX: Korrekter Funktionsname renderVariantTableForService(variant, serviceTyp, tableType)
+                renderVariantTableForService('original', defaultService, 'ersatzteile');
+                renderVariantTableForService('zubehoer', defaultService, 'ersatzteile');
+            } else {
+                renderVariantTable('original', 'ersatzteile');
+                renderVariantTable('zubehoer', 'ersatzteile');
+            }
 
-            console.log(`   ✅ ${ersatzteile.length} Ersatzteile in Original-Tabelle geladen`);
-            console.log(`   ✅ ${ersatzteile.length} Ersatzteile in Aftermarket-Tabelle geladen`);
+            console.log(`   ✅ ${ersatzteile.length} Ersatzteile in Tabellen geladen`);
         }
 
         // ============================================
         // 🆕 Nov 30, 2025: ARBEITSLOHN (POSITIONEN) IN TABELLEN ÜBERTRAGEN
+        // 🔧 FIX (Nov 30, 2025): Multi-Service Support
         // ============================================
         function prefillArbeitslohnTabellen(positionen) {
             if (!positionen || positionen.length === 0) return;
+
+            console.log('🔧 [PREFILL-TABLES] Arbeitslohn laden, isMultiService:', isMultiService);
+
+            // 🔧 FIX: Bei Multi-Service intelligente Zuordnung
+            // - Arbeitslohn wird meist für Lackierung verwendet (Schleifen, Grundieren, etc.)
+            // - Falls kein Lackier-Service, nimm ersten Service
+            let defaultService = null;
+            if (isMultiService && anfrage?.serviceLabels) {
+                defaultService = anfrage.serviceLabels.find(s => s === 'lackier' || s === 'lackierung') || anfrage.serviceLabels[0];
+            }
 
             // Beide Varianten bekommen die gleichen Arbeitspositionen
             ['original', 'zubehoer'].forEach(variant => {
                 positionen.forEach(pos => {
                     const betrag = parseFloat(pos.gesamt) || parseFloat(pos.betrag) || 0;
 
-                    variantTableData[variant].arbeitslohn.push({
+                    const arbeitslohnData = {
                         position: pos.position || pos.beschreibung || pos.name || '',
                         art: pos.einheit || pos.art || 'Arbeit',
                         gesamtpreis: betrag,
                         isAutoSync: true
-                    });
+                    };
+
+                    // 🆕 Multi-Service: In _services Layer speichern
+                    if (isMultiService && defaultService) {
+                        if (!variantTableData[variant]._services[defaultService]) {
+                            variantTableData[variant]._services[defaultService] = {
+                                ersatzteile: [], arbeitslohn: [], lackierung: []
+                            };
+                        }
+                        variantTableData[variant]._services[defaultService].arbeitslohn.push(arbeitslohnData);
+                    } else {
+                        variantTableData[variant].arbeitslohn.push(arbeitslohnData);
+                    }
                 });
             });
 
             // Tabellen neu rendern
-            renderVariantTable('original', 'arbeitslohn');
-            renderVariantTable('zubehoer', 'arbeitslohn');
+            if (isMultiService && defaultService) {
+                // 🔧 FIX: Korrekter Funktionsname renderVariantTableForService(variant, serviceTyp, tableType)
+                renderVariantTableForService('original', defaultService, 'arbeitslohn');
+                renderVariantTableForService('zubehoer', defaultService, 'arbeitslohn');
+            } else {
+                renderVariantTable('original', 'arbeitslohn');
+                renderVariantTable('zubehoer', 'arbeitslohn');
+            }
 
             console.log(`   ✅ ${positionen.length} Positionen in Arbeitslohn-Tabellen geladen`);
         }
@@ -4733,11 +4780,28 @@
         // ============================================
         // 🆕 Nov 30, 2025: MATERIALIEN IN TABELLEN ÜBERTRAGEN
         // Je nach Service: als Lackierung oder als Ersatzteile
+        // 🔧 FIX (Nov 30, 2025): Multi-Service Support
         // ============================================
         function prefillMaterialienTabellen(materialien, serviceTyp) {
             if (!materialien || materialien.length === 0) return;
 
+            console.log('🎨 [PREFILL-TABLES] Materialien laden, serviceTyp:', serviceTyp, 'isMultiService:', isMultiService);
+
+            // Prüfe ob es Lackier-Materialien sind
             const isLackierService = serviceTyp === 'lackier' || serviceTyp === 'lackierung';
+
+            // 🔧 FIX: Bei Multi-Service den korrekten Service für Lackier-Materialien finden
+            // Lackier-Materialien → lackier Service (falls vorhanden)
+            // Andere Materialien → erster Service
+            let targetService = null;
+            if (isMultiService && anfrage?.serviceLabels) {
+                if (isLackierService) {
+                    // Suche nach lackier Service
+                    targetService = anfrage.serviceLabels.find(s => s === 'lackier' || s === 'lackierung') || anfrage.serviceLabels[0];
+                } else {
+                    targetService = anfrage.serviceLabels[0];
+                }
+            }
 
             ['original', 'zubehoer'].forEach(variant => {
                 materialien.forEach(mat => {
@@ -4746,35 +4810,68 @@
 
                     if (isLackierService) {
                         // Für Lackierung: In Lackierung-Tabelle
-                        variantTableData[variant].lackierung.push({
+                        const lackierungData = {
                             position: mat.name || mat.beschreibung || mat.material || '',
                             bereich: mat.bereich || 'Material',
                             gesamtpreis: betrag,
                             isAutoSync: true
-                        });
+                        };
+
+                        if (isMultiService && targetService) {
+                            if (!variantTableData[variant]._services[targetService]) {
+                                variantTableData[variant]._services[targetService] = {
+                                    ersatzteile: [], arbeitslohn: [], lackierung: []
+                                };
+                            }
+                            variantTableData[variant]._services[targetService].lackierung.push(lackierungData);
+                        } else {
+                            variantTableData[variant].lackierung.push(lackierungData);
+                        }
                     } else {
                         // Für andere Services: Als Ersatzteil/Material
-                        variantTableData[variant].ersatzteile.push({
+                        const ersatzteilData = {
                             etn: mat.artikelnummer || '',
                             benennung: mat.name || mat.beschreibung || mat.material || '',
                             anzahl: menge,
                             einzelpreis: betrag / menge,
                             gesamtpreis: betrag,
                             isAutoSync: true
-                        });
+                        };
+
+                        if (isMultiService && targetService) {
+                            if (!variantTableData[variant]._services[targetService]) {
+                                variantTableData[variant]._services[targetService] = {
+                                    ersatzteile: [], arbeitslohn: [], lackierung: []
+                                };
+                            }
+                            variantTableData[variant]._services[targetService].ersatzteile.push(ersatzteilData);
+                        } else {
+                            variantTableData[variant].ersatzteile.push(ersatzteilData);
+                        }
                     }
                 });
             });
 
             // Tabellen neu rendern
+            // 🔧 FIX: Korrekter Funktionsname renderVariantTableForService(variant, serviceTyp, tableType)
             if (isLackierService) {
-                renderVariantTable('original', 'lackierung');
-                renderVariantTable('zubehoer', 'lackierung');
-                console.log(`   ✅ ${materialien.length} Materialien in Lackierung-Tabellen geladen`);
+                if (isMultiService && targetService) {
+                    renderVariantTableForService('original', targetService, 'lackierung');
+                    renderVariantTableForService('zubehoer', targetService, 'lackierung');
+                } else {
+                    renderVariantTable('original', 'lackierung');
+                    renderVariantTable('zubehoer', 'lackierung');
+                }
+                console.log(`   ✅ ${materialien.length} Materialien in Lackierung-Tabellen geladen (Service: ${targetService || 'Single'})`);
             } else {
-                renderVariantTable('original', 'ersatzteile');
-                renderVariantTable('zubehoer', 'ersatzteile');
-                console.log(`   ✅ ${materialien.length} Materialien in Ersatzteile-Tabellen geladen`);
+                if (isMultiService && targetService) {
+                    renderVariantTableForService('original', targetService, 'ersatzteile');
+                    renderVariantTableForService('zubehoer', targetService, 'ersatzteile');
+                } else {
+                    renderVariantTable('original', 'ersatzteile');
+                    renderVariantTable('zubehoer', 'ersatzteile');
+                }
+                console.log(`   ✅ ${materialien.length} Materialien in Ersatzteile-Tabellen geladen (Service: ${targetService || 'Single'})`);
             }
         }
 
