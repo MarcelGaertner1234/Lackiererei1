@@ -16858,18 +16858,44 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
         // ============================================
 
         function updateKalkulationSummary() {
+            // 🆕 FIX (2025-12-01): Delegiere an vollständige Funktion berechneGesamtsumme()
+            // PROBLEM: Diese Funktion zeigte nur Arbeit + Material, NICHT Ersatzteile + Ersatzfahrzeug
+            // LÖSUNG: berechneGesamtsumme() berechnet ALLE Summen korrekt
+            if (typeof berechneGesamtsumme === 'function') {
+                berechneGesamtsumme();
+                return;
+            }
+
+            // Fallback: Legacy-Berechnung (nur wenn berechneGesamtsumme nicht verfügbar)
             const summeArbeit = aktuelleKalkulation.positionen.reduce((sum, p) => sum + p.preis, 0);
             const summeMaterial = aktuelleKalkulation.materialien.reduce((sum, m) => sum + m.preis, 0);
-            const summeNetto = summeArbeit + summeMaterial;
+
+            // 🆕 FIX: Ersatzteile + Ersatzfahrzeug jetzt auch in Fallback
+            const summeErsatzteile = (kalkWizardData?.ersatzteile || []).reduce((sum, e) => {
+                return sum + (parseFloat(e.preis) || 0) * (parseFloat(e.menge) || 1);
+            }, 0);
+            const summeErsatzfahrzeug = parseFloat(kalkWizardData?.ersatzfahrzeug?.gesamt) || 0;
+
+            const summeNetto = summeArbeit + summeMaterial + summeErsatzteile + summeErsatzfahrzeug;
             const mwst = summeNetto * (kalkulationSaetze.mwstSatz / 100);
             const summeBrutto = summeNetto + mwst;
 
-            document.getElementById('summeArbeit').textContent = summeArbeit.toFixed(2) + ' €';
-            document.getElementById('summeMaterial').textContent = summeMaterial.toFixed(2) + ' €';
-            document.getElementById('summeNetto').textContent = summeNetto.toFixed(2) + ' €';
+            const elSummeArbeit = document.getElementById('summeArbeit');
+            const elSummeMaterial = document.getElementById('summeMaterial');
+            const elSummeErsatzteile = document.getElementById('summeErsatzteile');
+            const elSummeErsatzfahrzeug = document.getElementById('summeErsatzfahrzeug');
+            const elSummeNetto = document.getElementById('summeNetto');
+            const elSummeMwst = document.getElementById('summeMwst');
+            const elSummeBrutto = document.getElementById('summeBrutto');
+
+            if (elSummeArbeit) elSummeArbeit.textContent = summeArbeit.toFixed(2) + ' €';
+            if (elSummeMaterial) elSummeMaterial.textContent = summeMaterial.toFixed(2) + ' €';
+            if (elSummeErsatzteile) elSummeErsatzteile.textContent = summeErsatzteile.toFixed(2) + ' €';
+            if (elSummeErsatzfahrzeug) elSummeErsatzfahrzeug.textContent = summeErsatzfahrzeug.toFixed(2) + ' €';
+            if (elSummeNetto) elSummeNetto.textContent = summeNetto.toFixed(2) + ' €';
             document.getElementById('mwstSatzDisplay').textContent = kalkulationSaetze.mwstSatz;
-            document.getElementById('summeMwst').textContent = mwst.toFixed(2) + ' €';
-            document.getElementById('summeBrutto').textContent = summeBrutto.toFixed(2) + ' €';
+            if (elSummeMwst) elSummeMwst.textContent = mwst.toFixed(2) + ' €';
+            if (elSummeBrutto) elSummeBrutto.textContent = summeBrutto.toFixed(2) + ' €';
         }
 
         // ============================================

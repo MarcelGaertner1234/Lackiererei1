@@ -3563,7 +3563,14 @@
             const services = [fahrzeug.serviceTyp];
             if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
                 fahrzeug.additionalServices.forEach(s => {
-                    if (s && s.serviceTyp) {
+                    // 🆕 FIX (2025-12-01): Legacy String-Array Support (BUG #2)
+                    // ALTE Fahrzeuge: additionalServices: ['reifen', 'pflege'] (String-Array)
+                    // NEUE Fahrzeuge: additionalServices: [{serviceTyp: 'reifen'}, {...}] (Object-Array)
+                    if (typeof s === 'string') {
+                        // Legacy Format: String direkt
+                        services.push(s);
+                    } else if (s && s.serviceTyp) {
+                        // Neues Format: Object mit serviceTyp
                         services.push(s.serviceTyp);
                     }
                 });
@@ -6694,6 +6701,48 @@
                 rechnung.serviceBreakdown = fahrzeugData.kva.breakdown;
                 rechnung.serviceLabels = fahrzeugData.kva.serviceLabels || {};
                 rechnung.isMultiService = true;
+            }
+
+            // 🆕 FIX (2025-12-01): Varianten-Details in Rechnung speichern (BUG #1)
+            // PROBLEM: Nur Brutto-Preis wurde gespeichert, nicht welche Variante (Original/Aftermarket)
+            // LÖSUNG: gewaehlteVariante + vollständige Varianten-Daten übertragen
+            if (fahrzeugData.kva?.gewaehlteVariante) {
+                rechnung.gewaehlteVariante = fahrzeugData.kva.gewaehlteVariante;
+                console.log('   ✅ gewaehlteVariante:', fahrzeugData.kva.gewaehlteVariante);
+
+                // Varianten-Details übertragen (für PDF-Aufschlüsselung)
+                if (fahrzeugData.kva.varianten) {
+                    const gewaehlteVarianteData = fahrzeugData.kva.varianten[fahrzeugData.kva.gewaehlteVariante];
+                    if (gewaehlteVarianteData) {
+                        rechnung.varianteDetails = {
+                            name: fahrzeugData.kva.gewaehlteVariante,
+                            gesamt: gewaehlteVarianteData.gesamt || 0,
+                            netto: gewaehlteVarianteData.netto || 0,
+                            mwst: gewaehlteVarianteData.mwst || 0,
+                            rabattNachlass: gewaehlteVarianteData.rabattNachlass || 0
+                        };
+                        console.log('   ✅ varianteDetails:', rechnung.varianteDetails);
+                    }
+
+                    // Alle Varianten speichern (für Vergleich im PDF)
+                    rechnung.alleVarianten = {};
+                    for (const [varName, varData] of Object.entries(fahrzeugData.kva.varianten)) {
+                        rechnung.alleVarianten[varName] = {
+                            gesamt: varData.gesamt || 0,
+                            netto: varData.netto || 0
+                        };
+                    }
+                }
+            }
+
+            // 🆕 FIX (2025-12-01): summeBruttoOriginal/Aftermarket für PDF
+            if (fahrzeugData.summeBruttoOriginal || fahrzeugData.summeBruttoAftermarket) {
+                rechnung.summeBruttoOriginal = fahrzeugData.summeBruttoOriginal || null;
+                rechnung.summeBruttoAftermarket = fahrzeugData.summeBruttoAftermarket || null;
+                rechnung.hasVarianten = fahrzeugData.hasVarianten ||
+                    (fahrzeugData.summeBruttoOriginal && fahrzeugData.summeBruttoAftermarket &&
+                     fahrzeugData.summeBruttoOriginal !== fahrzeugData.summeBruttoAftermarket);
+                console.log('   ✅ Varianten-Preise: Original=', rechnung.summeBruttoOriginal, 'Aftermarket=', rechnung.summeBruttoAftermarket);
             }
 
             // 🆕 FIX (2025-11-29): werkstattDaten für PDF einfrieren
