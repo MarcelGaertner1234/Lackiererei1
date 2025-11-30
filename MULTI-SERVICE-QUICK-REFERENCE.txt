@@ -1,0 +1,305 @@
+╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║              MULTI-SERVICE SYSTEM - QUICK REFERENCE GUIDE                                                         ║
+║                                2025-11-27                                                                          ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARCHITECTURE AT A GLANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FAHRZEUG DOCUMENT STRUCTURE:
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ fahrzeug: {                                                                         │
+│   serviceTyp: 'lackier',  ✅ IMMUTABLE (Primary Service)                            │
+│   additionalServices: [   ✅ MUTABLE (Additional Services)                          │
+│     { serviceTyp: 'reifen', serviceData: {...} },                                   │
+│     { serviceTyp: 'pflege', serviceData: {...} }                                    │
+│   ],                                                                                │
+│   serviceStatuses: {      ✅ MUTABLE (Per-Service Status)                           │
+│     'lackier': { status: 'lackierung', statusHistory: [...] },                      │
+│     'reifen': { status: 'neu', statusHistory: [...] }                               │
+│   }                                                                                 │
+│ }                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+THE 12 SERVICE TYPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRIMARY (Set once):          ADDITIONAL (Can be added):
+  1. 🎨 lackier              ✓ Can add any of the other 11 services
+  2. 🛞 reifen               ✓ Example: lackier + reifen + pflege
+  3. 🔧 mechanik             ✓ Independent workflows per service
+  4. ✨ pflege               ✓ Parallel status tracking
+  5. 📋 tuev
+  6. 🛡️ versicherung
+  7. 🪟 glas
+  8. ❄️ klima
+  9. 🔨 dellen
+ 10. 🌈 folierung
+ 11. 🛡️ steinschutz
+ 12. 📢 werbebeklebung
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KEY FUNCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ hasService(fahrzeug, serviceTyp) → Boolean
+   Check if vehicle has PRIMARY or ADDITIONAL service
+   Usage: Tab filtering (Kanban columns)
+   Returns: true if found, false otherwise
+   
+   Example:
+     fahrzeug = { serviceTyp: 'lackier', additionalServices: [{serviceTyp: 'reifen'}] }
+     hasService(fahrzeug, 'reifen') → true ✅
+     hasService(fahrzeug, 'mechanik') → false ❌
+
+✅ getServiceStatus(fahrzeug, serviceTyp) → String
+   Get current status for specific service (with Lazy Migration)
+   Usage: Kanban column mapping, Status display
+   Returns: Status ID ('neu', 'angenommen', 'in_arbeit', 'fertig', etc.)
+   Priority: serviceStatuses → prozessStatus (legacy) → additionalServices → 'neu'
+   
+   Example:
+     getServiceStatus(fahrzeug, 'lackier') → 'lackierung'
+     getServiceStatus(fahrzeug, 'reifen') → 'neu' (auto-init)
+
+✅ allServicesComplete(fahrzeug, currentService) → Boolean
+   Check if ALL services (primary + additional) reached completion
+   Usage: Invoice creation trigger
+   Returns: true if all completed, false if any still pending
+   Completed statuses: ['fertig', 'bereit', 'abholbereit', 'abgeschlossen']
+   
+   Example:
+     fahrzeug = { serviceTyp: 'lackier', additionalServices: [{serviceTyp: 'reifen'}] }
+     serviceStatuses = { lackier: {status: 'fertig'}, reifen: {status: 'neu'} }
+     allServicesComplete(fahrzeug) → false ❌ (Reifen not complete)
+
+✅ isValidTransition(serviceTyp, currentStatus, newStatus) → Object
+   Validate status transition rules
+   Usage: Drag-drop validation, Status update checks
+   Rules: Forward-only, max 2 steps, special 'terminiert' handling
+   Returns: {isValid: Boolean, reason: String}
+   
+   Example:
+     isValidTransition('lackier', 'vorbereitung', 'lackierung')
+     → {isValid: true, reason: 'Gültige Transition'}
+
+✅ getCurrentUserForAudit() → Object
+   Get user info for audit trail (replaces broken window.currentUser)
+   Priority: sessionStorage.mitarbeiter → firebase.auth() → 'system'
+   Returns: {user: String, userId: String|null, rolle: String|null, email: String|null}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KANBAN WORKFLOW COLUMNS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ALL SERVICES:
+  1. 📦 Anlieferung (Entry point for all)
+  2. 📥/📋 Neu/Angenommen (Status: 'neu' or 'angenommen')
+  3. 📅 Terminiert (Scheduling column - can be set from step 2 anytime)
+  4-7. Service-specific columns (varies per service)
+  8. ✅ Fertig/Bereit (Completion status)
+
+EXAMPLE LACKIERUNG WORKFLOW:
+  📦 Anlieferung
+   ↓
+  📋 Angenommen (status: 'angenommen')
+   ↓
+  📅 Terminiert (status: 'terminiert')
+   ↓
+  🔧 Vorbereitung (status: 'vorbereitung')
+   ↓
+  🎨 Lackierung (status: 'lackierung')
+   ↓
+  ⏱️ Trocknung (status: 'trocknung')
+   ↓
+  🔍 Qualität (status: 'qualitaetskontrolle')
+   ↓
+  ✅ Bereit (status: 'bereit')
+
+EXAMPLE REIFEN WORKFLOW:
+  📦 Anlieferung
+   ↓
+  📥 Eingegangen (status: 'neu')
+   ↓
+  📅 Terminiert (status: 'terminiert')
+   ↓
+  🛒 Bestellung (status: 'bestellung')
+   ↓
+  📦 Angekommen (status: 'angekommen')
+   ↓
+  🔧 Montage (status: 'montage')
+   ↓
+  ⚖️ Wuchten (status: 'wuchten')
+   ↓
+  ✅ Fertig (status: 'fertig')
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATA FLOW: MULTI-SERVICE VEHICLE LIFECYCLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣  USER CREATES VEHICLE (annahme.html)
+    Input: Primary service (radio) + Additional services (checkboxes)
+    Output: fahrzeug document created in Firestore
+    
+    fahrzeug_01: {
+      serviceTyp: 'lackier',
+      additionalServices: [{serviceTyp: 'reifen'}, {serviceTyp: 'pflege'}],
+      serviceStatuses: {}
+    }
+
+2️⃣  VEHICLE APPEARS IN KANBAN
+    Filter: hasService(fahrzeug_01, 'lackier') = true → Show in Lackierung tab
+    Filter: hasService(fahrzeug_01, 'reifen') = true → Show in Reifen tab
+    Filter: hasService(fahrzeug_01, 'pflege') = true → Show in Pflege tab
+    
+    Result: SAME VEHICLE appears in 3 different service tabs!
+
+3️⃣  ADMIN DRAGS VEHICLE (Kanban Drag-Drop)
+    Event: Drag fahrzeug_01 from 'Angenommen' to 'Vorbereitung' in Lackierung tab
+    
+    Steps:
+    a) Validate: isValidTransition('lackier', 'angenommen', 'vorbereitung') → ✅ Valid
+    b) Update: serviceStatuses['lackier'] = { status: 'vorbereitung', timestamp, history }
+    c) Save: Firestore update
+    d) Check: allServicesComplete(fahrzeug_01) → false (others not finished)
+    e) Result: ❌ Do NOT create invoice yet
+
+4️⃣  ALL SERVICES PROGRESS
+    Lackierung: angenommen → vorbereitung → lackierung → trocknung → qualitaetskontrolle → bereit ✅
+    Reifen: neu → bestellung → angekommen → montage → wuchten → fertig ✅
+    Pflege: neu → termin → aufbereitung → qualitaet → fertig ✅
+
+5️⃣  ADMIN FINISHES LAST SERVICE
+    Event: Drag fahrzeug_01 in Pflege tab: qualitaet → fertig
+    
+    Steps:
+    a) Validate: ✅ Valid transition
+    b) Update: serviceStatuses['pflege'] = { status: 'fertig' }
+    c) Check: allServicesComplete(fahrzeug_01) 
+       - lackier: 'bereit' ✅
+       - reifen: 'fertig' ✅
+       - pflege: 'fertig' ✅
+       → Returns TRUE
+    d) Trigger: autoCreateRechnung(fahrzeugId, fahrzeugData)
+    e) Result: ✅ Invoice RE-2025-11-0042 created automatically!
+
+6️⃣  PARTNER REVIEWS & ACCEPTS INVOICE
+    Partner Portal → Rechnungen → fahrzeug_01
+    View: Service breakdown (cost per service)
+    Action: Accept invoice
+    Result: Status → 'akzeptiert', Bonus recorded
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TAB FILTERING LOGIC
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When user clicks "🎨 Lackierung" tab:
+  currentProcess = 'lackier'
+  
+  FOR EACH fahrzeug IN allFahrzeuge:
+    IF hasService(fahrzeug, 'lackier'):  ← Check primary OR additional
+      Get status: getServiceStatus(fahrzeug, 'lackier')
+      Display in appropriate Kanban column based on status
+
+Example with 5 vehicles:
+  fahrzeug_01: lackier + reifen + pflege → hasService(_, 'lackier') = true ✅
+  fahrzeug_02: lackier only → hasService(_, 'lackier') = true ✅
+  fahrzeug_03: reifen only → hasService(_, 'lackier') = false ❌
+  fahrzeug_04: lackier + mechanik → hasService(_, 'lackier') = true ✅
+  fahrzeug_05: tuev only → hasService(_, 'lackier') = false ❌
+  
+  Lackierung tab shows: fahrzeug_01, fahrzeug_02, fahrzeug_04 (3 vehicles)
+  Reifen tab shows: fahrzeug_01, fahrzeug_03 (2 vehicles)
+  Tuev tab shows: fahrzeug_05 (1 vehicle)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL PATTERNS (Bug Fixes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ Pattern #21 (CRITICAL): Multi-Service serviceTyp Overwrite
+   Problem: Kanban drag-drop overwrites primary service
+   Fix: Removed overwrite + 2-Layer Defense
+   Prevention: validateServiceTyp() + Comprehensive Audit (15+ files)
+
+❌ Pattern #14 (CRITICAL): Premature Invoice Creation
+   Problem: Invoice created when only ONE service finished
+   Fix: allServicesComplete() checks ALL services
+   Result: Invoice only created when ALL services complete ✅
+
+❌ Pattern #50 (CRITICAL): Invalid Status Transitions
+   Problem: Backward jumps, excessive skipping allowed
+   Fix: isValidTransition() validates all transitions
+   Rules: Forward-only, max 2 steps, special 'terminiert' handling
+
+❌ Pattern #8 (CRITICAL): Audit-Trail Missing
+   Problem: window.currentUser never initialized → All changes as 'system'
+   Fix: getCurrentUserForAudit() with 3-level fallback
+   Result: Proper user tracking in statusHistory ✅
+
+❌ Pattern #13: additionalServices Corruption
+   Problem: undefined, Object type, primary duplicate
+   Fix: Data Rescue (kanban.html:3805) auto-corrects on load
+   Recovery: 3 auto-fixes applied
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DESIGN PRINCIPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ IMMUTABILITY
+   serviceTyp is set ONCE at creation, NEVER changed
+   Protects data integrity and workflow routing
+
+✅ INDEPENDENT STATUS
+   Each service has own workflow + status
+   Allows parallel processing of multiple services
+
+✅ BACKWARD COMPATIBILITY
+   Old data automatically migrated (Lazy Migration)
+   Zero breaking changes for existing vehicles
+
+✅ LAZY MIGRATION
+   Old format converted on-demand (prozessStatus → serviceStatuses)
+   Non-blocking, async updates to Firestore
+
+✅ AUDIT TRAIL
+   All changes tracked: user + timestamp + note + statusHistory
+   GDPR-compliant tracking
+
+✅ VALIDATION
+   Status transitions validated before execution
+   Prevents invalid states (backward jumps, excessive skipping)
+
+✅ DEFENSIVE PROGRAMMING
+   Handle array/object type variations
+   Auto-correct data corruption on load
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FILES TO READ FOR DEEP UNDERSTANDING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 COMPLETE DOCUMENTATION (40KB):
+   → MULTI-SERVICE-FLOWCHART.txt (in project root)
+     • 11 comprehensive sections
+     • 1,200+ lines of detailed flows
+     • All functions documented
+
+📖 KEY SOURCE FILES:
+   → js/service-types.js (546 lines)
+     Service type registry, normalization, validation
+   
+   → kanban.html (Lines 3426-3591)
+     hasService(), getServiceStatus(), allServicesComplete()
+   
+   → kanban.html (Lines 3259-3352)
+     isValidTransition(), status validation rules
+   
+   → kanban.html (Lines 3066-3237)
+     processDefinitions (all 12 service workflows)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Generated: 2025-11-27
+Version: 8.13 (Complete Multi-Service System Analysis)
