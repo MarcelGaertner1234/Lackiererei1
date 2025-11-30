@@ -1638,12 +1638,20 @@
             const rowIndex = ersatzteileData.length;
 
             // Daten mit Defaults
+            // 🆕 FIX Nov 30, 2025: preisOriginal + preisAftermarket für Varianten-Berechnung
+            const menge = parseFloat(data.anzahl) || parseFloat(data.menge) || 1;
+            const einzelpreis = parseFloat(data.einzelpreis) || parseFloat(data.preis) || 0;
+            const gesamtpreis = parseFloat(data.gesamtpreis) || (menge * einzelpreis);
+
             const teil = {
-                etn: data.etn || '',
-                benennung: data.benennung || '',
-                anzahl: data.anzahl || 1,
-                einzelpreis: data.einzelpreis || 0,
-                gesamtpreis: data.gesamtpreis || (data.anzahl || 1) * (data.einzelpreis || 0)
+                etn: data.etn || data.teilenummer || '',
+                benennung: data.benennung || data.name || '',
+                anzahl: menge,
+                einzelpreis: einzelpreis,
+                gesamtpreis: gesamtpreis,
+                // 🆕 Varianten-Preise: Aus Kalkulation-Daten oder berechnen
+                preisOriginal: parseFloat(data.preisOriginal) || gesamtpreis,
+                preisAftermarket: parseFloat(data.preisAftermarket) || parseFloat(data.preisOriginal) || gesamtpreis
             };
 
             // In globales Array speichern
@@ -1694,7 +1702,19 @@
 
             if (field === 'anzahl' || field === 'einzelpreis') {
                 ersatzteileData[index][field] = parseFloat(value) || 0;
-                ersatzteileData[index].gesamtpreis = ersatzteileData[index].anzahl * ersatzteileData[index].einzelpreis;
+                const newGesamtpreis = ersatzteileData[index].anzahl * ersatzteileData[index].einzelpreis;
+                ersatzteileData[index].gesamtpreis = newGesamtpreis;
+
+                // 🆕 FIX Nov 30, 2025: Varianten-Preise proportional aktualisieren
+                // Wenn manuell geändert, aktualisieren wir Original gleich (Aftermarket behält Verhältnis)
+                const oldOriginal = ersatzteileData[index].preisOriginal || newGesamtpreis;
+                const oldAftermarket = ersatzteileData[index].preisAftermarket || oldOriginal;
+                const ratio = oldAftermarket / Math.max(oldOriginal, 0.01); // Verhältnis Original:Aftermarket
+
+                ersatzteileData[index].preisOriginal = newGesamtpreis;
+                ersatzteileData[index].preisAftermarket = newGesamtpreis * ratio;
+
+                console.log(`📝 Ersatzteil [${index}] aktualisiert: Original=${newGesamtpreis}€, Aftermarket=${(newGesamtpreis * ratio).toFixed(2)}€`);
 
                 const row = document.querySelector(`tr[data-index="${index}"]`);
                 if (row) {
@@ -2030,20 +2050,22 @@
         }
 
         function updateKostenaufschluesselung() {
-            // Ersatzteile: Getrennt nach Original und Aftermarket berechnen
+            // 🆕 FIX (Nov 30, 2025): Original/Aftermarket aus den Ersatzteil-Feldern berechnen
+            // kalkulation.html speichert: preisOriginal, preisAftermarket pro Ersatzteil
             let ersatzteileOriginalSumme = 0;
             let ersatzteileAftermarketSumme = 0;
             ersatzteileData.forEach(t => {
-                const preis = t.gesamtpreis || 0;
-                // Aftermarket-Erkennung: oeNummer enthält "AFT" oder "nach" oder ist leer
-                const isAftermarket = !t.etn || t.etn.toLowerCase().includes('aft') || t.etn.toLowerCase().includes('nach');
-                if (isAftermarket) {
-                    ersatzteileAftermarketSumme += preis;
-                } else {
-                    ersatzteileOriginalSumme += preis;
-                }
+                // preisOriginal/preisAftermarket sind bereits Gesamtpreise (menge * einzelpreis)
+                // Sie wurden in addErsatzteilRow() oder updateErsatzteil() berechnet
+                const preisOriginal = parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0;
+                const preisAftermarket = parseFloat(t.preisAftermarket) || preisOriginal;
+
+                ersatzteileOriginalSumme += preisOriginal;
+                ersatzteileAftermarketSumme += preisAftermarket;
+
+                console.log(`📦 Ersatzteil: ${t.benennung || 'Unbekannt'} - Original: ${preisOriginal.toFixed(2)}€, Aftermarket: ${preisAftermarket.toFixed(2)}€`);
             });
-            const ersatzteileSumme = ersatzteileOriginalSumme + ersatzteileAftermarketSumme;
+            const ersatzteileSumme = ersatzteileOriginalSumme; // Original als Standard
 
             const arbeitslohnSumme = arbeitslohnData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const lackierungSumme = lackierungData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
@@ -2062,16 +2084,18 @@
             const mwstSatz = 19;
 
             // 🆕 FIX (Nov 30, 2025): Varianten-Preise live aktualisieren
-            // Original-Variante: Basis + alle Ersatzteile (Original + Aftermarket als Original-Preis)
-            const nettoOriginal = basisSumme + ersatzteileSumme;
+            // Original-Variante: Basis + Original-Ersatzteile
+            const nettoOriginal = basisSumme + ersatzteileOriginalSumme;
             const mwstOriginal = nettoOriginal * (mwstSatz / 100);
             const bruttoOriginal = nettoOriginal + mwstOriginal;
 
             // Aftermarket-Variante: Basis + Aftermarket-Ersatzteile (günstiger)
-            // Falls keine Aftermarket-Ersatzteile: Gleich wie Original
-            const nettoAftermarket = basisSumme + (ersatzteileAftermarketSumme > 0 ? ersatzteileAftermarketSumme : ersatzteileSumme);
+            // WICHTIG: ersatzteileAftermarketSumme enthält bereits Aftermarket-Preise (oder Original als Fallback)
+            const nettoAftermarket = basisSumme + ersatzteileAftermarketSumme;
             const mwstAftermarket = nettoAftermarket * (mwstSatz / 100);
             const bruttoAftermarket = nettoAftermarket + mwstAftermarket;
+
+            console.log(`📊 Varianten-Berechnung: Original-ET=${ersatzteileOriginalSumme}€, Aftermarket-ET=${ersatzteileAftermarketSumme}€, Basis=${basisSumme}€`);
 
             // Netto-Summe (MIT Ersatzfahrzeug-Kosten) - für vereinbarter Preis
             const nettoSumme = basisSumme + ersatzteileSumme;
@@ -2316,14 +2340,20 @@
                     const kalk = currentEntwurf.kalkulation;
 
                     // Ersatzteile: name→benennung, teilenummer→etn, menge→anzahl, preis→einzelpreis
+                    // 🆕 FIX Nov 30, 2025: preisOriginal + preisAftermarket für Varianten-Berechnung
                     if (Array.isArray(kalk.ersatzteile)) {
                         kalk.ersatzteile.forEach(item => {
+                            const menge = item.menge || item.anzahl || 1;
+                            const einzelpreis = item.preis || item.einzelpreis || item.preisOriginal || 0;
                             addErsatzteilRow({
                                 etn: item.teilenummer || item.etn || '',
                                 benennung: item.name || item.benennung || '',
-                                anzahl: item.menge || item.anzahl || 1,
-                                einzelpreis: item.preis || item.einzelpreis || 0,
-                                gesamtpreis: (item.menge || item.anzahl || 1) * (item.preis || item.einzelpreis || 0)
+                                anzahl: menge,
+                                einzelpreis: einzelpreis,
+                                gesamtpreis: menge * einzelpreis,
+                                // 🆕 Varianten-Preise übernehmen
+                                preisOriginal: item.preisOriginal || (menge * einzelpreis),
+                                preisAftermarket: item.preisAftermarket || item.preisOriginal || (menge * einzelpreis)
                             });
                         });
                     }
