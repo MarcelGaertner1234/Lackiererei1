@@ -100,6 +100,28 @@ function getOpenAIApiKey() {
 const SENDER_EMAIL = "Gaertner-marcel@web.de"; // MUSS in AWS SES verifiziert werden!
 
 // ============================================
+// HELPER: HTML Escape for Email Templates (XSS Prevention)
+// ============================================
+
+/**
+ * Escapes HTML special characters to prevent XSS in email templates
+ * @param {string|any} text - The text to escape
+ * @returns {string} - Escaped text safe for HTML
+ */
+function escapeHtml(text) {
+  if (text == null) return '';
+  if (typeof text !== 'string') {
+    text = String(text);
+  }
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ============================================
 // HELPER: Get All Active Werkstätten (BUG #8 FIX)
 // ============================================
 
@@ -226,7 +248,8 @@ exports.onStatusChange = functions
       };
 
       Object.keys(variables).forEach((key) => {
-        template = template.replace(new RegExp(`{{${key}}}`, "g"), variables[key]);
+        // XSS Prevention: Escape HTML in template variables
+        template = template.replace(new RegExp(`{{${key}}}`, "g"), escapeHtml(variables[key]));
       });
 
       // Initialize AWS SES (lazy - only when needed)
@@ -383,7 +406,8 @@ exports.onNewPartnerAnfrage = functions
       };
 
       Object.keys(variables).forEach((key) => {
-        template = template.replace(new RegExp(`{{${key}}}`, "g"), variables[key]);
+        // XSS Prevention: Escape HTML in template variables
+        template = template.replace(new RegExp(`{{${key}}}`, "g"), escapeHtml(variables[key]));
       });
 
       // Initialize AWS SES (lazy - only when needed)
@@ -504,7 +528,8 @@ exports.onUserApproved = functions
       };
 
       Object.keys(variables).forEach((key) => {
-        template = template.replace(new RegExp(`{{${key}}}`, "g"), variables[key]);
+        // XSS Prevention: Escape HTML in template variables
+        template = template.replace(new RegExp(`{{${key}}}`, "g"), escapeHtml(variables[key]));
       });
 
       // Send email
