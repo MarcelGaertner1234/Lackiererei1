@@ -2050,8 +2050,16 @@
         }
 
         function updateKostenaufschluesselung() {
-            // Summen aus den Tabellen berechnen
-            const ersatzteileSumme = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.gesamtpreis) || 0), 0);
+            // 🆕 FIX (Nov 30, 2025): Berechne Original/Aftermarket aus den individuellen Ersatzteilen!
+            // Die Ersatzteile haben preisOriginal und preisAftermarket - DIESE verwenden!
+
+            // Ersatzteile-Summen SEPARAT berechnen (Original vs Aftermarket)
+            const summeErsatzteileOriginal = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0), 0);
+            const summeErsatzteileAftermarket = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.preisAftermarket) || parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0), 0);
+            const ersatzteileSumme = summeErsatzteileOriginal; // Für Anzeige (Original = Standardpreis)
+
+            console.log(`📦 Ersatzteile-Summen: Original=${summeErsatzteileOriginal.toFixed(2)}€, Aftermarket=${summeErsatzteileAftermarket.toFixed(2)}€`);
+
             const arbeitslohnSumme = arbeitslohnData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const lackierungSumme = lackierungData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const materialienSumme = materialienData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
@@ -2063,46 +2071,33 @@
                 : 0;
 
             // Basis-Summe (Arbeitslohn + Lackierung + Material + Ersatzfahrzeug)
+            // Diese ist für BEIDE Varianten gleich (nur Ersatzteile unterscheiden sich)
             const basisSumme = arbeitslohnSumme + lackierungSumme + materialienSumme + ersatzfahrzeugSumme;
 
             // MwSt berechnen (Standard: 19%)
             const mwstSatz = 19;
 
-            // Netto-Summe (MIT Ersatzfahrzeug-Kosten) - für vereinbarter Preis
-            const nettoSumme = basisSumme + ersatzteileSumme;
-            const mwstBetrag = nettoSumme * (mwstSatz / 100);
-            const bruttoSumme = nettoSumme + mwstBetrag;
+            // 🆕 Berechne ZWEI Brutto-Summen (Original und Aftermarket)
+            const nettoOriginal = basisSumme + summeErsatzteileOriginal;
+            const nettoAftermarket = basisSumme + summeErsatzteileAftermarket;
 
-            // Vereinbarter Preis auto-update (wenn Kalkulation verwendet wird)
+            const mwstOriginal = nettoOriginal * (mwstSatz / 100);
+            const mwstAftermarket = nettoAftermarket * (mwstSatz / 100);
+
+            const bruttoOriginal = nettoOriginal + mwstOriginal;
+            const bruttoAftermarket = nettoAftermarket + mwstAftermarket;
+
+            console.log(`💰 Varianten-Preise berechnet: Original=${bruttoOriginal.toFixed(2)}€, Aftermarket=${bruttoAftermarket.toFixed(2)}€`);
+
+            // Vereinbarter Preis = Original-Preis (Standard)
             const vereinbarterPreis = document.getElementById('vereinbarterPreis');
-            if (vereinbarterPreis && bruttoSumme > 0) {
-                vereinbarterPreis.value = bruttoSumme.toFixed(2);
-                console.log(`✅ Vereinbarter Preis auto-updated: ${bruttoSumme.toFixed(2)} €`);
+            if (vereinbarterPreis && bruttoOriginal > 0) {
+                vereinbarterPreis.value = bruttoOriginal.toFixed(2);
+                console.log(`✅ Vereinbarter Preis auto-updated: ${bruttoOriginal.toFixed(2)} €`);
             }
 
-            // 🆕 FIX (Nov 30, 2025): Varianten-Preise PROPORTIONAL aktualisieren
-            // Die Kalkulation hat Original/Aftermarket Verhältnis - dieses beibehalten!
-            const existingOriginal = parseFloat(document.getElementById('summeBruttoOriginal')?.value) || 0;
-            const existingAftermarket = parseFloat(document.getElementById('summeBruttoAftermarket')?.value) || 0;
-
-            // Globale Variable für Verhältnis (wird beim Laden des Entwurfs gesetzt)
-            // Falls noch nicht gesetzt, berechne aus Hidden Fields
-            if (!window.variantenRatio && existingOriginal > 0 && existingAftermarket > 0) {
-                window.variantenRatio = existingAftermarket / existingOriginal;
-                console.log(`📊 Varianten-Verhältnis gespeichert: ${(window.variantenRatio * 100).toFixed(1)}%`);
-            }
-
-            // Verwende gespeichertes Verhältnis oder fallback auf 1.0
-            const ratio = window.variantenRatio || 1.0;
-
-            // Berechne neue Varianten-Preise basierend auf aktuellem bruttoSumme
-            // Original = bruttoSumme (aktueller Preis)
-            // Aftermarket = bruttoSumme * Verhältnis (proportional günstiger)
-            const newBruttoOriginal = bruttoSumme;
-            const newBruttoAftermarket = bruttoSumme * ratio;
-
-            console.log(`📊 Varianten aktualisiert: Original=${newBruttoOriginal.toFixed(2)}€, Aftermarket=${newBruttoAftermarket.toFixed(2)}€ (Verhältnis: ${(ratio * 100).toFixed(1)}%)`);
-            updateVariantenPreise(newBruttoOriginal, newBruttoAftermarket);
+            // Varianten-Preise aktualisieren (Original ≠ Aftermarket basierend auf Ersatzteile-Preisen!)
+            updateVariantenPreise(bruttoOriginal, bruttoAftermarket);
         }
 
         /**
@@ -2387,12 +2382,17 @@
                 else if (Array.isArray(currentEntwurf.ersatzteile) && currentEntwurf.ersatzteile.length > 0) {
                     console.log('📊 Lade Ersatzteile von Root-Ebene:', currentEntwurf.ersatzteile);
                     currentEntwurf.ersatzteile.forEach(item => {
+                        const menge = item.menge || item.anzahl || 1;
+                        const einzelpreis = item.preis || item.einzelpreis || item.preisOriginal || 0;
                         addErsatzteilRow({
                             etn: item.teilenummer || item.etn || '',
                             benennung: item.name || item.benennung || '',
-                            anzahl: item.menge || item.anzahl || 1,
-                            einzelpreis: item.preis || item.einzelpreis || 0,
-                            gesamtpreis: (item.menge || item.anzahl || 1) * (item.preis || item.einzelpreis || 0)
+                            anzahl: menge,
+                            einzelpreis: einzelpreis,
+                            gesamtpreis: menge * einzelpreis,
+                            // 🆕 FIX Nov 30, 2025: Varianten-Preise auch von Root-Ebene übernehmen
+                            preisOriginal: item.preisOriginal || (menge * einzelpreis),
+                            preisAftermarket: item.preisAftermarket || item.preisOriginal || (menge * einzelpreis)
                         });
                     });
                     console.log('✅ Ersatzteile von Root geladen');
@@ -2689,16 +2689,10 @@
                 const summeBruttoOriginal = parseFloat(kalkData.summeBruttoOriginal) || 0;
                 const summeBruttoAftermarket = parseFloat(kalkData.summeBruttoAftermarket) || 0;
 
-                console.log('💰 Varianten-Preise:', { summeBruttoOriginal, summeBruttoAftermarket });
+                console.log('💰 Varianten-Preise aus Kalkulation:', { summeBruttoOriginal, summeBruttoAftermarket });
 
-                // 🆕 FIX Nov 30, 2025: Verhältnis SOFORT speichern (BEVOR updateKostenaufschluesselung() aufgerufen wird!)
-                // Dieses Verhältnis wird später in updateKostenaufschluesselung() verwendet
-                if (summeBruttoOriginal > 0 && summeBruttoAftermarket > 0) {
-                    window.variantenRatio = summeBruttoAftermarket / summeBruttoOriginal;
-                    console.log(`📊 Varianten-Verhältnis aus Kalkulation: ${(window.variantenRatio * 100).toFixed(1)}%`);
-                } else {
-                    window.variantenRatio = 1.0; // Default: Keine Unterscheidung
-                }
+                // 🆕 FIX Nov 30, 2025: Kein Ratio mehr - wir berechnen direkt aus den Ersatzteile-Preisen!
+                // Die ersatzteileData hat preisOriginal + preisAftermarket für jedes Teil
 
                 // Hidden Inputs setzen
                 document.getElementById('summeBruttoOriginal').value = summeBruttoOriginal || '';
