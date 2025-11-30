@@ -8934,9 +8934,30 @@ REGELN:
                 const normalized = { ...details };
 
                 // ===== REIFEN-MAPPING =====
+                // multi-service-anfrage.html: art, groesse, anzahl, info
+                // SERVICE_CONFIG: reifengroesse, reifenTyp, felgenTyp, reifenanzahl
                 if (normalized.reifentyp !== undefined) {
                     normalized.reifenTyp = normalized.reifentyp;
                     delete normalized.reifentyp;
+                }
+                if (normalized.groesse !== undefined) {
+                    normalized.reifengroesse = normalized.groesse;
+                    // Behalte auch groesse für Fallback
+                }
+                if (normalized.anzahl !== undefined) {
+                    normalized.reifenanzahl = String(normalized.anzahl);
+                    // Behalte auch anzahl für Fallback
+                }
+                if (normalized.info !== undefined) {
+                    normalized.reifenInfo = normalized.info;
+                    // Behalte auch info für Fallback
+                }
+
+                // ===== LACKIER-MAPPING =====
+                // multi-service-anfrage.html: art, teile, info, karosserie
+                // SERVICE_CONFIG: farbcode, karosserie, ersatzteil, teile, schadenBeschreibung
+                if (normalized.info !== undefined && normalized.schadenBeschreibung === undefined) {
+                    normalized.schadenBeschreibung = normalized.info;
                 }
 
                 // ===== PFLEGE-MAPPING =====
@@ -8994,15 +9015,42 @@ REGELN:
                 return normalized;
             };
 
-            // 1. Primary Service Details laden (aus serviceData oder serviceDetails)
-            const primaryServicePartner = kalkWizardData.services[0];
-            const primaryDetails = selectedPartnerAnfrage.serviceDetails || selectedPartnerAnfrage.serviceData || {};
-            if (primaryDetails && typeof primaryDetails === 'object' && Object.keys(primaryDetails).length > 0) {
-                kalkWizardData.serviceDetailsPerService[primaryServicePartner] = normalizeServiceDetailsPartner(primaryDetails);
-                console.log(`📋 Partner Primary Service "${primaryServicePartner}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[primaryServicePartner]);
+            // 🆕 FIX (2025-11-30): Multi-Service serviceData korrekt laden
+            // Bei Multi-Service Anfragen ist serviceData bereits pro Service-Key strukturiert:
+            // serviceData = { 'lackier': {...}, 'reifen': {...} }
+            // Bei Single-Service Anfragen ist serviceData direkt das Details-Objekt:
+            // serviceData = { art: '...', teile: '...' }
+
+            const serviceDataFromAnfrage = selectedPartnerAnfrage.serviceData || {};
+
+            // Prüfen ob serviceData pro-Service-Key strukturiert ist (Multi-Service Format)
+            const isMultiServiceFormat = kalkWizardData.isMultiService &&
+                kalkWizardData.services.some(svc => serviceDataFromAnfrage[svc] !== undefined);
+
+            if (isMultiServiceFormat) {
+                // MULTI-SERVICE FORMAT: serviceData[serviceTyp] = Details
+                console.log('📦 [MULTI-SERVICE] Lade Service-Details pro Service-Key...');
+                kalkWizardData.services.forEach(serviceTyp => {
+                    const serviceDetails = serviceDataFromAnfrage[serviceTyp];
+                    if (serviceDetails && typeof serviceDetails === 'object' && Object.keys(serviceDetails).length > 0) {
+                        kalkWizardData.serviceDetailsPerService[serviceTyp] = normalizeServiceDetailsPartner(serviceDetails);
+                        console.log(`   ✅ "${serviceTyp}" Details geladen:`, kalkWizardData.serviceDetailsPerService[serviceTyp]);
+                    } else {
+                        console.log(`   ⚠️ "${serviceTyp}" hat keine Details`);
+                    }
+                });
+            } else {
+                // SINGLE-SERVICE FORMAT: serviceData = Details (oder serviceDetails)
+                console.log('📦 [SINGLE-SERVICE] Lade Service-Details als einzelnes Objekt...');
+                const primaryServicePartner = kalkWizardData.services[0];
+                const primaryDetails = selectedPartnerAnfrage.serviceDetails || serviceDataFromAnfrage || {};
+                if (primaryDetails && typeof primaryDetails === 'object' && Object.keys(primaryDetails).length > 0) {
+                    kalkWizardData.serviceDetailsPerService[primaryServicePartner] = normalizeServiceDetailsPartner(primaryDetails);
+                    console.log(`   ✅ "${primaryServicePartner}" Details vorausgefüllt:`, kalkWizardData.serviceDetailsPerService[primaryServicePartner]);
+                }
             }
 
-            // 2. Additional Services Details laden
+            // 2. Additional Services Details laden (falls additionalServices Array vorhanden)
             if (kalkWizardData.additionalServicesFromEntwurf.length > 0) {
                 kalkWizardData.additionalServicesFromEntwurf.forEach(addService => {
                     if (addService.serviceTyp && addService.serviceDetails && typeof addService.serviceDetails === 'object') {
@@ -9125,7 +9173,49 @@ REGELN:
             'lackier': {
                 teile: ['Stoßfänger vorne', 'Stoßfänger hinten', 'Motorhaube', 'Kotflügel vorne links', 'Kotflügel vorne rechts', 'Tür vorne links', 'Tür vorne rechts', 'Tür hinten links', 'Tür hinten rechts', 'Seitenwand links', 'Seitenwand rechts', 'Dach', 'Heckklappe', 'Schweller links', 'Schweller rechts', 'A-Säule', 'B-Säule', 'C-Säule', 'Spiegel links', 'Spiegel rechts'],
                 arbeiten: ['lackieren', 'grundieren', 'spachteln', 'schleifen', 'polieren', 'demontieren', 'montieren', 'ersetzen', 'austauschen'],
-                tabellen: { ersatzteile: true, arbeitslohn: true, lackierung: true, materialien: false }
+                tabellen: { ersatzteile: true, arbeitslohn: true, lackierung: true, materialien: false },
+                // 🆕 Nov 30, 2025: Zusatzfelder für Lackierung (aus Partner-Anfrage)
+                zusatzfelder: {
+                    farbcode: {
+                        label: 'Farbcode',
+                        typ: 'text',
+                        placeholder: 'z.B. LY9T, LA7W, LC9X...',
+                        required: false
+                    },
+                    karosserie: {
+                        label: 'Demontage benötigt?',
+                        typ: 'select',
+                        required: false,
+                        options: [
+                            { value: '', label: 'Nicht angegeben' },
+                            { value: 'ja', label: 'Ja - Demontage erforderlich' },
+                            { value: 'nein', label: 'Nein - keine Demontage' }
+                        ]
+                    },
+                    ersatzteil: {
+                        label: 'Ersatzteil-Präferenz',
+                        typ: 'select',
+                        required: false,
+                        options: [
+                            { value: '', label: 'Nicht angegeben' },
+                            { value: 'original', label: 'Original (OEM)' },
+                            { value: 'nachbau', label: 'Nachbau / Aftermarket' },
+                            { value: 'egal', label: 'Egal' }
+                        ]
+                    },
+                    teile: {
+                        label: 'Zu lackierende Teile',
+                        typ: 'textarea',
+                        placeholder: 'z.B. Motorhaube, Kotflügel vorne links...',
+                        required: false
+                    },
+                    schadenBeschreibung: {
+                        label: 'Schadensbeschreibung',
+                        typ: 'textarea',
+                        placeholder: 'Beschreiben Sie den Schaden oder die gewünschte Lackierung...',
+                        required: false
+                    }
+                }
             },
             'versicherung': {
                 teile: ['Stoßfänger vorne', 'Stoßfänger hinten', 'Motorhaube', 'Kotflügel vorne links', 'Kotflügel vorne rechts', 'Tür vorne links', 'Tür vorne rechts', 'Tür hinten links', 'Tür hinten rechts', 'Seitenwand links', 'Seitenwand rechts', 'Dach', 'Heckklappe', 'Rahmen/Struktur', 'Airbag', 'Lenkung', 'Achse vorne', 'Achse hinten'],
@@ -10494,11 +10584,16 @@ REGELN:
 
         /**
          * Rendert ein Feld für Multi-Service (mit Service-Prefix in ID)
+         * 🆕 FIX (2025-11-30): Vorausgefüllte Werte aus serviceDetailsPerService laden
          */
         function renderServiceFieldForMulti(service, fieldId, config) {
             const required = config.required ? '<span class="required-star">*</span>' : '';
             const requiredAttr = config.required ? 'required' : '';
             const fullFieldId = `serviceField_${service}_${fieldId}`;
+
+            // 🆕 FIX: Vorausgefüllten Wert aus serviceDetailsPerService holen
+            const prefillData = kalkWizardData.serviceDetailsPerService[service] || {};
+            const prefillValue = prefillData[fieldId] || '';
 
             let inputHtml = '';
 
@@ -10507,7 +10602,7 @@ REGELN:
                     inputHtml = `
                         <select id="${fullFieldId}" name="${fieldId}" ${requiredAttr} onchange="saveServiceFieldValueMulti('${service}', '${fieldId}')">
                             <option value="">-- Bitte wählen --</option>
-                            ${config.options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('')}
+                            ${config.options.map(opt => `<option value="${opt.value}" ${prefillValue === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
                         </select>
                     `;
                     break;
@@ -10516,6 +10611,7 @@ REGELN:
                     inputHtml = `
                         <input type="text" id="${fullFieldId}" name="${fieldId}" ${requiredAttr}
                                placeholder="${config.placeholder || ''}"
+                               value="${prefillValue}"
                                onchange="saveServiceFieldValueMulti('${service}', '${fieldId}')">
                     `;
                     break;
@@ -10524,14 +10620,14 @@ REGELN:
                     inputHtml = `
                         <textarea id="${fullFieldId}" name="${fieldId}" ${requiredAttr}
                                   placeholder="${config.placeholder || ''}"
-                                  onchange="saveServiceFieldValueMulti('${service}', '${fieldId}')"></textarea>
+                                  onchange="saveServiceFieldValueMulti('${service}', '${fieldId}')">${prefillValue}</textarea>
                     `;
                     break;
 
                 case 'number':
                     inputHtml = `
                         <input type="number" id="${fullFieldId}" name="${fieldId}" ${requiredAttr}
-                               min="${config.min || ''}" max="${config.max || ''}" value="${config.default || ''}"
+                               min="${config.min || ''}" max="${config.max || ''}" value="${prefillValue || config.default || ''}"
                                onchange="saveServiceFieldValueMulti('${service}', '${fieldId}')">
                     `;
                     break;
@@ -10539,6 +10635,7 @@ REGELN:
                 case 'date':
                     inputHtml = `
                         <input type="date" id="${fullFieldId}" name="${fieldId}" ${requiredAttr}
+                               value="${prefillValue}"
                                onchange="saveServiceFieldValueMulti('${service}', '${fieldId}')">
                     `;
                     break;
@@ -10555,17 +10652,21 @@ REGELN:
                                 <i data-feather="upload"></i>
                                 <span>${config.placeholder || 'Datei hochladen'}</span>
                             </label>
+                            ${prefillValue ? `<div class="file-uploaded-info" style="margin-top: 8px; font-size: 12px; color: #4caf50;">✅ Datei vorhanden</div>` : ''}
                         </div>
                     `;
                     break;
 
                 default:
-                    inputHtml = `<input type="text" id="${fullFieldId}" name="${fieldId}" ${requiredAttr}>`;
+                    inputHtml = `<input type="text" id="${fullFieldId}" name="${fieldId}" ${requiredAttr} value="${prefillValue}">`;
             }
+
+            // 🆕 FIX: Zeige an wenn Wert vorausgefüllt wurde
+            const prefillBadge = prefillValue ? '<span style="font-size: 10px; color: #4caf50; margin-left: 6px;">✓ Vom Partner</span>' : '';
 
             return `
                 <div class="form-group">
-                    <label for="${fullFieldId}">${config.label} ${required}</label>
+                    <label for="${fullFieldId}">${config.label} ${required}${prefillBadge}</label>
                     ${inputHtml}
                     ${config.help ? `<small class="form-help">${config.help}</small>` : ''}
                 </div>
