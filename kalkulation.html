@@ -2730,6 +2730,104 @@
             color: var(--color-text-primary);
         }
 
+        /* 🆕 Multi-Select Checkmark (Nov 30, 2025) */
+        .service-part-btn__check {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 20px;
+            height: 20px;
+            background: var(--color-success);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .service-part-btn {
+            position: relative;
+        }
+
+        /* 🆕 Step 4: Multi-Service Teile-Übersicht (Nov 30, 2025) */
+        .step4-parts-overview {
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            margin-bottom: var(--space-4);
+            border: 1px solid var(--color-border);
+        }
+
+        .step4-parts-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-weight: 600;
+            margin-bottom: var(--space-3);
+            color: var(--color-text-primary);
+        }
+
+        .step4-parts-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+        }
+
+        .step4-part-tab {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-3);
+            background: var(--color-background);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-full);
+            cursor: pointer;
+            font-size: var(--font-size-sm);
+            transition: all 0.2s ease;
+        }
+
+        .step4-part-tab:hover {
+            border-color: var(--color-primary);
+        }
+
+        .step4-part-tab.active {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            color: white;
+        }
+
+        .step4-part-tab.completed {
+            background: var(--color-success-light);
+            border-color: var(--color-success);
+        }
+
+        .step4-part-tab.completed .step4-part-check {
+            display: flex;
+        }
+
+        .step4-part-tab__icon {
+            font-size: 16px;
+        }
+
+        .step4-part-tab__service {
+            font-size: var(--font-size-xs);
+            opacity: 0.7;
+        }
+
+        .step4-part-check {
+            display: none;
+            width: 16px;
+            height: 16px;
+            background: var(--color-success);
+            color: white;
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+
         /* Repair Options */
         .kalk-repair-options {
             padding: var(--space-6);
@@ -5259,10 +5357,22 @@
                         </div>
                     </div>
 
+                    <!-- 🆕 Nov 30, 2025: Multi-Service Teile-Übersicht -->
+                    <div class="step4-parts-overview" id="step4PartsOverview" style="display: none;">
+                        <div class="step4-parts-header">
+                            <i data-feather="layers"></i>
+                            <span>Ausgewählte Teile (<span id="step4PartsCount">0</span>)</span>
+                        </div>
+                        <div class="step4-parts-tabs" id="step4PartsTabs">
+                            <!-- Dynamisch: Tabs für jedes Teil -->
+                        </div>
+                    </div>
+
                     <!-- Gewähltes Teil anzeigen -->
                     <div class="kalk-selected-vehicle" id="step4PartInfo">
                         <span class="kalk-selected-vehicle__label">Teil:</span>
                         <span class="kalk-selected-vehicle__value" id="step4PartDisplay">-</span>
+                        <span class="kalk-selected-vehicle__service" id="step4PartService" style="margin-left: var(--space-2); color: var(--color-text-secondary); font-size: var(--font-size-sm);"></span>
                     </div>
 
                     <!-- 🆕 Fotos aus Entwurf/Annahme -->
@@ -10484,34 +10594,55 @@ REGELN:
                     return validateStep2b();
 
                 case 3:
-                    // Teil muss ausgewählt sein
-                    if (!kalkWizardData.currentPart && kalkWizardData.teile.length === 0) {
+                    // 🆕 Nov 30, 2025: Multi-Service Support
+                    // Teil muss ausgewählt sein (aus teilePerService ODER altes System)
+                    let totalPartsSelected = 0;
+
+                    // Neue Multi-Service Teile zählen
+                    if (kalkWizardData.teilePerService) {
+                        for (const service of Object.keys(kalkWizardData.teilePerService)) {
+                            totalPartsSelected += kalkWizardData.teilePerService[service].length;
+                        }
+                    }
+
+                    // Fallback: Altes System (currentPart oder teile Array)
+                    if (totalPartsSelected === 0 && !kalkWizardData.currentPart && kalkWizardData.teile.length === 0) {
                         showToast('Bitte wählen Sie mindestens ein Teil aus', 'warning');
                         return false;
                     }
+
+                    // 🆕 teilePerService in kalkWizardData.teile zusammenführen für Step 4/5
+                    mergeTeilePerServiceIntoTeile();
+
                     return true;
 
                 case 4:
-                    // Fall 1: Es gibt bereits Teile in der Liste → OK, weiter erlaubt
-                    if (kalkWizardData.teile.length > 0) {
-                        // Aber wenn aktuell ein Teil bearbeitet wird, muss auch Reparatur gewählt sein
-                        if (kalkWizardData.currentPart) {
-                            const checkedRepairs = document.querySelectorAll('input[name="repair"]:checked');
-                            if (checkedRepairs.length === 0) {
-                                showToast('Bitte wählen Sie mindestens eine Reparaturart für das aktuelle Teil', 'warning');
-                                return false;
+                    // 🆕 Nov 30, 2025: Multi-Service - Arbeiten für aktuelles Teil speichern
+                    saveCurrentPartArbeiten();
+
+                    // Prüfen ob alle Teile mindestens eine Arbeit haben
+                    const teile = kalkWizardData.teile || [];
+
+                    // Wenn es Teile gibt
+                    if (teile.length > 0) {
+                        // Prüfe ob alle Teile Arbeiten haben
+                        const teileOhneArbeiten = teile.filter(t => !t.arbeiten || t.arbeiten.length === 0);
+
+                        if (teileOhneArbeiten.length > 0) {
+                            // Finde das erste Teil ohne Arbeiten und wechsle dorthin
+                            const firstMissingIndex = teile.findIndex(t => !t.arbeiten || t.arbeiten.length === 0);
+                            if (firstMissingIndex !== kalkWizardData.step4ActivePartIndex) {
+                                switchStep4Part(firstMissingIndex);
                             }
+                            showToast(`Bitte wählen Sie Arbeiten für "${teileOhneArbeiten[0].teil}" aus`, 'warning');
+                            return false;
                         }
                         return true;
                     }
 
-                    // Fall 2: Noch keine Teile → muss aktuelles Teil mit Reparatur haben
-                    const checkedRepairs4 = document.querySelectorAll('input[name="repair"]:checked');
-                    if (checkedRepairs4.length === 0) {
-                        showToast('Bitte wählen Sie mindestens eine Reparaturart', 'warning');
-                        return false;
-                    }
-                    return true;
+                    // Fallback: Kein Teil vorhanden
+                    showToast('Bitte wählen Sie mindestens ein Teil in Schritt 3', 'warning');
+                    return false;
 
                 default:
                     return true;
@@ -10580,11 +10711,8 @@ REGELN:
                     break;
 
                 case 4:
-                    // Teil-Info in Step 4 (Reparaturart) anzeigen
-                    const step4PartDisplay = document.getElementById('step4PartDisplay');
-                    if (step4PartDisplay && kalkWizardData.currentPart) {
-                        step4PartDisplay.textContent = kalkWizardData.currentPart;
-                    }
+                    // 🆕 Nov 30, 2025: Multi-Service Teile-Tabs rendern
+                    renderStep4PartsTabs();
                     // Service-Name anzeigen
                     const step4ServiceName = document.getElementById('step4ServiceName');
                     if (step4ServiceName && kalkWizardData.serviceArt) {
@@ -12685,6 +12813,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
         }
 
         // Rendert die service-spezifischen Teile in Step 3
+        // 🆕 Nov 30, 2025: Multi-Select Support
         function renderServiceParts() {
             const serviceArt = kalkWizardData.serviceArt;
             const config = SERVICE_CONFIG[serviceArt];
@@ -12698,14 +12827,24 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 serviceName.textContent = SERVICE_LABELS[serviceArt] || serviceArt;
             }
 
-            // Teile-Buttons generieren
-            grid.innerHTML = config.teile.map(teil => `
-                <button class="service-part-btn ${kalkWizardData.currentPart === teil ? 'selected' : ''}"
-                        onclick="selectServicePart('${teil}', this)">
-                    <span class="service-part-btn__icon">${getPartIcon(teil)}</span>
-                    <span class="service-part-btn__label">${teil}</span>
-                </button>
-            `).join('');
+            // Bereits ausgewählte Teile für diesen Service
+            const selectedParts = kalkWizardData.teilePerService?.[serviceArt] || [];
+
+            // Teile-Buttons generieren mit Multi-Select
+            grid.innerHTML = config.teile.map(teil => {
+                const isSelected = selectedParts.includes(teil);
+                return `
+                    <button class="service-part-btn ${isSelected ? 'selected' : ''}"
+                            onclick="selectServicePart('${teil}', this)">
+                        <span class="service-part-btn__icon">${getPartIcon(teil)}</span>
+                        <span class="service-part-btn__label">${teil}</span>
+                        ${isSelected ? '<span class="service-part-btn__check">✓</span>' : ''}
+                    </button>
+                `;
+            }).join('');
+
+            // Ausgewählte Teile Anzeige aktualisieren
+            updateSelectedPartsDisplay();
         }
 
         // ============================================
@@ -12877,30 +13016,283 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
         }
 
         // Service-Teil auswählen (aus Liste)
+        // 🆕 Nov 30, 2025: Multi-Select Support - Mehrere Teile pro Service
         function selectServicePart(partName, element) {
-            // Vorherige Auswahl entfernen
-            document.querySelectorAll('.service-part-btn.selected').forEach(btn => {
-                btn.classList.remove('selected');
-            });
+            const currentService = kalkWizardData.serviceArt;
 
-            // Neue Auswahl markieren
-            if (element) element.classList.add('selected');
-            kalkWizardData.currentPart = partName;
-
-            // Auch in der 2D Ansicht markieren
-            const display = document.getElementById('selectedPartDisplay');
-            const nameSpan = document.getElementById('selectedPartName');
-            if (display && nameSpan) {
-                display.style.display = 'flex';
-                nameSpan.textContent = partName;
+            // teilePerService initialisieren
+            if (!kalkWizardData.teilePerService) {
+                kalkWizardData.teilePerService = {};
+            }
+            if (!kalkWizardData.teilePerService[currentService]) {
+                kalkWizardData.teilePerService[currentService] = [];
             }
 
-            // Weiter-Button aktivieren
-            const nextBtn = document.getElementById('btnStep3Next');
-            if (nextBtn) nextBtn.disabled = false;
+            const serviceParts = kalkWizardData.teilePerService[currentService];
 
-            showToast(`Teil "${partName}" ausgewählt`, 'success');
+            // Toggle: Teil hinzufügen oder entfernen
+            const existingIndex = serviceParts.indexOf(partName);
+            if (existingIndex > -1) {
+                // Teil entfernen
+                serviceParts.splice(existingIndex, 1);
+                if (element) element.classList.remove('selected');
+                showToast(`Teil "${partName}" entfernt`, 'info');
+            } else {
+                // Teil hinzufügen
+                serviceParts.push(partName);
+                if (element) element.classList.add('selected');
+                showToast(`Teil "${partName}" hinzugefügt`, 'success');
+            }
+
+            // Auch currentPart setzen (für Kompatibilität mit Step 4)
+            kalkWizardData.currentPart = serviceParts.length > 0 ? serviceParts[serviceParts.length - 1] : null;
+
+            // Ausgewählte Teile Anzeige aktualisieren
+            updateSelectedPartsDisplay();
+
+            // Tabs Badge aktualisieren
+            updateStep3TabsBadge();
+
+            // Weiter-Button aktivieren wenn mindestens ein Teil in irgendeinem Service
+            updateStep3NextButton();
+
             feather.replace();
+        }
+
+        /**
+         * 🆕 Aktualisiert die Anzeige der ausgewählten Teile
+         */
+        function updateSelectedPartsDisplay() {
+            const display = document.getElementById('selectedPartDisplay');
+            const nameSpan = document.getElementById('selectedPartName');
+
+            if (!display || !nameSpan) return;
+
+            const currentService = kalkWizardData.serviceArt;
+            const serviceParts = kalkWizardData.teilePerService?.[currentService] || [];
+
+            if (serviceParts.length > 0) {
+                display.style.display = 'flex';
+                if (serviceParts.length === 1) {
+                    nameSpan.textContent = serviceParts[0];
+                } else {
+                    nameSpan.textContent = `${serviceParts.length} Teile ausgewählt`;
+                }
+            } else {
+                display.style.display = 'none';
+            }
+        }
+
+        /**
+         * 🆕 Aktualisiert die Badge-Zahlen in den Service-Tabs
+         */
+        function updateStep3TabsBadge() {
+            const tabs = document.querySelectorAll('#step3ServiceTabsInner .service-tab');
+            tabs.forEach(tab => {
+                const service = tab.dataset.service;
+                const count = (kalkWizardData.teilePerService?.[service] || []).length;
+                let badge = tab.querySelector('.service-tab__badge');
+
+                if (count > 0) {
+                    if (!badge) {
+                        badge = document.createElement('span');
+                        badge.className = 'service-tab__badge';
+                        tab.appendChild(badge);
+                    }
+                    badge.textContent = count;
+                } else if (badge) {
+                    badge.remove();
+                }
+            });
+        }
+
+        /**
+         * 🆕 Aktualisiert den Weiter-Button in Step 3
+         * Aktiviert wenn mindestens ein Teil in irgendeinem Service ausgewählt ist
+         */
+        function updateStep3NextButton() {
+            const nextBtn = document.getElementById('btnStep3Next');
+            if (!nextBtn) return;
+
+            // Zähle alle Teile über alle Services
+            let totalParts = 0;
+            if (kalkWizardData.teilePerService) {
+                for (const service of Object.keys(kalkWizardData.teilePerService)) {
+                    totalParts += kalkWizardData.teilePerService[service].length;
+                }
+            }
+
+            nextBtn.disabled = totalParts === 0;
+        }
+
+        /**
+         * 🆕 Führt alle Teile aus teilePerService in kalkWizardData.teile zusammen
+         * Wird aufgerufen beim Wechsel von Step 3 zu Step 4
+         */
+        function mergeTeilePerServiceIntoTeile() {
+            if (!kalkWizardData.teilePerService) return;
+
+            // Bestehende teile Array leeren (um Duplikate zu vermeiden)
+            kalkWizardData.teile = [];
+
+            // Alle Teile aus teilePerService hinzufügen
+            for (const [service, parts] of Object.entries(kalkWizardData.teilePerService)) {
+                for (const partName of parts) {
+                    // Prüfen ob Teil bereits existiert (sollte nicht, aber sicherheitshalber)
+                    const exists = kalkWizardData.teile.some(t =>
+                        t.teil === partName && t.service === service
+                    );
+
+                    if (!exists) {
+                        kalkWizardData.teile.push({
+                            teil: partName,
+                            service: service,
+                            serviceLabel: SERVICE_LABELS[service] || service,
+                            arbeiten: [], // Wird in Step 4 befüllt
+                            addedAt: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+
+            console.log('📦 Teile zusammengeführt:', kalkWizardData.teile);
+
+            // Ersten Teil als currentPart setzen für Step 4
+            if (kalkWizardData.teile.length > 0) {
+                kalkWizardData.currentPart = kalkWizardData.teile[0].teil;
+                kalkWizardData.serviceArt = kalkWizardData.teile[0].service;
+                kalkWizardData.step4ActivePartIndex = 0;
+            }
+        }
+
+        /**
+         * 🆕 Nov 30, 2025: Rendert die Teile-Tabs in Step 4 für Multi-Service
+         * Zeigt alle ausgewählten Teile aus allen Services
+         */
+        function renderStep4PartsTabs() {
+            const overview = document.getElementById('step4PartsOverview');
+            const tabsContainer = document.getElementById('step4PartsTabs');
+            const countSpan = document.getElementById('step4PartsCount');
+            const partDisplay = document.getElementById('step4PartDisplay');
+            const serviceDisplay = document.getElementById('step4PartService');
+
+            if (!overview || !tabsContainer) return;
+
+            const teile = kalkWizardData.teile || [];
+
+            // Nur bei mehr als 1 Teil die Übersicht anzeigen
+            if (teile.length <= 1) {
+                overview.style.display = 'none';
+                // Standard-Anzeige für einzelnes Teil
+                if (teile.length === 1) {
+                    if (partDisplay) partDisplay.textContent = teile[0].teil;
+                    if (serviceDisplay) serviceDisplay.textContent = `(${teile[0].serviceLabel || SERVICE_LABELS[teile[0].service] || teile[0].service})`;
+                }
+                return;
+            }
+
+            overview.style.display = 'block';
+            if (countSpan) countSpan.textContent = teile.length;
+
+            // Aktiven Index setzen
+            if (kalkWizardData.step4ActivePartIndex === undefined) {
+                kalkWizardData.step4ActivePartIndex = 0;
+            }
+
+            // Tabs generieren
+            tabsContainer.innerHTML = teile.map((teil, index) => {
+                const isActive = index === kalkWizardData.step4ActivePartIndex;
+                const hasArbeiten = teil.arbeiten && teil.arbeiten.length > 0;
+                const serviceLabel = teil.serviceLabel || SERVICE_LABELS[teil.service] || teil.service;
+                const partIcon = getPartIcon(teil.teil);
+
+                return `
+                    <button class="step4-part-tab ${isActive ? 'active' : ''} ${hasArbeiten ? 'completed' : ''}"
+                            onclick="switchStep4Part(${index})"
+                            data-index="${index}">
+                        <span class="step4-part-tab__icon">${partIcon}</span>
+                        <span>${teil.teil}</span>
+                        <span class="step4-part-tab__service">${serviceLabel}</span>
+                        <span class="step4-part-check">✓</span>
+                    </button>
+                `;
+            }).join('');
+
+            // Aktuelles Teil anzeigen
+            const currentTeil = teile[kalkWizardData.step4ActivePartIndex];
+            if (currentTeil) {
+                if (partDisplay) partDisplay.textContent = currentTeil.teil;
+                if (serviceDisplay) {
+                    const label = currentTeil.serviceLabel || SERVICE_LABELS[currentTeil.service] || currentTeil.service;
+                    serviceDisplay.textContent = `(${label})`;
+                }
+                // serviceArt aktualisieren für die Arbeiten-Auswahl
+                kalkWizardData.serviceArt = currentTeil.service;
+                kalkWizardData.currentPart = currentTeil.teil;
+            }
+
+            feather.replace();
+        }
+
+        /**
+         * 🆕 Nov 30, 2025: Wechselt das aktive Teil in Step 4
+         */
+        function switchStep4Part(index) {
+            const teile = kalkWizardData.teile || [];
+            if (index < 0 || index >= teile.length) return;
+
+            // Vorherige Arbeiten speichern
+            saveCurrentPartArbeiten();
+
+            // Index aktualisieren
+            kalkWizardData.step4ActivePartIndex = index;
+
+            // UI aktualisieren
+            renderStep4PartsTabs();
+            renderServiceRepairOptions();
+
+            // Gespeicherte Arbeiten wiederherstellen
+            restorePartArbeiten(index);
+
+            // Toast-Feedback
+            showToast(`Teil gewechselt: ${teile[index].teil}`, 'info');
+        }
+
+        /**
+         * 🆕 Speichert die aktuell ausgewählten Arbeiten für das aktive Teil
+         */
+        function saveCurrentPartArbeiten() {
+            const teile = kalkWizardData.teile || [];
+            const index = kalkWizardData.step4ActivePartIndex;
+
+            if (index === undefined || index < 0 || index >= teile.length) return;
+
+            const checkedRepairs = document.querySelectorAll('input[name="repair"]:checked');
+            const arbeiten = Array.from(checkedRepairs).map(cb => cb.value);
+
+            teile[index].arbeiten = arbeiten;
+            console.log(`💾 Arbeiten gespeichert für Teil ${index}:`, arbeiten);
+        }
+
+        /**
+         * 🆕 Stellt die gespeicherten Arbeiten für ein Teil wieder her
+         */
+        function restorePartArbeiten(index) {
+            const teile = kalkWizardData.teile || [];
+            if (index < 0 || index >= teile.length) return;
+
+            const teil = teile[index];
+            const arbeiten = teil.arbeiten || [];
+
+            // Alle Checkboxen zurücksetzen
+            document.querySelectorAll('input[name="repair"]').forEach(cb => {
+                cb.checked = arbeiten.includes(cb.value);
+            });
+
+            // Button-Status aktualisieren
+            updateRepairSelection();
+
+            console.log(`📥 Arbeiten wiederhergestellt für Teil ${index}:`, arbeiten);
         }
 
         // Rendert die service-spezifischen Arbeiten in Step 4
