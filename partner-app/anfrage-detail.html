@@ -4472,11 +4472,13 @@
 
                 // 🆕 FIX (2025-11-29): additionalServices + serviceStatuses aus meine-anfragen.html synchronisiert
                 // KRITISCH für Multi-Service Support im Kanban Board
+                // 🆕 FIX (2025-12-01): serviceData statt serviceDetails (Partner speichern in serviceData!)
                 additionalServices: (() => {
                     if (!Array.isArray(anfrage.serviceTyp) || anfrage.serviceTyp.length <= 1) return [];
                     return anfrage.serviceTyp.slice(1).map(typ => ({
                         serviceTyp: typ,
-                        serviceDetails: anfrage.serviceDetails?.[typ] || {}
+                        // Fallback-Chain: serviceData (Partner) → serviceDetails (Werkstatt) → leer
+                        serviceDetails: anfrage.serviceData?.[typ] || anfrage.serviceDetails?.[typ] || {}
                     }));
                 })(),
                 serviceStatuses: (() => {
@@ -4618,7 +4620,8 @@
                 partnerAnfrageId: anfrage.id,  // ✅ FIX: Standardized field name (was: anfrageId)
                 // 🆕 FIX (2025-11-29): werkstattId KRITISCH für Multi-Tenant Isolation
                 werkstattId: window.werkstattId || null,
-                photoUrls: anfrage.photoUrls || anfrage.schadenfotos || anfrage.fotos || anfrage.photos || [],  // ✅ FIX Bug #11 (2025-11-23): Transfer photos from partnerAnfragen
+                // 🆕 FIX (2025-12-01): BUG #8 - Add pdfImport.fotos fallback (PDF import photos)
+                photoUrls: anfrage.photoUrls || anfrage.schadenfotos || anfrage.fotos || anfrage.photos || anfrage.pdfImport?.fotos || [],
                 // ✅ FIX Bug #5L: signature always null initially → skip (Transaction doesn't accept null objects)
                 prozessTimestamps: {
                     terminiert: firestoreTimestamp  // ✅ FIX Bug #5L Phase 5b: Firestore Timestamp object (not NUMBER)
@@ -5285,7 +5288,8 @@
                 console.log('✅ fahrzeugData sanitized (Timestamps preserved)');
 
                 // 5. FOTOS entfernen (werden separat gespeichert)
-                const schadenfotos = anfrage.photoUrls || anfrage.schadenfotos || anfrage.fotos || anfrage.photos || [];  // ✅ FIX Bug #10 (2025-11-23): Added photoUrls-first
+                // 🆕 FIX (2025-12-01): BUG #8 - Add pdfImport.fotos fallback (PDF import photos)
+                const schadenfotos = anfrage.photoUrls || anfrage.schadenfotos || anfrage.fotos || anfrage.photos || anfrage.pdfImport?.fotos || [];
                 delete sanitizedFahrzeugData.photos;  // ✅ Delete BEFORE assignment (no spread needed)
                 const dataForFirestore = sanitizedFahrzeugData;  // ✅ Direct assignment - NO SPREAD!
                 console.log(`✅ photos-Array entfernt (${schadenfotos.length} Fotos für späteren Upload zwischengespeichert)`);
