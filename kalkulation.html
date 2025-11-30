@@ -4656,6 +4656,14 @@
                                 <div class="auftrags-info-section-title">📋 Notizen</div>
                                 <div class="auftrags-info-notizen" id="infoNotizen">-</div>
                             </div>
+
+                            <!-- 🆕 Service-Details pro Service (Nov 30, 2025) -->
+                            <div class="auftrags-info-section auftrags-info-full" id="infoServiceDetailsSection" style="display: none;">
+                                <div class="auftrags-info-section-title">📦 Service-Details</div>
+                                <div class="auftrags-info-service-details" id="infoServiceDetails">
+                                    <!-- Dynamisch gefüllt -->
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -7202,7 +7210,13 @@
 
             setTextSafe('infoKennzeichen', kalkWizardData.fahrzeug?.kennzeichen);
             setTextSafe('infoFahrzeug', `${kalkWizardData.fahrzeug?.marke || ''} ${kalkWizardData.fahrzeug?.modell || ''}`.trim() || '-');
-            setTextSafe('infoFarbe', kalkWizardData.farbe);
+            // 🆕 Farbe mit mehreren Fallbacks (Nov 30, 2025)
+            const farbe = kalkWizardData.farbe ||
+                          kalkWizardData.fahrzeug?.farbcode ||
+                          kalkWizardData.fahrzeug?.farbe ||
+                          kalkWizardData.farbname ||
+                          '-';
+            setTextSafe('infoFarbe', farbe);
 
             // Kunde-Infos
             setTextSafe('infoKunde', kalkWizardData.fahrzeug?.kunde);
@@ -7219,9 +7233,19 @@
                 }
             }
 
-            // Service-Infos
-            const serviceLabel = SERVICE_LABELS[kalkWizardData.serviceArt] || kalkWizardData.serviceArt || '-';
-            setTextSafe('infoService', serviceLabel);
+            // Service-Infos - 🆕 Multi-Service Support (Nov 30, 2025)
+            let serviceDisplay = '-';
+            if (kalkWizardData.isMultiService && kalkWizardData.services && kalkWizardData.services.length > 1) {
+                // Multi-Service: Alle Services anzeigen
+                serviceDisplay = kalkWizardData.services
+                    .map(s => SERVICE_LABELS[s] || s)
+                    .join(', ');
+                serviceDisplay += ` (${kalkWizardData.services.length} Services)`;
+            } else {
+                // Single-Service
+                serviceDisplay = SERVICE_LABELS[kalkWizardData.serviceArt] || kalkWizardData.serviceArt || '-';
+            }
+            setTextSafe('infoService', serviceDisplay);
 
             // Dringlichkeit anzeigen (wenn vorhanden)
             const dringlichkeitRow = document.getElementById('infoDringlichkeitRow');
@@ -7256,7 +7280,104 @@
                 }
             }
 
+            // 🆕 Service-Details anzeigen (Nov 30, 2025)
+            renderAuftragsServiceDetails();
+
             feather.replace();
+        }
+
+        /**
+         * 🆕 Rendert die Service-Details in der Auftragsinformationen-Box
+         * Zeigt alle Details pro Service aus serviceDetailsPerService
+         */
+        function renderAuftragsServiceDetails() {
+            const section = document.getElementById('infoServiceDetailsSection');
+            const container = document.getElementById('infoServiceDetails');
+
+            if (!section || !container) return;
+
+            const services = kalkWizardData.services || [kalkWizardData.serviceArt];
+            const detailsPerService = kalkWizardData.serviceDetailsPerService || {};
+
+            // Prüfen ob überhaupt Details vorhanden sind
+            let hasAnyDetails = false;
+            for (const service of services) {
+                const details = detailsPerService[service];
+                if (details && Object.keys(details).length > 0) {
+                    hasAnyDetails = true;
+                    break;
+                }
+            }
+
+            if (!hasAnyDetails) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+
+            // HTML für Service-Details generieren
+            let html = '';
+
+            for (const service of services) {
+                const details = detailsPerService[service];
+                if (!details || Object.keys(details).length === 0) continue;
+
+                const serviceLabel = SERVICE_LABELS[service] || service;
+                const serviceIcon = getServiceIcon(service);
+                const config = SERVICE_CONFIG[service];
+
+                html += `
+                    <div class="service-detail-card" style="
+                        background: var(--color-surface);
+                        border: 1px solid var(--color-border);
+                        border-radius: var(--radius-md);
+                        padding: var(--space-3);
+                        margin-bottom: var(--space-2);
+                    ">
+                        <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); font-weight: var(--font-weight-semibold); color: var(--color-primary);">
+                            <span>${serviceIcon}</span>
+                            <span>${serviceLabel}</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-2); font-size: var(--font-size-sm);">
+                `;
+
+                // Details durchlaufen
+                for (const [key, value] of Object.entries(details)) {
+                    if (!value || value === '' || value === 'undefined') continue;
+
+                    // Label aus SERVICE_CONFIG holen oder formatieren
+                    let label = key;
+                    if (config?.zusatzfelder?.[key]?.label) {
+                        label = config.zusatzfelder[key].label;
+                    } else {
+                        // CamelCase zu lesbar
+                        label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                    }
+
+                    // Wert formatieren (Arrays als Liste)
+                    let displayValue = value;
+                    if (Array.isArray(value)) {
+                        displayValue = value.join(', ');
+                    } else if (typeof value === 'boolean') {
+                        displayValue = value ? 'Ja' : 'Nein';
+                    }
+
+                    html += `
+                        <div style="display: flex; flex-direction: column;">
+                            <span style="color: var(--color-text-secondary); font-size: var(--font-size-xs);">${label}</span>
+                            <span style="color: var(--color-text-primary);">${displayValue}</span>
+                        </div>
+                    `;
+                }
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
         }
 
         // Toggle Auftragsinfo ein/ausklappen
