@@ -5993,10 +5993,17 @@
                                     <input type="text" id="ersatzteilAddTeilenr" placeholder="z.B. 5G1941005A">
                                 </div>
                             </div>
+                            <!-- 🆕 Nov 30, 2025: Zwei Preis-Felder für Original und Aftermarket -->
                             <div class="ersatzteil-form-row">
                                 <div class="ersatzteil-field">
-                                    <label>Preis (€ netto)</label>
-                                    <input type="number" id="ersatzteilAddPreis" placeholder="0.00" step="0.01" min="0">
+                                    <label>Original-Preis (€ netto) *</label>
+                                    <input type="number" id="ersatzteilAddPreisOriginal" placeholder="z.B. 450.00" step="0.01" min="0" style="border-color: #003366;">
+                                    <small style="color: #003366;">OEM / Hersteller-Teil</small>
+                                </div>
+                                <div class="ersatzteil-field">
+                                    <label>Aftermarket-Preis (€ netto)</label>
+                                    <input type="number" id="ersatzteilAddPreisAftermarket" placeholder="z.B. 280.00" step="0.01" min="0" style="border-color: #ff9800;">
+                                    <small style="color: #ff9800;">Zubehör / Budget (optional)</small>
                                 </div>
                                 <div class="ersatzteil-field">
                                     <label>Menge</label>
@@ -6059,15 +6066,16 @@
                             </button>
                         </div>
                         <div id="ersatzteileCompleteList" class="ersatzteile-table-wrapper">
+                            <!-- 🆕 Nov 30, 2025: Zwei Preis-Spalten (Original + Aftermarket) -->
                             <table class="ersatzteile-table">
                                 <thead>
                                     <tr>
                                         <th>Bezeichnung</th>
                                         <th>Teilenummer</th>
-                                        <th>Lieferant / Link</th>
+                                        <th>Lieferant</th>
                                         <th>Menge</th>
-                                        <th>Preis (€)</th>
-                                        <th>Gesamt</th>
+                                        <th style="background: #e3f2fd; color: #003366;">Original (€)</th>
+                                        <th style="background: #fff3e0; color: #e65100;">Aftermarket (€)</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -6078,8 +6086,10 @@
                                 </tbody>
                                 <tfoot>
                                     <tr class="ersatzteile-total-row">
-                                        <td colspan="5"><strong>Gesamt Ersatzteile (netto)</strong></td>
-                                        <td colspan="2"><strong id="ersatzteileGesamtPreis">0,00 €</strong></td>
+                                        <td colspan="4"><strong>Gesamt Ersatzteile (netto)</strong></td>
+                                        <td style="background: #e3f2fd;"><strong id="ersatzteileGesamtOriginal">0,00 €</strong></td>
+                                        <td style="background: #fff3e0;"><strong id="ersatzteileGesamtAftermarket">0,00 €</strong></td>
+                                        <td></td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -12346,10 +12356,13 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
         // ============================================
 
         // Ersatzteil zur Liste hinzufügen (Step 5)
+        // 🆕 Nov 30, 2025: Zwei Preise (Original + Aftermarket) für KVA-Varianten
         function addErsatzteilToList() {
             const name = document.getElementById('ersatzteilAddName')?.value?.trim();
             const teilenummer = document.getElementById('ersatzteilAddTeilenr')?.value?.trim();
-            const preis = parseFloat(document.getElementById('ersatzteilAddPreis')?.value) || 0;
+            // 🆕 Zwei Preis-Felder
+            const preisOriginal = parseFloat(document.getElementById('ersatzteilAddPreisOriginal')?.value) || 0;
+            const preisAftermarket = parseFloat(document.getElementById('ersatzteilAddPreisAftermarket')?.value) || 0;
             const menge = parseInt(document.getElementById('ersatzteilAddMenge')?.value) || 1;
             const lieferant = document.getElementById('ersatzteilAddLieferant')?.value?.trim() || '';
             const bestellLink = document.getElementById('ersatzteilAddLink')?.value?.trim() || '';
@@ -12359,10 +12372,19 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 return;
             }
 
+            if (preisOriginal <= 0) {
+                showToast('Bitte geben Sie mindestens den Original-Preis ein', 'warning');
+                return;
+            }
+
             const ersatzteil = {
                 name: name,
                 teilenummer: teilenummer,
-                preis: preis,
+                // 🆕 Zwei Preise speichern
+                preisOriginal: preisOriginal,
+                preisAftermarket: preisAftermarket > 0 ? preisAftermarket : preisOriginal, // Fallback auf Original wenn leer
+                // Backwards-Kompatibilität: preis = Original (für alte Logik)
+                preis: preisOriginal,
                 menge: menge,
                 lieferant: lieferant,
                 bestellLink: bestellLink
@@ -12376,13 +12398,15 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             // Formular zurücksetzen
             const nameField = document.getElementById('ersatzteilAddName');
             const teilenrField = document.getElementById('ersatzteilAddTeilenr');
-            const preisField = document.getElementById('ersatzteilAddPreis');
+            const preisOriginalField = document.getElementById('ersatzteilAddPreisOriginal');
+            const preisAftermarketField = document.getElementById('ersatzteilAddPreisAftermarket');
             const mengeField = document.getElementById('ersatzteilAddMenge');
             const lieferantField = document.getElementById('ersatzteilAddLieferant');
             const linkField = document.getElementById('ersatzteilAddLink');
             if (nameField) nameField.value = '';
             if (teilenrField) teilenrField.value = '';
-            if (preisField) preisField.value = '';
+            if (preisOriginalField) preisOriginalField.value = '';
+            if (preisAftermarketField) preisAftermarketField.value = '';
             if (mengeField) mengeField.value = '1';
             if (lieferantField) lieferantField.value = '';
             if (linkField) linkField.value = '';
@@ -12399,9 +12423,11 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
         }
 
         // Ersatzteile-Tabelle rendern
+        // 🆕 Nov 30, 2025: Zwei Preis-Spalten (Original + Aftermarket)
         function renderErsatzteileTable() {
             const tbody = document.getElementById('ersatzteileTableBody');
-            const gesamtPreis = document.getElementById('ersatzteileGesamtPreis');
+            const gesamtOriginal = document.getElementById('ersatzteileGesamtOriginal');
+            const gesamtAftermarket = document.getElementById('ersatzteileGesamtAftermarket');
             if (!tbody) return;
 
             if (kalkWizardData.ersatzteile.length === 0) {
@@ -12410,14 +12436,23 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                         <td colspan="7">Noch keine Ersatzteile hinzugefügt</td>
                     </tr>
                 `;
-                if (gesamtPreis) gesamtPreis.textContent = '0,00 €';
+                if (gesamtOriginal) gesamtOriginal.textContent = '0,00 €';
+                if (gesamtAftermarket) gesamtAftermarket.textContent = '0,00 €';
                 return;
             }
 
-            let total = 0;
+            let totalOriginal = 0;
+            let totalAftermarket = 0;
             tbody.innerHTML = kalkWizardData.ersatzteile.map((e, index) => {
-                const gesamt = (e.preis || 0) * (e.menge || 1);
-                total += gesamt;
+                // 🆕 Zwei Preise berechnen
+                const pOriginal = e.preisOriginal || e.preis || 0;
+                const pAftermarket = e.preisAftermarket || pOriginal;
+                const menge = e.menge || 1;
+                const gesamtOrig = pOriginal * menge;
+                const gesamtAfter = pAftermarket * menge;
+                totalOriginal += gesamtOrig;
+                totalAftermarket += gesamtAfter;
+
                 // Lieferant mit optionalem Link
                 let lieferantCell = e.lieferant || '-';
                 if (e.bestellLink) {
@@ -12430,9 +12465,9 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                         <td><strong>${e.name}</strong></td>
                         <td>${e.teilenummer || '-'}</td>
                         <td>${lieferantCell}</td>
-                        <td>${e.menge || 1}</td>
-                        <td>${(e.preis || 0).toFixed(2)} €</td>
-                        <td><strong>${gesamt.toFixed(2)} €</strong></td>
+                        <td>${menge}</td>
+                        <td style="background: #f5f9ff;"><strong>${gesamtOrig.toFixed(2)} €</strong></td>
+                        <td style="background: #fffaf0;"><strong>${gesamtAfter.toFixed(2)} €</strong></td>
                         <td>
                             <button class="btn-icon" onclick="removeErsatzteilFromList(${index})" title="Entfernen">
                                 <i data-feather="trash-2"></i>
@@ -12442,7 +12477,8 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 `;
             }).join('');
 
-            if (gesamtPreis) gesamtPreis.textContent = `${total.toFixed(2)} €`;
+            if (gesamtOriginal) gesamtOriginal.textContent = `${totalOriginal.toFixed(2)} €`;
+            if (gesamtAftermarket) gesamtAftermarket.textContent = `${totalAftermarket.toFixed(2)} €`;
             feather.replace();
         }
 
@@ -16251,28 +16287,61 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                     return sum + ((parseFloat(m.preis) || parseFloat(m.verkaufspreis) || 0) * (parseFloat(m.menge) || 1));
                 }, 0);
 
-                const summeErsatzteile = (kalkWizardData.ersatzteile || []).reduce((sum, e) => {
-                    return sum + ((parseFloat(e.preis) || 0) * (parseFloat(e.menge) || 1));
+                // 🆕 Nov 30, 2025: Getrennte Ersatzteile-Summen (Original + Aftermarket)
+                const summeErsatzteileOriginal = (kalkWizardData.ersatzteile || []).reduce((sum, e) => {
+                    const preis = parseFloat(e.preisOriginal) || parseFloat(e.preis) || 0;
+                    return sum + (preis * (parseFloat(e.menge) || 1));
                 }, 0);
 
-                const summeNetto = summeArbeit + summeMaterial + summeErsatzteile;
+                const summeErsatzteileAftermarket = (kalkWizardData.ersatzteile || []).reduce((sum, e) => {
+                    const preis = parseFloat(e.preisAftermarket) || parseFloat(e.preisOriginal) || parseFloat(e.preis) || 0;
+                    return sum + (preis * (parseFloat(e.menge) || 1));
+                }, 0);
+
+                // Backwards-Kompatibilität: summeErsatzteile = Original
+                const summeErsatzteile = summeErsatzteileOriginal;
+
+                // 🆕 Zwei Netto-Summen für beide Varianten
+                const summeNettoOriginal = summeArbeit + summeMaterial + summeErsatzteileOriginal;
+                const summeNettoAftermarket = summeArbeit + summeMaterial + summeErsatzteileAftermarket;
+
                 const mwstSatz = kalkulationSaetze?.mwstSatz || 19;
-                const mwst = summeNetto * (mwstSatz / 100);
-                const summeBrutto = summeNetto + mwst;
+
+                // Original Variante
+                const mwstOriginal = summeNettoOriginal * (mwstSatz / 100);
+                const summeBruttoOriginal = summeNettoOriginal + mwstOriginal;
+
+                // Aftermarket Variante
+                const mwstAftermarket = summeNettoAftermarket * (mwstSatz / 100);
+                const summeBruttoAftermarket = summeNettoAftermarket + mwstAftermarket;
+
+                // Backwards-Kompatibilität
+                const summeNetto = summeNettoOriginal;
+                const mwst = mwstOriginal;
+                const summeBrutto = summeBruttoOriginal;
 
                 // Kalkulationsdaten für Entwurf
                 // 🔧 FIX Nov 29, 2025: Alle Summen auf 2 Dezimalstellen runden (Floating-Point vermeiden)
+                // 🆕 Nov 30, 2025: Getrennte Original/Aftermarket Summen für KVA-Varianten
                 const kalkulationData = {
                     positionen: aktuelleKalkulation.positionen,
                     materialien: aktuelleKalkulation.materialien,
                     ersatzteile: kalkWizardData.ersatzteile || [],
                     summeArbeit: parseFloat(summeArbeit.toFixed(2)),
                     summeMaterial: parseFloat(summeMaterial.toFixed(2)),
+                    // Backwards-Kompatibilität
                     summeErsatzteile: parseFloat(summeErsatzteile.toFixed(2)),
                     summeNetto: parseFloat(summeNetto.toFixed(2)),
                     mwstSatz,
                     mwst: parseFloat(mwst.toFixed(2)),
-                    summeBrutto: parseFloat(summeBrutto.toFixed(2))
+                    summeBrutto: parseFloat(summeBrutto.toFixed(2)),
+                    // 🆕 Neue getrennte Summen für kva-erstellen.html
+                    summeErsatzteileOriginal: parseFloat(summeErsatzteileOriginal.toFixed(2)),
+                    summeErsatzteileAftermarket: parseFloat(summeErsatzteileAftermarket.toFixed(2)),
+                    summeNettoOriginal: parseFloat(summeNettoOriginal.toFixed(2)),
+                    summeNettoAftermarket: parseFloat(summeNettoAftermarket.toFixed(2)),
+                    summeBruttoOriginal: parseFloat(summeBruttoOriginal.toFixed(2)),
+                    summeBruttoAftermarket: parseFloat(summeBruttoAftermarket.toFixed(2))
                 };
 
                 // Update-Daten für partnerAnfragen

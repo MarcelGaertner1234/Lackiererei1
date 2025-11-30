@@ -4398,12 +4398,159 @@
 
                 displayAnfrageInfo();
 
+                // 🆕 Nov 30, 2025: Kalkulation vom Meister vorausfüllen (wenn vorhanden)
+                // WICHTIG: Nur für Partner-Anfragen die bereits durch kalkulation.html gegangen sind
+                if (anfrage.kalkulation && anfrage.kalkulation.summeArbeit > 0) {
+                    // Warten bis Input-Felder gerendert sind
+                    setTimeout(() => {
+                        prefillFromKalkulation(anfrage.kalkulation, serviceTyp, anfrage.serviceData);
+                    }, 300);
+                }
+
             } catch (error) {
                 console.error('❌ Fehler:', error);
                 loading.style.display = 'none';
                 errorBox.textContent = '⚠️ ' + error.message;
                 errorBox.classList.add('show');
             }
+        }
+
+        // ============================================
+        // 🆕 Nov 30, 2025: KALKULATION VOM MEISTER VORAUSFÜLLEN
+        // Füllt die Input-Felder mit Daten aus kalkulation.html
+        // WICHTIG: Annahme-Pipeline wird NICHT beeinflusst (nur für Partner-Anfragen)
+        // ============================================
+        function prefillFromKalkulation(kalkulation, serviceTyp, serviceData) {
+            console.log('📥 [PREFILL] Kalkulation vom Meister laden:', {
+                serviceTyp,
+                summeArbeit: kalkulation.summeArbeit,
+                summeMaterial: kalkulation.summeMaterial,
+                summeErsatzteileOriginal: kalkulation.summeErsatzteileOriginal,
+                summeErsatzteileAftermarket: kalkulation.summeErsatzteileAftermarket
+            });
+
+            // Hilfsfunktion: Input-Feld setzen
+            function setInputValue(fieldId, value) {
+                const input = document.getElementById(fieldId);
+                if (input && value > 0) {
+                    input.value = parseFloat(value).toFixed(2);
+                    console.log(`   ✅ ${fieldId} = ${value.toFixed(2)}`);
+                    return true;
+                }
+                return false;
+            }
+
+            // Service-spezifisches Mapping
+            const serviceTypString = Array.isArray(serviceTyp) ? serviceTyp[0] : serviceTyp;
+            let fieldsSet = 0;
+
+            // ========================================
+            // LACKIERUNG Mapping
+            // ========================================
+            if (serviceTypString === 'lackier' || serviceTypString === 'lackierung') {
+                // Original Variante
+                if (setInputValue('original_lackkosten', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+
+                // Aftermarket Variante (gleiche Arbeit, günstigere Teile)
+                if (setInputValue('zubehoer_lackkosten', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+            }
+
+            // ========================================
+            // REIFEN Mapping
+            // ========================================
+            else if (serviceTypString === 'reifen') {
+                // Original Variante
+                if (setInputValue('original_montage', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('original_reifensatz', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+
+                // Aftermarket Variante
+                if (setInputValue('zubehoer_montage', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('zubehoer_reifensatz', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+            }
+
+            // ========================================
+            // MECHANIK Mapping
+            // ========================================
+            else if (serviceTypString === 'mechanik') {
+                // Original Variante
+                if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('original_arbeitszeit', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+
+                // Aftermarket Variante
+                if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('zubehoer_arbeitszeit', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+            }
+
+            // ========================================
+            // PFLEGE Mapping
+            // ========================================
+            else if (serviceTypString === 'pflege' || serviceTypString === 'aufbereitung') {
+                // Nur Original Variante (keine Teile)
+                if (setInputValue('original_aussenreinigung', kalkulation.summeArbeit * 0.4)) fieldsSet++;
+                if (setInputValue('original_innenreinigung', kalkulation.summeArbeit * 0.4)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeArbeit * 0.2 + kalkulation.summeMaterial)) fieldsSet++;
+            }
+
+            // ========================================
+            // FALLBACK für andere Services
+            // ========================================
+            else {
+                console.log('⚠️ [PREFILL] Kein spezifisches Mapping für Service:', serviceTypString);
+                // Versuche generisches Mapping
+                if (setInputValue('original_service', kalkulation.summeArbeit + kalkulation.summeMaterial + (kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile))) fieldsSet++;
+                if (setInputValue('original_sonstiges', 0)) fieldsSet++;
+            }
+
+            // Summen neu berechnen
+            if (fieldsSet > 0) {
+                berechneVarianten();
+
+                // Info-Banner anzeigen
+                showKalkulationLoadedBanner(kalkulation);
+                console.log(`✅ [PREFILL] ${fieldsSet} Felder vorausgefüllt`);
+            } else {
+                console.log('⚠️ [PREFILL] Keine Felder konnten gefüllt werden');
+            }
+        }
+
+        // Info-Banner anzeigen dass Kalkulation geladen wurde
+        function showKalkulationLoadedBanner(kalkulation) {
+            const container = document.getElementById('variantenContainer');
+            if (!container) return;
+
+            // Prüfen ob Banner bereits existiert
+            if (document.getElementById('kalkulationLoadedBanner')) return;
+
+            const banner = document.createElement('div');
+            banner.id = 'kalkulationLoadedBanner';
+            banner.innerHTML = `
+                <div style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+                            padding: 15px 20px; border-radius: 12px; margin: 15px 0;
+                            border-left: 4px solid #4caf50; display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 24px;">✅</span>
+                    <div>
+                        <strong style="color: #2e7d32;">Kalkulation vom Meister geladen</strong>
+                        <p style="margin: 5px 0 0; font-size: 13px; color: #1b5e20;">
+                            Die Werte wurden aus der Meister-Kalkulation übernommen.
+                            Sie können die Werte vor dem Senden anpassen.
+                            <br><small>Arbeit: ${(kalkulation.summeArbeit || 0).toFixed(2)}€ |
+                            Material: ${(kalkulation.summeMaterial || 0).toFixed(2)}€ |
+                            Teile (Original): ${(kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile || 0).toFixed(2)}€ |
+                            Teile (Aftermarket): ${(kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile || 0).toFixed(2)}€</small>
+                        </p>
+                    </div>
+                </div>
+            `;
+
+            container.insertBefore(banner, container.firstChild);
         }
 
         // ============================================
