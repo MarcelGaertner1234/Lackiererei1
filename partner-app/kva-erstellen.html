@@ -4403,7 +4403,14 @@
                 if (anfrage.kalkulation && anfrage.kalkulation.summeArbeit > 0) {
                     // Warten bis Input-Felder gerendert sind
                     setTimeout(() => {
-                        prefillFromKalkulation(anfrage.kalkulation, serviceTyp, anfrage.serviceData);
+                        // Fallback: Ersatzteile von Root-Ebene nutzen wenn nicht in kalkulation
+                        const kalkulationMitFallback = {
+                            ...anfrage.kalkulation,
+                            ersatzteile: anfrage.kalkulation.ersatzteile || anfrage.ersatzteile || [],
+                            positionen: anfrage.kalkulation.positionen || [],
+                            materialien: anfrage.kalkulation.materialien || []
+                        };
+                        prefillFromKalkulation(kalkulationMitFallback, serviceTyp, anfrage.serviceData);
                     }, 300);
                 }
 
@@ -4519,6 +4526,151 @@
             } else {
                 console.log('⚠️ [PREFILL] Keine Felder konnten gefüllt werden');
             }
+
+            // ========================================
+            // 🆕 Nov 30, 2025: ERSATZTEILE-DETAILS IN TABELLEN LADEN
+            // Überträgt die einzelnen Ersatzteile vom Meister in die Varianten-Tabellen
+            // ========================================
+            if (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) {
+                console.log(`📦 [PREFILL] ${kalkulation.ersatzteile.length} Ersatzteile gefunden - übertrage in Tabellen...`);
+                prefillErsatzteileTabellen(kalkulation.ersatzteile);
+            }
+
+            // 🆕 Positionen (Arbeitslohn) in Tabellen laden
+            if (kalkulation.positionen && kalkulation.positionen.length > 0) {
+                console.log(`🔧 [PREFILL] ${kalkulation.positionen.length} Positionen gefunden - übertrage in Tabellen...`);
+                prefillArbeitslohnTabellen(kalkulation.positionen);
+            }
+
+            // 🆕 Materialien in Tabellen laden (als Lackierung oder Ersatzteile)
+            if (kalkulation.materialien && kalkulation.materialien.length > 0) {
+                console.log(`🎨 [PREFILL] ${kalkulation.materialien.length} Materialien gefunden - übertrage in Tabellen...`);
+                prefillMaterialienTabellen(kalkulation.materialien, serviceTypString);
+            }
+        }
+
+        // ============================================
+        // 🆕 Nov 30, 2025: ERSATZTEILE IN VARIANTEN-TABELLEN ÜBERTRAGEN
+        // Füllt die Ersatzteile-Tabellen für Original und Aftermarket Varianten
+        // ============================================
+        function prefillErsatzteileTabellen(ersatzteile) {
+            if (!ersatzteile || ersatzteile.length === 0) return;
+
+            // Original Variante: Mit Original-Preisen
+            ersatzteile.forEach(teil => {
+                const originalPreis = parseFloat(teil.preisOriginal) || parseFloat(teil.preis) || 0;
+                const menge = parseInt(teil.menge) || 1;
+
+                variantTableData.original.ersatzteile.push({
+                    etn: teil.teilenummer || '',
+                    benennung: teil.name || teil.benennung || '',
+                    anzahl: menge,
+                    einzelpreis: originalPreis,
+                    gesamtpreis: originalPreis * menge,
+                    isAutoSync: true,  // Markiert als "vom Meister"
+                    lieferant: teil.lieferant || '',
+                    bestellLink: teil.bestellLink || ''
+                });
+            });
+
+            // Aftermarket Variante: Mit Aftermarket-Preisen
+            ersatzteile.forEach(teil => {
+                const aftermarketPreis = parseFloat(teil.preisAftermarket) || parseFloat(teil.preisOriginal) || parseFloat(teil.preis) || 0;
+                const menge = parseInt(teil.menge) || 1;
+
+                variantTableData.zubehoer.ersatzteile.push({
+                    etn: teil.teilenummer || '',
+                    benennung: teil.name || teil.benennung || '',
+                    anzahl: menge,
+                    einzelpreis: aftermarketPreis,
+                    gesamtpreis: aftermarketPreis * menge,
+                    isAutoSync: true,
+                    lieferant: teil.lieferant || '',
+                    bestellLink: teil.bestellLink || ''
+                });
+            });
+
+            // Tabellen neu rendern
+            renderVariantTable('original', 'ersatzteile');
+            renderVariantTable('zubehoer', 'ersatzteile');
+
+            console.log(`   ✅ ${ersatzteile.length} Ersatzteile in Original-Tabelle geladen`);
+            console.log(`   ✅ ${ersatzteile.length} Ersatzteile in Aftermarket-Tabelle geladen`);
+        }
+
+        // ============================================
+        // 🆕 Nov 30, 2025: ARBEITSLOHN (POSITIONEN) IN TABELLEN ÜBERTRAGEN
+        // ============================================
+        function prefillArbeitslohnTabellen(positionen) {
+            if (!positionen || positionen.length === 0) return;
+
+            // Beide Varianten bekommen die gleichen Arbeitspositionen
+            ['original', 'zubehoer'].forEach(variant => {
+                positionen.forEach(pos => {
+                    const betrag = parseFloat(pos.gesamt) || parseFloat(pos.betrag) || 0;
+
+                    variantTableData[variant].arbeitslohn.push({
+                        position: pos.position || pos.beschreibung || pos.name || '',
+                        art: pos.einheit || pos.art || 'Arbeit',
+                        gesamtpreis: betrag,
+                        isAutoSync: true
+                    });
+                });
+            });
+
+            // Tabellen neu rendern
+            renderVariantTable('original', 'arbeitslohn');
+            renderVariantTable('zubehoer', 'arbeitslohn');
+
+            console.log(`   ✅ ${positionen.length} Positionen in Arbeitslohn-Tabellen geladen`);
+        }
+
+        // ============================================
+        // 🆕 Nov 30, 2025: MATERIALIEN IN TABELLEN ÜBERTRAGEN
+        // Je nach Service: als Lackierung oder als Ersatzteile
+        // ============================================
+        function prefillMaterialienTabellen(materialien, serviceTyp) {
+            if (!materialien || materialien.length === 0) return;
+
+            const isLackierService = serviceTyp === 'lackier' || serviceTyp === 'lackierung';
+
+            ['original', 'zubehoer'].forEach(variant => {
+                materialien.forEach(mat => {
+                    const betrag = parseFloat(mat.gesamt) || parseFloat(mat.betrag) || parseFloat(mat.preis) || 0;
+                    const menge = parseInt(mat.menge) || 1;
+
+                    if (isLackierService) {
+                        // Für Lackierung: In Lackierung-Tabelle
+                        variantTableData[variant].lackierung.push({
+                            position: mat.name || mat.beschreibung || mat.material || '',
+                            bereich: mat.bereich || 'Material',
+                            gesamtpreis: betrag,
+                            isAutoSync: true
+                        });
+                    } else {
+                        // Für andere Services: Als Ersatzteil/Material
+                        variantTableData[variant].ersatzteile.push({
+                            etn: mat.artikelnummer || '',
+                            benennung: mat.name || mat.beschreibung || mat.material || '',
+                            anzahl: menge,
+                            einzelpreis: betrag / menge,
+                            gesamtpreis: betrag,
+                            isAutoSync: true
+                        });
+                    }
+                });
+            });
+
+            // Tabellen neu rendern
+            if (isLackierService) {
+                renderVariantTable('original', 'lackierung');
+                renderVariantTable('zubehoer', 'lackierung');
+                console.log(`   ✅ ${materialien.length} Materialien in Lackierung-Tabellen geladen`);
+            } else {
+                renderVariantTable('original', 'ersatzteile');
+                renderVariantTable('zubehoer', 'ersatzteile');
+                console.log(`   ✅ ${materialien.length} Materialien in Ersatzteile-Tabellen geladen`);
+            }
         }
 
         // Info-Banner anzeigen dass Kalkulation geladen wurde
@@ -4528,6 +4680,15 @@
 
             // Prüfen ob Banner bereits existiert
             if (document.getElementById('kalkulationLoadedBanner')) return;
+
+            // 🆕 Nov 30, 2025: Anzahl der Details berechnen
+            const ersatzteileCount = (kalkulation.ersatzteile || []).length;
+            const positionenCount = (kalkulation.positionen || []).length;
+            const materialienCount = (kalkulation.materialien || []).length;
+            const detailsText = [];
+            if (ersatzteileCount > 0) detailsText.push(`${ersatzteileCount} Ersatzteile`);
+            if (positionenCount > 0) detailsText.push(`${positionenCount} Positionen`);
+            if (materialienCount > 0) detailsText.push(`${materialienCount} Materialien`);
 
             const banner = document.createElement('div');
             banner.id = 'kalkulationLoadedBanner';
@@ -4545,6 +4706,7 @@
                             Material: ${(kalkulation.summeMaterial || 0).toFixed(2)}€ |
                             Teile (Original): ${(kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile || 0).toFixed(2)}€ |
                             Teile (Aftermarket): ${(kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile || 0).toFixed(2)}€</small>
+                            ${detailsText.length > 0 ? `<br><small style="color: #388e3c;">📦 Details: ${detailsText.join(', ')} in Tabellen übertragen</small>` : ''}
                         </p>
                     </div>
                 </div>
