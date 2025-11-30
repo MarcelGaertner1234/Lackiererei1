@@ -2050,23 +2050,8 @@
         }
 
         function updateKostenaufschluesselung() {
-            // 🆕 FIX (Nov 30, 2025): Original/Aftermarket aus den Ersatzteil-Feldern berechnen
-            // kalkulation.html speichert: preisOriginal, preisAftermarket pro Ersatzteil
-            let ersatzteileOriginalSumme = 0;
-            let ersatzteileAftermarketSumme = 0;
-            ersatzteileData.forEach(t => {
-                // preisOriginal/preisAftermarket sind bereits Gesamtpreise (menge * einzelpreis)
-                // Sie wurden in addErsatzteilRow() oder updateErsatzteil() berechnet
-                const preisOriginal = parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0;
-                const preisAftermarket = parseFloat(t.preisAftermarket) || preisOriginal;
-
-                ersatzteileOriginalSumme += preisOriginal;
-                ersatzteileAftermarketSumme += preisAftermarket;
-
-                console.log(`📦 Ersatzteil: ${t.benennung || 'Unbekannt'} - Original: ${preisOriginal.toFixed(2)}€, Aftermarket: ${preisAftermarket.toFixed(2)}€`);
-            });
-            const ersatzteileSumme = ersatzteileOriginalSumme; // Original als Standard
-
+            // Summen aus den Tabellen berechnen
+            const ersatzteileSumme = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.gesamtpreis) || 0), 0);
             const arbeitslohnSumme = arbeitslohnData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const lackierungSumme = lackierungData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const materialienSumme = materialienData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
@@ -2083,20 +2068,6 @@
             // MwSt berechnen (Standard: 19%)
             const mwstSatz = 19;
 
-            // 🆕 FIX (Nov 30, 2025): Varianten-Preise live aktualisieren
-            // Original-Variante: Basis + Original-Ersatzteile
-            const nettoOriginal = basisSumme + ersatzteileOriginalSumme;
-            const mwstOriginal = nettoOriginal * (mwstSatz / 100);
-            const bruttoOriginal = nettoOriginal + mwstOriginal;
-
-            // Aftermarket-Variante: Basis + Aftermarket-Ersatzteile (günstiger)
-            // WICHTIG: ersatzteileAftermarketSumme enthält bereits Aftermarket-Preise (oder Original als Fallback)
-            const nettoAftermarket = basisSumme + ersatzteileAftermarketSumme;
-            const mwstAftermarket = nettoAftermarket * (mwstSatz / 100);
-            const bruttoAftermarket = nettoAftermarket + mwstAftermarket;
-
-            console.log(`📊 Varianten-Berechnung: Original-ET=${ersatzteileOriginalSumme}€, Aftermarket-ET=${ersatzteileAftermarketSumme}€, Basis=${basisSumme}€`);
-
             // Netto-Summe (MIT Ersatzfahrzeug-Kosten) - für vereinbarter Preis
             const nettoSumme = basisSumme + ersatzteileSumme;
             const mwstBetrag = nettoSumme * (mwstSatz / 100);
@@ -2109,8 +2080,38 @@
                 console.log(`✅ Vereinbarter Preis auto-updated: ${bruttoSumme.toFixed(2)} €`);
             }
 
-            // 🆕 Varianten-Preise aktualisieren (UI + Hidden Fields)
-            updateVariantenPreise(bruttoOriginal, bruttoAftermarket);
+            // 🆕 FIX (Nov 30, 2025): Varianten-Preise aus Kalkulation BEIBEHALTEN wenn vorhanden
+            // Die Kalkulation enthält bereits vorberechnete Original/Aftermarket Summen
+            // Diese sollen NICHT überschrieben werden, außer der User ändert manuell etwas!
+            const existingOriginal = parseFloat(document.getElementById('summeBruttoOriginal')?.value) || 0;
+            const existingAftermarket = parseFloat(document.getElementById('summeBruttoAftermarket')?.value) || 0;
+
+            // Wenn unterschiedliche Varianten-Preise aus Kalkulation vorhanden sind → NICHT überschreiben!
+            // Diese wurden von kalkulation.html berechnet und sind korrekt.
+            if (existingOriginal > 0 && existingAftermarket > 0 && existingOriginal !== existingAftermarket) {
+                // Vorberechnete Varianten aus Kalkulation - NICHT überschreiben!
+                console.log(`📊 Varianten aus Kalkulation beibehalten: Original=${existingOriginal.toFixed(2)}€, Aftermarket=${existingAftermarket.toFixed(2)}€`);
+                // UI muss nicht aktualisiert werden - ist bereits korrekt
+            } else {
+                // Keine vorberechneten Varianten ODER identische Werte - berechne aus Ersatzteilen
+                let ersatzteileOriginalSumme = 0;
+                let ersatzteileAftermarketSumme = 0;
+                ersatzteileData.forEach(t => {
+                    const preisOriginal = parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0;
+                    const preisAftermarket = parseFloat(t.preisAftermarket) || preisOriginal;
+                    ersatzteileOriginalSumme += preisOriginal;
+                    ersatzteileAftermarketSumme += preisAftermarket;
+                });
+
+                const nettoOriginal = basisSumme + ersatzteileOriginalSumme;
+                const bruttoOriginal = nettoOriginal * 1.19;
+
+                const nettoAftermarket = basisSumme + ersatzteileAftermarketSumme;
+                const bruttoAftermarket = nettoAftermarket * 1.19;
+
+                console.log(`📊 Varianten neu berechnet: Original=${bruttoOriginal.toFixed(2)}€, Aftermarket=${bruttoAftermarket.toFixed(2)}€`);
+                updateVariantenPreise(bruttoOriginal, bruttoAftermarket);
+            }
         }
 
         /**
