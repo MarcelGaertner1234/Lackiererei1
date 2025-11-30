@@ -2030,7 +2030,21 @@
         }
 
         function updateKostenaufschluesselung() {
-            const ersatzteileSumme = ersatzteileData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
+            // Ersatzteile: Getrennt nach Original und Aftermarket berechnen
+            let ersatzteileOriginalSumme = 0;
+            let ersatzteileAftermarketSumme = 0;
+            ersatzteileData.forEach(t => {
+                const preis = t.gesamtpreis || 0;
+                // Aftermarket-Erkennung: oeNummer enthält "AFT" oder "nach" oder ist leer
+                const isAftermarket = !t.etn || t.etn.toLowerCase().includes('aft') || t.etn.toLowerCase().includes('nach');
+                if (isAftermarket) {
+                    ersatzteileAftermarketSumme += preis;
+                } else {
+                    ersatzteileOriginalSumme += preis;
+                }
+            });
+            const ersatzteileSumme = ersatzteileOriginalSumme + ersatzteileAftermarketSumme;
+
             const arbeitslohnSumme = arbeitslohnData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const lackierungSumme = lackierungData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
             const materialienSumme = materialienData.reduce((sum, t) => sum + (t.gesamtpreis || 0), 0);
@@ -2041,14 +2055,27 @@
                 ? parseFloat(ersatzfahrzeugSummeEl.textContent.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0
                 : 0;
 
-            // Netto-Summe (MIT Ersatzfahrzeug-Kosten)
-            const nettoSumme = ersatzteileSumme + arbeitslohnSumme + lackierungSumme + materialienSumme + ersatzfahrzeugSumme;
+            // Basis-Summe (Arbeitslohn + Lackierung + Material + Ersatzfahrzeug)
+            const basisSumme = arbeitslohnSumme + lackierungSumme + materialienSumme + ersatzfahrzeugSumme;
 
             // MwSt berechnen (Standard: 19%)
             const mwstSatz = 19;
-            const mwstBetrag = nettoSumme * (mwstSatz / 100);
 
-            // Brutto-Summe
+            // 🆕 FIX (Nov 30, 2025): Varianten-Preise live aktualisieren
+            // Original-Variante: Basis + alle Ersatzteile (Original + Aftermarket als Original-Preis)
+            const nettoOriginal = basisSumme + ersatzteileSumme;
+            const mwstOriginal = nettoOriginal * (mwstSatz / 100);
+            const bruttoOriginal = nettoOriginal + mwstOriginal;
+
+            // Aftermarket-Variante: Basis + Aftermarket-Ersatzteile (günstiger)
+            // Falls keine Aftermarket-Ersatzteile: Gleich wie Original
+            const nettoAftermarket = basisSumme + (ersatzteileAftermarketSumme > 0 ? ersatzteileAftermarketSumme : ersatzteileSumme);
+            const mwstAftermarket = nettoAftermarket * (mwstSatz / 100);
+            const bruttoAftermarket = nettoAftermarket + mwstAftermarket;
+
+            // Netto-Summe (MIT Ersatzfahrzeug-Kosten) - für vereinbarter Preis
+            const nettoSumme = basisSumme + ersatzteileSumme;
+            const mwstBetrag = nettoSumme * (mwstSatz / 100);
             const bruttoSumme = nettoSumme + mwstBetrag;
 
             // Vereinbarter Preis auto-update (wenn Kalkulation verwendet wird)
@@ -2056,6 +2083,50 @@
             if (vereinbarterPreis && bruttoSumme > 0) {
                 vereinbarterPreis.value = bruttoSumme.toFixed(2);
                 console.log(`✅ Vereinbarter Preis auto-updated: ${bruttoSumme.toFixed(2)} €`);
+            }
+
+            // 🆕 Varianten-Preise aktualisieren (UI + Hidden Fields)
+            updateVariantenPreise(bruttoOriginal, bruttoAftermarket);
+        }
+
+        /**
+         * 🆕 FIX (Nov 30, 2025): Varianten-Preise live aktualisieren
+         * Wird von updateKostenaufschluesselung() aufgerufen
+         */
+        function updateVariantenPreise(bruttoOriginal, bruttoAftermarket) {
+            // Hidden fields aktualisieren (für Speichern)
+            const hiddenOriginal = document.getElementById('summeBruttoOriginal');
+            const hiddenAftermarket = document.getElementById('summeBruttoAftermarket');
+            if (hiddenOriginal) hiddenOriginal.value = bruttoOriginal.toFixed(2);
+            if (hiddenAftermarket) hiddenAftermarket.value = bruttoAftermarket.toFixed(2);
+
+            // UI-Elemente aktualisieren
+            const preisOriginalDisplay = document.getElementById('preisOriginalDisplay');
+            const preisAftermarketDisplay = document.getElementById('preisAftermarketDisplay');
+            const variantenSection = document.getElementById('variantenSection');
+
+            if (variantenSection && preisOriginalDisplay && preisAftermarketDisplay) {
+                // Varianten-Section anzeigen wenn Preise vorhanden
+                if (bruttoOriginal > 0) {
+                    variantenSection.style.display = 'block';
+                    preisOriginalDisplay.textContent = formatCurrency(bruttoOriginal);
+
+                    // Ersparnis anzeigen wenn Aftermarket günstiger
+                    if (bruttoAftermarket > 0 && bruttoAftermarket < bruttoOriginal) {
+                        const savings = bruttoOriginal - bruttoAftermarket;
+                        const savingsPercent = Math.round((savings / bruttoOriginal) * 100);
+                        preisAftermarketDisplay.innerHTML = `
+                            ${formatCurrency(bruttoAftermarket)}
+                            <span style="display: block; font-size: 0.85em; color: var(--color-success); margin-top: 4px;">
+                                💸 ${savingsPercent}% günstiger
+                            </span>
+                        `;
+                    } else {
+                        preisAftermarketDisplay.textContent = formatCurrency(bruttoAftermarket);
+                    }
+
+                    console.log(`💰 Varianten-Preise aktualisiert: Original=${bruttoOriginal.toFixed(2)}€, Aftermarket=${bruttoAftermarket.toFixed(2)}€`);
+                }
             }
         }
 
