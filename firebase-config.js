@@ -140,6 +140,16 @@ window.firebaseApp = {
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   // 🐛 BUG FIX: Document ID muss String sein (Firestore erwartet String, nicht Number!)
   saveFahrzeug: async (data) => {
+    // 🛡️ DEFENSIVE: Validate data parameter
+    if (!data || typeof data !== 'object') {
+      console.error('❌ saveFahrzeug: data ist undefined oder kein Object');
+      throw new Error('saveFahrzeug: data parameter ist erforderlich');
+    }
+    if (data.id == null) {
+      console.error('❌ saveFahrzeug: data.id ist undefined');
+      throw new Error('saveFahrzeug: data.id ist erforderlich');
+    }
+
     try {
       await window.getCollection('fahrzeuge').doc(String(data.id)).set(data);
       console.log('✅ Fahrzeug in Firestore gespeichert:', data.id);
