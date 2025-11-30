@@ -6225,7 +6225,7 @@
                         notizen: document.getElementById('notizen').value || '',
                         erstelltAm: new Date().toISOString(),
                         erstelltVon: 'Admin',
-                        gewaehlteVariante: "original",  // Auto-set bei Multi-Service
+                        gewaehlteVariante: null,  // 🔧 FIX (2025-11-30): Partner wählt später (nicht hardcoded!)
 
                         // Fahrzeugidentifikation
                         identificationType: anfrage.identificationType || null,
@@ -6310,8 +6310,14 @@
                     console.log('📦 [MULTI-SERVICE] Gefundene Varianten:', uniqueVariants);
 
                     // 2. Für jede Variante: Sammle Felder von allen Services
+                    // 🔧 FIX (2025-11-30): Breakdown für ALLE Varianten speichern (nicht nur original!)
                     uniqueVariants.forEach(variantType => {
                         kvaData.varianten[variantType] = {};
+
+                        // 🆕 FIX: Breakdown pro Variante initialisieren
+                        if (!kvaData.breakdown[variantType]) {
+                            kvaData.breakdown[variantType] = {};
+                        }
 
                         // Für jeden Service: Felder sammeln
                         anfrage.serviceLabels.forEach(serviceTyp => {
@@ -6329,14 +6335,12 @@
                                 // In flaches varianten Object schreiben
                                 kvaData.varianten[variantType][fullFieldName] = value;
 
-                                // In Breakdown tracken (nur für "original" Variante - backwards compat)
-                                if (variantType === 'original') {
-                                    breakdown.fields.push(fullFieldName);
-                                    breakdown.gesamt += value;
-                                }
+                                // 🔧 FIX: In Breakdown tracken (für ALLE Varianten, nicht nur original!)
+                                breakdown.fields.push(fullFieldName);
+                                breakdown.gesamt += value;
 
-                                // Label speichern für PDF (nur einmal)
-                                if (variantType === 'original' && !kvaData.serviceLabels[fullFieldName]) {
+                                // Label speichern für PDF (nur einmal, pro Feldname)
+                                if (!kvaData.serviceLabels[fullFieldName]) {
                                     const labelElement = document.querySelector(`label[for="${input.id}"]`);
                                     if (labelElement) {
                                         kvaData.serviceLabels[fullFieldName] = labelElement.textContent.replace(' *', '').trim();
@@ -6344,11 +6348,9 @@
                                 }
                             });
 
-                            // Breakdown für diesen Service speichern (nur für "original")
-                            if (variantType === 'original') {
-                                kvaData.breakdown[serviceTyp] = breakdown;
-                                console.log(`📦 [MULTI-SERVICE] ${serviceTyp}: ${breakdown.gesamt.toFixed(2)} € (${breakdown.fields.length} Felder)`);
-                            }
+                            // 🔧 FIX: Breakdown für diesen Service + Variante speichern
+                            kvaData.breakdown[variantType][serviceTyp] = breakdown;
+                            console.log(`📦 [MULTI-SERVICE] ${variantType}/${serviceTyp}: ${breakdown.gesamt.toFixed(2)} € (${breakdown.fields.length} Felder)`);
                         });
 
                         // Gesamt-Summe für diese Variante berechnen

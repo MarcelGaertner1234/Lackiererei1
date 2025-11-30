@@ -4723,55 +4723,77 @@
                     </div>
                 `;
             } else if (anfrage.kva) {
-                // 🆕 FIX (2025-11-30): Multi-Service KVA mit Service-Breakdown anzeigen
-                if (anfrage.kva.isMultiService && anfrage.kva.breakdown) {
-                    // Multi-Service: Zeige Preise pro Service aus breakdown
-                    const serviceIcons = {
-                        lackier: '🎨', reifen: '🛞', mechanik: '🔧', aufbereitung: '🧹',
-                        tuev: '✅', gutachten: '📋', scheibenersatz: '🚗', klimaanlage: '❄️',
-                        dellen: '🔨', folierung: '🎭', steinschutz: '🛡️', werbebeklebung: '📦'
+                // 🔧 FIX (2025-11-30): Multi-Service KVA mit Varianten-Auswahl (Original/Aftermarket)
+                if (anfrage.kva.isMultiService && anfrage.kva.varianten) {
+                    // Multi-Service: Zeige BEIDE Varianten (wie bei Single-Service)
+                    const original = anfrage.kva.varianten.original;
+                    const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
+                    const gewaehlte = anfrage.kva.gewaehlteVariante;
+
+                    const variantLabelMap = {
+                        original: '⭐ Original', zubehoer: '🔧 Aftermarket', partner: '🤝 Partner'
                     };
+
+                    // Service-Icons für Breakdown-Anzeige
                     const serviceNames = {
                         lackier: 'Lackierung', reifen: 'Reifen', mechanik: 'Mechanik',
                         aufbereitung: 'Aufbereitung', tuev: 'TÜV/HU/AU', gutachten: 'Gutachten',
                         scheibenersatz: 'Scheibenersatz', klimaanlage: 'Klimaanlage',
-                        dellen: 'Dellenentfernung', folierung: 'Folierung',
-                        steinschutz: 'Steinschutzfolie', werbebeklebung: 'Werbebeklebung'
+                        dellen: 'Dellen', folierung: 'Folierung', steinschutz: 'Steinschutz',
+                        werbebeklebung: 'Werbebeklebung'
                     };
 
-                    const servicePreisButtons = Object.entries(anfrage.kva.breakdown)
-                        .filter(([key, data]) => data && data.gesamt > 0)
-                        .map(([serviceTyp, data]) => {
-                            const icon = serviceIcons[serviceTyp] || '📋';
-                            const name = serviceNames[serviceTyp] || serviceTyp;
-                            return `
-                                <div style="display: flex; flex-direction: column; align-items: center;
-                                            background: #f5f5f5; border: 1px solid #e0e0e0; border-radius: 8px;
-                                            padding: 8px 12px; min-width: 80px;">
-                                    <span style="font-size: 11px; color: #666;">${name}</span>
-                                    <span style="font-size: 14px; font-weight: 600; color: #2e7d32;">${data.gesamt.toFixed(2)}€</span>
+                    // Helper: Erstelle Breakdown-Text für eine Variante
+                    const buildBreakdownText = (variantKey) => {
+                        // Neue Struktur: breakdown[variantType][serviceTyp]
+                        const variantBreakdown = anfrage.kva.breakdown?.[variantKey];
+                        if (!variantBreakdown || typeof variantBreakdown !== 'object') return '';
+
+                        return Object.entries(variantBreakdown)
+                            .filter(([svc, data]) => data?.gesamt > 0)
+                            .map(([svc, data]) => `${serviceNames[svc] || svc}: ${data.gesamt.toFixed(2)}€`)
+                            .join('<br>');
+                    };
+
+                    if (original && aftermarket) {
+                        // BEIDE Optionen verfügbar → Vergleich anzeigen
+                        const isAftermarket = anfrage.kva.varianten.zubehoer ? 'zubehoer' : 'partner';
+                        const aftermarketLabel = variantLabelMap[isAftermarket];
+
+                        const origBreakdownText = buildBreakdownText('original');
+                        const amBreakdownText = buildBreakdownText(isAftermarket);
+
+                        preisHTML = `
+                            <div class="card-preis-vergleich">
+                                <div class="preis-option ${gewaehlte === isAftermarket ? 'selected' : ''}"
+                                     onclick="waehleKVAVariante('${anfrage.id}', '${isAftermarket}', event)"
+                                     title="${amBreakdownText || 'Aftermarket-Preis'}">
+                                    <div class="preis-label">${aftermarketLabel}</div>
+                                    <div class="preis-wert">${aftermarket.gesamt.toFixed(2)}€</div>
                                 </div>
-                            `;
-                        })
-                        .join('');
-
-                    // Gesamtpreis aus varianten.original oder varianten berechnen
-                    const gesamtpreis = anfrage.kva.varianten?.original?.gesamt
-                                     || anfrage.kva.varianten?.[Object.keys(anfrage.kva.varianten)[0]]?.gesamt
-                                     || Object.values(anfrage.kva.breakdown).reduce((sum, s) => sum + (s.gesamt || 0), 0);
-
-                    preisHTML = `
-                        <div class="card-preis-multi-service" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                                                      color: white; border-radius: 8px; padding: 12px; margin-top: 8px;">
-                            <div style="font-size: 11px; opacity: 0.9; margin-bottom: 6px;">Multi-Service KVA</div>
-                            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-                                ${servicePreisButtons}
+                                <div class="preis-option ${gewaehlte === 'original' ? 'selected' : ''}"
+                                     onclick="waehleKVAVariante('${anfrage.id}', 'original', event)"
+                                     title="${origBreakdownText || 'Original-Preis'}">
+                                    <div class="preis-label">⭐ Original</div>
+                                    <div class="preis-wert">${original.gesamt.toFixed(2)}€</div>
+                                </div>
                             </div>
-                            <div style="text-align: right; font-size: 16px; font-weight: 700; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px;">
-                                Gesamt: ${gesamtpreis.toFixed(2)}€
+                        `;
+                    } else if (original || aftermarket) {
+                        // Nur EINE Variante vorhanden
+                        const singleVariant = original || aftermarket;
+                        const singleKey = original ? 'original' : (anfrage.kva.varianten.zubehoer ? 'zubehoer' : 'partner');
+                        const singleLabel = variantLabelMap[singleKey];
+
+                        preisHTML = `
+                            <div class="card-preis">
+                                💶 ${singleVariant.gesamt.toFixed(2)}€
+                                <span style="font-size: 0.85em; opacity: 0.8;">${singleLabel}</span>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    } else {
+                        preisHTML = '<div class="card-preis">💶 k.A.</div>';
+                    }
                 }
                 // Single-Service KVA mit Varianten (aktuelles Format)
                 else if (anfrage.kva.varianten) {
@@ -5193,12 +5215,18 @@
 
             // Preis-Anzeige
             let preisText = 'k.A.';
-            // 🆕 FIX (2025-11-30): Multi-Service KVA Support für Liste-Ansicht
-            if (anfrage.kva?.isMultiService && anfrage.kva?.breakdown) {
-                // Multi-Service: Gesamtpreis aus breakdown berechnen
-                const gesamtpreis = anfrage.kva.varianten?.original?.gesamt
-                                 || Object.values(anfrage.kva.breakdown).reduce((sum, s) => sum + (s.gesamt || 0), 0);
-                preisText = `${gesamtpreis.toFixed(0)}€ (Multi)`;
+            // 🔧 FIX (2025-11-30): Multi-Service KVA Support für Liste-Ansicht
+            if (anfrage.kva?.isMultiService && anfrage.kva?.varianten) {
+                // Multi-Service: Zeige beide Varianten wenn vorhanden
+                const original = anfrage.kva.varianten.original;
+                const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
+                if (original && aftermarket) {
+                    preisText = `${aftermarket.gesamt.toFixed(0)}€ / ${original.gesamt.toFixed(0)}€`;
+                } else if (original) {
+                    preisText = `${original.gesamt.toFixed(0)}€`;
+                } else if (aftermarket) {
+                    preisText = `${aftermarket.gesamt.toFixed(0)}€`;
+                }
             } else if (anfrage.kva?.varianten) {
                 const original = anfrage.kva.varianten.original;
                 const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
@@ -5308,12 +5336,18 @@
 
             // Preis-Anzeige
             let preisText = 'k.A.';
-            // 🆕 FIX (2025-11-30): Multi-Service KVA Support für Kanban-Ansicht
-            if (anfrage.kva?.isMultiService && anfrage.kva?.breakdown) {
-                // Multi-Service: Gesamtpreis aus breakdown berechnen
-                const gesamtpreis = anfrage.kva.varianten?.original?.gesamt
-                                 || Object.values(anfrage.kva.breakdown).reduce((sum, s) => sum + (s.gesamt || 0), 0);
-                preisText = `${gesamtpreis.toFixed(0)}€ (Multi)`;
+            // 🔧 FIX (2025-11-30): Multi-Service KVA Support für Kanban-Ansicht
+            if (anfrage.kva?.isMultiService && anfrage.kva?.varianten) {
+                // Multi-Service: Zeige beide Varianten wenn vorhanden
+                const original = anfrage.kva.varianten.original;
+                const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
+                if (original && aftermarket) {
+                    preisText = `${aftermarket.gesamt.toFixed(0)}€ / ${original.gesamt.toFixed(0)}€`;
+                } else if (original) {
+                    preisText = `${original.gesamt.toFixed(0)}€`;
+                } else if (aftermarket) {
+                    preisText = `${aftermarket.gesamt.toFixed(0)}€`;
+                }
             } else if (anfrage.kva?.varianten) {
                 const original = anfrage.kva.varianten.original;
                 const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
