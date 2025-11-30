@@ -4680,72 +4680,73 @@
             // Preis-Anzeige vorbereiten (mit Vergleich wenn beide Varianten vorhanden)
             let preisHTML = '';
 
-            // 🔧 FIX (2025-11-30): Varianten-Auswahl (Original/Aftermarket) aus entwuerfe-bearbeiten.html
-            // Entwurf-Angebote haben angebotDetails mit summeBruttoOriginal/summeBruttoAftermarket
-            if (anfrage.angebotDetails?.preis) {
-                const originalPreis = parseFloat(anfrage.angebotDetails.summeBruttoOriginal) || 0;
-                const aftermarketPreis = parseFloat(anfrage.angebotDetails.summeBruttoAftermarket) || 0;
-                const gewaehlteVariante = anfrage.angebotDetails.gewaehlteVariante || anfrage.gewaehlteVariante || null;
+            // 🔧 FIX (2025-11-30): Varianten-Auswahl (Original/Aftermarket)
+            // Preise können auf Root-Ebene ODER in angebotDetails sein (verschiedene Pipelines)
+            // PRIORITÄT: Root-Ebene (summeBruttoOriginal) > angebotDetails.summeBruttoOriginal
+            const originalPreis = parseFloat(anfrage.summeBruttoOriginal) || parseFloat(anfrage.angebotDetails?.summeBruttoOriginal) || 0;
+            const aftermarketPreis = parseFloat(anfrage.summeBruttoAftermarket) || parseFloat(anfrage.angebotDetails?.summeBruttoAftermarket) || 0;
+            const gewaehlteVariante = anfrage.gewaehlteVariante || anfrage.angebotDetails?.gewaehlteVariante || null;
+            const hatVarianten = anfrage.hasVarianten || (originalPreis > 0 && aftermarketPreis > 0 && originalPreis !== aftermarketPreis);
 
-                // 🆕 Wenn BEIDE Varianten vorhanden UND unterschiedlich → Auswahl anzeigen!
-                if (originalPreis > 0 && aftermarketPreis > 0 && originalPreis !== aftermarketPreis) {
-                    const savingsPercent = Math.round(((originalPreis - aftermarketPreis) / originalPreis) * 100);
-                    preisHTML = `
-                        <div style="background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%);
-                                    color: white;
-                                    border-radius: 8px;
-                                    padding: 10px;
-                                    text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
-                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-                                <span style="font-size: 14px;">📄</span>
-                                <span style="font-weight: 600; font-size: 11px;">Angebot - Variante wählen:</span>
+            // 🆕 Wenn BEIDE Varianten vorhanden UND unterschiedlich → Auswahl anzeigen!
+            if (hatVarianten && originalPreis > 0 && aftermarketPreis > 0) {
+                const savingsPercent = Math.round(((originalPreis - aftermarketPreis) / originalPreis) * 100);
+                const erstelltAm = anfrage.angebotDetails?.erstelltAm || anfrage.erstelltAm || null;
+                preisHTML = `
+                    <div style="background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%);
+                                color: white;
+                                border-radius: 8px;
+                                padding: 10px;
+                                text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                            <span style="font-size: 14px;">📄</span>
+                            <span style="font-weight: 600; font-size: 11px;">Angebot - Variante wählen:</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <div class="preis-option ${gewaehlteVariante === 'aftermarket' ? 'selected' : ''}"
+                                 onclick="waehleEntwurfVariante('${anfrage.id}', 'aftermarket', ${aftermarketPreis}, event)"
+                                 style="flex: 1; padding: 8px; background: ${gewaehlteVariante === 'aftermarket' ? 'rgba(255,152,0,0.3)' : 'rgba(255,255,255,0.15)'};
+                                        border-radius: 6px; cursor: pointer; text-align: center;
+                                        border: 2px solid ${gewaehlteVariante === 'aftermarket' ? '#ff9800' : 'transparent'};">
+                                <div style="font-size: 10px; opacity: 0.9;">🔧 Aftermarket</div>
+                                <div style="font-size: 16px; font-weight: 700;">${aftermarketPreis.toFixed(2)}€</div>
+                                <div style="font-size: 9px; color: #81c784;">💸 ${savingsPercent}% günstiger</div>
                             </div>
-                            <div style="display: flex; gap: 8px;">
-                                <div class="preis-option ${gewaehlteVariante === 'aftermarket' ? 'selected' : ''}"
-                                     onclick="waehleEntwurfVariante('${anfrage.id}', 'aftermarket', ${aftermarketPreis}, event)"
-                                     style="flex: 1; padding: 8px; background: ${gewaehlteVariante === 'aftermarket' ? 'rgba(255,152,0,0.3)' : 'rgba(255,255,255,0.15)'};
-                                            border-radius: 6px; cursor: pointer; text-align: center;
-                                            border: 2px solid ${gewaehlteVariante === 'aftermarket' ? '#ff9800' : 'transparent'};">
-                                    <div style="font-size: 10px; opacity: 0.9;">🔧 Aftermarket</div>
-                                    <div style="font-size: 16px; font-weight: 700;">${aftermarketPreis.toFixed(2)}€</div>
-                                    <div style="font-size: 9px; color: #81c784;">💸 ${savingsPercent}% günstiger</div>
-                                </div>
-                                <div class="preis-option ${gewaehlteVariante === 'original' ? 'selected' : ''}"
-                                     onclick="waehleEntwurfVariante('${anfrage.id}', 'original', ${originalPreis}, event)"
-                                     style="flex: 1; padding: 8px; background: ${gewaehlteVariante === 'original' ? 'rgba(76,175,80,0.3)' : 'rgba(255,255,255,0.15)'};
-                                            border-radius: 6px; cursor: pointer; text-align: center;
-                                            border: 2px solid ${gewaehlteVariante === 'original' ? '#4caf50' : 'transparent'};">
-                                    <div style="font-size: 10px; opacity: 0.9;">⭐ Original</div>
-                                    <div style="font-size: 16px; font-weight: 700;">${originalPreis.toFixed(2)}€</div>
-                                    <div style="font-size: 9px; opacity: 0.7;">OEM-Qualität</div>
-                                </div>
-                            </div>
-                            <div style="font-size: 9px; opacity: 0.8; margin-top: 6px; text-align: center;">
-                                ${anfrage.angebotDetails.erstelltAm ? new Date(anfrage.angebotDetails.erstelltAm).toLocaleDateString('de-DE') : ''}
+                            <div class="preis-option ${gewaehlteVariante === 'original' ? 'selected' : ''}"
+                                 onclick="waehleEntwurfVariante('${anfrage.id}', 'original', ${originalPreis}, event)"
+                                 style="flex: 1; padding: 8px; background: ${gewaehlteVariante === 'original' ? 'rgba(76,175,80,0.3)' : 'rgba(255,255,255,0.15)'};
+                                        border-radius: 6px; cursor: pointer; text-align: center;
+                                        border: 2px solid ${gewaehlteVariante === 'original' ? '#4caf50' : 'transparent'};">
+                                <div style="font-size: 10px; opacity: 0.9;">⭐ Original</div>
+                                <div style="font-size: 16px; font-weight: 700;">${originalPreis.toFixed(2)}€</div>
+                                <div style="font-size: 9px; opacity: 0.7;">OEM-Qualität</div>
                             </div>
                         </div>
-                    `;
-                } else {
-                    // Nur ein Preis oder beide gleich → Standard-Anzeige
-                    preisHTML = `
-                        <div class="card-preis" style="background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%);
-                                                       color: white;
-                                                       border: none;
-                                                       padding: 10px 12px;
-                                                       text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
-                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: white !important;">
-                                <span style="font-size: 16px;">📄</span>
-                                <span style="font-weight: 600; font-size: 12px; color: white !important;">Angebot erstellt</span>
-                            </div>
-                            <div style="font-size: 22px; font-weight: 700; color: white !important;">
-                                ${anfrage.angebotDetails.preis.toFixed(2)}€
-                            </div>
-                            <div style="font-size: 10px; opacity: 1; margin-top: 2px; color: white !important;">
-                                ${anfrage.angebotDetails.erstelltAm ? new Date(anfrage.angebotDetails.erstelltAm).toLocaleDateString('de-DE') : ''}
-                            </div>
+                        <div style="font-size: 9px; opacity: 0.8; margin-top: 6px; text-align: center;">
+                            ${erstelltAm ? new Date(erstelltAm).toLocaleDateString('de-DE') : ''}
                         </div>
-                    `;
-                }
+                    </div>
+                `;
+            } else if (anfrage.angebotDetails?.preis) {
+                // Nur ein Preis (keine Varianten) → Standard-Anzeige
+                preisHTML = `
+                    <div class="card-preis" style="background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%);
+                                                   color: white;
+                                                   border: none;
+                                                   padding: 10px 12px;
+                                                   text-shadow: 0 1px 2px rgba(0,0,0,0.3);">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: white !important;">
+                            <span style="font-size: 16px;">📄</span>
+                            <span style="font-weight: 600; font-size: 12px; color: white !important;">Angebot erstellt</span>
+                        </div>
+                        <div style="font-size: 22px; font-weight: 700; color: white !important;">
+                            ${anfrage.angebotDetails.preis.toFixed(2)}€
+                        </div>
+                        <div style="font-size: 10px; opacity: 1; margin-top: 2px; color: white !important;">
+                            ${anfrage.angebotDetails.erstelltAm ? new Date(anfrage.angebotDetails.erstelltAm).toLocaleDateString('de-DE') : ''}
+                        </div>
+                    </div>
+                `;
             }
             // 🆕 BUGFIX 2025-11-04: Werkstatt-initiierte Anfragen mit vereinbartem Preis
             else if (anfrage.werkstattInitiiert && anfrage.vereinbarterPreis) {
