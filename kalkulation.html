@@ -8927,96 +8927,217 @@ REGELN:
             }
 
             // 🔧 FIX (2025-11-30): Service-Details aus Partner-Anfrage in serviceDetailsPerService vorausfüllen
-            // Feldnamen-Mapping (annahme.html/partner-app → kalkulation.html SERVICE_CONFIG)
-            // HINWEIS: Identisches Mapping wie bei Entwürfen!
+            // ============================================
+            // 🔄 FELDNAMEN-MAPPING: Partner-App → kalkulation.html
+            // ============================================
+            // VOLLSTÄNDIGE MAPPING-TABELLE (Nov 30, 2025)
+            // multi-service-anfrage.html speichert ohne Prefix: lackier_farbcode → farbcode
+            // kalkulation.html SERVICE_CONFIG hat andere Feldnamen
             const normalizeServiceDetailsPartner = (details) => {
                 if (!details || typeof details !== 'object') return {};
                 const normalized = { ...details };
 
                 // ===== REIFEN-MAPPING =====
-                // multi-service-anfrage.html: art, typ, groesse, anzahl, info
-                // SERVICE_CONFIG Step 2b: reifengroesse, reifenTyp, felgenTyp, reifenanzahl
+                // Partner: art, typ, groesse, anzahl, info
+                // Kalkulation: reifengroesse, reifenTyp, felgenTyp, reifenanzahl
                 if (normalized.reifentyp !== undefined) {
                     normalized.reifenTyp = normalized.reifentyp;
-                    delete normalized.reifentyp;
                 }
-                // 🆕 Nov 30, 2025: typ → reifenTyp (multi-service-anfrage.html hat jetzt reifen_typ)
                 if (normalized.typ !== undefined && normalized.reifenTyp === undefined) {
                     normalized.reifenTyp = normalized.typ;
                 }
+                // Wert-Mapping: Partner "ganzjahr" → Kalkulation "allseason"
+                if (normalized.reifenTyp === 'ganzjahr') {
+                    normalized.reifenTyp = 'allseason';
+                }
                 if (normalized.groesse !== undefined) {
                     normalized.reifengroesse = normalized.groesse;
-                    // Behalte auch groesse für Fallback
                 }
                 if (normalized.anzahl !== undefined) {
                     normalized.reifenanzahl = String(normalized.anzahl);
-                    // Behalte auch anzahl für Fallback
-                }
-                if (normalized.info !== undefined) {
-                    normalized.reifenInfo = normalized.info;
-                    // Behalte auch info für Fallback
                 }
 
                 // ===== LACKIER-MAPPING =====
-                // multi-service-anfrage.html: farbcode, karosserie, ersatzteil, teile, info
-                // SERVICE_CONFIG Step 2b: farbnummer, karosserie, ersatzteil, teile, schadenBeschreibung
-                if (normalized.farbcode !== undefined) {
+                // Partner: art, karosserie, ersatzteil, farbcode, teile, info
+                // Kalkulation: farbnummer, karosserie, ersatzteil, teile, schadenBeschreibung
+                if (normalized.farbcode !== undefined && normalized.farbnummer === undefined) {
                     normalized.farbnummer = normalized.farbcode;
-                    // Behalte auch farbcode für Fallback
                 }
                 if (normalized.info !== undefined && normalized.schadenBeschreibung === undefined) {
                     normalized.schadenBeschreibung = normalized.info;
                 }
 
                 // ===== PFLEGE-MAPPING =====
-                if (normalized.paket !== undefined) {
-                    normalized.pflegePaket = normalized.paket;
-                    delete normalized.paket;
+                // Partner: paket, polieren, motor, ozon (checkboxes)
+                // Kalkulation: pflegePaket, zusatzleistungen
+                if (normalized.paket !== undefined && normalized.pflegePaket === undefined) {
+                    // Wert-Mapping: Partner → Kalkulation
+                    const pflegePaketMapping = {
+                        'basis': 'basis',
+                        'premium': 'premium',
+                        'komplett': 'premium'  // komplett → premium (nächstbester Match)
+                    };
+                    normalized.pflegePaket = pflegePaketMapping[normalized.paket] || normalized.paket;
+                }
+                // Sammle Checkbox-Werte zu einem String
+                const pflegeExtras = [];
+                if (normalized.polieren === true) pflegeExtras.push('Polieren');
+                if (normalized.motor === true) pflegeExtras.push('Motorraumreinigung');
+                if (normalized.ozon === true) pflegeExtras.push('Ozonbehandlung');
+                if (pflegeExtras.length > 0 && normalized.zusatzleistungen === undefined) {
+                    normalized.zusatzleistungen = pflegeExtras.join(', ');
                 }
 
                 // ===== MECHANIK-MAPPING =====
-                if (normalized.problem !== undefined && normalized.symptome === undefined) {
-                    normalized.symptome = normalized.problem;
+                // Partner: art, km, beschreibung
+                // Kalkulation: problem, symptome, fehlercode
+                if (normalized.beschreibung !== undefined && normalized.problem === undefined) {
+                    normalized.problem = normalized.beschreibung;
+                }
+                if (normalized.beschreibung !== undefined && normalized.symptome === undefined) {
+                    normalized.symptome = normalized.beschreibung;
                 }
 
                 // ===== TUEV-MAPPING =====
-                if (normalized.faelligkeit !== undefined) {
-                    normalized.huDatum = normalized.faelligkeit;
-                    delete normalized.faelligkeit;
+                // Partner: hau (checkbox), au (checkbox), ablauf, info
+                // Kalkulation: pruefart, huDatum, bekannteMaengel
+                if (normalized.ablauf !== undefined && normalized.huDatum === undefined) {
+                    normalized.huDatum = normalized.ablauf;
+                }
+                if (normalized.info !== undefined && normalized.bekannteMaengel === undefined) {
+                    normalized.bekannteMaengel = normalized.info;
+                }
+                // Konvertiere HU/AU Checkboxes zu pruefart
+                if (normalized.pruefart === undefined) {
+                    const hasHU = normalized.hau === true;
+                    const hasAU = normalized.au === true;
+                    if (hasHU && hasAU) normalized.pruefart = 'hu-au';
+                    else if (hasHU) normalized.pruefart = 'hu';
+                    else if (hasAU) normalized.pruefart = 'au';
                 }
 
+                // ===== KLIMA-MAPPING =====
+                // Partner: art, kaeltemittel, problem
+                // Kalkulation: klimaservice, kaeltemittel, klimaproblem
+                if (normalized.art !== undefined && normalized.klimaservice === undefined) {
+                    normalized.klimaservice = normalized.art;
+                }
+                if (normalized.problem !== undefined && normalized.klimaproblem === undefined) {
+                    normalized.klimaproblem = normalized.problem;
+                }
+                // Wert-Mapping: "unbekannt" → "" (leerer Wert = Unbekannt in Kalkulation)
+                if (normalized.kaeltemittel === 'unbekannt') {
+                    normalized.kaeltemittel = '';
+                }
+
+                // ===== GLAS-MAPPING =====
+                // Partner: scheibentyp, schadensart, position
+                // Kalkulation: scheibentyp, schadensgroesse, glasposition
+                if (normalized.schadensart !== undefined && normalized.schadensgroesse === undefined) {
+                    // Konvertiere schadensart zu schadensgroesse
+                    const schadensartMapping = {
+                        'steinschlag': 'klein',
+                        'riss': 'riss',
+                        'bruch': 'gross'
+                    };
+                    normalized.schadensgroesse = schadensartMapping[normalized.schadensart] || normalized.schadensart;
+                }
+                if (normalized.position !== undefined && normalized.glasposition === undefined) {
+                    normalized.glasposition = normalized.position;
+                }
+
+                // ===== DELLEN-MAPPING =====
+                // Partner: anzahl, groesse, position, lackschaden (radio)
+                // Kalkulation: dellenanzahl, dellengroesse, dellenpositionen, lackschaden
+                if (normalized.anzahl !== undefined && normalized.dellenanzahl === undefined) {
+                    // Konvertiere Anzahl zu Range
+                    const anzahl = parseInt(normalized.anzahl);
+                    if (anzahl <= 5) normalized.dellenanzahl = '1-5';
+                    else if (anzahl <= 15) normalized.dellenanzahl = '6-15';
+                    else if (anzahl <= 30) normalized.dellenanzahl = '16-30';
+                    else normalized.dellenanzahl = '30+';
+                }
+                if (normalized.groesse !== undefined && normalized.dellengroesse === undefined) {
+                    normalized.dellengroesse = normalized.groesse;
+                }
+                if (normalized.position !== undefined && normalized.dellenpositionen === undefined) {
+                    normalized.dellenpositionen = normalized.position;
+                }
+                // Radio-Button: "true"/"false" → "ja"/"nein"
+                if (normalized.lackschaden === 'true') normalized.lackschaden = 'ja';
+                if (normalized.lackschaden === 'false') normalized.lackschaden = 'nein';
+
                 // ===== FOLIERUNG-MAPPING =====
-                if (normalized.folierungMaterial !== undefined) {
+                // Partner: art, folienart, farbe, info
+                // Kalkulation: folierungArt, folienTyp, folienFarbe, designBeschreibung, folierungInfo
+                if (normalized.art !== undefined && normalized.folierungArt === undefined) {
+                    normalized.folierungArt = normalized.art;
+                }
+                if (normalized.folienart !== undefined && normalized.folienTyp === undefined) {
+                    normalized.folienTyp = normalized.folienart;
+                }
+                if (normalized.farbe !== undefined && normalized.folienFarbe === undefined) {
+                    normalized.folienFarbe = normalized.farbe;
+                }
+                if (normalized.info !== undefined && normalized.folierungInfo === undefined) {
+                    normalized.folierungInfo = normalized.info;
+                }
+                // Legacy-Mappings (falls von altem Format)
+                if (normalized.folierungMaterial !== undefined && normalized.folienTyp === undefined) {
                     normalized.folienTyp = normalized.folierungMaterial;
-                    delete normalized.folierungMaterial;
                 }
-                if (normalized.folierungFarbe !== undefined) {
+                if (normalized.folierungFarbe !== undefined && normalized.folienFarbe === undefined) {
                     normalized.folienFarbe = normalized.folierungFarbe;
-                    delete normalized.folierungFarbe;
                 }
-                if (normalized.folierungDesign !== undefined) {
+                if (normalized.folierungDesign !== undefined && normalized.designBeschreibung === undefined) {
                     normalized.designBeschreibung = normalized.folierungDesign;
-                    delete normalized.folierungDesign;
                 }
 
                 // ===== STEINSCHUTZ-MAPPING =====
-                if (normalized.steinschutzMaterial !== undefined) {
+                // Partner: umfang, material, bereiche
+                // Kalkulation: steinschutzUmfang, folienTyp, steinschutzBereiche
+                if (normalized.umfang !== undefined && normalized.steinschutzUmfang === undefined) {
+                    normalized.steinschutzUmfang = normalized.umfang;
+                }
+                if (normalized.material !== undefined && normalized.folienTyp === undefined) {
+                    normalized.folienTyp = normalized.material;
+                }
+                if (normalized.bereiche !== undefined && normalized.steinschutzBereiche === undefined) {
+                    normalized.steinschutzBereiche = normalized.bereiche;
+                }
+                // Legacy
+                if (normalized.steinschutzMaterial !== undefined && normalized.folienTyp === undefined) {
                     normalized.folienTyp = normalized.steinschutzMaterial;
-                    delete normalized.steinschutzMaterial;
                 }
 
                 // ===== WERBEBEKLEBUNG-MAPPING =====
-                if (normalized.werbebeklebungKomplexitaet !== undefined) {
+                // Partner: art, komplexitaet, flaeche, info
+                // Kalkulation: werbebeklebungUmfang, designKomplexitaet, farbanzahl
+                if (normalized.art !== undefined && normalized.werbebeklebungUmfang === undefined) {
+                    normalized.werbebeklebungUmfang = normalized.art;
+                }
+                if (normalized.komplexitaet !== undefined && normalized.designKomplexitaet === undefined) {
+                    normalized.designKomplexitaet = normalized.komplexitaet;
+                }
+                // Legacy
+                if (normalized.werbebeklebungKomplexitaet !== undefined && normalized.designKomplexitaet === undefined) {
                     normalized.designKomplexitaet = normalized.werbebeklebungKomplexitaet;
-                    delete normalized.werbebeklebungKomplexitaet;
                 }
-                if (normalized.werbebeklebungFarbanzahl !== undefined) {
+                if (normalized.werbebeklebungFarbanzahl !== undefined && normalized.farbanzahl === undefined) {
                     normalized.farbanzahl = parseInt(normalized.werbebeklebungFarbanzahl) || 2;
-                    delete normalized.werbebeklebungFarbanzahl;
                 }
-                if (normalized.werbebeklebungText !== undefined) {
+                if (normalized.werbebeklebungText !== undefined && normalized.kontaktdaten === undefined) {
                     normalized.kontaktdaten = normalized.werbebeklebungText;
-                    delete normalized.werbebeklebungText;
+                }
+
+                // ===== VERSICHERUNG-MAPPING =====
+                // Partner: versicherung, schadennummer, gutachten, hergang, teile
+                // Kalkulation: versicherung, schadensnummer, unfallhergang
+                if (normalized.schadennummer !== undefined && normalized.schadensnummer === undefined) {
+                    normalized.schadensnummer = normalized.schadennummer; // Typo-Fix: schadennummer → schadensnummer
+                }
+                if (normalized.hergang !== undefined && normalized.unfallhergang === undefined) {
+                    normalized.unfallhergang = normalized.hergang;
                 }
 
                 console.log('📋 Normalisierte Partner-Service-Details:', normalized);
