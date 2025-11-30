@@ -2139,7 +2139,9 @@
             // 📄 PDF Angebot Display (2025-11-28): Show both variant PDFs if available
             // Only display when status is 'kva_gesendet' or later (beauftragt, in_arbeit, fertig)
             const pdfStatuses = ['kva_gesendet', 'beauftragt', 'in_arbeit', 'fertig'];
-            const hasVariantPdfs = anfrage.angebotPdfZubehoer || anfrage.angebotPdfOriginal || anfrage.angebotPdfPartner;
+            // 🆕 FIX Nov 30, 2025: Auch angebotPdfAftermarket und hasVarianten prüfen
+            const hasVariantPdfs = anfrage.angebotPdfZubehoer || anfrage.angebotPdfAftermarket || anfrage.angebotPdfOriginal || anfrage.angebotPdfPartner;
+            const hasVariantenPreise = anfrage.hasVarianten && (anfrage.summeBruttoOriginal || anfrage.summeBruttoAftermarket);
             const hasLegacyPdf = anfrage.angebotPdfUrl;
 
             if (pdfStatuses.includes(anfrage.status) && (hasVariantPdfs || hasLegacyPdf)) {
@@ -2157,21 +2159,22 @@
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                     `;
 
-                    // Zubehör-PDF Card
-                    if (anfrage.angebotPdfZubehoer) {
-                        const zubehoer = anfrage.angebotPdfZubehoer;
-                        const zubehoerPreis = typeof zubehoer.preis === 'number'
-                            ? zubehoer.preis.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
+                    // 🆕 FIX Nov 30, 2025: "Zubehör" → "Aftermarket" - konsistente Benennung
+                    // Aftermarket-PDF Card (ehemals Zubehör)
+                    const aftermarketPdf = anfrage.angebotPdfAftermarket || anfrage.angebotPdfZubehoer;
+                    if (aftermarketPdf) {
+                        const aftermarketPreis = typeof aftermarketPdf.preis === 'number'
+                            ? aftermarketPdf.preis.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
                             : 'k.A.';
                         html += `
-                            <div class="pdf-variant-card" style="background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); padding: 20px; border-radius: 12px; border: 2px solid #ff9800; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.2);">
-                                <h3 style="color: #e65100; margin-bottom: 12px; font-size: 16px;">🔧 Zubehörteile</h3>
-                                <p style="color: #f57c00; font-size: 12px; margin-bottom: 8px;">Budget-Variante</p>
-                                <div style="font-size: 28px; font-weight: bold; color: #e65100; margin-bottom: 15px;">
-                                    ${zubehoerPreis}
+                            <div class="pdf-variant-card" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 20px; border-radius: 12px; border: 2px solid #22c55e; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);">
+                                <h3 style="color: #15803d; margin-bottom: 12px; font-size: 16px;">💰 Aftermarket</h3>
+                                <p style="color: #16a34a; font-size: 12px; margin-bottom: 8px;">Budget-Variante</p>
+                                <div style="font-size: 28px; font-weight: bold; color: #15803d; margin-bottom: 15px;">
+                                    ${aftermarketPreis}
                                 </div>
-                                <a href="${zubehoer.url}" download="${zubehoer.fileName || 'Angebot_Zubehoer.pdf'}"
-                                   class="btn-pdf" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 16px; background: #ff9800; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s;">
+                                <a href="${aftermarketPdf.url}" download="${aftermarketPdf.fileName || 'Angebot_Aftermarket.pdf'}"
+                                   class="btn-pdf" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 16px; background: #22c55e; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s;">
                                     <span>📥</span>
                                     <span>PDF herunterladen</span>
                                 </a>
@@ -2251,6 +2254,53 @@
                 }
 
                 html += `</div>`;
+            }
+
+            // 🆕 FIX Nov 30, 2025: Varianten-Preise für Entwürfe anzeigen (wenn keine PDFs vorhanden)
+            // Dies zeigt die 2 Varianten-Preise aus der Kalkulation, auch wenn Cloud Function nur 1 PDF erstellt
+            if (pdfStatuses.includes(anfrage.status) && hasVariantenPreise && !hasVariantPdfs) {
+                const formatCurrency = (value) => {
+                    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
+                };
+                const originalPreis = anfrage.summeBruttoOriginal || anfrage.angebotDetails?.summeBruttoOriginal || 0;
+                const aftermarketPreis = anfrage.summeBruttoAftermarket || anfrage.angebotDetails?.summeBruttoAftermarket || 0;
+
+                html += `
+                    <div class="detail-section" style="margin-top: 20px;">
+                        <h2>💰 Preis-Varianten</h2>
+                        <p style="color: var(--color-text-secondary); margin: 10px 0; font-size: 14px;">
+                            Wählen Sie Ihre bevorzugte Variante:
+                        </p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+                            <!-- Original-Variante -->
+                            <div style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding: 20px; border-radius: 12px; border: 2px solid #0ea5e9; text-align: center;">
+                                <div style="font-size: 24px; margin-bottom: 8px;">⭐</div>
+                                <h3 style="color: #0369a1; margin-bottom: 8px; font-size: 16px;">Original</h3>
+                                <p style="color: #0284c7; font-size: 12px; margin-bottom: 8px;">Premium-Variante</p>
+                                <div style="font-size: 28px; font-weight: bold; color: #0c4a6e;">
+                                    ${formatCurrency(originalPreis)}
+                                </div>
+                            </div>
+                            <!-- Aftermarket-Variante -->
+                            <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 20px; border-radius: 12px; border: 2px solid #22c55e; text-align: center;">
+                                <div style="font-size: 24px; margin-bottom: 8px;">💰</div>
+                                <h3 style="color: #15803d; margin-bottom: 8px; font-size: 16px;">Aftermarket</h3>
+                                <p style="color: #16a34a; font-size: 12px; margin-bottom: 8px;">Budget-Variante</p>
+                                <div style="font-size: 28px; font-weight: bold; color: #14532d;">
+                                    ${formatCurrency(aftermarketPreis)}
+                                    ${aftermarketPreis > 0 && aftermarketPreis < originalPreis ? `
+                                        <div style="font-size: 12px; color: #16a34a; margin-top: 4px;">
+                                            💸 ${Math.round((1 - aftermarketPreis / originalPreis) * 100)}% günstiger
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <p style="color: var(--color-text-tertiary); font-size: 12px; margin-top: 15px; text-align: center;">
+                            💡 Bei der Beauftragung können Sie Ihre bevorzugte Variante wählen.
+                        </p>
+                    </div>
+                `;
             }
 
             // 🆕 MULTI-SERVICE (2025-11-13): Service-Status-Timeline (nur für Multi-Service)

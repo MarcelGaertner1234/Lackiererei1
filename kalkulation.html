@@ -4874,6 +4874,10 @@
                                         <span class="auftrags-info-label">Farbe:</span>
                                         <span class="auftrags-info-value" id="info2bFarbe">-</span>
                                     </div>
+                                    <div class="auftrags-info-row" id="info2bKmStandRow">
+                                        <span class="auftrags-info-label">KM-Stand:</span>
+                                        <span class="auftrags-info-value" id="info2bKmStand">-</span>
+                                    </div>
                                 </div>
 
                                 <!-- Kunde -->
@@ -4903,6 +4907,23 @@
                                     <div class="auftrags-info-row" id="info2bDringlichkeitRow" style="display: none;">
                                         <span class="auftrags-info-label">Dringlichkeit:</span>
                                         <span class="auftrags-info-value" id="info2bDringlichkeit">-</span>
+                                    </div>
+                                </div>
+
+                                <!-- 🆕 Termine (Nov 30, 2025) - Meister braucht diese Infos -->
+                                <div class="auftrags-info-section">
+                                    <div class="auftrags-info-section-title">📅 Termine</div>
+                                    <div class="auftrags-info-row" id="info2bAnlieferterminRow">
+                                        <span class="auftrags-info-label">Anlieferung:</span>
+                                        <span class="auftrags-info-value" id="info2bAnliefertermin">-</span>
+                                    </div>
+                                    <div class="auftrags-info-row" id="info2bAbholterminRow">
+                                        <span class="auftrags-info-label">Abholung:</span>
+                                        <span class="auftrags-info-value" id="info2bAbholtermin">-</span>
+                                    </div>
+                                    <div class="auftrags-info-row" id="info2bErsatzfahrzeugRow">
+                                        <span class="auftrags-info-label">Ersatzfahrzeug:</span>
+                                        <span class="auftrags-info-value" id="info2bErsatzfahrzeug">-</span>
                                     </div>
                                 </div>
                             </div>
@@ -7178,6 +7199,57 @@
         };
 
         // ============================================
+        // 🔧 BUG #8 FIX (2025-11-30): Audit-Trail Helper für User-Tracking
+        // Ersetzt window.currentUser (war nie initialisiert!)
+        // ============================================
+        /**
+         * Ermittelt aktuellen Benutzer für Audit-Trail Einträge
+         * Priorität:
+         * 1. sessionStorage (mitarbeiter login) - PREFERRED
+         * 2. firebase.auth().currentUser - FALLBACK
+         * 3. 'Meister' - LAST RESORT
+         *
+         * @returns {Object} {user: string, userId: string|null, rolle: string|null, email: string|null}
+         */
+        function getCurrentUserForAudit() {
+            // Try sessionStorage first (mitarbeiter login via Mitarbeiterverwaltung)
+            const mitarbeiterStr = sessionStorage.getItem('mitarbeiter');
+            if (mitarbeiterStr) {
+                try {
+                    const mitarbeiter = JSON.parse(mitarbeiterStr);
+                    return {
+                        user: mitarbeiter.name || mitarbeiter.email || 'Meister',
+                        userId: mitarbeiter.id || null,
+                        rolle: mitarbeiter.rolle || 'Sonstige',
+                        email: mitarbeiter.email || null
+                    };
+                } catch (e) {
+                    console.error('❌ Fehler beim Parsen von Mitarbeiter-Daten:', e);
+                }
+            }
+
+            // Fallback: Firebase Auth (for Admin/Werkstatt login)
+            const authUser = firebase.auth().currentUser;
+            if (authUser) {
+                return {
+                    user: authUser.displayName || authUser.email || 'Meister',
+                    userId: authUser.uid || null,
+                    rolle: null,
+                    email: authUser.email || null
+                };
+            }
+
+            // Last resort - In Kalkulation-Context ist das normalerweise der Meister
+            console.warn('⚠️ getCurrentUserForAudit(): Kein User gefunden! Fallback zu "Meister"');
+            return {
+                user: 'Meister',
+                userId: null,
+                rolle: null,
+                email: null
+            };
+        }
+
+        // ============================================
         // 🆕 NEUER KALKULATIONS-WIZARD STATE (6 Steps)
         // ============================================
         let currentStep = 1;
@@ -7355,9 +7427,20 @@
                 baujahr: vehicle.baujahr || '',
                 kennzeichen: vehicle.kennzeichen || '',
                 farbcode: vehicle.farbnummer || vehicle.farbcode || '',
-                kunde: vehicle.kundenName || vehicle.kunde || ''
+                kunde: vehicle.kundenName || vehicle.kunde || '',
+                // 🆕 FIX (Nov 30, 2025): Zusätzliche Felder für Meister-Übersicht
+                kmstand: vehicle.kmstand || vehicle.kilometerstand || '',
+                anliefertermin: vehicle.anliefertermin || vehicle.liefertermin || '',
+                abholtermin: vehicle.abholtermin || vehicle.fertigstellungsdatum || '',
+                ersatzfahrzeug: vehicle.ersatzfahrzeug || vehicle.ersatzfahrzeugGewuenscht || ''
             };
             kalkWizardData.dbFahrzeugId = vehicle.id;
+
+            // 🆕 Auch auf Root-Level für einfacheren Zugriff
+            kalkWizardData.kmstand = kalkWizardData.fahrzeug.kmstand;
+            kalkWizardData.anliefertermin = kalkWizardData.fahrzeug.anliefertermin;
+            kalkWizardData.abholtermin = kalkWizardData.fahrzeug.abholtermin;
+            kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
 
             // Wenn Service bereits gesetzt ist, übernehmen
             if (vehicle.serviceTyp) {
@@ -7602,9 +7685,24 @@
                 modell: selectedEntwurf.modell || '',
                 baujahr: selectedEntwurf.baujahrVon || '',
                 kennzeichen: selectedEntwurf.kennzeichen || '',
-                farbcode: '',
-                kunde: selectedEntwurf.kundenname || ''
+                farbcode: selectedEntwurf.farbcode || selectedEntwurf.farbnummer || '',
+                kunde: selectedEntwurf.kundenname || '',
+                // 🆕 FIX (Nov 30, 2025): Zusätzliche Felder für Meister-Übersicht
+                kmstand: selectedEntwurf.kmstand || selectedEntwurf.kilometerstand || '',
+                anliefertermin: selectedEntwurf.anliefertermin || selectedEntwurf.liefertermin || '',
+                abholtermin: selectedEntwurf.abholtermin || selectedEntwurf.fertigstellungsdatum || '',
+                ersatzfahrzeug: selectedEntwurf.ersatzfahrzeug || selectedEntwurf.ersatzfahrzeugGewuenscht || ''
             };
+
+            // 🆕 Auch auf Root-Level für einfacheren Zugriff
+            kalkWizardData.kmstand = kalkWizardData.fahrzeug.kmstand;
+            kalkWizardData.anliefertermin = kalkWizardData.fahrzeug.anliefertermin;
+            kalkWizardData.abholtermin = kalkWizardData.fahrzeug.abholtermin;
+            kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+
+            // Schadensbeschreibung/Notizen aus Entwurf
+            kalkWizardData.schadenBeschreibung = selectedEntwurf.schadenBeschreibung || selectedEntwurf.beschreibung || '';
+            kalkWizardData.notizen = selectedEntwurf.notizen || '';
 
             // 🆕 MULTI-SERVICE SUPPORT (2025-11-30)
             // Service-Art(en) übernehmen
@@ -7969,8 +8067,87 @@
         }
 
         // Wrapper für Step 2b (🆕 Nov 30, 2025)
+        // 🔧 FIX: Meister benötigt ALLE Infos in Step 2b für Service-Details Eingabe
         function renderAuftragsInfoStep2b() {
+            console.log('🔧 renderAuftragsInfoStep2b() called');
+            console.log('   kalkWizardData.fahrzeug:', kalkWizardData.fahrzeug);
+
+            // Generische Funktion aufrufen (befüllt Standard-Felder)
             renderAuftragsInfoForStep('step2bAuftragsInfo', 'info2b');
+
+            // 🆕 FIX (Nov 30, 2025): Box IMMER anzeigen in Step 2b wenn Fahrzeug ausgewählt
+            // Der Meister braucht alle Infos während der Service-Details Eingabe
+            const infoBox = document.getElementById('step2bAuftragsInfo');
+            if (infoBox && kalkWizardData.fahrzeug) {
+                infoBox.style.display = 'block';
+                console.log('✅ Step 2b Auftragsinfo-Box angezeigt');
+            }
+
+            // 🆕 ZUSÄTZLICHE FELDER für Step 2b (Nov 30, 2025)
+            // Diese Felder werden in der generischen Funktion nicht befüllt
+            const setTextSafe = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value || '-';
+            };
+
+            // KM-Stand
+            const kmStand = kalkWizardData.fahrzeug?.kmstand ||
+                            kalkWizardData.fahrzeug?.kilometerstand ||
+                            kalkWizardData.kmstand ||
+                            kalkWizardData.kilometerstand;
+            if (kmStand) {
+                setTextSafe('info2bKmStand', `${parseInt(kmStand).toLocaleString('de-DE')} km`);
+            }
+
+            // Anliefertermin
+            const anliefertermin = kalkWizardData.anliefertermin ||
+                                   kalkWizardData.fahrzeug?.anliefertermin ||
+                                   kalkWizardData.termine?.anliefertermin;
+            if (anliefertermin) {
+                setTextSafe('info2bAnliefertermin', formatDateForDisplay(anliefertermin));
+            }
+
+            // Abholtermin
+            const abholtermin = kalkWizardData.abholtermin ||
+                               kalkWizardData.fahrzeug?.abholtermin ||
+                               kalkWizardData.termine?.abholtermin;
+            if (abholtermin) {
+                setTextSafe('info2bAbholtermin', formatDateForDisplay(abholtermin));
+            }
+
+            // Ersatzfahrzeug
+            const ersatzfahrzeug = kalkWizardData.ersatzfahrzeug ||
+                                   kalkWizardData.fahrzeug?.ersatzfahrzeug ||
+                                   kalkWizardData.ersatzfahrzeugGewuenscht;
+            if (ersatzfahrzeug) {
+                const ersatzText = ersatzfahrzeug === true || ersatzfahrzeug === 'ja' || ersatzfahrzeug === 'Ja'
+                    ? '✅ Ja, gewünscht'
+                    : ersatzfahrzeug === false || ersatzfahrzeug === 'nein' || ersatzfahrzeug === 'Nein'
+                        ? '❌ Nein'
+                        : ersatzfahrzeug;
+                setTextSafe('info2bErsatzfahrzeug', ersatzText);
+            }
+
+            console.log('✅ Step 2b zusätzliche Felder befüllt:', {
+                kmStand, anliefertermin, abholtermin, ersatzfahrzeug
+            });
+        }
+
+        // Hilfsfunktion: Datum formatieren
+        function formatDateForDisplay(dateStr) {
+            if (!dateStr) return '-';
+            try {
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return dateStr;
+                return date.toLocaleDateString('de-DE', {
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                });
+            } catch (e) {
+                return dateStr;
+            }
         }
 
         // Wrapper für Step 3 (Kompatibilität)
@@ -9088,8 +9265,24 @@ REGELN:
                 baujahr: selectedPartnerAnfrage.baujahrVon || selectedPartnerAnfrage.baujahr || '',
                 kennzeichen: selectedPartnerAnfrage.kennzeichen || selectedPartnerAnfrage.auftragsnummer || '',
                 farbcode: selectedPartnerAnfrage.farbnummer || selectedPartnerAnfrage.farbe || '',
-                kunde: selectedPartnerAnfrage.kundenname || ''
+                kunde: selectedPartnerAnfrage.kundenname || '',
+                // 🆕 FIX (Nov 30, 2025): Zusätzliche Felder für Meister-Übersicht
+                kmstand: selectedPartnerAnfrage.kmstand || selectedPartnerAnfrage.kilometerstand || '',
+                anliefertermin: selectedPartnerAnfrage.anliefertermin || selectedPartnerAnfrage.liefertermin || '',
+                abholtermin: selectedPartnerAnfrage.abholtermin || selectedPartnerAnfrage.fertigstellungsdatum || '',
+                ersatzfahrzeug: selectedPartnerAnfrage.ersatzfahrzeug || selectedPartnerAnfrage.ersatzfahrzeugGewuenscht || ''
             };
+
+            // 🆕 Auch auf Root-Level für einfacheren Zugriff
+            kalkWizardData.kmstand = kalkWizardData.fahrzeug.kmstand;
+            kalkWizardData.anliefertermin = kalkWizardData.fahrzeug.anliefertermin;
+            kalkWizardData.abholtermin = kalkWizardData.fahrzeug.abholtermin;
+            kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+
+            // Schadensbeschreibung/Notizen aus Partner-Anfrage
+            kalkWizardData.schadenBeschreibung = selectedPartnerAnfrage.schadenBeschreibung || selectedPartnerAnfrage.beschreibung || '';
+            kalkWizardData.notizen = selectedPartnerAnfrage.notizen || '';
+            kalkWizardData.partnerName = selectedPartnerAnfrage.partnerName || '';
 
             // 🆕 MULTI-SERVICE SUPPORT (2025-11-30) - auch für Partner-Anfragen
             // Service-Art(en) übernehmen
@@ -16795,7 +16988,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
                     // Status: Kalkulation erstellt (NICHT kva_gesendet - das macht entwuerfe-bearbeiten.html!)
                     kalkulationErstelltAm: firebase.firestore.FieldValue.serverTimestamp(),
-                    kalkulationErstelltDurch: window.currentUser?.displayName || window.currentUser?.email || 'Meister',
+                    kalkulationErstelltDurch: getCurrentUserForAudit().user,
 
                     // Vereinbarter Preis (brutto) für Angebot
                     // 🔧 FIX Nov 29, 2025: Floating-Point vermeiden mit toFixed(2)

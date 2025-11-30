@@ -1301,7 +1301,48 @@
                     Preiskalkulation
                 </div>
 
-                <div class="form-group">
+                <!-- 🆕 2-VARIANTEN-AUSWAHL (Nov 30, 2025) -->
+                <!-- Kunde sieht beide Preise und wählt bei Annahme -->
+                <div id="variantenSection" style="display: none; margin-bottom: var(--space-4);">
+                    <label class="form-label">Preis-Varianten aus Kalkulation</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-2);">
+                        <!-- Original-Variante -->
+                        <div id="varianteOriginalCard" class="variante-card" style="
+                            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+                            border: 2px solid #0ea5e9;
+                            border-radius: var(--radius-card);
+                            padding: var(--space-4);
+                            text-align: center;
+                        ">
+                            <div style="font-size: 24px; margin-bottom: var(--space-2);">⭐</div>
+                            <div style="font-weight: 600; color: #0369a1; margin-bottom: var(--space-1);">Original</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #0c4a6e;" id="preisOriginalDisplay">-</div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: var(--space-1);">inkl. MwSt.</div>
+                        </div>
+                        <!-- Aftermarket-Variante -->
+                        <div id="varianteAftermarketCard" class="variante-card" style="
+                            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+                            border: 2px solid #22c55e;
+                            border-radius: var(--radius-card);
+                            padding: var(--space-4);
+                            text-align: center;
+                        ">
+                            <div style="font-size: 24px; margin-bottom: var(--space-2);">💰</div>
+                            <div style="font-weight: 600; color: #15803d; margin-bottom: var(--space-1);">Aftermarket</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #14532d;" id="preisAftermarketDisplay">-</div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: var(--space-1);">inkl. MwSt.</div>
+                        </div>
+                    </div>
+                    <small style="color: var(--color-text-tertiary); display: block; margin-top: var(--space-2);">
+                        💡 Der Kunde sieht beide Varianten und kann bei der Annahme wählen.
+                    </small>
+                    <!-- Hidden inputs für beide Preise -->
+                    <input type="hidden" id="summeBruttoOriginal" value="">
+                    <input type="hidden" id="summeBruttoAftermarket" value="">
+                </div>
+
+                <!-- Manueller Preis (Fallback wenn keine Kalkulation) -->
+                <div class="form-group" id="manuellerPreisSection">
                     <label for="vereinbarterPreis" class="form-label">Vereinbarter Preis (€) <span class="required">*</span></label>
                     <input type="number" id="vereinbarterPreis" class="form-input" placeholder="z.B. 450" step="0.01" min="0" required>
                     <small style="color: var(--color-text-tertiary);">
@@ -2542,6 +2583,60 @@
                     console.log('✅ serviceDetailsPerService aus Kalkulation geladen (Priorität über additionalServices)');
                 }
 
+                // 🆕 FIX Nov 30, 2025: 2-Varianten-Preise laden (Original + Aftermarket)
+                // Priorität: 1. kalkulation.summeBruttoOriginal/Aftermarket, 2. kalkulationData
+                const kalkData = currentEntwurf.kalkulation || currentEntwurf.kalkulationData || {};
+                const summeBruttoOriginal = parseFloat(kalkData.summeBruttoOriginal) || 0;
+                const summeBruttoAftermarket = parseFloat(kalkData.summeBruttoAftermarket) || 0;
+
+                console.log('💰 Varianten-Preise:', { summeBruttoOriginal, summeBruttoAftermarket });
+
+                // Hidden Inputs setzen
+                document.getElementById('summeBruttoOriginal').value = summeBruttoOriginal || '';
+                document.getElementById('summeBruttoAftermarket').value = summeBruttoAftermarket || '';
+
+                // Varianten-Anzeige aktualisieren
+                const variantenSection = document.getElementById('variantenSection');
+                const manuellerPreisSection = document.getElementById('manuellerPreisSection');
+                const preisOriginalDisplay = document.getElementById('preisOriginalDisplay');
+                const preisAftermarketDisplay = document.getElementById('preisAftermarketDisplay');
+
+                if (summeBruttoOriginal > 0 || summeBruttoAftermarket > 0) {
+                    // Kalkulation vorhanden - Varianten anzeigen
+                    variantenSection.style.display = 'block';
+                    manuellerPreisSection.style.display = 'none';
+
+                    // Formatierte Preise anzeigen
+                    const formatCurrency = (value) => {
+                        return new Intl.NumberFormat('de-DE', {
+                            style: 'currency',
+                            currency: 'EUR'
+                        }).format(value);
+                    };
+
+                    preisOriginalDisplay.textContent = formatCurrency(summeBruttoOriginal);
+                    preisAftermarketDisplay.textContent = formatCurrency(summeBruttoAftermarket);
+
+                    // Wenn Aftermarket günstiger, hervorheben
+                    if (summeBruttoAftermarket > 0 && summeBruttoAftermarket < summeBruttoOriginal) {
+                        const savings = summeBruttoOriginal - summeBruttoAftermarket;
+                        const savingsPercent = Math.round((savings / summeBruttoOriginal) * 100);
+                        preisAftermarketDisplay.innerHTML = `
+                            ${formatCurrency(summeBruttoAftermarket)}
+                            <div style="font-size: 12px; color: #16a34a; margin-top: 4px;">
+                                💸 ${savingsPercent}% günstiger
+                            </div>
+                        `;
+                    }
+
+                    console.log('✅ Varianten-Preise angezeigt (Kalkulation vorhanden)');
+                } else {
+                    // Keine Kalkulation - manuellen Preis anzeigen
+                    variantenSection.style.display = 'none';
+                    manuellerPreisSection.style.display = 'block';
+                    console.log('ℹ️ Keine Kalkulation vorhanden - manueller Preis');
+                }
+
                 // 🖼️ Load Fotos (Phase 3)
                 photos = [];
                 if (currentEntwurf.photoUrls && Array.isArray(currentEntwurf.photoUrls)) {
@@ -3657,7 +3752,6 @@
                     'Marke': document.getElementById('marke').value.trim(),
                     'Modell': document.getElementById('modell').value.trim(),
                     'Notizen': document.getElementById('notizen').value.trim(),
-                    'Preis': document.getElementById('vereinbarterPreis').value.trim(),
                     'Fertigstellungsdatum': document.getElementById('geplantesAbnahmeDatum').value.trim(),
                 };
 
@@ -3667,6 +3761,19 @@
                         return;
                     }
                 }
+
+                // 🆕 FIX Nov 30, 2025: Preis-Validierung mit 2-Varianten-Support
+                const summeBruttoOriginal = parseFloat(document.getElementById('summeBruttoOriginal')?.value) || 0;
+                const summeBruttoAftermarket = parseFloat(document.getElementById('summeBruttoAftermarket')?.value) || 0;
+                const vereinbarterPreis = parseFloat(document.getElementById('vereinbarterPreis')?.value) || 0;
+                const hasVarianten = summeBruttoOriginal > 0 || summeBruttoAftermarket > 0;
+
+                if (!hasVarianten && !vereinbarterPreis) {
+                    showToast('⚠️ Bitte geben Sie einen Preis ein!', 'error', 5000);
+                    return;
+                }
+
+                console.log('💰 Preis-Validierung:', { summeBruttoOriginal, summeBruttoAftermarket, vereinbarterPreis, hasVarianten });
 
                 // Email format validation
                 const email = document.getElementById('kundenEmail').value.trim().toLowerCase();
@@ -3731,6 +3838,11 @@
                     kennzeichen: document.getElementById('kennzeichen').value.trim(),
                     qrCodeUrl: qrCodeUrl,
                     fahrzeugId: currentEntwurfId,
+                    // 🆕 FIX Nov 30, 2025: Varianten-Preise für Email-Template
+                    hasVarianten: hasVarianten,
+                    summeBruttoOriginal: summeBruttoOriginal,
+                    summeBruttoAftermarket: summeBruttoAftermarket,
+                    vereinbarterPreis: hasVarianten ? null : vereinbarterPreis,
                 });
 
                 // ✅ PATTERN 31: Check for Demo Mode (SendGrid API Key invalid/missing)
@@ -3746,12 +3858,18 @@
                 const werkstattId = window.werkstattId; // ✅ SECURITY FIX: No 'mosbach' fallback
                 const collectionName = `partnerAnfragen_${werkstattId}`;
 
+                // 🆕 FIX Nov 30, 2025: 2-Varianten-Support (Original + Aftermarket)
                 const angebotDetails = {
-                    preis: parseFloat(document.getElementById('vereinbarterPreis').value),
+                    // Fallback: vereinbarterPreis für manuelle Eingabe, sonst Original-Variante
+                    preis: hasVarianten ? summeBruttoOriginal : vereinbarterPreis,
                     serviceBeschreibung: document.getElementById('notizen').value.trim(),
                     fertigstellungsdatum: document.getElementById('geplantesAbnahmeDatum').value,
                     erstelltAm: new Date().toISOString(),
                     erstelltVon: window.currentUser?.name || 'Büro',
+                    // 🆕 2-Varianten-Preise für Partner-Auswahl
+                    hasVarianten: hasVarianten,
+                    summeBruttoOriginal: summeBruttoOriginal || null,
+                    summeBruttoAftermarket: summeBruttoAftermarket || null,
                 };
 
                 await window.db.collection(collectionName).doc(currentEntwurfId).update({
@@ -3767,7 +3885,11 @@
                     vin: document.getElementById('vin').value.trim(),
                     // ✅ serviceTyp is READ-ONLY (Pattern 21) - NEVER overwrite (already set by Meister)
                     notizen: document.getElementById('notizen').value.trim(),
-                    vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis').value),
+                    // 🆕 FIX Nov 30, 2025: 2-Varianten-Preise speichern
+                    vereinbarterPreis: hasVarianten ? summeBruttoOriginal : vereinbarterPreis,
+                    summeBruttoOriginal: summeBruttoOriginal || null,
+                    summeBruttoAftermarket: summeBruttoAftermarket || null,
+                    hasVarianten: hasVarianten,
                     geplantesAbnahmeDatum: document.getElementById('geplantesAbnahmeDatum').value,
 
                     // 🆔 Partner ID Mapping (FIX: Nov 17, 2025 - enables partner to see offers!)
@@ -3789,6 +3911,10 @@
                         arbeitslohn: arbeitslohnData,
                         lackierung: lackierungData,
                         materialien: materialienData,
+                        // 🆕 FIX Nov 30, 2025: 2-Varianten-Preise in kalkulationData
+                        summeBruttoOriginal: summeBruttoOriginal || null,
+                        summeBruttoAftermarket: summeBruttoAftermarket || null,
+                        hasVarianten: hasVarianten,
                         // 🚗 FIX (2025-11-27): Ersatzfahrzeug-Kosten für PDF
                         ersatzfahrzeug: (() => {
                             const gewuenscht = document.getElementById('ersatzfahrzeugGewuenscht')?.checked || false;

@@ -3508,7 +3508,9 @@ exports.monthlyBonusReset = functions.pubsub
 
       try {
         // Multi-Tenant: Reset bonuses for ALL werkstatt instances
-        const werkstattIds = ['mosbach', 'heidelberg', 'mannheim', 'test'];  // Add more as needed
+        // 🔧 FIX Nov 30, 2025: Use dynamic getActiveWerkstaetten() instead of hardcoded list
+        const werkstattIds = await getActiveWerkstaetten();
+        console.log(`📋 Active werkstätten: ${werkstattIds.join(', ')}`);
         let totalPartnersUpdated = 0;
 
         for (const werkstattId of werkstattIds) {
@@ -4306,7 +4308,9 @@ exports.sendEntwurfEmail = functions
       }
 
       // Validate input
-      const { kundenEmail, kundenname, kennzeichen, qrCodeUrl, fahrzeugId } = data;
+      const { kundenEmail, kundenname, kennzeichen, qrCodeUrl, fahrzeugId,
+              // 🆕 FIX Nov 30, 2025: Varianten-Preise für Email
+              hasVarianten, summeBruttoOriginal, summeBruttoAftermarket, vereinbarterPreis } = data;
 
       if (!kundenEmail || !kundenname || !kennzeichen || !qrCodeUrl) {
         throw new functions.https.HttpsError(
@@ -4334,6 +4338,65 @@ exports.sendEntwurfEmail = functions
         // Initialize AWS SES Client
         const sesClient = getAWSSESClient();
 
+        // 🆕 FIX Nov 30, 2025: Preise formatieren für Email
+        const formatPrice = (price) => {
+          if (!price || isNaN(price)) return null;
+          return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(price);
+        };
+
+        const originalPreisFormatted = formatPrice(summeBruttoOriginal);
+        const aftermarketPreisFormatted = formatPrice(summeBruttoAftermarket);
+        const einzelPreisFormatted = formatPrice(vereinbarterPreis);
+
+        // Ersparnis berechnen (wenn Aftermarket günstiger)
+        let ersparnisText = '';
+        if (hasVarianten && summeBruttoOriginal > 0 && summeBruttoAftermarket > 0 && summeBruttoAftermarket < summeBruttoOriginal) {
+          const ersparnis = Math.round((1 - summeBruttoAftermarket / summeBruttoOriginal) * 100);
+          ersparnisText = `(${ersparnis}% günstiger)`;
+        }
+
+        // Preis-Sektion für Email generieren
+        let preisSection = '';
+        if (hasVarianten && (originalPreisFormatted || aftermarketPreisFormatted)) {
+          preisSection = `
+                <div style="background: #e8f4fd; border-radius: 10px; padding: 20px; margin: 20px 0;">
+                  <h3 style="margin: 0 0 15px 0; color: #003366;">💰 Ihre Preisoptionen:</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    ${originalPreisFormatted ? `
+                    <tr>
+                      <td style="padding: 10px; border-bottom: 1px solid #ddd;">
+                        <strong>⭐ Original</strong><br>
+                        <small style="color: #666;">Premium-Ersatzteile vom Hersteller</small>
+                      </td>
+                      <td style="padding: 10px; border-bottom: 1px solid #ddd; text-align: right; font-size: 18px; font-weight: bold; color: #0066cc;">
+                        ${originalPreisFormatted}
+                      </td>
+                    </tr>
+                    ` : ''}
+                    ${aftermarketPreisFormatted ? `
+                    <tr>
+                      <td style="padding: 10px;">
+                        <strong>💚 Aftermarket</strong><br>
+                        <small style="color: #666;">Qualitäts-Ersatzteile ${ersparnisText}</small>
+                      </td>
+                      <td style="padding: 10px; text-align: right; font-size: 18px; font-weight: bold; color: #22c55e;">
+                        ${aftermarketPreisFormatted}
+                      </td>
+                    </tr>
+                    ` : ''}
+                  </table>
+                  <p style="margin: 15px 0 0 0; font-size: 12px; color: #666;">
+                    ℹ️ Sie können Ihre bevorzugte Variante im Online-Portal auswählen.
+                  </p>
+                </div>`;
+        } else if (einzelPreisFormatted) {
+          preisSection = `
+                <div style="background: #e8f4fd; border-radius: 10px; padding: 20px; margin: 20px 0; text-align: center;">
+                  <p style="margin: 0 0 10px 0; color: #666;">Geschätzter Gesamtpreis:</p>
+                  <p style="margin: 0; font-size: 24px; font-weight: bold; color: #003366;">${einzelPreisFormatted}</p>
+                </div>`;
+        }
+
         // Email HTML (inline for MVP)
         const emailHtml = `
           <!DOCTYPE html>
@@ -4358,7 +4421,8 @@ exports.sendEntwurfEmail = functions
               </div>
               <div class="content">
                 <p>Hallo ${kundenname},</p>
-                <p>wir haben Ihr Kosten-Voranschlag für <strong>${kennzeichen}</strong> fertiggestellt!</p>
+                <p>wir haben Ihren Kosten-Voranschlag für <strong>${kennzeichen}</strong> fertiggestellt!</p>
+                ${preisSection}
                 <p>Sie können Ihr Angebot jetzt online einsehen und bestätigen:</p>
                 <p style="text-align: center;">
                   <a href="${qrCodeUrl}" class="button">
