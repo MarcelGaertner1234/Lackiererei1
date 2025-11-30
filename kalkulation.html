@@ -6471,6 +6471,11 @@
                             <span class="label">Summe Ersatzteile (netto)</span>
                             <span class="value" id="summeErsatzteile">0,00 €</span>
                         </div>
+                        <!-- 🚗 Ersatzfahrzeug-Kosten (FIX: Nov 30, 2025) -->
+                        <div class="summary-row" id="ersatzfahrzeugSummaryRow" style="display: none;">
+                            <span class="label">🚗 Ersatzfahrzeug (netto)</span>
+                            <span class="value" id="summeErsatzfahrzeug">0,00 €</span>
+                        </div>
                         <div class="summary-row" style="border-top: 1px solid var(--color-border); padding-top: var(--space-2); margin-top: var(--space-2);">
                             <span class="label">Zwischensumme (netto)</span>
                             <span class="value" id="summeNetto">0,00 €</span>
@@ -7454,7 +7459,15 @@
             kalkWizardData.kmstand = kalkWizardData.fahrzeug.kmstand;
             kalkWizardData.anliefertermin = kalkWizardData.fahrzeug.anliefertermin;
             kalkWizardData.abholtermin = kalkWizardData.fahrzeug.abholtermin;
-            kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+
+            // 🚗 Ersatzfahrzeug-Daten als Objekt übernehmen (FIX: Nov 30, 2025)
+            const ersatzfahrzeugFromVehicle = vehicle.kalkulationData?.ersatzfahrzeug;
+            if (ersatzfahrzeugFromVehicle && typeof ersatzfahrzeugFromVehicle === 'object') {
+                kalkWizardData.ersatzfahrzeug = ersatzfahrzeugFromVehicle;
+                console.log('🚗 Ersatzfahrzeug-Kosten aus Fahrzeug geladen:', ersatzfahrzeugFromVehicle);
+            } else {
+                kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+            }
 
             // Wenn Service bereits gesetzt ist, übernehmen
             if (vehicle.serviceTyp) {
@@ -7712,7 +7725,15 @@
             kalkWizardData.kmstand = kalkWizardData.fahrzeug.kmstand;
             kalkWizardData.anliefertermin = kalkWizardData.fahrzeug.anliefertermin;
             kalkWizardData.abholtermin = kalkWizardData.fahrzeug.abholtermin;
-            kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+
+            // 🚗 Ersatzfahrzeug-Daten als Objekt übernehmen (FIX: Nov 30, 2025)
+            const ersatzfahrzeugFromEntwurf = selectedEntwurf.kalkulationData?.ersatzfahrzeug;
+            if (ersatzfahrzeugFromEntwurf && typeof ersatzfahrzeugFromEntwurf === 'object') {
+                kalkWizardData.ersatzfahrzeug = ersatzfahrzeugFromEntwurf;
+                console.log('🚗 Ersatzfahrzeug-Kosten aus Entwurf geladen:', ersatzfahrzeugFromEntwurf);
+            } else {
+                kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+            }
 
             // Schadensbeschreibung/Notizen aus Entwurf
             kalkWizardData.schadenBeschreibung = selectedEntwurf.schadenBeschreibung || selectedEntwurf.beschreibung || '';
@@ -9292,7 +9313,15 @@ REGELN:
             kalkWizardData.kmstand = kalkWizardData.fahrzeug.kmstand;
             kalkWizardData.anliefertermin = kalkWizardData.fahrzeug.anliefertermin;
             kalkWizardData.abholtermin = kalkWizardData.fahrzeug.abholtermin;
-            kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+
+            // 🚗 Ersatzfahrzeug-Daten als Objekt übernehmen (FIX: Nov 30, 2025)
+            const ersatzfahrzeugFromAnfrage = selectedPartnerAnfrage.kalkulationData?.ersatzfahrzeug;
+            if (ersatzfahrzeugFromAnfrage && typeof ersatzfahrzeugFromAnfrage === 'object') {
+                kalkWizardData.ersatzfahrzeug = ersatzfahrzeugFromAnfrage;
+                console.log('🚗 Ersatzfahrzeug-Kosten aus Partner-Anfrage geladen:', ersatzfahrzeugFromAnfrage);
+            } else {
+                kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
+            }
 
             // Schadensbeschreibung/Notizen aus Partner-Anfrage
             kalkWizardData.schadenBeschreibung = selectedPartnerAnfrage.schadenBeschreibung || selectedPartnerAnfrage.beschreibung || '';
@@ -13929,8 +13958,16 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 return sum + (preis * menge);
             }, 0);
 
-            // Netto, MwSt, Brutto (jetzt inkl. Ersatzteile!)
-            const summeNetto = summeArbeit + summeMaterial + summeErsatzteile;
+            // 🚗 Ersatzfahrzeug-Kosten (FIX: Nov 30, 2025)
+            // Aus kalkWizardData oder Entwurf-Daten
+            let summeErsatzfahrzeug = 0;
+            const ersatzfahrzeugData = kalkWizardData.ersatzfahrzeug || kalkWizardData.fahrzeug?.kalkulationData?.ersatzfahrzeug;
+            if (ersatzfahrzeugData && ersatzfahrzeugData.gesamt > 0) {
+                summeErsatzfahrzeug = parseFloat(ersatzfahrzeugData.gesamt) || 0;
+            }
+
+            // Netto, MwSt, Brutto (jetzt inkl. Ersatzteile + Ersatzfahrzeug!)
+            const summeNetto = summeArbeit + summeMaterial + summeErsatzteile + summeErsatzfahrzeug;
             const mwstSatz = kalkulationSaetze?.mwstSatz || 19;
             const mwst = summeNetto * (mwstSatz / 100);
             const summeBrutto = summeNetto + mwst;
@@ -13939,6 +13976,8 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             const elSummeArbeit = document.getElementById('summeArbeit');
             const elSummeMaterial = document.getElementById('summeMaterial');
             const elSummeErsatzteile = document.getElementById('summeErsatzteile');
+            const elSummeErsatzfahrzeug = document.getElementById('summeErsatzfahrzeug');
+            const elErsatzfahrzeugRow = document.getElementById('ersatzfahrzeugSummaryRow');
             const elSummeNetto = document.getElementById('summeNetto');
             const elMwstSatz = document.getElementById('mwstSatzDisplay');
             const elSummeMwst = document.getElementById('summeMwst');
@@ -13947,12 +13986,23 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             if (elSummeArbeit) elSummeArbeit.textContent = summeArbeit.toFixed(2).replace('.', ',') + ' €';
             if (elSummeMaterial) elSummeMaterial.textContent = summeMaterial.toFixed(2).replace('.', ',') + ' €';
             if (elSummeErsatzteile) elSummeErsatzteile.textContent = summeErsatzteile.toFixed(2).replace('.', ',') + ' €';
+
+            // 🚗 Ersatzfahrzeug-Zeile ein-/ausblenden
+            if (elErsatzfahrzeugRow && elSummeErsatzfahrzeug) {
+                if (summeErsatzfahrzeug > 0) {
+                    elErsatzfahrzeugRow.style.display = 'flex';
+                    elSummeErsatzfahrzeug.textContent = summeErsatzfahrzeug.toFixed(2).replace('.', ',') + ' €';
+                } else {
+                    elErsatzfahrzeugRow.style.display = 'none';
+                }
+            }
+
             if (elSummeNetto) elSummeNetto.textContent = summeNetto.toFixed(2).replace('.', ',') + ' €';
             if (elMwstSatz) elMwstSatz.textContent = mwstSatz;
             if (elSummeMwst) elSummeMwst.textContent = mwst.toFixed(2).replace('.', ',') + ' €';
             if (elSummeBrutto) elSummeBrutto.textContent = summeBrutto.toFixed(2).replace('.', ',') + ' €';
 
-            console.log('💰 Summen berechnet:', { summeArbeit, summeMaterial, summeErsatzteile, summeNetto, mwst, summeBrutto });
+            console.log('💰 Summen berechnet:', { summeArbeit, summeMaterial, summeErsatzteile, summeErsatzfahrzeug, summeNetto, mwst, summeBrutto });
         }
 
         // ============================================
@@ -16957,25 +17007,37 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 // Kalkulationsdaten für Entwurf
                 // 🔧 FIX Nov 29, 2025: Alle Summen auf 2 Dezimalstellen runden (Floating-Point vermeiden)
                 // 🆕 Nov 30, 2025: Getrennte Original/Aftermarket Summen für KVA-Varianten
+                // 🚗 Ersatzfahrzeug-Daten aus kalkWizardData oder Entwurf (FIX: Nov 30, 2025)
+                const ersatzfahrzeugData = kalkWizardData.ersatzfahrzeug || kalkWizardData.fahrzeug?.kalkulationData?.ersatzfahrzeug || null;
+                const summeErsatzfahrzeug = ersatzfahrzeugData?.gesamt || 0;
+
+                // Netto-Summen aktualisieren (inkl. Ersatzfahrzeug)
+                const summeNettoMitErsatzfahrzeug = summeNettoOriginal + summeErsatzfahrzeug;
+                const mwstMitErsatzfahrzeug = summeNettoMitErsatzfahrzeug * (mwstSatz / 100);
+                const summeBruttoMitErsatzfahrzeug = summeNettoMitErsatzfahrzeug + mwstMitErsatzfahrzeug;
+
                 const kalkulationData = {
                     positionen: aktuelleKalkulation.positionen,
                     materialien: aktuelleKalkulation.materialien,
                     ersatzteile: kalkWizardData.ersatzteile || [],
+                    // 🚗 Ersatzfahrzeug-Kosten (FIX: Nov 30, 2025)
+                    ersatzfahrzeug: ersatzfahrzeugData,
+                    summeErsatzfahrzeug: parseFloat(summeErsatzfahrzeug.toFixed(2)),
                     summeArbeit: parseFloat(summeArbeit.toFixed(2)),
                     summeMaterial: parseFloat(summeMaterial.toFixed(2)),
                     // Backwards-Kompatibilität
                     summeErsatzteile: parseFloat(summeErsatzteile.toFixed(2)),
-                    summeNetto: parseFloat(summeNetto.toFixed(2)),
+                    summeNetto: parseFloat(summeNettoMitErsatzfahrzeug.toFixed(2)),
                     mwstSatz,
-                    mwst: parseFloat(mwst.toFixed(2)),
-                    summeBrutto: parseFloat(summeBrutto.toFixed(2)),
+                    mwst: parseFloat(mwstMitErsatzfahrzeug.toFixed(2)),
+                    summeBrutto: parseFloat(summeBruttoMitErsatzfahrzeug.toFixed(2)),
                     // 🆕 Neue getrennte Summen für kva-erstellen.html
                     summeErsatzteileOriginal: parseFloat(summeErsatzteileOriginal.toFixed(2)),
                     summeErsatzteileAftermarket: parseFloat(summeErsatzteileAftermarket.toFixed(2)),
-                    summeNettoOriginal: parseFloat(summeNettoOriginal.toFixed(2)),
-                    summeNettoAftermarket: parseFloat(summeNettoAftermarket.toFixed(2)),
-                    summeBruttoOriginal: parseFloat(summeBruttoOriginal.toFixed(2)),
-                    summeBruttoAftermarket: parseFloat(summeBruttoAftermarket.toFixed(2))
+                    summeNettoOriginal: parseFloat((summeNettoOriginal + summeErsatzfahrzeug).toFixed(2)),
+                    summeNettoAftermarket: parseFloat((summeNettoAftermarket + summeErsatzfahrzeug).toFixed(2)),
+                    summeBruttoOriginal: parseFloat(summeBruttoMitErsatzfahrzeug.toFixed(2)),
+                    summeBruttoAftermarket: parseFloat((summeNettoAftermarket + summeErsatzfahrzeug + ((summeNettoAftermarket + summeErsatzfahrzeug) * mwstSatz / 100)).toFixed(2))
                 };
 
                 // Update-Daten für partnerAnfragen
