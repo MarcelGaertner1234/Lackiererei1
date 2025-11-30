@@ -3700,7 +3700,14 @@
                     const option = document.createElement('option');
                     option.value = fahrzeug.id;
                     option.dataset.kennzeichen = fahrzeug.kennzeichen;
-                    option.textContent = `${fahrzeug.kennzeichen} - ${fahrzeug.marke} ${fahrzeug.modell} (${fahrzeug.status})`;
+                    // 🆕 FIX (2025-11-30): Gewählte Variante (Original/Aftermarket) für Materialbestellung
+                    option.dataset.variante = fahrzeug.gewaehlteVariante || '';
+
+                    // Varianten-Info im Dropdown anzeigen
+                    const varianteInfo = fahrzeug.gewaehlteVariante
+                        ? (fahrzeug.gewaehlteVariante === 'original' ? '⭐' : '🔧')
+                        : '';
+                    option.textContent = `${varianteInfo} ${fahrzeug.kennzeichen} - ${fahrzeug.marke} ${fahrzeug.modell} (${fahrzeug.status})`.trim();
                     select.appendChild(option);
                 });
 
@@ -3794,9 +3801,10 @@
             // Get selected fahrzeug (optional)
             const fahrzeugSelect = document.getElementById('bestellFahrzeug');
             const selectedFahrzeugId = fahrzeugSelect.value || null;
-            const selectedKennzeichen = selectedFahrzeugId
-                ? fahrzeugSelect.options[fahrzeugSelect.selectedIndex].dataset.kennzeichen
-                : null;
+            const selectedOption = selectedFahrzeugId ? fahrzeugSelect.options[fahrzeugSelect.selectedIndex] : null;
+            const selectedKennzeichen = selectedOption?.dataset.kennzeichen || null;
+            // 🆕 FIX (2025-11-30): Gewählte Variante (Original/Aftermarket) vom Fahrzeug übernehmen
+            const selectedVariante = selectedOption?.dataset.variante || null;
 
             const bestellungData = {
                 id: bestellungId,
@@ -3823,7 +3831,9 @@
                 source: 'zentrale-ersatzteile',  // Track where order came from
                 // Fahrzeug-Zuordnung (optional)
                 fahrzeugId: selectedFahrzeugId,
-                kennzeichen: selectedKennzeichen
+                kennzeichen: selectedKennzeichen,
+                // 🆕 FIX (2025-11-30): Variante (Original/Aftermarket) vom Fahrzeug
+                variante: selectedVariante
             };
 
             try {
@@ -4628,6 +4638,14 @@
                                        typeof window.canManageBestellungen === 'function' &&
                                        window.canManageBestellungen();
 
+                // 🆕 FIX (2025-11-30): Varianten-Badge (Original/Aftermarket)
+                let varianteBadge = '';
+                if (bestellung.variante === 'original') {
+                    varianteBadge = '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4caf50; border: 1px solid rgba(76, 175, 80, 0.3);">⭐ Original (OEM)</span>';
+                } else if (bestellung.variante === 'aftermarket') {
+                    varianteBadge = '<span class="status-badge" style="background: rgba(255, 152, 0, 0.15); color: #ff9800; border: 1px solid rgba(255, 152, 0, 0.3);">🔧 Aftermarket</span>';
+                }
+
                 return `
                     <div class="material-card" style="grid-template-columns: 1fr; padding: 20px;" data-id="${bestellung.id}">
                         <div class="material-content">
@@ -4646,6 +4664,7 @@
                                 <div style="text-align: right; display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
                                     ${statusBadge}
                                     ${sourceBadge}
+                                    ${varianteBadge}
                                 </div>
                             </div>
 
@@ -5076,7 +5095,14 @@
                     const v = doc.data();
                     const option = document.createElement('option');
                     option.value = v.id;
-                    option.textContent = `${v.kennzeichen} - ${v.marke} ${v.modell} (${v.kundenname})`;
+                    // 🆕 FIX (2025-11-30): Gewählte Variante (Original/Aftermarket) für Materialbestellung
+                    option.dataset.variante = v.gewaehlteVariante || '';
+
+                    // Varianten-Info im Dropdown anzeigen
+                    const varianteInfo = v.gewaehlteVariante
+                        ? (v.gewaehlteVariante === 'original' ? '⭐' : '🔧')
+                        : '';
+                    option.textContent = `${varianteInfo} ${v.kennzeichen} - ${v.marke} ${v.modell} (${v.kundenname})`.trim();
                     select.appendChild(option);
                 });
 
@@ -5139,11 +5165,15 @@
             // Fahrzeug
             const fahrzeugId = document.getElementById('manualBestellFahrzeug').value;
             let kennzeichen = '';
+            let variante = null;
             if (fahrzeugId) {
-                // Hole Kennzeichen aus selected option text
+                // Hole Kennzeichen + Variante aus selected option
                 const select = document.getElementById('manualBestellFahrzeug');
                 const selectedOption = select.options[select.selectedIndex];
-                kennzeichen = selectedOption.textContent.split(' - ')[0];
+                // 🆕 FIX (2025-11-30): Kennzeichen extrahieren (nach Varianten-Emoji ⭐/🔧)
+                const textParts = selectedOption.textContent.trim().split(' - ')[0];
+                kennzeichen = textParts.replace(/^[⭐🔧]\s*/, '').trim();
+                variante = selectedOption.dataset.variante || null;
             }
 
             // Notizen
@@ -5172,6 +5202,8 @@
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                     fahrzeugId: fahrzeugId || null,
                     kennzeichen: kennzeichen || null,
+                    // 🆕 FIX (2025-11-30): Variante (Original/Aftermarket) vom Fahrzeug
+                    variante: variante,
                     source: 'manual',  // WICHTIG: Source-Tag für Badge
                     description: `Manuell erstellt: ${benennung}`,  // Benötigt für Anzeige
 
