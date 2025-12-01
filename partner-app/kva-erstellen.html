@@ -7686,21 +7686,37 @@
                     // PROBLEM: Partner-Anfragen haben nur partnerName, nicht kundenname
                     // LÖSUNG: Bei KVA-Erstellung kundenname explizit setzen (partnerName als Fallback)
 
-                    // 🆕 FIX Dec 1, 2025 v2: Varianten-Preise auf ROOT-Ebene für meine-anfragen.html Varianten-Auswahl
-                    // WICHTIG: Varianten-Keys sind DYNAMISCH (original, zubehoer, partner, standard, premium, etc.)
-                    // Wir nehmen die zwei höchsten/niedrigsten Preise als "Original" (teurer) und "Aftermarket" (günstiger)
-                    const variantenKeys = Object.keys(kvaData.varianten || {});
-                    const variantenPreise = variantenKeys
-                        .map(key => ({ key, gesamt: kvaData.varianten[key]?.gesamt || 0 }))
-                        .filter(v => v.gesamt > 0)
-                        .sort((a, b) => b.gesamt - a.gesamt); // Absteigend nach Preis
+                    // 🆕 FIX Dec 1, 2025 v3: Varianten-Preise auf ROOT-Ebene für meine-anfragen.html Varianten-Auswahl
+                    // WICHTIG: Wenn bereits Varianten-Preise aus kalkulation.html existieren, diese NICHT überschreiben!
+                    // Fallback-Kette: anfrage.summeBruttoOriginal → anfrage.kalkulation.summeBruttoOriginal → kvaData.varianten
 
-                    // Teuerste = "Original", Günstigste = "Aftermarket"
-                    const originalGesamt = variantenPreise[0]?.gesamt || 0;
-                    const aftermarketGesamt = variantenPreise.length > 1 ? variantenPreise[variantenPreise.length - 1]?.gesamt : 0;
-                    const hatVarianten = variantenPreise.length >= 2 && originalGesamt !== aftermarketGesamt;
+                    // 1. Prüfe ob bereits Preise aus kalkulation.html existieren
+                    const existingOriginal = parseFloat(anfrage.summeBruttoOriginal) || parseFloat(anfrage.kalkulation?.summeBruttoOriginal) || 0;
+                    const existingAftermarket = parseFloat(anfrage.summeBruttoAftermarket) || parseFloat(anfrage.kalkulation?.summeBruttoAftermarket) || 0;
+                    const existingHasVarianten = anfrage.hasVarianten || anfrage.kalkulation?.hasVarianten || false;
 
-                    console.log('📊 [VARIANTEN] Keys:', variantenKeys, '| Preise:', variantenPreise.map(v => `${v.key}=${v.gesamt}€`));
+                    let originalGesamt, aftermarketGesamt, hatVarianten;
+
+                    if (existingOriginal > 0 && existingAftermarket > 0) {
+                        // Verwende existierende Preise aus kalkulation.html
+                        originalGesamt = existingOriginal;
+                        aftermarketGesamt = existingAftermarket;
+                        hatVarianten = existingHasVarianten || (existingOriginal !== existingAftermarket);
+                        console.log('📊 [VARIANTEN] Verwende existierende Preise aus kalkulation.html');
+                    } else {
+                        // Berechne aus kvaData.varianten (dynamische Keys)
+                        const variantenKeys = Object.keys(kvaData.varianten || {});
+                        const variantenPreise = variantenKeys
+                            .map(key => ({ key, gesamt: kvaData.varianten[key]?.gesamt || 0 }))
+                            .filter(v => v.gesamt > 0)
+                            .sort((a, b) => b.gesamt - a.gesamt);
+
+                        originalGesamt = variantenPreise[0]?.gesamt || 0;
+                        aftermarketGesamt = variantenPreise.length > 1 ? variantenPreise[variantenPreise.length - 1]?.gesamt : 0;
+                        hatVarianten = variantenPreise.length >= 2 && originalGesamt !== aftermarketGesamt;
+                        console.log('📊 [VARIANTEN] Berechne aus kvaData.varianten, Keys:', variantenKeys);
+                    }
+
                     console.log('📊 [VARIANTEN] Original:', originalGesamt, '| Aftermarket:', aftermarketGesamt, '| hatVarianten:', hatVarianten);
 
                     await window.getCollection('partnerAnfragen').doc(anfrageId).update({
@@ -7710,7 +7726,7 @@
                         lastUpdated: Date.now(),
                         // 🆕 FIX: Setze kundenname falls nicht vorhanden (für annehmenKVA)
                         kundenname: anfrage.kundenname || anfrage.partnerName || 'k.A.',
-                        // 🆕 FIX Dec 1, 2025 v2: Varianten-Preise auf ROOT-Ebene (für Varianten-Auswahl-Box)
+                        // 🆕 FIX Dec 1, 2025 v3: Varianten-Preise auf ROOT-Ebene (NICHT überschreiben wenn bereits vorhanden!)
                         summeBruttoOriginal: originalGesamt,
                         summeBruttoAftermarket: aftermarketGesamt,
                         hasVarianten: hatVarianten
@@ -8025,21 +8041,37 @@
                 // PROBLEM: Partner-Anfragen haben nur partnerName, nicht kundenname
                 // LÖSUNG: Bei KVA-Erstellung kundenname explizit setzen (partnerName als Fallback)
 
-                // 🆕 FIX Dec 1, 2025 v2: Varianten-Preise auf ROOT-Ebene für meine-anfragen.html Varianten-Auswahl
-                // WICHTIG: Varianten-Keys sind DYNAMISCH (original, zubehoer, partner, standard, premium, etc.)
-                // Wir nehmen die zwei höchsten/niedrigsten Preise als "Original" (teurer) und "Aftermarket" (günstiger)
-                const variantenKeysSS = Object.keys(kvaData.varianten || {});
-                const variantenPreiseSS = variantenKeysSS
-                    .map(key => ({ key, gesamt: kvaData.varianten[key]?.gesamt || 0 }))
-                    .filter(v => v.gesamt > 0)
-                    .sort((a, b) => b.gesamt - a.gesamt); // Absteigend nach Preis
+                // 🆕 FIX Dec 1, 2025 v3: Varianten-Preise auf ROOT-Ebene für meine-anfragen.html Varianten-Auswahl
+                // WICHTIG: Wenn bereits Varianten-Preise aus kalkulation.html existieren, diese NICHT überschreiben!
+                // Fallback-Kette: anfrage.summeBruttoOriginal → anfrage.kalkulation.summeBruttoOriginal → kvaData.varianten
 
-                // Teuerste = "Original", Günstigste = "Aftermarket"
-                const originalGesamtSS = variantenPreiseSS[0]?.gesamt || 0;
-                const aftermarketGesamtSS = variantenPreiseSS.length > 1 ? variantenPreiseSS[variantenPreiseSS.length - 1]?.gesamt : 0;
-                const hatVariantenSS = variantenPreiseSS.length >= 2 && originalGesamtSS !== aftermarketGesamtSS;
+                // 1. Prüfe ob bereits Preise aus kalkulation.html existieren
+                const existingOriginalSS = parseFloat(anfrage.summeBruttoOriginal) || parseFloat(anfrage.kalkulation?.summeBruttoOriginal) || 0;
+                const existingAftermarketSS = parseFloat(anfrage.summeBruttoAftermarket) || parseFloat(anfrage.kalkulation?.summeBruttoAftermarket) || 0;
+                const existingHasVariantenSS = anfrage.hasVarianten || anfrage.kalkulation?.hasVarianten || false;
 
-                console.log('📊 [VARIANTEN-SS] Keys:', variantenKeysSS, '| Preise:', variantenPreiseSS.map(v => `${v.key}=${v.gesamt}€`));
+                let originalGesamtSS, aftermarketGesamtSS, hatVariantenSS;
+
+                if (existingOriginalSS > 0 && existingAftermarketSS > 0) {
+                    // Verwende existierende Preise aus kalkulation.html
+                    originalGesamtSS = existingOriginalSS;
+                    aftermarketGesamtSS = existingAftermarketSS;
+                    hatVariantenSS = existingHasVariantenSS || (existingOriginalSS !== existingAftermarketSS);
+                    console.log('📊 [VARIANTEN-SS] Verwende existierende Preise aus kalkulation.html');
+                } else {
+                    // Berechne aus kvaData.varianten (dynamische Keys)
+                    const variantenKeysSS = Object.keys(kvaData.varianten || {});
+                    const variantenPreiseSS = variantenKeysSS
+                        .map(key => ({ key, gesamt: kvaData.varianten[key]?.gesamt || 0 }))
+                        .filter(v => v.gesamt > 0)
+                        .sort((a, b) => b.gesamt - a.gesamt);
+
+                    originalGesamtSS = variantenPreiseSS[0]?.gesamt || 0;
+                    aftermarketGesamtSS = variantenPreiseSS.length > 1 ? variantenPreiseSS[variantenPreiseSS.length - 1]?.gesamt : 0;
+                    hatVariantenSS = variantenPreiseSS.length >= 2 && originalGesamtSS !== aftermarketGesamtSS;
+                    console.log('📊 [VARIANTEN-SS] Berechne aus kvaData.varianten, Keys:', variantenKeysSS);
+                }
+
                 console.log('📊 [VARIANTEN-SS] Original:', originalGesamtSS, '| Aftermarket:', aftermarketGesamtSS, '| hatVarianten:', hatVariantenSS);
 
                 await window.getCollection('partnerAnfragen').doc(anfrageId).update({
@@ -8049,13 +8081,13 @@
                     lastUpdated: Date.now(),
                     // 🆕 FIX: Setze kundenname falls nicht vorhanden (für annehmenKVA)
                     kundenname: anfrage.kundenname || anfrage.partnerName || 'k.A.',
-                    // 🆕 FIX Dec 1, 2025 v2: Varianten-Preise auf ROOT-Ebene (für Varianten-Auswahl-Box)
+                    // 🆕 FIX Dec 1, 2025 v3: Varianten-Preise auf ROOT-Ebene (NICHT überschreiben wenn bereits vorhanden!)
                     summeBruttoOriginal: originalGesamtSS,
                     summeBruttoAftermarket: aftermarketGesamtSS,
                     hasVarianten: hatVariantenSS
                 });
 
-                console.log('✅ Single-Service KVA gespeichert:', anfrageId, 'Varianten:', variantenKeysSS.length, '| kundenname:', anfrage.kundenname || anfrage.partnerName, '| hatVarianten:', hatVariantenSS);
+                console.log('✅ Single-Service KVA gespeichert:', anfrageId, '| Original:', originalGesamtSS, '| Aftermarket:', aftermarketGesamtSS, '| hatVarianten:', hatVariantenSS);
 
                 // ❌ REMOVED FIX #48 Call (Error #5): Ersatzteile-Transfer HIER ist FALSCH!
                 // Grund: anfrageId ≠ fahrzeugId → Transfer erfolgt in meine-anfragen.html nach Fahrzeug-Erstellung
