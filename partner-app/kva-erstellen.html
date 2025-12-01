@@ -2722,10 +2722,16 @@
             // Summe und Count aktualisieren
             if (sumSpan) sumSpan.textContent = summe.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
             if (countSpan) countSpan.textContent = data.length;
+
+            // 🆕 REFACTORING 2025-12-01: Gesamtsummen in neuer Struktur aktualisieren
+            if (typeof updateNewStructureSums === 'function') {
+                updateNewStructureSums();
+            }
         }
 
         /**
          * Aktualisiert einen Eintrag in einer Varianten-Tabelle
+         * 🆕 REFACTORING 2025-12-01: Gesamtsummen aktualisieren
          */
         function updateVariantTableEntry(variant, tableType, index, field, value) {
             const data = variantTableData[variant]?.[tableType];
@@ -2734,6 +2740,11 @@
             if (field === 'anzahl') {
                 data[index].anzahl = parseInt(value) || 1;
                 data[index].gesamtpreis = data[index].anzahl * (data[index].einzelpreis || 0);
+            } else if (field === 'einzelpreis') {
+                data[index].einzelpreis = parseFloat(value) || 0;
+                data[index].gesamtpreis = (data[index].anzahl || 1) * data[index].einzelpreis;
+            } else if (field === 'gesamtpreis') {
+                data[index].gesamtpreis = parseFloat(value) || 0;
             } else {
                 data[index][field] = value;
             }
@@ -2743,6 +2754,7 @@
 
         /**
          * Löscht einen Eintrag aus einer Varianten-Tabelle
+         * 🆕 REFACTORING 2025-12-01: Gesamtsummen aktualisieren
          */
         function deleteVariantTableEntry(variant, tableType, index) {
             const data = variantTableData[variant]?.[tableType];
@@ -3106,204 +3118,346 @@
         // ============================================
 
         /**
-         * Rendert die Varianten-Tabellen für Multi-Service Anfragen
-         * Pro Service eigene Tabellen-Gruppen mit Service-Icon und Name
+         * 🆕 REFACTORING 2025-12-01: Multi-Service mit NEUER Struktur
+         *
+         * NEUE STRUKTUR:
+         * - SEKTION 1: Dienstleistungen (GLOBAL) - Arbeitslohn & Lackierung für ALLE Services zusammen
+         * - SEKTION 2: Ersatzteile (PRO SERVICE) - Mit 2 Varianten nebeneinander (Original | Aftermarket)
+         * - SEKTION 3: Ersatzfahrzeug (GLOBAL) - Einmal am Ende
+         * - SEKTION 4: Gesamtübersicht - 2 Spalten (Mit Originalteilen | Mit Aftermarket)
          */
         function renderVariantTablesMultiService(variants, variantStyles, container) {
-            console.log('📦 [MULTI-SERVICE] Rendere Varianten-Tabellen für Services:', anfrage.serviceLabels);
+            console.log('📦 [MULTI-SERVICE-NEU] Rendere NEUE Struktur für Services:', anfrage.serviceLabels);
 
             const serviceIcons = {
-                'lackier': '🎨', 'reifen': '🛞', 'mechanik': '🔧', 'aufbereitung': '🧹',
-                'tuev': '✅', 'gutachten': '📋', 'scheibenersatz': '🚗', 'klimaanlage': '❄️',
-                'dellen': '🔨', 'folierung': '🎭', 'steinschutz': '🛡️', 'werbebeklebung': '📦'
+                'lackier': '🎨', 'reifen': '🛞', 'mechanik': '🔧', 'aufbereitung': '🧹', 'pflege': '🧹',
+                'tuev': '✅', 'gutachten': '📋', 'scheibenersatz': '🚗', 'glas': '🪟', 'klimaanlage': '❄️', 'klima': '❄️',
+                'dellen': '🔨', 'folierung': '🎭', 'steinschutz': '🛡️', 'werbebeklebung': '📦', 'versicherung': '📋'
             };
 
             const serviceNames = {
                 'lackier': 'Lackierung', 'reifen': 'Reifen-Service', 'mechanik': 'Mechanik',
-                'aufbereitung': 'Aufbereitung', 'tuev': 'TÜV/HU/AU', 'gutachten': 'Gutachten',
-                'scheibenersatz': 'Scheibenersatz', 'klimaanlage': 'Klimaanlage',
+                'aufbereitung': 'Aufbereitung', 'pflege': 'Fahrzeugpflege', 'tuev': 'TÜV/HU/AU', 'gutachten': 'Gutachten',
+                'scheibenersatz': 'Scheibenersatz', 'glas': 'Glasreparatur', 'klimaanlage': 'Klimaanlage', 'klima': 'Klimaservice',
                 'dellen': 'Dellenentfernung', 'folierung': 'Folierung',
-                'steinschutz': 'Steinschutzfolie', 'werbebeklebung': 'Werbebeklebung'
+                'steinschutz': 'Steinschutzfolie', 'werbebeklebung': 'Werbebeklebung', 'versicherung': 'Versicherungsschaden'
             };
 
-            let html = '';
+            // Nur 2 Varianten für die neue Struktur: original und zubehoer (Aftermarket)
+            const activeVariants = ['original', 'zubehoer'];
 
-            variants.forEach(variant => {
-                const style = variantStyles[variant] || variantStyles.original;
+            let html = `
+            <div class="kva-neue-struktur-multi" style="max-width: 100%;">
 
-                html += `
-                <div class="variant-tables-section" id="tables_${variant}"
-                     style="background: ${style.bg}; border: 2px solid ${style.border};
-                            border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                    <h3 style="color: ${style.textColor}; margin-bottom: 15px; font-size: 18px;">
-                        ${style.icon} ${style.label} - Kostenaufschlüsselung (Multi-Service)
+                <!-- ═══════════════════════════════════════════════════════════════════════
+                     SEKTION 1: DIENSTLEISTUNGEN (GLOBAL - keine Varianten)
+                     Arbeitslohn und Lackierung werden EINMAL berechnet, nicht pro Variante
+                ═══════════════════════════════════════════════════════════════════════ -->
+                <div class="dienstleistungen-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                     border-radius: 12px; padding: 20px; margin-bottom: 25px; color: white;">
+                    <h3 style="margin: 0 0 20px 0; font-size: 20px; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 24px;">🔧</span> Dienstleistungen (alle Services)
+                        <span style="font-size: 12px; opacity: 0.8; font-weight: normal;">— Festpreise ohne Varianten</span>
                     </h3>
-                `;
 
-                // Für JEDEN Service eine eigene Tabellen-Gruppe
-                anfrage.serviceLabels.forEach(serviceTyp => {
-                    const svcIcon = serviceIcons[serviceTyp] || '📋';
-                    const svcName = serviceNames[serviceTyp] || serviceTyp;
-
-                    html += `
-                    <div class="service-section" id="service_${variant}_${serviceTyp}"
-                         style="background: rgba(255,255,255,0.5); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-                        <h4 style="color: ${style.textColor}; font-size: 16px; margin: 0 0 15px 0; border-bottom: 2px solid ${style.border}; padding-bottom: 8px;">
-                            ${svcIcon} ${svcName}
-                        </h4>
-
-                        <!-- Ersatzteile für diesen Service -->
-                        <div id="ersatzteileSection_${variant}_${serviceTyp}" style="margin-bottom: 12px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <h5 style="color: ${style.textColor}; font-size: 13px; margin: 0;">
-                                    📦 Ersatzteile (<span id="ersatzteileCount_${variant}_${serviceTyp}">0</span>)
-                                </h5>
-                            </div>
-                            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                                <thead>
-                                    <tr style="background: rgba(0,0,0,0.1);">
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; width: 80px;">ETN</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border};">Benennung</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: center; width: 50px;">Anz.</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: right; width: 70px;">Einzelpreis</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: right; width: 70px;">Gesamt</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: center; width: 40px;">Akt.</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ersatzteileTableBody_${variant}_${serviceTyp}"></tbody>
-                                <tfoot style="background: rgba(0,0,0,0.05);">
-                                    <tr>
-                                        <td colspan="4" style="padding: 5px; text-align: right; font-weight: 600;">Summe:</td>
-                                        <td style="padding: 5px; text-align: right; color: ${style.textColor}; font-weight: 600;" id="ersatzteileSumme_${variant}_${serviceTyp}">0,00 €</td>
-                                        <td></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                    <!-- Arbeitslohn (Global für alle Services) -->
+                    <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; font-size: 14px; color: white;">
+                                🔧 Arbeitslohn <span style="opacity: 0.7;">(<span id="multiGlobalArbeitslohnCount">0</span> Positionen)</span>
+                            </h4>
+                            <button type="button" onclick="addMultiGlobalArbeitslohnRow()"
+                                style="padding: 5px 12px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3);
+                                       border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                ➕ Hinzufügen
+                            </button>
                         </div>
-
-                        <!-- Arbeitslohn für diesen Service -->
-                        <div id="arbeitslohnSection_${variant}_${serviceTyp}" style="margin-bottom: 12px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <h5 style="color: ${style.textColor}; font-size: 13px; margin: 0;">
-                                    🔧 Arbeitslohn (<span id="arbeitslohnCount_${variant}_${serviceTyp}">0</span>)
-                                </h5>
-                            </div>
-                            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                                <thead>
-                                    <tr style="background: rgba(0,0,0,0.1);">
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border};">Position</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border};">Art</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: right; width: 70px;">Betrag</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: center; width: 40px;">Akt.</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="arbeitslohnTableBody_${variant}_${serviceTyp}"></tbody>
-                                <tfoot style="background: rgba(0,0,0,0.05);">
-                                    <tr>
-                                        <td colspan="2" style="padding: 5px; text-align: right; font-weight: 600;">Summe:</td>
-                                        <td style="padding: 5px; text-align: right; color: ${style.textColor}; font-weight: 600;" id="arbeitslohnSumme_${variant}_${serviceTyp}">0,00 €</td>
-                                        <td></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-
-                        <!-- Lackierung für diesen Service -->
-                        <div id="lackierungSection_${variant}_${serviceTyp}" style="margin-bottom: 12px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <h5 style="color: ${style.textColor}; font-size: 13px; margin: 0;">
-                                    🎨 Lackierung (<span id="lackierungCount_${variant}_${serviceTyp}">0</span>)
-                                </h5>
-                            </div>
-                            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                                <thead>
-                                    <tr style="background: rgba(0,0,0,0.1);">
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border};">Position</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border};">Bereich</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: right; width: 70px;">Betrag</th>
-                                        <th style="padding: 5px; border-bottom: 1px solid ${style.border}; text-align: center; width: 40px;">Akt.</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="lackierungTableBody_${variant}_${serviceTyp}"></tbody>
-                                <tfoot style="background: rgba(0,0,0,0.05);">
-                                    <tr>
-                                        <td colspan="2" style="padding: 5px; text-align: right; font-weight: 600;">Summe:</td>
-                                        <td style="padding: 5px; text-align: right; color: ${style.textColor}; font-weight: 600;" id="lackierungSumme_${variant}_${serviceTyp}">0,00 €</td>
-                                        <td></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-
-                        <!-- Service-Summe -->
-                        <div style="text-align: right; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; margin-top: 10px;">
-                            <strong style="color: ${style.textColor};">${svcName} Gesamt:</strong>
-                            <span id="serviceSumme_${variant}_${serviceTyp}" style="color: #28a745; font-weight: 700; margin-left: 10px;">0,00 €</span>
-                        </div>
-                    </div>
-                    `;
-                });
-
-                // Ersatzfahrzeug (global pro Variante, nicht pro Service)
-                html += `
-                    <div id="ersatzfahrzeugSection_${variant}" style="margin-top: 15px;">
-                        <h4 style="color: ${style.textColor}; font-size: 14px; margin: 0 0 10px 0;">
-                            🚗 Ersatzfahrzeug
-                        </h4>
-                        <div style="overflow-x: auto;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                <thead>
-                                    <tr style="background: rgba(0,0,0,0.1);">
-                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border};">Kennzeichen</th>
-                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border};">Fahrzeug</th>
-                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border}; text-align: right;">Tagesmiete</th>
-                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border}; text-align: center;">Tage</th>
-                                        <th style="padding: 6px; border-bottom: 2px solid ${style.border}; text-align: right;">Gesamtpreis</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ersatzfahrzeugTableBody_${variant}">
-                                    <tr><td colspan="5" style="text-align: center; color: #999; padding: 10px;">Kein Ersatzfahrzeug</td></tr>
-                                </tbody>
-                                <tfoot style="background: rgba(0,0,0,0.05);">
-                                    <tr>
-                                        <td colspan="4" style="padding: 6px; text-align: right; font-weight: 600;">SUMME:</td>
-                                        <td style="padding: 6px; text-align: right; color: ${style.textColor}; font-weight: 600;" id="ersatzfahrzeugSumme_${variant}">0,00 €</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- Varianten-Gesamtsumme -->
-                    <div style="text-align: right; padding: 12px; background: rgba(0,0,0,0.1); border-radius: 6px; margin-top: 15px;">
-                        <strong style="color: ${style.textColor}; font-size: 16px;">GESAMTSUMME ${style.label}:</strong>
-                        <span id="gesamtSumme_${variant}" style="color: #28a745; font-weight: 700; font-size: 18px; margin-left: 15px;">0,00 €</span>
-                    </div>
-
-                    <!-- MwSt-Übersicht (Multi-Service) -->
-                    <div style="background: #f8f9fa; border: 2px solid ${style.border}; border-radius: 8px; padding: 15px; margin-top: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: ${style.textColor}; font-size: 14px;">📊 Kostenübersicht ${style.label}</h4>
-                        <table style="width: 100%; font-size: 14px;">
-                            <tr>
-                                <td style="padding: 5px 0;">Netto:</td>
-                                <td style="text-align: right; font-weight: 600;" id="netto_${variant}">0,00 €</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 5px 0;">+ 19% MwSt:</td>
-                                <td style="text-align: right;" id="mwst_${variant}">0,00 €</td>
-                            </tr>
-                            <tr style="border-top: 2px solid ${style.border};">
-                                <td style="padding: 8px 0; font-size: 16px; font-weight: 700;">Brutto:</td>
-                                <td style="text-align: right; color: #28a745; font-size: 18px; font-weight: 700;" id="brutto_${variant}">0,00 €</td>
-                            </tr>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background: rgba(0,0,0,0.2);">
+                                    <th style="padding: 8px; text-align: left; color: white;">Position</th>
+                                    <th style="padding: 8px; text-align: left; color: white;">Service</th>
+                                    <th style="padding: 8px; text-align: left; color: white;">Art</th>
+                                    <th style="padding: 8px; text-align: right; color: white; width: 100px;">Betrag</th>
+                                    <th style="padding: 8px; text-align: center; color: white; width: 50px;">Akt.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="multiGlobalArbeitslohnTableBody"></tbody>
+                            <tfoot style="background: rgba(0,0,0,0.1);">
+                                <tr>
+                                    <td colspan="3" style="padding: 8px; text-align: right; font-weight: 600; color: white;">Summe Arbeitslohn:</td>
+                                    <td style="padding: 8px; text-align: right; font-weight: 700; color: #90EE90;" id="multiGlobalArbeitslohnSumme">0,00 €</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
+
+                    <!-- Lackierung (Global für alle Services) -->
+                    <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; font-size: 14px; color: white;">
+                                🎨 Lackierung <span style="opacity: 0.7;">(<span id="multiGlobalLackierungCount">0</span> Positionen)</span>
+                            </h4>
+                            <button type="button" onclick="addMultiGlobalLackierungRow()"
+                                style="padding: 5px 12px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3);
+                                       border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                ➕ Hinzufügen
+                            </button>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background: rgba(0,0,0,0.2);">
+                                    <th style="padding: 8px; text-align: left; color: white;">Position</th>
+                                    <th style="padding: 8px; text-align: left; color: white;">Service</th>
+                                    <th style="padding: 8px; text-align: left; color: white;">Bereich</th>
+                                    <th style="padding: 8px; text-align: right; color: white; width: 100px;">Betrag</th>
+                                    <th style="padding: 8px; text-align: center; color: white; width: 50px;">Akt.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="multiGlobalLackierungTableBody"></tbody>
+                            <tfoot style="background: rgba(0,0,0,0.1);">
+                                <tr>
+                                    <td colspan="3" style="padding: 8px; text-align: right; font-weight: 600; color: white;">Summe Lackierung:</td>
+                                    <td style="padding: 8px; text-align: right; font-weight: 700; color: #90EE90;" id="multiGlobalLackierungSumme">0,00 €</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Dienstleistungen Gesamt -->
+                    <div style="margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; text-align: right;">
+                        <strong style="font-size: 16px;">DIENSTLEISTUNGEN GESAMT:</strong>
+                        <span id="multiGlobalDienstleistungenSumme" style="font-size: 20px; font-weight: 700; color: #90EE90; margin-left: 15px;">0,00 €</span>
+                    </div>
                 </div>
+
+                <!-- ═══════════════════════════════════════════════════════════════════════
+                     SEKTION 2: ERSATZTEILE (PRO SERVICE mit 2 Varianten nebeneinander)
+                ═══════════════════════════════════════════════════════════════════════ -->
+                <div class="ersatzteile-section" style="margin-bottom: 25px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 18px; color: #333; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">📦</span> Ersatzteile
+                        <span style="font-size: 12px; color: #666; font-weight: normal;">— Original vs. Aftermarket pro Service</span>
+                    </h3>
+            `;
+
+            // Für JEDEN Service eine Ersatzteile-Sektion mit 2 Varianten nebeneinander
+            anfrage.serviceLabels.forEach(serviceTyp => {
+                const svcIcon = serviceIcons[serviceTyp] || '📋';
+                const svcName = serviceNames[serviceTyp] || serviceTyp;
+
+                html += `
+                    <div class="service-ersatzteile-section" style="background: #f8f9fa; border: 2px solid #e0e0e0; border-radius: 10px; padding: 15px; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 15px 0; font-size: 15px; color: #444; border-bottom: 2px solid #ddd; padding-bottom: 8px;">
+                            ${svcIcon} ${svcName} - Ersatzteile
+                        </h4>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <!-- ORIGINAL-Variante -->
+                            <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border: 2px solid #4caf50; border-radius: 8px; padding: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <h5 style="margin: 0; font-size: 13px; color: #2e7d32;">
+                                        ✅ Originalteile (<span id="ersatzteileCount_original_${serviceTyp}">0</span>)
+                                    </h5>
+                                    <button type="button" onclick="addMultiServiceErsatzteilRow('original', '${serviceTyp}')"
+                                        style="padding: 3px 8px; background: #4caf50; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">
+                                        ➕
+                                    </button>
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                                    <thead>
+                                        <tr style="background: rgba(0,0,0,0.1);">
+                                            <th style="padding: 4px; text-align: left;">ETN</th>
+                                            <th style="padding: 4px; text-align: left;">Benennung</th>
+                                            <th style="padding: 4px; text-align: center; width: 35px;">Anz</th>
+                                            <th style="padding: 4px; text-align: right; width: 55px;">Einzel</th>
+                                            <th style="padding: 4px; text-align: right; width: 55px;">Gesamt</th>
+                                            <th style="padding: 4px; text-align: center; width: 30px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ersatzteileTableBody_original_${serviceTyp}"></tbody>
+                                    <tfoot style="background: rgba(0,0,0,0.05);">
+                                        <tr>
+                                            <td colspan="4" style="padding: 5px; text-align: right; font-weight: 600; font-size: 11px;">Summe:</td>
+                                            <td style="padding: 5px; text-align: right; color: #2e7d32; font-weight: 700; font-size: 11px;" id="ersatzteileSumme_original_${serviceTyp}">0,00 €</td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+
+                            <!-- AFTERMARKET-Variante (zubehoer) -->
+                            <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border: 2px solid #ff9800; border-radius: 8px; padding: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <h5 style="margin: 0; font-size: 13px; color: #e65100;">
+                                        🔄 Aftermarket (<span id="ersatzteileCount_zubehoer_${serviceTyp}">0</span>)
+                                    </h5>
+                                    <button type="button" onclick="addMultiServiceErsatzteilRow('zubehoer', '${serviceTyp}')"
+                                        style="padding: 3px 8px; background: #ff9800; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">
+                                        ➕
+                                    </button>
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                                    <thead>
+                                        <tr style="background: rgba(0,0,0,0.1);">
+                                            <th style="padding: 4px; text-align: left;">ETN</th>
+                                            <th style="padding: 4px; text-align: left;">Benennung</th>
+                                            <th style="padding: 4px; text-align: center; width: 35px;">Anz</th>
+                                            <th style="padding: 4px; text-align: right; width: 55px;">Einzel</th>
+                                            <th style="padding: 4px; text-align: right; width: 55px;">Gesamt</th>
+                                            <th style="padding: 4px; text-align: center; width: 30px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ersatzteileTableBody_zubehoer_${serviceTyp}"></tbody>
+                                    <tfoot style="background: rgba(0,0,0,0.05);">
+                                        <tr>
+                                            <td colspan="4" style="padding: 5px; text-align: right; font-weight: 600; font-size: 11px;">Summe:</td>
+                                            <td style="padding: 5px; text-align: right; color: #e65100; font-weight: 700; font-size: 11px;" id="ersatzteileSumme_zubehoer_${serviceTyp}">0,00 €</td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 `;
             });
 
+            html += `
+                </div>
+
+                <!-- ═══════════════════════════════════════════════════════════════════════
+                     SEKTION 3: ERSATZFAHRZEUG (GLOBAL - einmal für alle)
+                ═══════════════════════════════════════════════════════════════════════ -->
+                <div class="ersatzfahrzeug-section" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+                     border: 2px solid #2196f3; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 18px; color: #1565c0; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">🚗</span> Ersatzfahrzeug
+                        <span style="font-size: 12px; color: #1976d2; font-weight: normal;">— Global für alle Services</span>
+                    </h3>
+                    <div id="multiGlobalErsatzfahrzeugContainer">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead>
+                                <tr style="background: rgba(33, 150, 243, 0.2);">
+                                    <th style="padding: 10px; text-align: left; color: #1565c0;">Kennzeichen</th>
+                                    <th style="padding: 10px; text-align: left; color: #1565c0;">Fahrzeug</th>
+                                    <th style="padding: 10px; text-align: right; color: #1565c0;">Tagesmiete</th>
+                                    <th style="padding: 10px; text-align: center; color: #1565c0;">Tage</th>
+                                    <th style="padding: 10px; text-align: right; color: #1565c0;">Gesamtpreis</th>
+                                </tr>
+                            </thead>
+                            <tbody id="multiGlobalErsatzfahrzeugTableBody">
+                                <tr><td colspan="5" style="text-align: center; color: #999; padding: 15px;">Kein Ersatzfahrzeug ausgewählt</td></tr>
+                            </tbody>
+                            <tfoot style="background: rgba(33, 150, 243, 0.1);">
+                                <tr>
+                                    <td colspan="4" style="padding: 10px; text-align: right; font-weight: 600; color: #1565c0;">SUMME:</td>
+                                    <td style="padding: 10px; text-align: right; font-weight: 700; color: #1565c0; font-size: 15px;" id="multiGlobalErsatzfahrzeugSumme">0,00 €</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ═══════════════════════════════════════════════════════════════════════
+                     SEKTION 4: GESAMTÜBERSICHT (2 Spalten: Original vs. Aftermarket)
+                ═══════════════════════════════════════════════════════════════════════ -->
+                <div class="gesamtuebersicht-section" style="background: #f5f5f5; border-radius: 12px; padding: 20px;">
+                    <h3 style="margin: 0 0 20px 0; font-size: 18px; color: #333; text-align: center;">
+                        📊 Gesamtübersicht - Kostenvergleich
+                    </h3>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <!-- MIT ORIGINALTEILEN -->
+                        <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border: 3px solid #4caf50; border-radius: 10px; padding: 20px;">
+                            <h4 style="margin: 0 0 15px 0; text-align: center; color: #2e7d32; font-size: 16px;">
+                                ✅ Mit Originalteilen
+                            </h4>
+                            <table style="width: 100%; font-size: 13px;">
+                                <tr>
+                                    <td style="padding: 8px 0; color: #333;">Dienstleistungen:</td>
+                                    <td style="text-align: right; font-weight: 600;" id="multiGesamtDienstleistungen_original">0,00 €</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #333;">Ersatzteile (Original):</td>
+                                    <td style="text-align: right; font-weight: 600;" id="multiGesamtErsatzteile_original">0,00 €</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #333;">Ersatzfahrzeug:</td>
+                                    <td style="text-align: right; font-weight: 600;" id="multiGesamtErsatzfahrzeug_original">0,00 €</td>
+                                </tr>
+                                <tr style="border-top: 2px solid #4caf50;">
+                                    <td style="padding: 10px 0; font-weight: 700; color: #2e7d32;">NETTO:</td>
+                                    <td style="text-align: right; font-weight: 700; color: #2e7d32; font-size: 15px;" id="multiNetto_original">0,00 €</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px 0; color: #666;">+ 19% MwSt:</td>
+                                    <td style="text-align: right; color: #666;" id="multiMwst_original">0,00 €</td>
+                                </tr>
+                                <tr style="border-top: 3px solid #2e7d32; background: rgba(46, 125, 50, 0.1);">
+                                    <td style="padding: 12px 0; font-size: 18px; font-weight: 700; color: #2e7d32;">BRUTTO:</td>
+                                    <td style="text-align: right; font-size: 22px; font-weight: 700; color: #2e7d32;" id="multiBrutto_original">0,00 €</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <!-- MIT AFTERMARKET-TEILEN -->
+                        <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border: 3px solid #ff9800; border-radius: 10px; padding: 20px;">
+                            <h4 style="margin: 0 0 15px 0; text-align: center; color: #e65100; font-size: 16px;">
+                                🔄 Mit Aftermarket-Teilen
+                            </h4>
+                            <table style="width: 100%; font-size: 13px;">
+                                <tr>
+                                    <td style="padding: 8px 0; color: #333;">Dienstleistungen:</td>
+                                    <td style="text-align: right; font-weight: 600;" id="multiGesamtDienstleistungen_zubehoer">0,00 €</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #333;">Ersatzteile (Aftermarket):</td>
+                                    <td style="text-align: right; font-weight: 600;" id="multiGesamtErsatzteile_zubehoer">0,00 €</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; color: #333;">Ersatzfahrzeug:</td>
+                                    <td style="text-align: right; font-weight: 600;" id="multiGesamtErsatzfahrzeug_zubehoer">0,00 €</td>
+                                </tr>
+                                <tr style="border-top: 2px solid #ff9800;">
+                                    <td style="padding: 10px 0; font-weight: 700; color: #e65100;">NETTO:</td>
+                                    <td style="text-align: right; font-weight: 700; color: #e65100; font-size: 15px;" id="multiNetto_zubehoer">0,00 €</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px 0; color: #666;">+ 19% MwSt:</td>
+                                    <td style="text-align: right; color: #666;" id="multiMwst_zubehoer">0,00 €</td>
+                                </tr>
+                                <tr style="border-top: 3px solid #e65100; background: rgba(230, 81, 0, 0.1);">
+                                    <td style="padding: 12px 0; font-size: 18px; font-weight: 700; color: #e65100;">BRUTTO:</td>
+                                    <td style="text-align: right; font-size: 22px; font-weight: 700; color: #e65100;" id="multiBrutto_zubehoer">0,00 €</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Ersparnis-Hinweis -->
+                    <div id="multiEsparnisHinweis" style="margin-top: 15px; padding: 12px; background: #e3f2fd; border: 2px solid #2196f3; border-radius: 8px; text-align: center; display: none;">
+                        <strong style="color: #1565c0;">💡 Ersparnis mit Aftermarket-Teilen: </strong>
+                        <span id="multiEsparnisValue" style="font-size: 18px; font-weight: 700; color: #2e7d32;">0,00 €</span>
+                    </div>
+                </div>
+            </div>
+            `;
+
             container.innerHTML = html;
-            console.log('✅ Multi-Service Varianten-Tabellen gerendert für:', variants, 'Services:', anfrage.serviceLabels);
+
+            // Initiale Datenstruktur für Multi-Service NEUE Struktur
+            if (!variantTableData.multiGlobal) {
+                variantTableData.multiGlobal = {
+                    arbeitslohn: [],
+                    lackierung: [],
+                    ersatzfahrzeug: null
+                };
+            }
+
+            console.log('✅ [MULTI-SERVICE-NEU] Neue Struktur gerendert für Services:', anfrage.serviceLabels);
         }
 
         /**
@@ -3514,6 +3668,438 @@
             if (nettoSpan) nettoSpan.textContent = netto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
             if (mwstSpan) mwstSpan.textContent = mwst.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
             if (bruttoSpan) bruttoSpan.textContent = brutto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
+
+        // ============================================
+        // 🆕 MULTI-SERVICE NEUE STRUKTUR HELPER (2025-12-01)
+        // ============================================
+
+        /**
+         * Fügt eine Arbeitslohn-Zeile zur GLOBALEN Multi-Service Tabelle hinzu
+         */
+        function addMultiGlobalArbeitslohnRow(data = {}) {
+            if (!variantTableData.multiGlobal) {
+                variantTableData.multiGlobal = { arbeitslohn: [], lackierung: [], ersatzfahrzeug: null };
+            }
+
+            const entry = {
+                position: data.position || '',
+                service: data.service || (anfrage.serviceLabels?.[0] || 'lackier'),
+                art: data.art || 'Sonstiges',
+                gesamtpreis: data.gesamtpreis || 0
+            };
+
+            variantTableData.multiGlobal.arbeitslohn.push(entry);
+            renderMultiGlobalArbeitslohnTable();
+            updateMultiServiceSums();
+        }
+
+        /**
+         * Fügt eine Lackierung-Zeile zur GLOBALEN Multi-Service Tabelle hinzu
+         */
+        function addMultiGlobalLackierungRow(data = {}) {
+            if (!variantTableData.multiGlobal) {
+                variantTableData.multiGlobal = { arbeitslohn: [], lackierung: [], ersatzfahrzeug: null };
+            }
+
+            const entry = {
+                position: data.position || '',
+                service: data.service || (anfrage.serviceLabels?.[0] || 'lackier'),
+                bereich: data.bereich || 'Gesamt',
+                gesamtpreis: data.gesamtpreis || 0
+            };
+
+            variantTableData.multiGlobal.lackierung.push(entry);
+            renderMultiGlobalLackierungTable();
+            updateMultiServiceSums();
+        }
+
+        /**
+         * Fügt eine Ersatzteil-Zeile zu einem Service hinzu (Multi-Service)
+         * @param {string} variant - 'original' oder 'zubehoer'
+         * @param {string} serviceTyp - Der Service-Typ
+         */
+        function addMultiServiceErsatzteilRow(variant, serviceTyp, data = {}) {
+            // Sicherstellen dass die Struktur existiert
+            if (!variantTableData[variant]._services) {
+                variantTableData[variant]._services = {};
+            }
+            if (!variantTableData[variant]._services[serviceTyp]) {
+                variantTableData[variant]._services[serviceTyp] = { ersatzteile: [], arbeitslohn: [], lackierung: [] };
+            }
+
+            const entry = {
+                etn: data.etn || '',
+                benennung: data.benennung || '',
+                anzahl: data.anzahl || 1,
+                einzelpreis: data.einzelpreis || 0,
+                gesamtpreis: data.gesamtpreis || 0
+            };
+
+            variantTableData[variant]._services[serviceTyp].ersatzteile.push(entry);
+            renderMultiServiceErsatzteileTable(variant, serviceTyp);
+            updateMultiServiceSums();
+        }
+
+        /**
+         * Rendert die globale Arbeitslohn-Tabelle (Multi-Service)
+         */
+        function renderMultiGlobalArbeitslohnTable() {
+            const tableBody = document.getElementById('multiGlobalArbeitslohnTableBody');
+            const countSpan = document.getElementById('multiGlobalArbeitslohnCount');
+            const sumSpan = document.getElementById('multiGlobalArbeitslohnSumme');
+            const data = variantTableData.multiGlobal?.arbeitslohn || [];
+
+            if (!tableBody) return;
+
+            tableBody.innerHTML = '';
+            let summe = 0;
+
+            const serviceNames = {
+                'lackier': 'Lackierung', 'reifen': 'Reifen', 'mechanik': 'Mechanik',
+                'pflege': 'Pflege', 'tuev': 'TÜV', 'glas': 'Glas', 'klima': 'Klima',
+                'dellen': 'Dellen', 'folierung': 'Folierung', 'steinschutz': 'Steinschutz',
+                'werbebeklebung': 'Beklebung', 'versicherung': 'Versicherung'
+            };
+
+            data.forEach((entry, index) => {
+                summe += entry.gesamtpreis || 0;
+
+                const row = `
+                    <tr style="background: ${index % 2 === 0 ? 'rgba(255,255,255,0.1)' : 'transparent'};">
+                        <td style="padding: 6px;">
+                            <input type="text" value="${entry.position || ''}"
+                                onchange="updateMultiGlobalEntry('arbeitslohn', ${index}, 'position', this.value)"
+                                style="width: 100%; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
+                                placeholder="Position">
+                        </td>
+                        <td style="padding: 6px;">
+                            <select onchange="updateMultiGlobalEntry('arbeitslohn', ${index}, 'service', this.value)"
+                                style="padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;">
+                                ${(anfrage.serviceLabels || ['lackier']).map(s =>
+                                    `<option value="${s}" ${entry.service === s ? 'selected' : ''} style="background: #333;">${serviceNames[s] || s}</option>`
+                                ).join('')}
+                            </select>
+                        </td>
+                        <td style="padding: 6px;">
+                            <input type="text" value="${entry.art || ''}"
+                                onchange="updateMultiGlobalEntry('arbeitslohn', ${index}, 'art', this.value)"
+                                style="width: 80px; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
+                                placeholder="Art">
+                        </td>
+                        <td style="padding: 6px;">
+                            <input type="number" value="${entry.gesamtpreis || 0}" step="0.01" min="0"
+                                onchange="updateMultiGlobalEntry('arbeitslohn', ${index}, 'gesamtpreis', parseFloat(this.value) || 0)"
+                                style="width: 80px; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: #90EE90; font-size: 11px; text-align: right; font-weight: 600;">
+                        </td>
+                        <td style="padding: 6px; text-align: center;">
+                            <button type="button" onclick="deleteMultiGlobalEntry('arbeitslohn', ${index})"
+                                style="padding: 3px 8px; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+
+            if (countSpan) countSpan.textContent = data.length;
+            if (sumSpan) sumSpan.textContent = summe.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
+
+        /**
+         * Rendert die globale Lackierung-Tabelle (Multi-Service)
+         */
+        function renderMultiGlobalLackierungTable() {
+            const tableBody = document.getElementById('multiGlobalLackierungTableBody');
+            const countSpan = document.getElementById('multiGlobalLackierungCount');
+            const sumSpan = document.getElementById('multiGlobalLackierungSumme');
+            const data = variantTableData.multiGlobal?.lackierung || [];
+
+            if (!tableBody) return;
+
+            tableBody.innerHTML = '';
+            let summe = 0;
+
+            const serviceNames = {
+                'lackier': 'Lackierung', 'reifen': 'Reifen', 'mechanik': 'Mechanik',
+                'pflege': 'Pflege', 'tuev': 'TÜV', 'glas': 'Glas', 'klima': 'Klima',
+                'dellen': 'Dellen', 'folierung': 'Folierung', 'steinschutz': 'Steinschutz',
+                'werbebeklebung': 'Beklebung', 'versicherung': 'Versicherung'
+            };
+
+            data.forEach((entry, index) => {
+                summe += entry.gesamtpreis || 0;
+
+                const row = `
+                    <tr style="background: ${index % 2 === 0 ? 'rgba(255,255,255,0.1)' : 'transparent'};">
+                        <td style="padding: 6px;">
+                            <input type="text" value="${entry.position || ''}"
+                                onchange="updateMultiGlobalEntry('lackierung', ${index}, 'position', this.value)"
+                                style="width: 100%; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
+                                placeholder="Position">
+                        </td>
+                        <td style="padding: 6px;">
+                            <select onchange="updateMultiGlobalEntry('lackierung', ${index}, 'service', this.value)"
+                                style="padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;">
+                                ${(anfrage.serviceLabels || ['lackier']).map(s =>
+                                    `<option value="${s}" ${entry.service === s ? 'selected' : ''} style="background: #333;">${serviceNames[s] || s}</option>`
+                                ).join('')}
+                            </select>
+                        </td>
+                        <td style="padding: 6px;">
+                            <input type="text" value="${entry.bereich || ''}"
+                                onchange="updateMultiGlobalEntry('lackierung', ${index}, 'bereich', this.value)"
+                                style="width: 80px; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
+                                placeholder="Bereich">
+                        </td>
+                        <td style="padding: 6px;">
+                            <input type="number" value="${entry.gesamtpreis || 0}" step="0.01" min="0"
+                                onchange="updateMultiGlobalEntry('lackierung', ${index}, 'gesamtpreis', parseFloat(this.value) || 0)"
+                                style="width: 80px; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: #90EE90; font-size: 11px; text-align: right; font-weight: 600;">
+                        </td>
+                        <td style="padding: 6px; text-align: center;">
+                            <button type="button" onclick="deleteMultiGlobalEntry('lackierung', ${index})"
+                                style="padding: 3px 8px; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+
+            if (countSpan) countSpan.textContent = data.length;
+            if (sumSpan) sumSpan.textContent = summe.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
+
+        /**
+         * Aktualisiert einen globalen Eintrag (Multi-Service)
+         */
+        function updateMultiGlobalEntry(tableType, index, field, value) {
+            const data = variantTableData.multiGlobal?.[tableType];
+            if (!data || !data[index]) return;
+
+            data[index][field] = value;
+
+            if (tableType === 'arbeitslohn') {
+                renderMultiGlobalArbeitslohnTable();
+            } else if (tableType === 'lackierung') {
+                renderMultiGlobalLackierungTable();
+            }
+            updateMultiServiceSums();
+        }
+
+        /**
+         * Löscht einen globalen Eintrag (Multi-Service)
+         */
+        function deleteMultiGlobalEntry(tableType, index) {
+            const data = variantTableData.multiGlobal?.[tableType];
+            if (!data) return;
+
+            data.splice(index, 1);
+
+            if (tableType === 'arbeitslohn') {
+                renderMultiGlobalArbeitslohnTable();
+            } else if (tableType === 'lackierung') {
+                renderMultiGlobalLackierungTable();
+            }
+            updateMultiServiceSums();
+        }
+
+        /**
+         * Rendert die Ersatzteile-Tabelle für einen Service (Multi-Service)
+         */
+        function renderMultiServiceErsatzteileTable(variant, serviceTyp) {
+            const tableBody = document.getElementById(`ersatzteileTableBody_${variant}_${serviceTyp}`);
+            const countSpan = document.getElementById(`ersatzteileCount_${variant}_${serviceTyp}`);
+            const sumSpan = document.getElementById(`ersatzteileSumme_${variant}_${serviceTyp}`);
+            const data = variantTableData[variant]?._services?.[serviceTyp]?.ersatzteile || [];
+
+            if (!tableBody) return;
+
+            tableBody.innerHTML = '';
+            let summe = 0;
+
+            data.forEach((entry, index) => {
+                summe += entry.gesamtpreis || 0;
+
+                const row = `
+                    <tr style="background: ${index % 2 === 0 ? 'rgba(0,0,0,0.05)' : 'transparent'};">
+                        <td style="padding: 3px;">
+                            <input type="text" value="${entry.etn || ''}"
+                                onchange="updateMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index}, 'etn', this.value)"
+                                style="width: 100%; padding: 2px; border: 1px solid #ddd; border-radius: 2px; font-size: 9px;"
+                                placeholder="ETN">
+                        </td>
+                        <td style="padding: 3px;">
+                            <input type="text" value="${entry.benennung || ''}"
+                                onchange="updateMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index}, 'benennung', this.value)"
+                                style="width: 100%; padding: 2px; border: 1px solid #ddd; border-radius: 2px; font-size: 9px;"
+                                placeholder="Benennung">
+                        </td>
+                        <td style="padding: 3px;">
+                            <input type="number" value="${entry.anzahl || 1}" min="1"
+                                onchange="updateMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index}, 'anzahl', parseInt(this.value) || 1)"
+                                style="width: 100%; padding: 2px; border: 1px solid #ddd; border-radius: 2px; font-size: 9px; text-align: center;">
+                        </td>
+                        <td style="padding: 3px;">
+                            <input type="number" value="${entry.einzelpreis || 0}" step="0.01" min="0"
+                                onchange="updateMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index}, 'einzelpreis', parseFloat(this.value) || 0)"
+                                style="width: 100%; padding: 2px; border: 1px solid #ddd; border-radius: 2px; font-size: 9px; text-align: right;">
+                        </td>
+                        <td style="padding: 3px;">
+                            <input type="number" value="${entry.gesamtpreis || 0}" step="0.01" min="0"
+                                onchange="updateMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index}, 'gesamtpreis', parseFloat(this.value) || 0)"
+                                style="width: 100%; padding: 2px; border: 1px solid #ddd; border-radius: 2px; font-size: 9px; text-align: right; font-weight: 600; color: ${variant === 'original' ? '#2e7d32' : '#e65100'};">
+                        </td>
+                        <td style="padding: 3px; text-align: center;">
+                            <button type="button" onclick="deleteMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index})"
+                                style="padding: 2px 5px; background: #f44336; color: white; border: none; border-radius: 2px; cursor: pointer; font-size: 8px;">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+
+            if (countSpan) countSpan.textContent = data.length;
+            if (sumSpan) sumSpan.textContent = summe.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
+
+        /**
+         * Aktualisiert einen Ersatzteil-Eintrag (Multi-Service)
+         */
+        function updateMultiServiceErsatzteil(variant, serviceTyp, index, field, value) {
+            const data = variantTableData[variant]?._services?.[serviceTyp]?.ersatzteile;
+            if (!data || !data[index]) return;
+
+            data[index][field] = value;
+
+            // Bei Änderung von Anzahl oder Einzelpreis: Gesamtpreis neu berechnen
+            if (field === 'anzahl' || field === 'einzelpreis') {
+                data[index].gesamtpreis = (data[index].anzahl || 1) * (data[index].einzelpreis || 0);
+            }
+
+            renderMultiServiceErsatzteileTable(variant, serviceTyp);
+            updateMultiServiceSums();
+        }
+
+        /**
+         * Löscht einen Ersatzteil-Eintrag (Multi-Service)
+         */
+        function deleteMultiServiceErsatzteil(variant, serviceTyp, index) {
+            const data = variantTableData[variant]?._services?.[serviceTyp]?.ersatzteile;
+            if (!data) return;
+
+            data.splice(index, 1);
+            renderMultiServiceErsatzteileTable(variant, serviceTyp);
+            updateMultiServiceSums();
+        }
+
+        /**
+         * Rendert das globale Ersatzfahrzeug (Multi-Service)
+         */
+        function renderMultiGlobalErsatzfahrzeug() {
+            const tableBody = document.getElementById('multiGlobalErsatzfahrzeugTableBody');
+            const sumSpan = document.getElementById('multiGlobalErsatzfahrzeugSumme');
+
+            if (!tableBody) return;
+
+            // Ersatzfahrzeug-Daten aus globalem ersatzfahrzeugData
+            const data = ersatzfahrzeugData;
+
+            if (!data || (!data.kennzeichen && !data.fahrzeug && !data.gesamtpreis)) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999; padding: 15px;">Kein Ersatzfahrzeug ausgewählt</td></tr>';
+                if (sumSpan) sumSpan.textContent = '0,00 €';
+                return;
+            }
+
+            const row = `
+                <tr>
+                    <td style="padding: 10px; color: #1565c0;">${data.kennzeichen || '-'}</td>
+                    <td style="padding: 10px; color: #1565c0;">${data.fahrzeug || (data.marke ? data.marke + ' ' + data.modell : '-')}</td>
+                    <td style="padding: 10px; text-align: right; color: #1565c0;">${(data.tagesmiete || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</td>
+                    <td style="padding: 10px; text-align: center; color: #1565c0;">${data.tage || '-'}</td>
+                    <td style="padding: 10px; text-align: right; font-weight: 700; color: #1565c0;">${(data.gesamtpreis || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</td>
+                </tr>
+            `;
+
+            tableBody.innerHTML = row;
+            if (sumSpan) sumSpan.textContent = (data.gesamtpreis || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        }
+
+        /**
+         * Berechnet und aktualisiert alle Summen für Multi-Service NEUE Struktur
+         */
+        function updateMultiServiceSums() {
+            if (!isMultiService) return;
+
+            // 1. Dienstleistungen Summe (Global)
+            let dienstleistungenSumme = 0;
+
+            const arbeitslohnData = variantTableData.multiGlobal?.arbeitslohn || [];
+            arbeitslohnData.forEach(entry => {
+                dienstleistungenSumme += entry.gesamtpreis || 0;
+            });
+
+            const lackierungData = variantTableData.multiGlobal?.lackierung || [];
+            lackierungData.forEach(entry => {
+                dienstleistungenSumme += entry.gesamtpreis || 0;
+            });
+
+            const dienstleistungenSpan = document.getElementById('multiGlobalDienstleistungenSumme');
+            if (dienstleistungenSpan) dienstleistungenSpan.textContent = dienstleistungenSumme.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+            // 2. Ersatzfahrzeug Summe (Global)
+            const ersatzfahrzeugSumme = ersatzfahrzeugData?.gesamtpreis || 0;
+
+            // 3. Ersatzteile Summen (pro Variante - über alle Services)
+            const ersatzteileSummen = { original: 0, zubehoer: 0 };
+
+            ['original', 'zubehoer'].forEach(variant => {
+                const services = variantTableData[variant]?._services || {};
+                Object.keys(services).forEach(serviceTyp => {
+                    const ersatzteile = services[serviceTyp]?.ersatzteile || [];
+                    ersatzteile.forEach(entry => {
+                        ersatzteileSummen[variant] += entry.gesamtpreis || 0;
+                    });
+                });
+            });
+
+            // 4. Gesamtübersicht aktualisieren für beide Varianten
+            ['original', 'zubehoer'].forEach(variant => {
+                const dienstleistungenEl = document.getElementById(`multiGesamtDienstleistungen_${variant}`);
+                const ersatzteileEl = document.getElementById(`multiGesamtErsatzteile_${variant}`);
+                const ersatzfahrzeugEl = document.getElementById(`multiGesamtErsatzfahrzeug_${variant}`);
+                const nettoEl = document.getElementById(`multiNetto_${variant}`);
+                const mwstEl = document.getElementById(`multiMwst_${variant}`);
+                const bruttoEl = document.getElementById(`multiBrutto_${variant}`);
+
+                if (dienstleistungenEl) dienstleistungenEl.textContent = dienstleistungenSumme.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                if (ersatzteileEl) ersatzteileEl.textContent = ersatzteileSummen[variant].toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                if (ersatzfahrzeugEl) ersatzfahrzeugEl.textContent = ersatzfahrzeugSumme.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+                const netto = dienstleistungenSumme + ersatzteileSummen[variant] + ersatzfahrzeugSumme;
+                const mwst = netto * 0.19;
+                const brutto = netto + mwst;
+
+                if (nettoEl) nettoEl.textContent = netto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                if (mwstEl) mwstEl.textContent = mwst.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+                if (bruttoEl) bruttoEl.textContent = brutto.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+            });
+
+            // 5. Ersparnis berechnen und anzeigen
+            const originalBrutto = dienstleistungenSumme + ersatzteileSummen.original + ersatzfahrzeugSumme;
+            const aftermarketBrutto = dienstleistungenSumme + ersatzteileSummen.zubehoer + ersatzfahrzeugSumme;
+            const ersparnis = originalBrutto - aftermarketBrutto;
+
+            const esparnisHinweis = document.getElementById('multiEsparnisHinweis');
+            const esparnisValue = document.getElementById('multiEsparnisValue');
+
+            if (ersparnis > 0) {
+                if (esparnisHinweis) esparnisHinweis.style.display = 'block';
+                if (esparnisValue) esparnisValue.textContent = ersparnis.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+            } else {
+                if (esparnisHinweis) esparnisHinweis.style.display = 'none';
+            }
+
+            console.log('📊 [MULTI-SERVICE-SUMS] Dienstleistungen:', dienstleistungenSumme, '| Original:', ersatzteileSummen.original, '| Aftermarket:', ersatzteileSummen.zubehoer, '| Ersatzfahrzeug:', ersatzfahrzeugSumme);
         }
 
         // ============================================
@@ -3894,10 +4480,31 @@
 
         /**
          * Setzt die Ersatzfahrzeug-Zeile in der Tabelle
+         * 🆕 REFACTORING 2025-12-01: Auch globale Ersatzfahrzeug-Tabelle rendern
          */
         function setErsatzfahrzeugRow(data) {
             ersatzfahrzeugData = data;
             reRenderErsatzfahrzeugTable();
+
+            // 🆕 NEU: Globale Ersatzfahrzeug-Tabelle in neuer Struktur rendern (Single-Service)
+            if (typeof renderGlobalErsatzfahrzeug === 'function') {
+                renderGlobalErsatzfahrzeug();
+            }
+
+            // 🆕 NEU: Globale Ersatzfahrzeug-Tabelle in neuer Struktur rendern (Multi-Service)
+            if (typeof renderMultiGlobalErsatzfahrzeug === 'function') {
+                renderMultiGlobalErsatzfahrzeug();
+            }
+
+            // 🆕 NEU: Summen in neuer Struktur aktualisieren (Single-Service)
+            if (typeof updateNewStructureSums === 'function') {
+                updateNewStructureSums();
+            }
+
+            // 🆕 NEU: Summen in neuer Struktur aktualisieren (Multi-Service)
+            if (typeof updateMultiServiceSums === 'function') {
+                updateMultiServiceSums();
+            }
         }
 
         /**
