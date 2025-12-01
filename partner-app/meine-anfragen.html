@@ -5818,14 +5818,28 @@
             if (!bestaetigung) return;
 
             // In Firestore speichern
+            // 🔧 CRITICAL FIX (2025-12-01): vereinbarterPreis + Root-Level gewaehlteVariante speichern!
+            // OHNE diese Felder wird die Rechnung mit falschem Preis erstellt!
             try {
+                console.log('💾 [KVA-VARIANTE] Speichere Varianten-Auswahl:', {
+                    variante,
+                    preis,
+                    anfrageId
+                });
+
                 await window.getCollection('partnerAnfragen').doc(anfrageId).update({
                     'kva.gewaehlteVariante': variante,
+                    'gewaehlteVariante': variante,           // 🔧 FIX: Root-Level für Fallback-Chain
+                    'vereinbarterPreis': preis,              // 🔧 FIX: KRITISCH für Rechnungs-Erstellung!
+                    'angebotDetails.gewaehlteVariante': variante,  // 🔧 FIX: Konsistenz
+                    'angebotDetails.gewaehlterPreis': preis,       // 🔧 FIX: Konsistenz
                     updatedAt: Date.now()
                 });
 
+                console.log('✅ [KVA-VARIANTE] Gespeichert! vereinbarterPreis:', preis);
+
                 // Push-Notification
-                showToast(`✅ ${varianteLabel} ausgewählt!\n\nKeine Änderung mehr möglich.`, 'success');
+                showToast(`✅ ${varianteLabel} ausgewählt!\n\nPreis: ${preis.toFixed(2)}€\n\nKeine Änderung mehr möglich.`, 'success');
 
                 // UI wird durch onSnapshot automatisch aktualisiert
             } catch (error) {
