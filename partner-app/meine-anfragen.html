@@ -4774,7 +4774,8 @@
                     // Multi-Service: Zeige BEIDE Varianten (wie bei Single-Service)
                     const original = anfrage.kva.varianten.original;
                     const aftermarket = anfrage.kva.varianten.zubehoer || anfrage.kva.varianten.partner;
-                    const gewaehlte = anfrage.kva.gewaehlteVariante;
+                    // 🔧 FIX (2025-12-01): Root-Level gewaehlteVariante als Fallback für UI-Anzeige
+                    const gewaehlte = anfrage.kva.gewaehlteVariante || anfrage.gewaehlteVariante || anfrage.angebotDetails?.gewaehlteVariante;
 
                     const variantLabelMap = {
                         original: '⭐ Original', zubehoer: '🔧 Aftermarket', partner: '🤝 Partner'
@@ -4845,7 +4846,8 @@
                 else if (anfrage.kva.varianten) {
                     // 🆕 DYNAMIC: Get all variants instead of hard-coding
                     const variantEntries = Object.entries(anfrage.kva.varianten);
-                    const gewaehlte = anfrage.kva.gewaehlteVariante;
+                    // 🔧 FIX (2025-12-01): Root-Level gewaehlteVariante als Fallback für UI-Anzeige
+                    const gewaehlte = anfrage.kva.gewaehlteVariante || anfrage.gewaehlteVariante || anfrage.angebotDetails?.gewaehlteVariante;
 
                     // Map variant keys to known types for backward compatibility
                     const original = anfrage.kva.varianten.original;
@@ -5771,7 +5773,9 @@
             }
 
             // Check: Bereits gewählt?
-            if (anfrage.kva.gewaehlteVariante) {
+            // 🔧 FIX (2025-12-01): Root-Level gewaehlteVariante als Fallback
+            const bereitsGewaehlt = anfrage.kva?.gewaehlteVariante || anfrage.gewaehlteVariante || anfrage.angebotDetails?.gewaehlteVariante;
+            if (bereitsGewaehlt) {
                 showToast('⚠️ Variante bereits ausgewählt!\nKeine Änderung mehr möglich.', 'info');
                 return;
             }
@@ -7492,7 +7496,20 @@
 
             // Schritt 1: Original-Preis aus KVA extrahieren (Fallback-Chain)
             // 🔧 FIX (2025-11-17): BUG #11 - Entwurf angebotDetails.preis in Fallback-Chain
-            const originalPreis = anfrage.kva?.varianten?.[anfrage.kva.gewaehlteVariante]?.gesamt
+            // 🔧 FIX (2025-12-01): Varianten-Preis Bug - Root-Level gewaehlteVariante als Fallback
+            const ausgewaehlteVariante = anfrage.kva?.gewaehlteVariante
+                                      || anfrage.gewaehlteVariante  // Root-Level Fallback!
+                                      || anfrage.angebotDetails?.gewaehlteVariante
+                                      || 'original';
+
+            console.log('🎯 [VARIANTEN-CHECK] gewaehlteVariante Quellen:', {
+                'kva.gewaehlteVariante': anfrage.kva?.gewaehlteVariante,
+                'root.gewaehlteVariante': anfrage.gewaehlteVariante,
+                'angebotDetails.gewaehlteVariante': anfrage.angebotDetails?.gewaehlteVariante,
+                'VERWENDET': ausgewaehlteVariante
+            });
+
+            const originalPreis = anfrage.kva?.varianten?.[ausgewaehlteVariante]?.gesamt
                                || anfrage.kva?.varianten?.original?.gesamt
                                || anfrage.kva?.varianten?.zubehoer?.gesamt
                                || anfrage.kva?.varianten?.partner?.gesamt
@@ -8185,7 +8202,10 @@
 
                     // PRIORITÄT 1: Varianten-System (mit Fallback wenn gewaehlteVariante null)
                     if (anfrage.kva.varianten && typeof anfrage.kva.varianten === 'object') {
-                        let varianteZuNutzen = anfrage.kva.gewaehlteVariante;
+                        // 🔧 FIX (2025-12-01): Root-Level gewaehlteVariante als Fallback
+                        let varianteZuNutzen = anfrage.kva.gewaehlteVariante
+                                            || anfrage.gewaehlteVariante  // Root-Level!
+                                            || anfrage.angebotDetails?.gewaehlteVariante;
 
                         // FALLBACK: Wenn gewaehlteVariante null/undefined, intelligente Auswahl
                         if (!varianteZuNutzen) {
