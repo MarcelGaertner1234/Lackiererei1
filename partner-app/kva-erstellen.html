@@ -9385,6 +9385,56 @@
                 if (!hasZubehoer && !hasOriginal && !hasPartner && hasKalkulationData) {
                     console.log('📄 [PDF-GEN] Generiere PDF aus Kalkulations-Daten (kalkulation.html Pipeline)...');
 
+                    // 🔧 FIX Dec 1, 2025: Korrektes Mapping der Feldnamen!
+                    // kalkulation.html speichert:
+                    //   positionen: { name, teil, arbeit, stunden, stundensatz, preis }
+                    //   materialien: { name, menge, einheit, einzelpreis, preis }
+                    //   ersatzteile: { etn, benennung, anzahl, einzelpreis, gesamtpreis }
+                    // generateVariantPDF erwartet:
+                    //   arbeitslohn: { position, art, stunden, stundensatz, gesamtpreis }
+                    //   lackierung: { position, bereich, stunden, stundensatz, gesamtpreis }
+                    //   materialien: { kategorie, bezeichnung, menge, einzelpreis, gesamtpreis }
+
+                    const positionen = anfrageData.kalkulation.positionen || [];
+                    const materialien = anfrageData.kalkulation.materialien || [];
+
+                    // Positionen nach Arbeitsart aufteilen
+                    const lackierArbeiten = ['lackieren', 'grundieren', 'klarlack'];
+                    const arbeitslohnPositionen = positionen.filter(p => !lackierArbeiten.includes(p.arbeit));
+                    const lackierPositionen = positionen.filter(p => lackierArbeiten.includes(p.arbeit));
+
+                    // Mapping: kalkulation.html → generateVariantPDF Format
+                    const mappedArbeitslohn = arbeitslohnPositionen.map(p => ({
+                        position: p.name || `${p.teil || ''} ${p.arbeit || ''}`.trim(),
+                        art: p.arbeit || 'Arbeit',
+                        stunden: p.stunden || 0,
+                        stundensatz: p.stundensatz || 0,
+                        gesamtpreis: p.preis || (p.stunden * p.stundensatz) || 0
+                    }));
+
+                    const mappedLackierung = lackierPositionen.map(p => ({
+                        position: p.name || `${p.teil || ''} ${p.arbeit || ''}`.trim(),
+                        bereich: p.teil || '',
+                        stunden: p.stunden || 0,
+                        stundensatz: p.stundensatz || 0,
+                        gesamtpreis: p.preis || (p.stunden * p.stundensatz) || 0
+                    }));
+
+                    const mappedMaterialien = materialien.map(m => ({
+                        kategorie: m.einheit || '',
+                        bezeichnung: m.name || '',
+                        menge: m.menge || 0,
+                        einzelpreis: m.einzelpreis || 0,
+                        gesamtpreis: m.preis || (m.menge * m.einzelpreis) || 0
+                    }));
+
+                    console.log('📊 [PDF-GEN] Mapping-Ergebnis:', {
+                        arbeitslohn: mappedArbeitslohn.length,
+                        lackierung: mappedLackierung.length,
+                        materialien: mappedMaterialien.length,
+                        ersatzteile: (anfrageData.kalkulation.ersatzteile || []).length
+                    });
+
                     // Erstelle kvaData-ähnliche Struktur aus Kalkulations-Daten für generateVariantPDF
                     const kalkulationForPdf = {
                         varianten: {
@@ -9392,9 +9442,9 @@
                                 gesamt: anfrageData.kalkulation.summeBruttoOriginal || anfrageData.kalkulation.summeBrutto || 0,
                                 kalkulationData: {
                                     ersatzteile: anfrageData.kalkulation.ersatzteile || [],
-                                    arbeitslohn: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'arbeit' || p.kategorie === 'Arbeit'),
-                                    lackierung: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'lackierung' || p.kategorie === 'Lackierung'),
-                                    materialien: anfrageData.kalkulation.materialien || []
+                                    arbeitslohn: mappedArbeitslohn,
+                                    lackierung: mappedLackierung,
+                                    materialien: mappedMaterialien
                                 }
                             }
                         },
@@ -9421,22 +9471,59 @@
                         anfrageData.summeBruttoAftermarket > 0 &&
                         anfrageData.summeBruttoAftermarket !== anfrageData.summeBruttoOriginal) {
 
+                        // 🔧 FIX Dec 1, 2025: Gleiches Mapping wie Original-PDF!
+                        const positionenAM = anfrageData.kalkulation.positionen || [];
+                        const materialienAM = anfrageData.kalkulation.materialien || [];
+
+                        // Aftermarket: Ersatzteile mit Aftermarket-Preisen
+                        const ersatzteileAftermarket = (anfrageData.kalkulation.ersatzteile || []).map(et => ({
+                            etn: et.etn || '',
+                            benennung: et.benennung || '',
+                            anzahl: et.anzahl || 1,
+                            einzelpreis: et.einzelpreisAftermarket || et.einzelpreis || 0,
+                            gesamtpreis: et.preisAftermarket || et.gesamtpreis || 0
+                        }));
+
+                        // Positionen nach Arbeitsart aufteilen (gleiche Logik wie Original)
+                        const lackierArbeitenAM = ['lackieren', 'grundieren', 'klarlack'];
+                        const arbeitslohnPosAM = positionenAM.filter(p => !lackierArbeitenAM.includes(p.arbeit));
+                        const lackierPosAM = positionenAM.filter(p => lackierArbeitenAM.includes(p.arbeit));
+
+                        // Mapping: kalkulation.html → generateVariantPDF Format
+                        const mappedArbeitslohnAM = arbeitslohnPosAM.map(p => ({
+                            position: p.name || `${p.teil || ''} ${p.arbeit || ''}`.trim(),
+                            art: p.arbeit || 'Arbeit',
+                            stunden: p.stunden || 0,
+                            stundensatz: p.stundensatz || 0,
+                            gesamtpreis: p.preis || (p.stunden * p.stundensatz) || 0
+                        }));
+
+                        const mappedLackierungAM = lackierPosAM.map(p => ({
+                            position: p.name || `${p.teil || ''} ${p.arbeit || ''}`.trim(),
+                            bereich: p.teil || '',
+                            stunden: p.stunden || 0,
+                            stundensatz: p.stundensatz || 0,
+                            gesamtpreis: p.preis || (p.stunden * p.stundensatz) || 0
+                        }));
+
+                        const mappedMaterialienAM = materialienAM.map(m => ({
+                            kategorie: m.einheit || '',
+                            bezeichnung: m.name || '',
+                            menge: m.menge || 0,
+                            einzelpreis: m.einzelpreis || 0,
+                            gesamtpreis: m.preis || (m.menge * m.einzelpreis) || 0
+                        }));
+
                         // Erstelle Aftermarket-Version mit niedrigerem Preis
                         const aftermarketForPdf = {
                             varianten: {
                                 zubehoer: {
                                     gesamt: anfrageData.summeBruttoAftermarket,
                                     kalkulationData: {
-                                        // Aftermarket: Ersatzteile mit Aftermarket-Preisen
-                                        ersatzteile: (anfrageData.kalkulation.ersatzteile || []).map(et => ({
-                                            ...et,
-                                            // Wenn Aftermarket-Preis vorhanden, diesen verwenden
-                                            gesamtpreis: et.preisAftermarket || et.gesamtpreis,
-                                            einzelpreis: et.einzelpreisAftermarket || et.einzelpreis
-                                        })),
-                                        arbeitslohn: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'arbeit' || p.kategorie === 'Arbeit'),
-                                        lackierung: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'lackierung' || p.kategorie === 'Lackierung'),
-                                        materialien: anfrageData.kalkulation.materialien || []
+                                        ersatzteile: ersatzteileAftermarket,
+                                        arbeitslohn: mappedArbeitslohnAM,
+                                        lackierung: mappedLackierungAM,
+                                        materialien: mappedMaterialienAM
                                     }
                                 }
                             },
