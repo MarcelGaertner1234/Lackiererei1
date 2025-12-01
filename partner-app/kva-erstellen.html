@@ -7764,37 +7764,40 @@
                     // ============================================
                     // 🆕 FIX (2025-11-29): variantTableData Ersatzteile auch in pdfImport speichern
                     // MULTI-SERVICE VERSION (identisch zu Single-Service Fix)
+                    // 🔧 FIX Dec 1, 2025: NUR 'original' Variante nehmen um Duplikate zu vermeiden!
+                    //    Ersatzteile werden in BEIDE Varianten kopiert (original + zubehoer),
+                    //    aber beim Speichern brauchen wir nur EINE Referenz.
                     // ============================================
                     const allManualErsatzteileMS = [];
 
-                    // Sammle Ersatzteile aus allen Varianten-Tabellen (inkl. Service-spezifische)
-                    Object.keys(variantTableData).forEach(variant => {
-                        // Direct ersatzteile (Single-Service style)
-                        const variantErsatzteile = variantTableData[variant]?.ersatzteile || [];
-                        variantErsatzteile.forEach(teil => {
+                    // 🔧 FIX: Nur 'original' als Referenz-Variante (Ersatzteile sind in beiden identisch!)
+                    const referenceVariant = 'original';
+
+                    // Direct ersatzteile (Single-Service style)
+                    const variantErsatzteile = variantTableData[referenceVariant]?.ersatzteile || [];
+                    variantErsatzteile.forEach(teil => {
+                        if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
+                            allManualErsatzteileMS.push({
+                                ...teil,
+                                variante: referenceVariant,
+                                quelle: 'variantTable'
+                            });
+                        }
+                    });
+
+                    // Multi-Service: _services Layer (nur von referenceVariant!)
+                    const services = variantTableData[referenceVariant]?._services || {};
+                    Object.keys(services).forEach(serviceTyp => {
+                        const serviceErsatzteile = services[serviceTyp]?.ersatzteile || [];
+                        serviceErsatzteile.forEach(teil => {
                             if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
                                 allManualErsatzteileMS.push({
                                     ...teil,
-                                    variante: variant,
-                                    quelle: 'variantTable'
+                                    variante: referenceVariant,
+                                    serviceTyp: serviceTyp,
+                                    quelle: 'variantTable_service'
                                 });
                             }
-                        });
-
-                        // Multi-Service: _services Layer
-                        const services = variantTableData[variant]?._services || {};
-                        Object.keys(services).forEach(serviceTyp => {
-                            const serviceErsatzteile = services[serviceTyp]?.ersatzteile || [];
-                            serviceErsatzteile.forEach(teil => {
-                                if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
-                                    allManualErsatzteileMS.push({
-                                        ...teil,
-                                        variante: variant,
-                                        serviceTyp: serviceTyp,
-                                        quelle: 'variantTable_service'
-                                    });
-                                }
-                            });
                         });
                     });
 
@@ -8135,22 +8138,24 @@
                 // 🆕 FIX (2025-11-29): variantTableData Ersatzteile auch in pdfImport speichern
                 // Löst Problem: Manuell eingegebene Ersatzteile (ETN, Benennung) wurden nicht
                 // nach Kundenannahme in die Bestellungen-Collection übertragen
+                // 🔧 FIX Dec 1, 2025: NUR 'original' Variante nehmen um Duplikate zu vermeiden!
+                //    Ersatzteile werden in BEIDE Varianten kopiert (original + zubehoer),
+                //    aber beim Speichern brauchen wir nur EINE Referenz.
                 // ============================================
                 const allManualErsatzteile = [];
 
-                // Sammle Ersatzteile aus allen Varianten-Tabellen
-                Object.keys(variantTableData).forEach(variant => {
-                    const variantErsatzteile = variantTableData[variant]?.ersatzteile || [];
-                    variantErsatzteile.forEach(teil => {
-                        // Nur nicht-leere Einträge mit Benennung oder ETN
-                        if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
-                            allManualErsatzteile.push({
-                                ...teil,
-                                variante: variant,  // Tracking welche Variante
-                                quelle: 'variantTable'  // Für Debugging
-                            });
-                        }
-                    });
+                // 🔧 FIX: Nur 'original' als Referenz-Variante (Ersatzteile sind in beiden identisch!)
+                const referenceVariantSS = 'original';
+                const variantErsatzteileSS = variantTableData[referenceVariantSS]?.ersatzteile || [];
+                variantErsatzteileSS.forEach(teil => {
+                    // Nur nicht-leere Einträge mit Benennung oder ETN
+                    if (teil.benennung || teil.etn || teil.gesamtpreis > 0) {
+                        allManualErsatzteile.push({
+                            ...teil,
+                            variante: referenceVariantSS,  // Tracking welche Variante
+                            quelle: 'variantTable'  // Für Debugging
+                        });
+                    }
                 });
 
                 // Auch konvertierte Ersatzteile hinzufügen (wenn vorhanden)
