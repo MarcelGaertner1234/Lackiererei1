@@ -2506,7 +2506,9 @@
                 return;
             }
 
-            // ✅ Multi-Service: Service-spezifische Tabellen verwenden
+            // ✅ Multi-Service: NEUE STRUKTUR (2025-12-01)
+            // - Arbeitslohn & Lackierung → GLOBAL (variantTableData.multiGlobal)
+            // - Ersatzteile → PRO VARIANTE & SERVICE (variantTableData[variant]._services[serviceTyp])
             if (isMultiService && serviceTyp) {
                 // Sicherstellen dass Service-Struktur existiert
                 if (!variantTableData[variant]._services[serviceTyp]) {
@@ -2515,6 +2517,95 @@
                     };
                 }
 
+                // 🆕 NEU: Dienstleistungen (Arbeitslohn, Lackierung) gehen in GLOBALE Struktur
+                if (tableType === 'arbeitslohn' || tableType === 'lackierung') {
+                    // Initialisieren falls nötig
+                    if (!variantTableData.multiGlobal) {
+                        variantTableData.multiGlobal = { arbeitslohn: [], lackierung: [], ersatzfahrzeug: null };
+                    }
+
+                    const globalData = variantTableData.multiGlobal[tableType];
+                    let existingIndex = globalData.findIndex(e => e.syncSource === inputId);
+
+                    if (value === 0) {
+                        if (existingIndex !== -1) {
+                            globalData.splice(existingIndex, 1);
+                            if (tableType === 'arbeitslohn') {
+                                renderMultiGlobalArbeitslohnTable();
+                            } else {
+                                renderMultiGlobalLackierungTable();
+                            }
+                            updateMultiServiceSums();
+                        }
+                        return;
+                    }
+
+                    if (existingIndex !== -1) {
+                        globalData[existingIndex].gesamtpreis = value;
+                    } else {
+                        const newEntry = {
+                            syncSource: inputId,
+                            isAutoSync: true,
+                            position: mapping.label,
+                            service: serviceTyp,
+                            gesamtpreis: value
+                        };
+
+                        if (tableType === 'arbeitslohn') {
+                            newEntry.art = mapping.art || 'Sonstiges';
+                        } else {
+                            newEntry.bereich = mapping.bereich || 'Gesamt';
+                        }
+
+                        globalData.push(newEntry);
+                    }
+
+                    if (tableType === 'arbeitslohn') {
+                        renderMultiGlobalArbeitslohnTable();
+                    } else {
+                        renderMultiGlobalLackierungTable();
+                    }
+                    updateMultiServiceSums();
+                    return;
+                }
+
+                // 🆕 NEU: Ersatzteile gehen in PRO-VARIANTE-PRO-SERVICE Struktur
+                if (tableType === 'ersatzteile') {
+                    const tableData = variantTableData[variant]._services[serviceTyp].ersatzteile;
+                    let existingIndex = tableData.findIndex(e => e.syncSource === inputId);
+
+                    if (value === 0) {
+                        if (existingIndex !== -1) {
+                            tableData.splice(existingIndex, 1);
+                            renderMultiServiceErsatzteileTable(variant, serviceTyp);
+                            updateMultiServiceSums();
+                        }
+                        return;
+                    }
+
+                    if (existingIndex !== -1) {
+                        const entry = tableData[existingIndex];
+                        entry.einzelpreis = value;
+                        entry.gesamtpreis = entry.anzahl * value;
+                    } else {
+                        const newEntry = {
+                            syncSource: inputId,
+                            isAutoSync: true,
+                            etn: '',
+                            benennung: mapping.label,
+                            anzahl: 1,
+                            einzelpreis: value,
+                            gesamtpreis: value
+                        };
+                        tableData.push(newEntry);
+                    }
+
+                    renderMultiServiceErsatzteileTable(variant, serviceTyp);
+                    updateMultiServiceSums();
+                    return;
+                }
+
+                // Fallback für alte Struktur (falls noch benötigt)
                 const tableData = variantTableData[variant]._services[serviceTyp][tableType];
                 let existingIndex = tableData.findIndex(e => e.syncSource === inputId);
 
@@ -3458,6 +3549,42 @@
             }
 
             console.log('✅ [MULTI-SERVICE-NEU] Neue Struktur gerendert für Services:', anfrage.serviceLabels);
+
+            // 🆕 NEU: Nach dem Rendern alle existierenden Inputs synchronisieren
+            // Damit bereits eingegebene Werte in die neue Struktur übernommen werden
+            setTimeout(() => {
+                syncAllMultiServiceInputsToNewStructure();
+            }, 100);
+        }
+
+        /**
+         * Synchronisiert alle Multi-Service Inputs in die neue Struktur
+         * Wird nach dem initialen Rendern aufgerufen
+         */
+        function syncAllMultiServiceInputsToNewStructure() {
+            if (!isMultiService) return;
+
+            console.log('🔄 [SYNC] Synchronisiere alle Multi-Service Inputs in neue Struktur...');
+
+            // Alle Varianten-Inputs finden
+            const allInputs = document.querySelectorAll('input[data-variant][data-service]');
+            let syncCount = 0;
+
+            allInputs.forEach(input => {
+                const value = parseFloat(input.value) || 0;
+                if (value > 0) {
+                    syncVariantInputToTable(input);
+                    syncCount++;
+                }
+            });
+
+            console.log(`✅ [SYNC] ${syncCount} Inputs synchronisiert`);
+
+            // Tabellen rendern
+            renderMultiGlobalArbeitslohnTable();
+            renderMultiGlobalLackierungTable();
+            renderMultiGlobalErsatzfahrzeug();
+            updateMultiServiceSums();
         }
 
         /**
