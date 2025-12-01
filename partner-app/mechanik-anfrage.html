@@ -987,6 +987,57 @@
             return uploadedURLs;
         }
 
+        // 🔧 FIX (2025-12-01): Upload Fahrzeugschein to Firebase Storage
+        // Separater Ordner für bessere Organisation
+        async function uploadFahrzeugscheinToStorage(photoBase64Array, anfrageId) {
+            if (!firebase.storage) {
+                console.warn('⚠️ Firebase Storage not available - Fahrzeugschein kann nicht hochgeladen werden');
+                return [];
+            }
+
+            const storage = firebase.storage();
+            const uploadedURLs = [];
+            const btnNext = document.getElementById('btnNext');
+
+            for (let i = 0; i < photoBase64Array.length; i++) {
+                const base64 = photoBase64Array[i];
+
+                // Update button text with progress
+                btnNext.textContent = `📤 Fahrzeugschein ${i + 1}/${photoBase64Array.length}...`;
+
+                // Convert Base64 to Blob
+                const response = await fetch(base64);
+                const blob = await response.blob();
+
+                // Validate file before upload (Security)
+                try {
+                    window.validateImageFile(blob);
+                } catch (validationError) {
+                    console.error('❌ [FAHRZEUGSCHEIN] Validation failed:', validationError.message);
+                    showToast(validationError.message, 'error');
+                    continue; // Skip invalid file, continue with next
+                }
+
+                // Generate unique filename
+                const timestamp = Date.now();
+                const filename = `fahrzeugschein_${i}_${timestamp}.jpg`;
+                // Speichere in separatem Unterordner "fahrzeugschein"
+                const storagePath = `partner-anfragen/${partner.werkstattId}/${anfrageId}/fahrzeugschein/${filename}`;
+
+                // Upload to Storage
+                const storageRef = storage.ref(storagePath);
+                await storageRef.put(blob);
+
+                // Get download URL
+                const downloadURL = await storageRef.getDownloadURL();
+                uploadedURLs.push(downloadURL);
+
+                console.log(`✅ Fahrzeugschein ${i + 1} uploaded: ${storagePath}`);
+            }
+
+            return uploadedURLs;
+        }
+
         function updateNextButtonState() {
             const btnNext = document.getElementById('btnNext');
             if (currentStep === 1) {
@@ -1414,11 +1465,17 @@
                 btnNext.textContent = 'Fotos hochladen...';
                 const photoURLs = await uploadPhotosToStorage(compressedPhotos, anfrageId);
 
-                // Fahrzeugschein-Fotos komprimieren (falls vorhanden)
-                let compressedFahrzeugschein = [];
+                // Fahrzeugschein-Fotos komprimieren und hochladen (falls vorhanden)
+                // 🔧 FIX (2025-12-01): Fahrzeugschein zu Storage hochladen statt Base64 in Firestore
+                let fahrzeugscheinURLs = [];
                 if (fahrzeugscheinPhotos.length > 0) {
                     console.log('📄 Komprimiere ' + fahrzeugscheinPhotos.length + ' Fahrzeugschein-Fotos...');
-                    compressedFahrzeugschein = await Promise.all(fahrzeugscheinPhotos.map(p => compressImage(p)));
+                    btnNext.textContent = 'Fahrzeugschein komprimieren...';
+                    const compressedFahrzeugschein = await Promise.all(fahrzeugscheinPhotos.map(p => compressImage(p)));
+
+                    console.log('📤 Uploading ' + compressedFahrzeugschein.length + ' Fahrzeugschein-Fotos to Storage...');
+                    btnNext.textContent = 'Fahrzeugschein hochladen...';
+                    fahrzeugscheinURLs = await uploadFahrzeugscheinToStorage(compressedFahrzeugschein, anfrageId);
                 }
 
                 const referenzType = document.querySelector('input[name="referenzType"]:checked')?.value || 'kennzeichen';
@@ -1445,7 +1502,9 @@
                     // Fahrzeugidentifikation (NEU)
                     identificationType: identificationType,
                     vin: identificationType === 'vin' ? document.getElementById('vin').value.toUpperCase() : null,
-                    fahrzeugscheinFotos: identificationType === 'fahrzeugschein' ? compressedFahrzeugschein : [],
+                    // 🔧 FIX (2025-12-01): Fahrzeugschein-URLs (Storage) statt Base64
+                    fahrzeugscheinUrls: identificationType === 'fahrzeugschein' ? fahrzeugscheinURLs : [],
+                    fahrzeugscheinFotos: [], // DEPRECATED - nur für Backwards-Kompatibilität
 
                     // NEU: Fahrzeugdaten für KVA-Kalkulation
                     marke: document.getElementById('marke')?.value || '',

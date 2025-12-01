@@ -1668,6 +1668,48 @@
             return uploadedURLs;
         }
 
+        // 🔧 FIX (2025-12-01): Upload Fahrzeugschein to Firebase Storage
+        async function uploadFahrzeugscheinToStorage(photoBase64Array, anfrageId) {
+            if (!firebase.storage) {
+                console.warn('⚠️ Firebase Storage not available - Fahrzeugschein kann nicht hochgeladen werden');
+                return [];
+            }
+
+            const storage = firebase.storage();
+            const uploadedURLs = [];
+            const btnNext = document.getElementById('btnNext');
+
+            for (let i = 0; i < photoBase64Array.length; i++) {
+                const base64 = photoBase64Array[i];
+                btnNext.textContent = `📤 Fahrzeugschein ${i + 1}/${photoBase64Array.length}...`;
+
+                const response = await fetch(base64);
+                const blob = await response.blob();
+
+                try {
+                    window.validateImageFile(blob);
+                } catch (validationError) {
+                    console.error('❌ [FAHRZEUGSCHEIN] Validation failed:', validationError.message);
+                    showToast(validationError.message, 'error');
+                    continue;
+                }
+
+                const timestamp = Date.now();
+                const filename = `fahrzeugschein_${i}_${timestamp}.jpg`;
+                const storagePath = `partner-anfragen/${partner.werkstattId}/${anfrageId}/fahrzeugschein/${filename}`;
+
+                const storageRef = storage.ref(storagePath);
+                await storageRef.put(blob);
+
+                const downloadURL = await storageRef.getDownloadURL();
+                uploadedURLs.push(downloadURL);
+
+                console.log(`✅ Fahrzeugschein ${i + 1} uploaded: ${storagePath}`);
+            }
+
+            return uploadedURLs;
+        }
+
         function updateNextButtonState() {
             const btnNext = document.getElementById('btnNext');
             if (currentStep === 1) {
@@ -2087,10 +2129,17 @@
                 btnNext.textContent = 'Fotos hochladen...';
                 const photoURLs = await uploadPhotosToStorage(compressedPhotos, anfrageId);
 
-                // Fahrzeugschein-Fotos komprimieren (falls vorhanden)
-                const compressedFahrzeugscheinFotos = fahrzeugscheinPhotos.length > 0
-                    ? await Promise.all(fahrzeugscheinPhotos.map(p => compressImage(p)))
-                    : [];
+                // 🔧 FIX (2025-12-01): Fahrzeugschein-Fotos zu Storage hochladen
+                let fahrzeugscheinURLs = [];
+                if (fahrzeugscheinPhotos.length > 0) {
+                    console.log('📄 Komprimiere ' + fahrzeugscheinPhotos.length + ' Fahrzeugschein-Foto(s)...');
+                    btnNext.textContent = 'Fahrzeugschein komprimieren...';
+                    const compressedFahrzeugscheinFotos = await Promise.all(fahrzeugscheinPhotos.map(p => compressImage(p)));
+
+                    console.log('📤 Uploading Fahrzeugschein to Storage...');
+                    btnNext.textContent = 'Fahrzeugschein hochladen...';
+                    fahrzeugscheinURLs = await uploadFahrzeugscheinToStorage(compressedFahrzeugscheinFotos, anfrageId);
+                }
 
                 const referenzType = document.querySelector('input[name="referenzType"]:checked').value;
                 const termin = document.querySelector('input[name="anliefertermin"]:checked');
@@ -2113,7 +2162,9 @@
                     // Fahrzeugidentifikation (NEU)
                     identificationType: document.querySelector('input[name="identificationType"]:checked').value,
                     vin: document.getElementById('vin').value || null,
-                    fahrzeugscheinFotos: compressedFahrzeugscheinFotos,
+                    // 🔧 FIX (2025-12-01): Fahrzeugschein-URLs (Storage) statt Base64
+                    fahrzeugscheinUrls: fahrzeugscheinURLs,
+                    fahrzeugscheinFotos: [], // DEPRECATED
 
                     // NEU: Fahrzeugdaten für KVA-Kalkulation
                     marke: document.getElementById('marke').value,
