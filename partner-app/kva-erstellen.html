@@ -9036,33 +9036,32 @@
                     doc.setFillColor(bg, bg, bg);
                     doc.rect(margin, y - 4, contentWidth, 7, 'F');
 
-                    // 🔧 FIX (2025-12-01): Feldnamen-Kompatibilität für verschiedene Datenquellen
-                    // Firestore-Format: teilenummer, name, menge, preisOriginal/preisAftermarket
+                    // 🔧 FIX (2025-12-02): Feldnamen-Kompatibilität für verschiedene Datenquellen
+                    // Firestore-Format: teilenummer, name, menge, preisOriginal/preisAftermarket (GESAMT!)
                     // Kalkulation-Format: etn, benennung, anzahl, einzelpreis
                     const etn = teil.etn || teil.artikelNr || teil.teilenummer || '';
                     const benennung = teil.benennung || teil.bezeichnung || teil.name || '';
                     const anzahl = parseInt(teil.anzahl || teil.menge || 1);
 
-                    // 🔧 FIX (2025-12-01): Varianten-spezifische Preise verwenden!
-                    // Original-PDF → preisOriginal, Aftermarket-PDF → preisAftermarket
-                    let einzelpreis;
-                    if (variantType === 'original') {
-                        einzelpreis = parseFloat(teil.preisOriginal || teil.einzelpreis || teil.preis || 0);
-                    } else if (variantType === 'zubehoer' || variantType === 'aftermarket') {
-                        einzelpreis = parseFloat(teil.preisAftermarket || teil.einzelpreis || teil.preis || 0);
-                    } else {
-                        einzelpreis = parseFloat(teil.einzelpreis || teil.preis || 0);
-                    }
+                    // 🔧 FIX (2025-12-02): preisOriginal/preisAftermarket sind GESAMTPREISE, nicht Einzelpreise!
+                    // Beispiel: preisAftermarket=100, menge=4 → Einzelpreis = 100/4 = 25 EUR
+                    let gesamtpreis, einzelpreis;
 
-                    // Gesamtpreis berechnen: vorhandener gesamtpreis ODER anzahl × einzelpreis
-                    let gesamtpreis;
-                    if (variantType === 'original' && teil.preisOriginal) {
-                        gesamtpreis = anzahl * einzelpreis;
-                    } else if ((variantType === 'zubehoer' || variantType === 'aftermarket') && teil.preisAftermarket) {
-                        gesamtpreis = anzahl * einzelpreis;
+                    if (variantType === 'original') {
+                        // Original: preisOriginal ist der GESAMTPREIS
+                        gesamtpreis = parseFloat(teil.preisOriginal || teil.gesamtpreis || teil.preis || 0);
+                        einzelpreis = anzahl > 0 ? gesamtpreis / anzahl : gesamtpreis;
+                    } else if (variantType === 'zubehoer' || variantType === 'aftermarket') {
+                        // Aftermarket: preisAftermarket ist der GESAMTPREIS
+                        gesamtpreis = parseFloat(teil.preisAftermarket || teil.gesamtpreis || teil.preis || 0);
+                        einzelpreis = anzahl > 0 ? gesamtpreis / anzahl : gesamtpreis;
                     } else {
+                        // Fallback: einzelpreis × anzahl
+                        einzelpreis = parseFloat(teil.einzelpreis || teil.preis || 0);
                         gesamtpreis = parseFloat(teil.gesamtpreis || (anzahl * einzelpreis) || 0);
                     }
+
+                    console.log(`📊 [PDF ${variantType}] Ersatzteil: ${benennung.substring(0,20)}... | Menge=${anzahl} | Einzel=${einzelpreis.toFixed(2)} | Gesamt=${gesamtpreis.toFixed(2)}`);
 
                     doc.setFontSize(8);
                     doc.text(String(etn), margin + 3, y);
@@ -9294,12 +9293,17 @@
             // 4d. ERSATZFAHRZEUG TABELLE (aus kalkulationData ODER ersatzfahrzeugKosten)
             // 🔧 FIX (2025-12-01): Auch kvaData.ersatzfahrzeugKosten prüfen!
             // ============================================
+            // 🔧 FIX (2025-12-02): Auch anfrageData.kva.ersatzfahrzeugKosten prüfen!
             const ersatzfahrzeug = kvaData.kalkulationData?.ersatzfahrzeug
                                 || kvaData.ersatzfahrzeugKosten
+                                || anfrageData.kva?.ersatzfahrzeugKosten   // 🔧 NEU!
+                                || anfrageData.kva?.kalkulationData?.ersatzfahrzeug  // 🔧 NEU!
                                 || null;
-            console.log('📊 [PDF] Ersatzfahrzeug geladen:', ersatzfahrzeug);
+            // Normalisiere Feldnamen: gesamt vs gesamtpreis
+            const efGesamt = parseFloat(ersatzfahrzeug?.gesamt || ersatzfahrzeug?.gesamtpreis || 0);
+            console.log('📊 [PDF] Ersatzfahrzeug geladen:', ersatzfahrzeug, 'Gesamt:', efGesamt);
 
-            if (ersatzfahrzeug && (ersatzfahrzeug.kennzeichen || ersatzfahrzeug.gesamt > 0)) {
+            if (ersatzfahrzeug && (ersatzfahrzeug.kennzeichen || efGesamt > 0)) {
                 checkPageBreak(50);
 
                 doc.setTextColor(255, 152, 0); // Orange
@@ -9332,12 +9336,20 @@
                 doc.setFillColor(bg, bg, bg);
                 doc.rect(margin, y - 4, contentWidth, 7, 'F');
 
-                doc.text(String(ersatzfahrzeug.kennzeichen || '-'), margin + 3, y);
-                doc.text(String(ersatzfahrzeug.fahrzeug || '-').substring(0, 30), margin + 45, y);
-                doc.text((parseFloat(ersatzfahrzeug.tagesmiete || 0)).toFixed(2) + ' EUR', margin + 100, y);
-                doc.text(String(ersatzfahrzeug.tage || 0), margin + 138, y);
+                // 🔧 FIX (2025-12-02): Feldnamen-Kompatibilität (marke+modell vs fahrzeug)
+                const efKennzeichen = ersatzfahrzeug.kennzeichen || '-';
+                const efFahrzeug = ersatzfahrzeug.fahrzeug
+                                || `${ersatzfahrzeug.marke || ''} ${ersatzfahrzeug.modell || ''}`.trim()
+                                || '-';
+                const efTagesmiete = parseFloat(ersatzfahrzeug.tagesmiete || 0);
+                const efTage = parseInt(ersatzfahrzeug.tage || 0);
+
+                doc.text(String(efKennzeichen), margin + 3, y);
+                doc.text(String(efFahrzeug).substring(0, 30), margin + 45, y);
+                doc.text(efTagesmiete.toFixed(2) + ' EUR', margin + 100, y);
+                doc.text(String(efTage), margin + 138, y);
                 doc.setFont(undefined, 'bold');
-                doc.text((parseFloat(ersatzfahrzeug.gesamtpreis || 0)).toFixed(2) + ' EUR', margin + 155, y);
+                doc.text(efGesamt.toFixed(2) + ' EUR', margin + 155, y);
                 doc.setFont(undefined, 'normal');
                 y += 7;
 
@@ -9347,7 +9359,7 @@
                 doc.setFontSize(10);
                 doc.setTextColor(255, 152, 0);
                 doc.text('Summe Ersatzfahrzeug:', margin + 95, y);
-                doc.text((parseFloat(ersatzfahrzeug.gesamtpreis || 0)).toFixed(2) + ' EUR', margin + 155, y);
+                doc.text(efGesamt.toFixed(2) + ' EUR', margin + 155, y);
                 y += 12;
             }
 
