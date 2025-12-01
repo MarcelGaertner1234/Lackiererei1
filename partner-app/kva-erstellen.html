@@ -9361,6 +9361,105 @@
                 const hasOriginal = kvaData.varianten?.original && Object.keys(kvaData.varianten.original).length > 0;
                 const hasPartner = kvaData.varianten?.partner && Object.keys(kvaData.varianten.partner).length > 0;
 
+                // 🆕 FIX Dec 1, 2025: Prüfe ob Kalkulations-Daten vorhanden sind (aus kalkulation.html)
+                // Wenn kvaData.varianten leer ist ABER anfrageData.kalkulation existiert → PDF aus Kalkulation generieren
+                const hasKalkulationData = anfrageData.kalkulation && (
+                    anfrageData.kalkulation.summeBrutto > 0 ||
+                    anfrageData.kalkulation.positionen?.length > 0 ||
+                    anfrageData.kalkulation.ersatzteile?.length > 0
+                );
+                const hasVariantenFromKalkulation = anfrageData.summeBruttoOriginal > 0 || anfrageData.summeBruttoAftermarket > 0;
+
+                console.log('📊 [PDF-GEN] Prüfe Datenquellen:', {
+                    hasZubehoer,
+                    hasOriginal,
+                    hasPartner,
+                    hasKalkulationData,
+                    hasVariantenFromKalkulation,
+                    kalkulationSummeBrutto: anfrageData.kalkulation?.summeBrutto,
+                    rootOriginal: anfrageData.summeBruttoOriginal,
+                    rootAftermarket: anfrageData.summeBruttoAftermarket
+                });
+
+                // 🆕 FIX Dec 1, 2025: Wenn keine kvaData.varianten aber Kalkulation vorhanden → PDF aus Kalkulation
+                if (!hasZubehoer && !hasOriginal && !hasPartner && hasKalkulationData) {
+                    console.log('📄 [PDF-GEN] Generiere PDF aus Kalkulations-Daten (kalkulation.html Pipeline)...');
+
+                    // Erstelle kvaData-ähnliche Struktur aus Kalkulations-Daten für generateVariantPDF
+                    const kalkulationForPdf = {
+                        varianten: {
+                            original: {
+                                gesamt: anfrageData.kalkulation.summeBruttoOriginal || anfrageData.kalkulation.summeBrutto || 0,
+                                kalkulationData: {
+                                    ersatzteile: anfrageData.kalkulation.ersatzteile || [],
+                                    arbeitslohn: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'arbeit' || p.kategorie === 'Arbeit'),
+                                    lackierung: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'lackierung' || p.kategorie === 'Lackierung'),
+                                    materialien: anfrageData.kalkulation.materialien || []
+                                }
+                            }
+                        },
+                        ersatzfahrzeugKosten: anfrageData.kalkulation.ersatzfahrzeug || null,
+                        notizen: kvaData.notizen || anfrageData.notizen || '',
+                        lieferzeit: kvaData.lieferzeit || ''
+                    };
+
+                    // Original-PDF (= höherer Preis aus Kalkulation)
+                    const originalBlob = await generateVariantPDF('original', kalkulationForPdf, anfrageData, settings);
+                    const originalFileName = `Angebot_Original_${kennzeichen}_${datum}.pdf`;
+                    const originalUrl = await uploadPdfToStorage(originalBlob, originalFileName);
+
+                    updateData.angebotPdfOriginal = {
+                        url: originalUrl,
+                        fileName: originalFileName,
+                        generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        preis: anfrageData.summeBruttoOriginal || anfrageData.kalkulation.summeBrutto || 0
+                    };
+                    console.log(`✅ Original-PDF (Kalkulation) gespeichert: ${originalFileName}`);
+
+                    // Aftermarket-PDF (wenn unterschiedlicher Preis)
+                    if (hasVariantenFromKalkulation &&
+                        anfrageData.summeBruttoAftermarket > 0 &&
+                        anfrageData.summeBruttoAftermarket !== anfrageData.summeBruttoOriginal) {
+
+                        // Erstelle Aftermarket-Version mit niedrigerem Preis
+                        const aftermarketForPdf = {
+                            varianten: {
+                                zubehoer: {
+                                    gesamt: anfrageData.summeBruttoAftermarket,
+                                    kalkulationData: {
+                                        // Aftermarket: Ersatzteile mit Aftermarket-Preisen
+                                        ersatzteile: (anfrageData.kalkulation.ersatzteile || []).map(et => ({
+                                            ...et,
+                                            // Wenn Aftermarket-Preis vorhanden, diesen verwenden
+                                            gesamtpreis: et.preisAftermarket || et.gesamtpreis,
+                                            einzelpreis: et.einzelpreisAftermarket || et.einzelpreis
+                                        })),
+                                        arbeitslohn: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'arbeit' || p.kategorie === 'Arbeit'),
+                                        lackierung: (anfrageData.kalkulation.positionen || []).filter(p => p.typ === 'lackierung' || p.kategorie === 'Lackierung'),
+                                        materialien: anfrageData.kalkulation.materialien || []
+                                    }
+                                }
+                            },
+                            ersatzfahrzeugKosten: anfrageData.kalkulation.ersatzfahrzeug || null,
+                            notizen: kvaData.notizen || anfrageData.notizen || '',
+                            lieferzeit: kvaData.lieferzeit || ''
+                        };
+
+                        const aftermarketBlob = await generateVariantPDF('zubehoer', aftermarketForPdf, anfrageData, settings);
+                        const aftermarketFileName = `Angebot_Aftermarket_${kennzeichen}_${datum}.pdf`;
+                        const aftermarketUrl = await uploadPdfToStorage(aftermarketBlob, aftermarketFileName);
+
+                        updateData.angebotPdfZubehoer = {
+                            url: aftermarketUrl,
+                            fileName: aftermarketFileName,
+                            generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                            preis: anfrageData.summeBruttoAftermarket
+                        };
+                        updateData.angebotPdfAftermarket = updateData.angebotPdfZubehoer;
+                        console.log(`✅ Aftermarket-PDF (Kalkulation) gespeichert: ${aftermarketFileName}`);
+                    }
+                }
+
                 // Aftermarket-PDF generieren (wenn vorhanden)
                 // 🆕 FIX Nov 30, 2025: "Zubehör" → "Aftermarket" für konsistente Benennung
                 if (hasZubehoer) {
