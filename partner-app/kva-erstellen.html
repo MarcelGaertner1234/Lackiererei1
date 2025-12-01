@@ -8985,15 +8985,20 @@
 
             // ============================================
             // 4. ERSATZTEILE TABELLE (aus kalkulationData ODER PDF-Import)
-            // 🆕 FIX (2025-11-30): Varianten-spezifische kalkulationData priorisieren
+            // 🔧 FIX (2025-12-02): Auch anfrageData.kalkulation.ersatzteile prüfen!
             // ============================================
-            // Priorität: varianten[variantType].kalkulationData > kvaData.kalkulationData > pdfImport
+            // Priorität: varianten[variantType].kalkulationData > anfrageData.kalkulation > kvaData.kalkulationData > pdfImport
             const variantKalkulation = kvaData.varianten?.[variantType]?.kalkulationData;
             const ersatzteile = variantKalkulation?.ersatzteile
+                             || anfrageData.kalkulation?.ersatzteile  // 🔧 NEU: Haupt-Datenquelle!
+                             || anfrageData.ersatzteile               // 🔧 NEU: Root-Level Fallback
                              || kvaData.kalkulationData?.ersatzteile
                              || kvaData.pdfImport?.editedData?.ersatzteile
                              || [];
-            console.log(`📊 [PDF ${variantType}] Ersatzteile geladen:`, ersatzteile.length, 'Einträge', variantKalkulation ? '(varianten-spezifisch)' : '(global)');
+            console.log(`📊 [PDF ${variantType}] Ersatzteile geladen:`, ersatzteile.length, 'Einträge',
+                variantKalkulation ? '(varianten-spezifisch)' :
+                anfrageData.kalkulation?.ersatzteile?.length ? '(anfrageData.kalkulation)' :
+                anfrageData.ersatzteile?.length ? '(anfrageData root)' : '(fallback)');
 
             if (ersatzteile.length > 0) {
                 checkPageBreak(60);
@@ -9080,12 +9085,15 @@
 
             // ============================================
             // 4b. ARBEITSLOHN TABELLE (aus kalkulationData)
-            // 🆕 FIX (2025-11-30): Varianten-spezifische kalkulationData priorisieren
+            // 🔧 FIX (2025-12-02): Auch anfrageData.kalkulation.positionen prüfen!
             // ============================================
             const arbeitslohn = variantKalkulation?.arbeitslohn
+                             || anfrageData.kalkulation?.positionen  // 🔧 NEU: Positionen = Arbeitslohn!
                              || kvaData.kalkulationData?.arbeitslohn
                              || [];
-            console.log(`📊 [PDF ${variantType}] Arbeitslohn geladen:`, arbeitslohn.length, 'Einträge', variantKalkulation ? '(varianten-spezifisch)' : '(global)');
+            console.log(`📊 [PDF ${variantType}] Arbeitslohn geladen:`, arbeitslohn.length, 'Einträge',
+                variantKalkulation ? '(varianten-spezifisch)' :
+                anfrageData.kalkulation?.positionen?.length ? '(anfrageData.kalkulation.positionen)' : '(fallback)');
 
             if (arbeitslohn.length > 0) {
                 checkPageBreak(60);
@@ -9123,12 +9131,20 @@
                     doc.setFillColor(bg, bg, bg);
                     doc.rect(margin, y - 4, contentWidth, 7, 'F');
 
+                    // 🔧 FIX (2025-12-02): Feldnamen-Kompatibilität
+                    // kalkulation.positionen: name, arbeit, stunden, stundensatz, preis
+                    // kalkulationData.arbeitslohn: position, art, stunden, stundensatz, gesamtpreis
+                    const position = item.position || item.name || '';
+                    const art = item.art || item.arbeit || '';
+                    const stunden = parseFloat(item.stunden || 0);
+                    const stundensatz = parseFloat(item.stundensatz || 0);
+                    const gesamtpreis = parseFloat(item.gesamtpreis || item.preis || (stunden * stundensatz) || 0);
+
                     doc.setFontSize(8);
-                    doc.text(String(item.position || '').substring(0, 25), margin + 3, y);
-                    doc.text(String(item.art || '').substring(0, 25), margin + 55, y);
-                    doc.text(String(item.stunden || 0), margin + 108, y);
-                    doc.text((parseFloat(item.stundensatz || 0)).toFixed(2) + ' EUR', margin + 120, y);
-                    const gesamtpreis = parseFloat(item.gesamtpreis || 0);
+                    doc.text(String(position).substring(0, 25), margin + 3, y);
+                    doc.text(String(art).substring(0, 25), margin + 55, y);
+                    doc.text(String(stunden), margin + 108, y);
+                    doc.text(stundensatz.toFixed(2) + ' EUR', margin + 120, y);
                     doc.text(gesamtpreis.toFixed(2) + ' EUR', margin + 155, y);
                     arbeitslohnSum += gesamtpreis;
                     y += 7;
@@ -9212,9 +9228,9 @@
 
             // ============================================
             // 4c2. MATERIALIEN TABELLE (aus kalkulation.materialien)
-            // 🆕 (2025-12-01): Neu hinzugefügt - fehlte komplett!
+            // 🔧 FIX (2025-12-02): Korrekter Parameter-Name ist anfrageData, nicht anfrage!
             // ============================================
-            const materialien = anfrage?.kalkulation?.materialien || [];
+            const materialien = anfrageData?.kalkulation?.materialien || [];
             console.log(`📊 [PDF ${variantType}] Materialien geladen:`, materialien.length, 'Einträge');
 
             if (materialien.length > 0) {
