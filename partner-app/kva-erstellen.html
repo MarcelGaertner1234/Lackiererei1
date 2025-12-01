@@ -5474,7 +5474,17 @@
 
                 // 🆕 Nov 30, 2025: Kalkulation vom Meister vorausfüllen (wenn vorhanden)
                 // WICHTIG: Nur für Partner-Anfragen die bereits durch kalkulation.html gegangen sind
-                if (anfrage.kalkulation && anfrage.kalkulation.summeArbeit > 0) {
+                // 🔧 FIX Dec 1, 2025: Auch Kalkulationen OHNE Arbeit akzeptieren (z.B. nur Ersatzteile)
+                const hasKalkulationData = anfrage.kalkulation && (
+                    anfrage.kalkulation.summeArbeit > 0 ||
+                    anfrage.kalkulation.summeMaterial > 0 ||
+                    anfrage.kalkulation.summeErsatzteile > 0 ||
+                    anfrage.kalkulation.summeErsatzteileOriginal > 0 ||
+                    (anfrage.kalkulation.positionen && anfrage.kalkulation.positionen.length > 0) ||
+                    (anfrage.kalkulation.materialien && anfrage.kalkulation.materialien.length > 0) ||
+                    (anfrage.kalkulation.ersatzteile && anfrage.kalkulation.ersatzteile.length > 0)
+                );
+                if (hasKalkulationData) {
                     // Warten bis Input-Felder gerendert sind
                     setTimeout(() => {
                         // Fallback: Ersatzteile von Root-Ebene nutzen wenn nicht in kalkulation
@@ -5525,6 +5535,7 @@
 
             // ========================================
             // 1. ARBEITSLOHN (GLOBAL) - aus kalkulation.positionen
+            // 🔧 FIX Dec 1, 2025: Auch für Single-Service in variantTableData laden!
             // ========================================
             if (kalkulation.positionen && kalkulation.positionen.length > 0) {
                 console.log('📋 [PREFILL-NEU] Lade Arbeitspositionen → Global Arbeitslohn');
@@ -5545,6 +5556,20 @@
                     });
 
                     console.log(`   ✅ ${kalkulation.positionen.length} Positionen → multiGlobal.arbeitslohn`);
+                } else {
+                    // 🔧 FIX Dec 1, 2025: Single-Service → In variantTableData.original/zubehoer laden
+                    ['original', 'zubehoer'].forEach(variant => {
+                        kalkulation.positionen.forEach(pos => {
+                            variantTableData[variant].arbeitslohn.push({
+                                position: pos.name || pos.bezeichnung || `${pos.teil || ''} ${pos.arbeit || ''}`.trim() || 'Arbeitsposition',
+                                art: pos.arbeit || pos.kategorie || 'Arbeit',
+                                stunden: pos.stunden || 0,
+                                stundensatz: pos.stundensatz || 0,
+                                gesamtpreis: pos.preis || (parseFloat(pos.stunden || 0) * parseFloat(pos.stundensatz || 0)) || 0
+                            });
+                        });
+                    });
+                    console.log(`   ✅ ${kalkulation.positionen.length} Positionen → variantTableData (Single-Service)`);
                 }
             } else if (kalkulation.summeArbeit > 0) {
                 // Fallback: Nur Summe vorhanden, erstelle einen Sammeleintrag
@@ -5561,11 +5586,24 @@
                         art: 'Arbeit',
                         gesamtpreis: kalkulation.summeArbeit
                     });
+                } else {
+                    // 🔧 FIX Dec 1, 2025: Single-Service Fallback
+                    ['original', 'zubehoer'].forEach(variant => {
+                        variantTableData[variant].arbeitslohn.push({
+                            position: 'Arbeitsleistung (Gesamt)',
+                            art: 'Arbeit',
+                            stunden: 0,
+                            stundensatz: 0,
+                            gesamtpreis: kalkulation.summeArbeit
+                        });
+                    });
+                    console.log(`   ✅ Arbeitslohn-Sammeleintrag → variantTableData (Single-Service)`);
                 }
             }
 
             // ========================================
             // 2. MATERIAL/LACKIERUNG (GLOBAL) - aus kalkulation.materialien
+            // 🔧 FIX Dec 1, 2025: Auch für Single-Service in variantTableData laden!
             // ========================================
             if (kalkulation.materialien && kalkulation.materialien.length > 0) {
                 console.log('🎨 [PREFILL-NEU] Lade Materialien → Global Lackierung');
@@ -5585,6 +5623,20 @@
                     });
 
                     console.log(`   ✅ ${kalkulation.materialien.length} Materialien → multiGlobal.lackierung`);
+                } else {
+                    // 🔧 FIX Dec 1, 2025: Single-Service → In variantTableData.original/zubehoer laden
+                    ['original', 'zubehoer'].forEach(variant => {
+                        kalkulation.materialien.forEach(mat => {
+                            variantTableData[variant].materialien.push({
+                                kategorie: mat.einheit || mat.kategorie || '',
+                                bezeichnung: mat.name || mat.bezeichnung || 'Material',
+                                menge: mat.menge || 1,
+                                einzelpreis: parseFloat(mat.einzelpreis) || parseFloat(mat.preis) || 0,
+                                gesamtpreis: parseFloat(mat.preis) || (parseFloat(mat.einzelpreis || 0) * parseFloat(mat.menge || 1)) || 0
+                            });
+                        });
+                    });
+                    console.log(`   ✅ ${kalkulation.materialien.length} Materialien → variantTableData (Single-Service)`);
                 }
             } else if (kalkulation.summeMaterial > 0) {
                 // Fallback: Nur Summe vorhanden
@@ -5601,6 +5653,18 @@
                         bereich: 'Material',
                         gesamtpreis: kalkulation.summeMaterial
                     });
+                } else {
+                    // 🔧 FIX Dec 1, 2025: Single-Service Fallback
+                    ['original', 'zubehoer'].forEach(variant => {
+                        variantTableData[variant].materialien.push({
+                            kategorie: 'Material',
+                            bezeichnung: 'Material (Gesamt)',
+                            menge: 1,
+                            einzelpreis: kalkulation.summeMaterial,
+                            gesamtpreis: kalkulation.summeMaterial
+                        });
+                    });
+                    console.log(`   ✅ Material-Sammeleintrag → variantTableData (Single-Service)`);
                 }
             }
 
@@ -5708,6 +5772,7 @@
 
             // ========================================
             // 5. TABELLEN NEU RENDERN
+            // 🔧 FIX Dec 1, 2025: Auch Single-Service Tabellen rendern!
             // ========================================
             if (isMultiService) {
                 console.log('🔄 [PREFILL-NEU] Rendere Multi-Service Tabellen neu...');
@@ -5726,13 +5791,41 @@
                 updateMultiServiceSums();
 
                 console.log('✅ [PREFILL-NEU] Multi-Service Tabellen aktualisiert');
+            } else {
+                // 🔧 FIX Dec 1, 2025: Single-Service Tabellen rendern (aus variantTableData)
+                console.log('🔄 [PREFILL-NEU] Rendere Single-Service Tabellen neu...');
+
+                // Render alle Tabellen für beide Varianten
+                ['original', 'zubehoer'].forEach(variant => {
+                    // Arbeitslohn-Tabelle rendern
+                    if (variantTableData[variant].arbeitslohn.length > 0) {
+                        renderVariantTable(variant, 'arbeitslohn');
+                    }
+                    // Materialien-Tabelle rendern
+                    if (variantTableData[variant].materialien.length > 0) {
+                        renderVariantTable(variant, 'materialien');
+                    }
+                    // Ersatzteile-Tabelle rendern
+                    if (variantTableData[variant].ersatzteile.length > 0) {
+                        renderVariantTable(variant, 'ersatzteile');
+                    }
+                    // Lackierung-Tabelle rendern (falls vorhanden)
+                    if (variantTableData[variant].lackierung && variantTableData[variant].lackierung.length > 0) {
+                        renderVariantTable(variant, 'lackierung');
+                    }
+                });
+
+                // Summen neu berechnen
+                berechneVarianten();
+
+                console.log('✅ [PREFILL-NEU] Single-Service Tabellen aktualisiert');
             }
 
             // ========================================
-            // FALLBACK: Single-Service (alte Logik für Nicht-Multi-Service)
+            // ZUSÄTZLICH: Single-Service Input-Felder füllen (für UI-Kompatibilität)
             // ========================================
             if (!isMultiService) {
-                console.log('📝 [PREFILL-NEU] Single-Service Modus - nutze Input-Felder...');
+                console.log('📝 [PREFILL-NEU] Single-Service Modus - fülle auch Input-Felder...');
                 prefillFromKalkulationSingleService(kalkulation, serviceTyp, serviceData);
             }
         }
