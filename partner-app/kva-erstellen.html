@@ -5559,191 +5559,297 @@
         }
 
         // ============================================
-        // 🆕 Nov 30, 2025: KALKULATION VOM MEISTER VORAUSFÜLLEN
-        // Füllt die Input-Felder mit Daten aus kalkulation.html
-        // WICHTIG: Annahme-Pipeline wird NICHT beeinflusst (nur für Partner-Anfragen)
-        // 🔧 FIX (Nov 30, 2025): Multi-Service Support mit Service-Prefix
+        // 🆕 Dec 1, 2025: KALKULATION VOM MEISTER VORAUSFÜLLEN (REWRITTEN!)
+        //
+        // NEUE LOGIK basierend auf kalkulation.html Analyse:
+        // - kalkulation.positionen → Arbeitslohn (GLOBAL, keine Varianten)
+        // - kalkulation.materialien → Material/Lackierung (GLOBAL, keine Varianten)
+        // - kalkulation.ersatzteile → Ersatzteile mit 2 Preisen:
+        //   - preisOriginal → Original-Variante
+        //   - preisAftermarket → Aftermarket-Variante
+        // - kalkulation.ersatzfahrzeug → Ersatzfahrzeug (GLOBAL)
+        //
         // ============================================
         function prefillFromKalkulation(kalkulation, serviceTyp, serviceData) {
-            console.log('📥 [PREFILL] Kalkulation vom Meister laden:', {
+            console.log('📥 [PREFILL-NEU] Kalkulation vom Meister laden:', {
                 serviceTyp,
                 isMultiService: isMultiService,
                 serviceLabels: anfrage?.serviceLabels,
+                positionen: kalkulation.positionen?.length || 0,
+                materialien: kalkulation.materialien?.length || 0,
+                ersatzteile: kalkulation.ersatzteile?.length || 0,
                 summeArbeit: kalkulation.summeArbeit,
                 summeMaterial: kalkulation.summeMaterial,
                 summeErsatzteileOriginal: kalkulation.summeErsatzteileOriginal,
-                summeErsatzteileAftermarket: kalkulation.summeErsatzteileAftermarket
+                summeErsatzteileAftermarket: kalkulation.summeErsatzteileAftermarket,
+                ersatzfahrzeug: kalkulation.ersatzfahrzeug
             });
 
-            // Hilfsfunktion: Input-Feld setzen (mit optionalem Prefix für Multi-Service)
-            function setInputValue(fieldId, value, prefix = '') {
-                // Multi-Service ID-Format: original_lackier_lackkosten
-                // Single-Service ID-Format: original_lackkosten
-                const actualId = prefix ? fieldId.replace(/^(original|zubehoer)_/, `$1_${prefix}_`) : fieldId;
-                const input = document.getElementById(actualId);
+            // ========================================
+            // 1. ARBEITSLOHN (GLOBAL) - aus kalkulation.positionen
+            // ========================================
+            if (kalkulation.positionen && kalkulation.positionen.length > 0) {
+                console.log('📋 [PREFILL-NEU] Lade Arbeitspositionen → Global Arbeitslohn');
+
+                // Für Multi-Service: In multiGlobal.arbeitslohn laden
+                if (isMultiService) {
+                    if (!variantTableData.multiGlobal) {
+                        variantTableData.multiGlobal = { arbeitslohn: [], lackierung: [], ersatzfahrzeug: null };
+                    }
+
+                    kalkulation.positionen.forEach(pos => {
+                        variantTableData.multiGlobal.arbeitslohn.push({
+                            position: pos.name || pos.bezeichnung || 'Arbeitsposition',
+                            service: serviceTyp || 'lackier',
+                            art: pos.kategorie || 'Arbeit',
+                            gesamtpreis: (parseFloat(pos.preis) || 0) * (parseFloat(pos.menge) || 1)
+                        });
+                    });
+
+                    console.log(`   ✅ ${kalkulation.positionen.length} Positionen → multiGlobal.arbeitslohn`);
+                }
+            } else if (kalkulation.summeArbeit > 0) {
+                // Fallback: Nur Summe vorhanden, erstelle einen Sammeleintrag
+                console.log('📋 [PREFILL-NEU] Keine Positionen, aber summeArbeit → Erstelle Sammeleintrag');
+
+                if (isMultiService) {
+                    if (!variantTableData.multiGlobal) {
+                        variantTableData.multiGlobal = { arbeitslohn: [], lackierung: [], ersatzfahrzeug: null };
+                    }
+
+                    variantTableData.multiGlobal.arbeitslohn.push({
+                        position: 'Arbeitsleistung (Gesamt)',
+                        service: serviceTyp || 'lackier',
+                        art: 'Arbeit',
+                        gesamtpreis: kalkulation.summeArbeit
+                    });
+                }
+            }
+
+            // ========================================
+            // 2. MATERIAL/LACKIERUNG (GLOBAL) - aus kalkulation.materialien
+            // ========================================
+            if (kalkulation.materialien && kalkulation.materialien.length > 0) {
+                console.log('🎨 [PREFILL-NEU] Lade Materialien → Global Lackierung');
+
+                if (isMultiService) {
+                    if (!variantTableData.multiGlobal) {
+                        variantTableData.multiGlobal = { arbeitslohn: [], lackierung: [], ersatzfahrzeug: null };
+                    }
+
+                    kalkulation.materialien.forEach(mat => {
+                        variantTableData.multiGlobal.lackierung.push({
+                            position: mat.name || mat.bezeichnung || 'Material',
+                            service: serviceTyp || 'lackier',
+                            bereich: mat.kategorie || 'Material',
+                            gesamtpreis: (parseFloat(mat.preis) || parseFloat(mat.verkaufspreis) || 0) * (parseFloat(mat.menge) || 1)
+                        });
+                    });
+
+                    console.log(`   ✅ ${kalkulation.materialien.length} Materialien → multiGlobal.lackierung`);
+                }
+            } else if (kalkulation.summeMaterial > 0) {
+                // Fallback: Nur Summe vorhanden
+                console.log('🎨 [PREFILL-NEU] Keine Materialien, aber summeMaterial → Erstelle Sammeleintrag');
+
+                if (isMultiService) {
+                    if (!variantTableData.multiGlobal) {
+                        variantTableData.multiGlobal = { arbeitslohn: [], lackierung: [], ersatzfahrzeug: null };
+                    }
+
+                    variantTableData.multiGlobal.lackierung.push({
+                        position: 'Material (Gesamt)',
+                        service: serviceTyp || 'lackier',
+                        bereich: 'Material',
+                        gesamtpreis: kalkulation.summeMaterial
+                    });
+                }
+            }
+
+            // ========================================
+            // 3. ERSATZTEILE (PRO SERVICE, 2 VARIANTEN)
+            // Aus kalkulation.ersatzteile mit preisOriginal und preisAftermarket
+            // ========================================
+            if (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) {
+                console.log('📦 [PREFILL-NEU] Lade Ersatzteile → Service-spezifische Tabellen');
+
+                const services = anfrage?.serviceLabels || [serviceTyp || 'lackier'];
+
+                // Für jeden Service die Ersatzteile-Struktur initialisieren
+                services.forEach(svc => {
+                    // Original-Variante
+                    if (!variantTableData.original._services) variantTableData.original._services = {};
+                    if (!variantTableData.original._services[svc]) {
+                        variantTableData.original._services[svc] = { ersatzteile: [], arbeitslohn: [], lackierung: [] };
+                    }
+
+                    // Aftermarket-Variante
+                    if (!variantTableData.zubehoer._services) variantTableData.zubehoer._services = {};
+                    if (!variantTableData.zubehoer._services[svc]) {
+                        variantTableData.zubehoer._services[svc] = { ersatzteile: [], arbeitslohn: [], lackierung: [] };
+                    }
+                });
+
+                // Ersatzteile auf den ersten Service verteilen (oder auf alle gleich)
+                const targetService = services[0];
+
+                kalkulation.ersatzteile.forEach(et => {
+                    const menge = parseFloat(et.menge) || 1;
+                    const preisOriginal = parseFloat(et.preisOriginal) || parseFloat(et.preis) || 0;
+                    const preisAftermarket = parseFloat(et.preisAftermarket) || preisOriginal;
+
+                    // Original-Variante
+                    variantTableData.original._services[targetService].ersatzteile.push({
+                        etn: et.teilenummer || et.etn || '',
+                        benennung: et.name || et.bezeichnung || et.benennung || 'Ersatzteil',
+                        anzahl: menge,
+                        einzelpreis: preisOriginal,
+                        gesamtpreis: preisOriginal * menge
+                    });
+
+                    // Aftermarket-Variante (gleiche Teile, günstigerer Preis)
+                    variantTableData.zubehoer._services[targetService].ersatzteile.push({
+                        etn: et.teilenummer || et.etn || '',
+                        benennung: et.name || et.bezeichnung || et.benennung || 'Ersatzteil',
+                        anzahl: menge,
+                        einzelpreis: preisAftermarket,
+                        gesamtpreis: preisAftermarket * menge
+                    });
+                });
+
+                console.log(`   ✅ ${kalkulation.ersatzteile.length} Ersatzteile → original + zubehoer für Service "${targetService}"`);
+            }
+
+            // ========================================
+            // 4. ERSATZFAHRZEUG (GLOBAL)
+            // ========================================
+            if (kalkulation.ersatzfahrzeug) {
+                console.log('🚗 [PREFILL-NEU] Lade Ersatzfahrzeug → Global');
+
+                const ef = kalkulation.ersatzfahrzeug;
+                ersatzfahrzeugData = {
+                    kennzeichen: ef.kennzeichen || '',
+                    fahrzeug: ef.fahrzeug || (ef.marke ? `${ef.marke} ${ef.modell || ''}` : ''),
+                    marke: ef.marke || '',
+                    modell: ef.modell || '',
+                    tagesmiete: parseFloat(ef.tagesmiete) || parseFloat(ef.tagessatz) || 0,
+                    tage: parseFloat(ef.tage) || 0,
+                    gesamtpreis: parseFloat(ef.gesamt) || parseFloat(ef.gesamtpreis) || 0
+                };
+
+                // Falls gesamtpreis nicht gesetzt, berechnen
+                if (!ersatzfahrzeugData.gesamtpreis && ersatzfahrzeugData.tagesmiete && ersatzfahrzeugData.tage) {
+                    ersatzfahrzeugData.gesamtpreis = ersatzfahrzeugData.tagesmiete * ersatzfahrzeugData.tage;
+                }
+
+                console.log(`   ✅ Ersatzfahrzeug: ${ersatzfahrzeugData.tage} Tage × ${ersatzfahrzeugData.tagesmiete}€ = ${ersatzfahrzeugData.gesamtpreis}€`);
+            }
+
+            // ========================================
+            // 5. TABELLEN NEU RENDERN
+            // ========================================
+            if (isMultiService) {
+                console.log('🔄 [PREFILL-NEU] Rendere Multi-Service Tabellen neu...');
+
+                renderMultiGlobalArbeitslohnTable();
+                renderMultiGlobalLackierungTable();
+                renderMultiGlobalErsatzfahrzeug();
+
+                // Ersatzteile-Tabellen für alle Services rendern
+                const services = anfrage?.serviceLabels || [serviceTyp || 'lackier'];
+                services.forEach(svc => {
+                    renderMultiServiceErsatzteileTable('original', svc);
+                    renderMultiServiceErsatzteileTable('zubehoer', svc);
+                });
+
+                updateMultiServiceSums();
+
+                console.log('✅ [PREFILL-NEU] Multi-Service Tabellen aktualisiert');
+            }
+
+            // ========================================
+            // FALLBACK: Single-Service (alte Logik für Nicht-Multi-Service)
+            // ========================================
+            if (!isMultiService) {
+                console.log('📝 [PREFILL-NEU] Single-Service Modus - nutze Input-Felder...');
+                prefillFromKalkulationSingleService(kalkulation, serviceTyp, serviceData);
+            }
+        }
+
+        // ========================================
+        // SINGLE-SERVICE PREFILL (Alte Logik für Backwards-Kompatibilität)
+        // ========================================
+        function prefillFromKalkulationSingleService(kalkulation, serviceTyp, serviceData) {
+            // Hilfsfunktion: Input-Feld setzen
+            function setInputValue(fieldId, value) {
+                const input = document.getElementById(fieldId);
                 if (input && value > 0) {
                     input.value = parseFloat(value).toFixed(2);
-                    console.log(`   ✅ ${actualId} = ${value.toFixed(2)}`);
-                    // Trigger input event für Summen-Berechnung
                     input.dispatchEvent(new Event('input', { bubbles: true }));
                     return true;
-                } else if (!input) {
-                    console.log(`   ⚠️ Input nicht gefunden: ${actualId}`);
                 }
                 return false;
             }
 
+            const serviceTypString = Array.isArray(serviceTyp) ? serviceTyp[0] : serviceTyp;
             let fieldsSet = 0;
 
             // ========================================
-            // 🆕 MULTI-SERVICE PREFILL
-            // Bei Multi-Service: Für jeden Service separat ausfüllen
+            // LACKIERUNG Mapping
             // ========================================
-            if (isMultiService && anfrage?.serviceLabels) {
-                console.log('📦 [PREFILL] Multi-Service Modus - fülle alle Services...');
-
-                // Für jeden Service die Felder ausfüllen
-                anfrage.serviceLabels.forEach(svcTyp => {
-                    console.log(`   🔧 Fülle Service: ${svcTyp}`);
-
-                    // Bei Multi-Service: Alle Kosten werden auf alle Services aufgeteilt
-                    // oder wir verwenden die Gesamtsummen (da der Meister eine Gesamtkalkulation macht)
-                    const serviceCount = anfrage.serviceLabels.length;
-
-                    // ========================================
-                    // LACKIERUNG Mapping (Multi-Service)
-                    // ========================================
-                    if (svcTyp === 'lackier' || svcTyp === 'lackierung') {
-                        // Original Variante
-                        if (setInputValue('original_lackkosten', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_sonstiges', kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-
-                        // Aftermarket Variante
-                        if (setInputValue('zubehoer_lackkosten', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile, svcTyp)) fieldsSet++;
-                        if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-                    }
-
-                    // ========================================
-                    // REIFEN Mapping (Multi-Service)
-                    // ========================================
-                    else if (svcTyp === 'reifen') {
-                        // Original Variante
-                        if (setInputValue('original_reifenwechsel', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_montage', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_reifensatz', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_sonstiges', kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-
-                        // Aftermarket Variante
-                        if (setInputValue('zubehoer_reifenwechsel', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('zubehoer_montage', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('zubehoer_reifensatz', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile, svcTyp)) fieldsSet++;
-                        if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-                    }
-
-                    // ========================================
-                    // MECHANIK Mapping (Multi-Service)
-                    // ========================================
-                    else if (svcTyp === 'mechanik') {
-                        if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_arbeitszeit', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_sonstiges', kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-
-                        if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile, svcTyp)) fieldsSet++;
-                        if (setInputValue('zubehoer_arbeitszeit', kalkulation.summeArbeit, svcTyp)) fieldsSet++;
-                        if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-                    }
-
-                    // ========================================
-                    // PFLEGE Mapping (Multi-Service)
-                    // ========================================
-                    else if (svcTyp === 'pflege' || svcTyp === 'aufbereitung') {
-                        if (setInputValue('original_aussenreinigung', kalkulation.summeArbeit * 0.4, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_innenreinigung', kalkulation.summeArbeit * 0.4, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_sonstiges', kalkulation.summeArbeit * 0.2 + kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-                    }
-
-                    // ========================================
-                    // FALLBACK für andere Services (Multi-Service)
-                    // ========================================
-                    else {
-                        console.log(`   ⚠️ Kein spezifisches Mapping für Service: ${svcTyp}`);
-                        if (setInputValue('original_service', kalkulation.summeArbeit + kalkulation.summeMaterial, svcTyp)) fieldsSet++;
-                        if (setInputValue('original_sonstiges', 0, svcTyp)) fieldsSet++;
-                    }
-                });
+            if (serviceTypString === 'lackier' || serviceTypString === 'lackierung') {
+                // Original Variante
+                if (setInputValue('original_lackkosten', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+                // Aftermarket Variante (gleiche Arbeit, günstigere Teile)
+                if (setInputValue('zubehoer_lackkosten', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
             }
             // ========================================
-            // SINGLE-SERVICE PREFILL (Bisherige Logik)
+            // REIFEN Mapping
+            // ========================================
+            else if (serviceTypString === 'reifen') {
+                // Original Variante
+                if (setInputValue('original_montage', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('original_reifensatz', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+                // Aftermarket Variante
+                if (setInputValue('zubehoer_montage', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('zubehoer_reifensatz', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+            }
+            // ========================================
+            // MECHANIK Mapping
+            // ========================================
+            else if (serviceTypString === 'mechanik') {
+                // Original Variante
+                if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('original_arbeitszeit', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+                // Aftermarket Variante
+                if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
+                if (setInputValue('zubehoer_arbeitszeit', kalkulation.summeArbeit)) fieldsSet++;
+                if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
+            }
+            // ========================================
+            // PFLEGE Mapping
+            // ========================================
+            else if (serviceTypString === 'pflege' || serviceTypString === 'aufbereitung') {
+                // Nur Original Variante (keine Teile)
+                if (setInputValue('original_aussenreinigung', kalkulation.summeArbeit * 0.4)) fieldsSet++;
+                if (setInputValue('original_innenreinigung', kalkulation.summeArbeit * 0.4)) fieldsSet++;
+                if (setInputValue('original_sonstiges', kalkulation.summeArbeit * 0.2 + kalkulation.summeMaterial)) fieldsSet++;
+            }
+            // ========================================
+            // FALLBACK für andere Services
             // ========================================
             else {
-                const serviceTypString = Array.isArray(serviceTyp) ? serviceTyp[0] : serviceTyp;
-
-                // ========================================
-                // LACKIERUNG Mapping
-                // ========================================
-                if (serviceTypString === 'lackier' || serviceTypString === 'lackierung') {
-                    // Original Variante
-                    if (setInputValue('original_lackkosten', kalkulation.summeArbeit)) fieldsSet++;
-                    if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
-                    if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
-
-                    // Aftermarket Variante (gleiche Arbeit, günstigere Teile)
-                    if (setInputValue('zubehoer_lackkosten', kalkulation.summeArbeit)) fieldsSet++;
-                    if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
-                    if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
-                }
-
-                // ========================================
-                // REIFEN Mapping
-                // ========================================
-                else if (serviceTypString === 'reifen') {
-                    // Original Variante
-                    if (setInputValue('original_montage', kalkulation.summeArbeit)) fieldsSet++;
-                    if (setInputValue('original_reifensatz', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
-                    if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
-
-                    // Aftermarket Variante
-                    if (setInputValue('zubehoer_montage', kalkulation.summeArbeit)) fieldsSet++;
-                    if (setInputValue('zubehoer_reifensatz', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
-                    if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
-                }
-
-                // ========================================
-                // MECHANIK Mapping
-                // ========================================
-                else if (serviceTypString === 'mechanik') {
-                    // Original Variante
-                    if (setInputValue('original_teilekosten', kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile)) fieldsSet++;
-                    if (setInputValue('original_arbeitszeit', kalkulation.summeArbeit)) fieldsSet++;
-                    if (setInputValue('original_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
-
-                    // Aftermarket Variante
-                    if (setInputValue('zubehoer_teilekosten', kalkulation.summeErsatzteileAftermarket || kalkulation.summeErsatzteile)) fieldsSet++;
-                    if (setInputValue('zubehoer_arbeitszeit', kalkulation.summeArbeit)) fieldsSet++;
-                    if (setInputValue('zubehoer_sonstiges', kalkulation.summeMaterial)) fieldsSet++;
-                }
-
-                // ========================================
-                // PFLEGE Mapping
-                // ========================================
-                else if (serviceTypString === 'pflege' || serviceTypString === 'aufbereitung') {
-                    // Nur Original Variante (keine Teile)
-                    if (setInputValue('original_aussenreinigung', kalkulation.summeArbeit * 0.4)) fieldsSet++;
-                    if (setInputValue('original_innenreinigung', kalkulation.summeArbeit * 0.4)) fieldsSet++;
-                    if (setInputValue('original_sonstiges', kalkulation.summeArbeit * 0.2 + kalkulation.summeMaterial)) fieldsSet++;
-                }
-
-                // ========================================
-                // FALLBACK für andere Services
-                // ========================================
-                else {
-                    console.log('⚠️ [PREFILL] Kein spezifisches Mapping für Service:', serviceTypString);
-                    // Versuche generisches Mapping
-                    if (setInputValue('original_service', kalkulation.summeArbeit + kalkulation.summeMaterial + (kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile))) fieldsSet++;
-                    if (setInputValue('original_sonstiges', 0)) fieldsSet++;
-                }
+                console.log('⚠️ [PREFILL] Kein spezifisches Mapping für Service:', serviceTypString);
+                // Versuche generisches Mapping
+                if (setInputValue('original_service', kalkulation.summeArbeit + kalkulation.summeMaterial + (kalkulation.summeErsatzteileOriginal || kalkulation.summeErsatzteile))) fieldsSet++;
+                if (setInputValue('original_sonstiges', 0)) fieldsSet++;
             }
 
             // Summen neu berechnen
@@ -5770,8 +5876,6 @@
             // 🆕 Nov 30, 2025: ERSATZTEILE-DETAILS IN TABELLEN LADEN
             // Überträgt die einzelnen Ersatzteile vom Meister in die Varianten-Tabellen
             // ========================================
-            const serviceTypString = Array.isArray(serviceTyp) ? serviceTyp[0] : serviceTyp;
-
             if (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) {
                 console.log(`📦 [PREFILL] ${kalkulation.ersatzteile.length} Ersatzteile gefunden - übertrage in Tabellen...`);
                 prefillErsatzteileTabellen(kalkulation.ersatzteile);
