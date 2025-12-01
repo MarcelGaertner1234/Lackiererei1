@@ -6394,15 +6394,38 @@
             let photosHTML = '';
             // 🆕 FIX (2025-11-29): Fallback-Kette für konsistente Foto-Feldnamen
             // 🆕 FIX (2025-12-01): pdfImport.fotos hinzugefügt (PDF-Import Fotos)
-            const fotoArray = anfrage.photos || anfrage.photoUrls || anfrage.fotos || anfrage.pdfImport?.fotos || [];
+            // 🔧 FIX Bug #5 (2025-12-01): Fahrzeugschein-Fotos zur Galerie hinzufügen
+            const schadenFotos = anfrage.photos || anfrage.photoUrls || anfrage.fotos || anfrage.pdfImport?.fotos || [];
+            const fahrzeugscheinFotos = anfrage.fahrzeugscheinFotos || [];
+
+            // Kombiniere BEIDE Foto-Arrays für vollständige Galerie
+            const fotoArray = [...schadenFotos, ...fahrzeugscheinFotos];
+
             if (fotoArray && fotoArray.length > 0) {
-                photosHTML = `
-                    <div class="photos-preview">
-                        ${fotoArray.map((foto, index) => `
-                            <img src="${foto}" alt="Foto ${index + 1}" onclick="window.open('${foto}', '_blank')">
-                        `).join('')}
+                // Separiere Anzeige mit Labels für Übersichtlichkeit
+                const schadenFotosHTML = schadenFotos.length > 0 ? `
+                    <div style="margin-bottom: 10px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">📸 Schadenfotos (${schadenFotos.length})</div>
+                        <div class="photos-preview">
+                            ${schadenFotos.map((foto, index) => `
+                                <img src="${foto}" alt="Schadenfoto ${index + 1}" onclick="window.open('${foto}', '_blank')">
+                            `).join('')}
+                        </div>
                     </div>
-                `;
+                ` : '';
+
+                const fahrzeugscheinHTML = fahrzeugscheinFotos.length > 0 ? `
+                    <div style="margin-top: 10px;">
+                        <div style="font-size: 12px; color: #e65100; margin-bottom: 5px;">📄 Fahrzeugschein (${fahrzeugscheinFotos.length})</div>
+                        <div class="photos-preview">
+                            ${fahrzeugscheinFotos.map((foto, index) => `
+                                <img src="${foto}" alt="Fahrzeugschein ${index + 1}" style="border: 2px solid #ff9800;" onclick="window.open('${foto}', '_blank')">
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : '';
+
+                photosHTML = schadenFotosHTML + fahrzeugscheinHTML;
             }
 
             infoBox.innerHTML = `
@@ -8832,11 +8855,16 @@
             // 3. SCHADENFOTOS (2-spaltige Galerie) - FIX: Base64-Konvertierung
             // ============================================
             // 🆕 FIX (2025-11-28): Partner-Anfragen speichern Fotos unter "fotos" (nicht "photos")
-            const photoUrls = anfrageData.serviceData?.photos
+            // 🔧 FIX Bug #5 (2025-12-01): Fahrzeugschein-Fotos zum PDF hinzufügen
+            const schadenFotoUrls = anfrageData.serviceData?.photos
                         || anfrageData.photoUrls
                         || anfrageData.photos
                         || anfrageData.fotos  // 🆕 Partner-Anfragen verwenden "fotos"
                         || [];
+            const fahrzeugscheinUrls = anfrageData.fahrzeugscheinFotos || [];
+
+            // Kombiniere beide Arrays für vollständige PDF-Galerie
+            const photoUrls = [...schadenFotoUrls, ...fahrzeugscheinUrls];
 
             if (photoUrls.length > 0) {
                 checkPageBreak(100);
