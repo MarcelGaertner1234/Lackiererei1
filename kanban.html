@@ -6696,9 +6696,26 @@
             };
 
             // 🆕 MULTI-SERVICE: Breakdown-Daten hinzufügen (für PDF-Generierung)
+            // 🔧 FIX (2025-12-01): Breakdown-Struktur korrigieren!
+            // PROBLEM: kva.breakdown ist nach Variante verschachtelt: { "original": { "lackier": {...} } }
+            // PDF erwartet aber flache Service-Struktur: { "lackier": {...}, "reifen": {...} }
             if (fahrzeugData.kva?.breakdown && fahrzeugData.kva?.isMultiService) {
-                console.log('   📦 [MULTI-SERVICE] Füge serviceBreakdown zur Rechnung hinzu');
-                rechnung.serviceBreakdown = fahrzeugData.kva.breakdown;
+                const gewaehlteVariante = fahrzeugData.kva.gewaehlteVariante || 'original';
+                const breakdown = fahrzeugData.kva.breakdown;
+
+                // Prüfe ob Breakdown verschachtelt ist (nach Variante) oder bereits flach (nach Service)
+                const isNestedByVariant = breakdown[gewaehlteVariante] &&
+                                          typeof breakdown[gewaehlteVariante] === 'object' &&
+                                          !breakdown[gewaehlteVariante].fields;
+
+                if (isNestedByVariant) {
+                    rechnung.serviceBreakdown = breakdown[gewaehlteVariante];
+                    console.log(`   📦 [MULTI-SERVICE] serviceBreakdown extrahiert für "${gewaehlteVariante}":`, Object.keys(breakdown[gewaehlteVariante]));
+                } else {
+                    rechnung.serviceBreakdown = breakdown;
+                    console.log('   📦 [MULTI-SERVICE] serviceBreakdown (flach):', Object.keys(breakdown));
+                }
+
                 rechnung.serviceLabels = fahrzeugData.kva.serviceLabels || {};
                 rechnung.isMultiService = true;
             }

@@ -1616,11 +1616,34 @@
 
                 // 🔧 FIX Bug #1 (2025-11-28): Multi-Service Breakdown hinzufügen
                 // Gleiche Logik wie in kanban.html für konsistente PDF-Darstellung
+                // 🔧 FIX (2025-12-01): Breakdown-Struktur korrigieren!
+                // PROBLEM: kva.breakdown ist nach Variante verschachtelt: { "original": { "lackier": {...} } }
+                // PDF erwartet aber flache Service-Struktur: { "lackier": {...}, "reifen": {...} }
+                // LÖSUNG: Extrahiere die gewählte Variante aus dem verschachtelten Breakdown
                 if (fahrzeugData.kva?.breakdown && fahrzeugData.kva?.isMultiService) {
-                    rechnung.serviceBreakdown = fahrzeugData.kva.breakdown;
+                    const gewaehlteVariante = fahrzeugData.kva.gewaehlteVariante || 'original';
+                    const breakdown = fahrzeugData.kva.breakdown;
+
+                    // Prüfe ob Breakdown verschachtelt ist (nach Variante) oder bereits flach (nach Service)
+                    // Verschachtelt: breakdown.original.lackier = { fields: [], gesamt: 800 }
+                    // Flach: breakdown.lackier = { fields: [], gesamt: 800 }
+                    const isNestedByVariant = breakdown[gewaehlteVariante] &&
+                                              typeof breakdown[gewaehlteVariante] === 'object' &&
+                                              !breakdown[gewaehlteVariante].fields;  // Flache Struktur hat .fields direkt
+
+                    if (isNestedByVariant) {
+                        // Extrahiere Service-Breakdown für die gewählte Variante
+                        rechnung.serviceBreakdown = breakdown[gewaehlteVariante];
+                        console.log(`📊 Multi-Service Breakdown extrahiert für Variante "${gewaehlteVariante}":`, Object.keys(breakdown[gewaehlteVariante]));
+                    } else {
+                        // Bereits flache Struktur - direkt verwenden
+                        rechnung.serviceBreakdown = breakdown;
+                        console.log('📊 Multi-Service Breakdown (flach) hinzugefügt:', Object.keys(breakdown));
+                    }
+
                     rechnung.serviceLabels = fahrzeugData.kva.serviceLabels || {};
                     rechnung.isMultiService = true;
-                    console.log('📊 Multi-Service Breakdown hinzugefügt:', Object.keys(fahrzeugData.kva.breakdown));
+                    rechnung.gewaehlteVarianteForBreakdown = gewaehlteVariante;  // Für Debugging
                 }
 
                 // Firestore Update
