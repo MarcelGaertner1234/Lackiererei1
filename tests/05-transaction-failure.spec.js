@@ -34,18 +34,15 @@ test.describe('CRITICAL: Transaction Failure Tests', () => {
   const testPartnerName = 'E2E Transaction Test GmbH';
 
 
-  // RUN #70: Login als Test-Admin VOR allen Tests (ermöglicht Firestore-Zugriff)
-  test.beforeAll(async ({ page }) => {
+  // RUN #70: Login als Test-Admin - jetzt in beforeEach (page nicht in beforeAll erlaubt)
+  test.beforeEach(async ({ page }) => {
+    // Zuerst authentifizieren
     await page.goto('/annahme.html');
     await waitForFirebaseReady(page);
     await loginAsTestAdmin(page);
-    console.log('✅ RUN #70: Test-Suite als Admin authentifiziert');
-  });
+    console.log('✅ RUN #70: Test als Admin authentifiziert');
 
-  test.beforeEach(async ({ page }) => {
-    // Cleanup vor jedem Test
-    await page.goto('/annahme.html');
-    await waitForFirebaseReady(page);
+    // Dann Cleanup
     await deleteVehicle(page, testKennzeichen);
 
     // Lösche Partner-Anfrage
