@@ -9031,12 +9031,39 @@
                     doc.setFillColor(bg, bg, bg);
                     doc.rect(margin, y - 4, contentWidth, 7, 'F');
 
+                    // 🔧 FIX (2025-12-01): Feldnamen-Kompatibilität für verschiedene Datenquellen
+                    // Firestore-Format: teilenummer, name, menge, preisOriginal/preisAftermarket
+                    // Kalkulation-Format: etn, benennung, anzahl, einzelpreis
+                    const etn = teil.etn || teil.artikelNr || teil.teilenummer || '';
+                    const benennung = teil.benennung || teil.bezeichnung || teil.name || '';
+                    const anzahl = parseInt(teil.anzahl || teil.menge || 1);
+
+                    // 🔧 FIX (2025-12-01): Varianten-spezifische Preise verwenden!
+                    // Original-PDF → preisOriginal, Aftermarket-PDF → preisAftermarket
+                    let einzelpreis;
+                    if (variantType === 'original') {
+                        einzelpreis = parseFloat(teil.preisOriginal || teil.einzelpreis || teil.preis || 0);
+                    } else if (variantType === 'zubehoer' || variantType === 'aftermarket') {
+                        einzelpreis = parseFloat(teil.preisAftermarket || teil.einzelpreis || teil.preis || 0);
+                    } else {
+                        einzelpreis = parseFloat(teil.einzelpreis || teil.preis || 0);
+                    }
+
+                    // Gesamtpreis berechnen: vorhandener gesamtpreis ODER anzahl × einzelpreis
+                    let gesamtpreis;
+                    if (variantType === 'original' && teil.preisOriginal) {
+                        gesamtpreis = anzahl * einzelpreis;
+                    } else if ((variantType === 'zubehoer' || variantType === 'aftermarket') && teil.preisAftermarket) {
+                        gesamtpreis = anzahl * einzelpreis;
+                    } else {
+                        gesamtpreis = parseFloat(teil.gesamtpreis || (anzahl * einzelpreis) || 0);
+                    }
+
                     doc.setFontSize(8);
-                    doc.text(String(teil.etn || teil.artikelNr || ''), margin + 3, y);
-                    doc.text(String(teil.benennung || teil.bezeichnung || '').substring(0, 30), margin + 35, y);
-                    doc.text(String(teil.anzahl || teil.menge || 1), margin + 108, y);
-                    doc.text((parseFloat(teil.einzelpreis || teil.preis || 0)).toFixed(2) + ' EUR', margin + 120, y);
-                    const gesamtpreis = parseFloat(teil.gesamtpreis || (teil.anzahl || 1) * (teil.einzelpreis || 0) || 0);
+                    doc.text(String(etn), margin + 3, y);
+                    doc.text(String(benennung).substring(0, 30), margin + 35, y);
+                    doc.text(String(anzahl), margin + 108, y);
+                    doc.text(einzelpreis.toFixed(2) + ' EUR', margin + 120, y);
                     doc.text(gesamtpreis.toFixed(2) + ' EUR', margin + 155, y);
                     ersatzteileSum += gesamtpreis;
                     y += 7;
@@ -9184,12 +9211,79 @@
             }
 
             // ============================================
-            // 4d. ERSATZFAHRZEUG TABELLE (aus kalkulationData)
+            // 4c2. MATERIALIEN TABELLE (aus kalkulation.materialien)
+            // 🆕 (2025-12-01): Neu hinzugefügt - fehlte komplett!
             // ============================================
-            const ersatzfahrzeug = kvaData.kalkulationData?.ersatzfahrzeug;
+            const materialien = anfrage?.kalkulation?.materialien || [];
+            console.log(`📊 [PDF ${variantType}] Materialien geladen:`, materialien.length, 'Einträge');
+
+            if (materialien.length > 0) {
+                checkPageBreak(60);
+
+                doc.setTextColor(0, 150, 136); // Teal
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text('Materialien', margin, y);
+                doc.setDrawColor(0, 150, 136);
+                doc.line(margin, y + 2, pageWidth - margin, y + 2);
+                y += 8;
+
+                // Tabellen-Header
+                doc.setFillColor(0, 150, 136);
+                doc.rect(margin, y, contentWidth, 8, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(9);
+                doc.setFont(undefined, 'bold');
+                doc.text('Bezeichnung', margin + 3, y + 5.5);
+                doc.text('Menge', margin + 85, y + 5.5);
+                doc.text('Einheit', margin + 105, y + 5.5);
+                doc.text('Einzelpreis', margin + 130, y + 5.5);
+                doc.text('Gesamt', margin + 160, y + 5.5);
+                y += 10;
+
+                // Tabellen-Zeilen
+                doc.setTextColor(0, 0, 0);
+                doc.setFont(undefined, 'normal');
+                let materialienSum = 0;
+
+                materialien.forEach((item, i) => {
+                    checkPageBreak(15);
+
+                    const bg = i % 2 === 0 ? 250 : 255;
+                    doc.setFillColor(bg, bg, bg);
+                    doc.rect(margin, y - 4, contentWidth, 7, 'F');
+
+                    doc.setFontSize(8);
+                    doc.text(String(item.name || item.bezeichnung || '').substring(0, 40), margin + 3, y);
+                    doc.text(String(item.menge || 1), margin + 88, y);
+                    doc.text(String(item.einheit || 'Stk'), margin + 105, y);
+                    doc.text((parseFloat(item.einzelpreis || 0)).toFixed(2) + ' EUR', margin + 125, y);
+                    const gesamtpreis = parseFloat(item.preis || item.gesamtpreis || (item.menge || 1) * (item.einzelpreis || 0) || 0);
+                    doc.text(gesamtpreis.toFixed(2) + ' EUR', margin + 160, y);
+                    materialienSum += gesamtpreis;
+                    y += 7;
+                });
+
+                // Summe
+                y += 2;
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(10);
+                doc.setTextColor(0, 150, 136);
+                doc.text('Summe Materialien:', margin + 110, y);
+                doc.text(materialienSum.toFixed(2) + ' EUR', margin + 160, y);
+                y += 12;
+            }
+
+            // ============================================
+            // 4d. ERSATZFAHRZEUG TABELLE (aus kalkulationData ODER ersatzfahrzeugKosten)
+            // 🔧 FIX (2025-12-01): Auch kvaData.ersatzfahrzeugKosten prüfen!
+            // ============================================
+            const ersatzfahrzeug = kvaData.kalkulationData?.ersatzfahrzeug
+                                || kvaData.ersatzfahrzeugKosten
+                                || null;
             console.log('📊 [PDF] Ersatzfahrzeug geladen:', ersatzfahrzeug);
 
-            if (ersatzfahrzeug && ersatzfahrzeug.kennzeichen) {
+            if (ersatzfahrzeug && (ersatzfahrzeug.kennzeichen || ersatzfahrzeug.gesamt > 0)) {
                 checkPageBreak(50);
 
                 doc.setTextColor(255, 152, 0); // Orange
