@@ -7511,6 +7511,7 @@
             // Schritt 1: Original-Preis aus KVA extrahieren (Fallback-Chain)
             // 🔧 FIX (2025-11-17): BUG #11 - Entwurf angebotDetails.preis in Fallback-Chain
             // 🔧 FIX (2025-12-01): Varianten-Preis Bug - Root-Level gewaehlteVariante als Fallback
+            // 🔧 FIX (2025-12-01): Multi-Service/Entwurf nutzt angebotDetails.summeBrutto*, nicht kva.varianten!
             const ausgewaehlteVariante = anfrage.kva?.gewaehlteVariante
                                       || anfrage.gewaehlteVariante  // Root-Level Fallback!
                                       || anfrage.angebotDetails?.gewaehlteVariante
@@ -7523,14 +7524,50 @@
                 'VERWENDET': ausgewaehlteVariante
             });
 
-            const originalPreis = anfrage.kva?.varianten?.[ausgewaehlteVariante]?.gesamt
-                               || anfrage.kva?.varianten?.original?.gesamt
-                               || anfrage.kva?.varianten?.zubehoer?.gesamt
-                               || anfrage.kva?.varianten?.partner?.gesamt
-                               || anfrage.kva?.gesamt
-                               || anfrage.kva?.gesamtpreis
-                               || anfrage.angebotDetails?.preis  // ✅ NEW: Entwurf price fallback
-                               || 0;
+            // 🔧 FIX (2025-12-01): Multi-Service/Entwurf Pipeline
+            // Entwurf-System nutzt angebotDetails.summeBruttoOriginal/summeBruttoAftermarket
+            // NICHT kva.varianten (das existiert nur für Single-Service KVA)
+            let originalPreis = 0;
+
+            // PRIORITÄT 1: Entwurf-System mit Varianten (summeBruttoOriginal/Aftermarket)
+            if (anfrage.angebotDetails?.hasVarianten || anfrage.hasVarianten) {
+                if (ausgewaehlteVariante === 'aftermarket' || ausgewaehlteVariante === 'zubehoer') {
+                    originalPreis = anfrage.angebotDetails?.summeBruttoAftermarket
+                                 || anfrage.kalkulation?.summeBruttoAftermarket
+                                 || anfrage.vereinbarterPreis
+                                 || 0;
+                    console.log('💶 [ENTWURF] Aftermarket-Preis verwendet:', originalPreis);
+                } else {
+                    originalPreis = anfrage.angebotDetails?.summeBruttoOriginal
+                                 || anfrage.kalkulation?.summeBruttoOriginal
+                                 || anfrage.angebotDetails?.preis
+                                 || 0;
+                    console.log('💶 [ENTWURF] Original-Preis verwendet:', originalPreis);
+                }
+            }
+            // PRIORITÄT 2: Direkter vereinbarterPreis (bereits gewählt)
+            else if (anfrage.vereinbarterPreis) {
+                originalPreis = anfrage.vereinbarterPreis;
+                console.log('💶 [DIREKT] vereinbarterPreis verwendet:', originalPreis);
+            }
+            // PRIORITÄT 3: KVA-System mit varianten (Single-Service)
+            else if (anfrage.kva?.varianten) {
+                originalPreis = anfrage.kva.varianten[ausgewaehlteVariante]?.gesamt
+                             || anfrage.kva.varianten.original?.gesamt
+                             || anfrage.kva.varianten.zubehoer?.gesamt
+                             || anfrage.kva.varianten.partner?.gesamt
+                             || anfrage.kva.gesamt
+                             || 0;
+                console.log('💶 [KVA] Varianten-Preis verwendet:', originalPreis);
+            }
+            // PRIORITÄT 4: Fallbacks
+            else {
+                originalPreis = anfrage.kva?.gesamt
+                             || anfrage.kva?.gesamtpreis
+                             || anfrage.angebotDetails?.preis
+                             || 0;
+                console.log('💶 [FALLBACK] Preis verwendet:', originalPreis);
+            }
 
             console.log('💶 [PREIS-PIPELINE] Original-Preis extrahiert:', originalPreis, '€');
 
