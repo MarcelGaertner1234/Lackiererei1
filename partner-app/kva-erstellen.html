@@ -5607,6 +5607,8 @@
             // ========================================
             // 3. ERSATZTEILE (PRO SERVICE, 2 VARIANTEN)
             // Aus kalkulation.ersatzteile mit preisOriginal und preisAftermarket
+            // 🔧 FIX Dec 1, 2025: Ersatzteile werden dem ÜBERGEBENEN serviceTyp zugeordnet
+            // (nicht immer dem ersten Service!)
             // ========================================
             if (kalkulation.ersatzteile && kalkulation.ersatzteile.length > 0) {
                 console.log('📦 [PREFILL-NEU] Lade Ersatzteile → Service-spezifische Tabellen');
@@ -5628,13 +5630,32 @@
                     }
                 });
 
-                // Ersatzteile auf den ersten Service verteilen (oder auf alle gleich)
-                const targetService = services[0];
+                // 🔧 FIX Dec 1, 2025: Ersatzteile haben jetzt ein serviceTyp-Feld
+                // Jedes Ersatzteil wird seinem zugeordneten Service zugewiesen
+                const defaultService = services[0]; // Fallback wenn kein serviceTyp vorhanden
+
+                console.log(`   📍 Default-Service für Ersatzteile ohne Zuordnung: "${defaultService}"`);
 
                 kalkulation.ersatzteile.forEach(et => {
                     const menge = parseFloat(et.menge) || 1;
                     const preisOriginal = parseFloat(et.preisOriginal) || parseFloat(et.preis) || 0;
                     const preisAftermarket = parseFloat(et.preisAftermarket) || preisOriginal;
+
+                    // 🆕 Service aus Ersatzteil-Daten nehmen, falls vorhanden
+                    let targetService = et.serviceTyp || defaultService;
+                    // Validiere dass der Service in der Anfrage existiert
+                    if (!services.includes(targetService)) {
+                        console.warn(`   ⚠️ Service "${targetService}" nicht in Anfrage, verwende "${defaultService}"`);
+                        targetService = defaultService;
+                    }
+
+                    // Stelle sicher dass die Service-Struktur existiert
+                    if (!variantTableData.original._services[targetService]) {
+                        variantTableData.original._services[targetService] = { ersatzteile: [], arbeitslohn: [], lackierung: [] };
+                    }
+                    if (!variantTableData.zubehoer._services[targetService]) {
+                        variantTableData.zubehoer._services[targetService] = { ersatzteile: [], arbeitslohn: [], lackierung: [] };
+                    }
 
                     // Original-Variante
                     variantTableData.original._services[targetService].ersatzteile.push({
@@ -5653,9 +5674,11 @@
                         einzelpreis: preisAftermarket,
                         gesamtpreis: preisAftermarket * menge
                     });
+
+                    console.log(`   📦 Ersatzteil "${et.name}" → Service: "${targetService}"`);
                 });
 
-                console.log(`   ✅ ${kalkulation.ersatzteile.length} Ersatzteile → original + zubehoer für Service "${targetService}"`);
+                console.log(`   ✅ ${kalkulation.ersatzteile.length} Ersatzteile verteilt`);
             }
 
             // ========================================

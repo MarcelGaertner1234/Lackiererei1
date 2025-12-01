@@ -6177,6 +6177,14 @@
                                     <label>OE-/Teilenummer</label>
                                     <input type="text" id="ersatzteilAddTeilenr" placeholder="z.B. 5G1941005A">
                                 </div>
+                                <!-- 🆕 Dec 1, 2025: Service-Auswahl für Multi-Service -->
+                                <div class="ersatzteil-field" id="ersatzteilServiceContainer" style="display: none;">
+                                    <label>Für Service</label>
+                                    <select id="ersatzteilAddService" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                                        <option value="">Allgemein</option>
+                                        <!-- Wird dynamisch befüllt bei Multi-Service -->
+                                    </select>
+                                </div>
                             </div>
                             <!-- 🆕 Nov 30, 2025: Zwei Preis-Felder für Original und Aftermarket -->
                             <div class="ersatzteil-form-row">
@@ -13040,6 +13048,10 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 return;
             }
 
+            // 🆕 Dec 1, 2025: Service-Zuordnung für Multi-Service
+            const serviceSelect = document.getElementById('ersatzteilAddService');
+            const selectedService = serviceSelect ? serviceSelect.value : '';
+
             const ersatzteil = {
                 name: name,
                 teilenummer: teilenummer,
@@ -13050,10 +13062,17 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 preis: preisOriginal,
                 menge: menge,
                 lieferant: lieferant,
-                bestellLink: bestellLink
+                bestellLink: bestellLink,
+                // 🆕 Dec 1, 2025: Service-Zuordnung
+                serviceTyp: selectedService || kalkWizardData.serviceArt || ''
             };
 
             kalkWizardData.ersatzteile.push(ersatzteil);
+
+            // Log für Debugging
+            if (selectedService) {
+                console.log(`📦 Ersatzteil "${name}" → Service: ${selectedService}`);
+            }
 
             // In DB speichern
             saveErsatzteilToDB(ersatzteil);
@@ -13073,6 +13092,8 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             if (mengeField) mengeField.value = '1';
             if (lieferantField) lieferantField.value = '';
             if (linkField) linkField.value = '';
+            // 🆕 Dec 1, 2025: Service-Dropdown zurücksetzen (Multi-Service)
+            if (serviceSelect) serviceSelect.selectedIndex = 0;
 
             // Liste neu rendern
             renderErsatzteileTable();
@@ -13226,6 +13247,38 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
             // 🆕 Nov 30, 2025: Teile-Checkliste rendern
             renderTeileChecklist();
+
+            // 🆕 Dec 1, 2025: Service-Dropdown für Multi-Service befüllen
+            const serviceContainer = document.getElementById('ersatzteilServiceContainer');
+            const serviceSelect = document.getElementById('ersatzteilAddService');
+            if (serviceContainer && serviceSelect && kalkWizardData.isMultiService && kalkWizardData.additionalServicesFromEntwurf?.length > 0) {
+                // Zeige Service-Dropdown
+                serviceContainer.style.display = 'block';
+
+                // Services ermitteln (Primary + Additional)
+                const allServices = [];
+                if (kalkWizardData.serviceArt) {
+                    allServices.push(kalkWizardData.serviceArt);
+                }
+                kalkWizardData.additionalServicesFromEntwurf.forEach(svc => {
+                    const svcTyp = typeof svc === 'string' ? svc : svc.serviceTyp;
+                    if (svcTyp && !allServices.includes(svcTyp)) {
+                        allServices.push(svcTyp);
+                    }
+                });
+
+                // Dropdown befüllen
+                serviceSelect.innerHTML = '<option value="">-- Service wählen --</option>';
+                allServices.forEach(svc => {
+                    const label = SERVICE_LABELS[svc] || svc;
+                    serviceSelect.innerHTML += `<option value="${svc}">${label}</option>`;
+                });
+
+                console.log('📦 [MULTI-SERVICE] Ersatzteil-Service-Dropdown befüllt:', allServices);
+            } else if (serviceContainer) {
+                // Single-Service: Dropdown verstecken
+                serviceContainer.style.display = 'none';
+            }
         }
 
         /**
