@@ -17254,21 +17254,54 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
         }
 
         // 🆕 Kalkulation mit Entwurf verknüpfen
+        // 🔧 FIX Dec 1, 2025: Alle wichtigen Kalkulationsdaten übertragen (nicht nur Summen!)
+        // WICHTIG: Original-Felder (ersatzfahrzeugGewuenscht, abholadresse, etc.) NICHT überschreiben!
         async function linkKalkulationToEntwurf(entwurfId, kalkulationData, kalkulationId) {
             try {
-                await window.getCollection('partnerAnfragen').doc(entwurfId).update({
+                // 🔧 FIX Dec 1, 2025: Ersatzfahrzeug-Kosten aus kalkWizardData holen
+                const ersatzfahrzeugKosten = kalkWizardData.ersatzfahrzeug ||
+                                             kalkWizardData.fahrzeug?.kalkulationData?.ersatzfahrzeug ||
+                                             null;
+
+                // Nur Kalkulations-spezifische Felder updaten
+                // NICHT: ersatzfahrzeugGewuenscht, serviceDetails, abholadresse (kommen aus annahme.html)
+                const updateData = {
                     kalkulationId: kalkulationId,
-                    kalkulationData: {
+                    // 🔧 FIX Dec 1, 2025: Vollständige Kalkulationsdaten in kalkulation-Objekt
+                    kalkulation: {
+                        // Summen
                         summeBrutto: kalkulationData.summeBrutto,
                         summeNetto: kalkulationData.summeNetto,
-                        erstelltAm: kalkulationData.createdAt
+                        summeArbeit: kalkulationData.summeArbeit,
+                        summeMaterial: kalkulationData.summeMaterial,
+                        mwst: kalkulationData.mwst,
+                        mwstSatz: kalkulationData.mwstSatz,
+                        // Detaillierte Positionen
+                        positionen: kalkulationData.positionen || [],
+                        materialien: kalkulationData.materialien || [],
+                        ersatzteile: kalkulationData.ersatzteile || kalkWizardData.ersatzteile || [],
+                        // Ersatzfahrzeug-KOSTEN (nicht -Wunsch!)
+                        ersatzfahrzeugKosten: ersatzfahrzeugKosten,
+                        summeErsatzfahrzeug: ersatzfahrzeugKosten?.gesamt || 0,
+                        // Getrennte Summen für Varianten
+                        summeErsatzteileOriginal: kalkulationData.summeErsatzteileOriginal || 0,
+                        summeErsatzteileAftermarket: kalkulationData.summeErsatzteileAftermarket || 0,
+                        summeBruttoOriginal: kalkulationData.summeBruttoOriginal || kalkulationData.summeBrutto,
+                        summeBruttoAftermarket: kalkulationData.summeBruttoAftermarket || kalkulationData.summeBrutto,
+                        // Meta
+                        erstelltAm: kalkulationData.createdAt || new Date().toISOString()
                     }
                     // 🔧 FIX Nov 29, 2025: entwurfStatus NICHT ändern!
-                    // Entwurf bleibt 'offen' bis Angebot versendet wird
-                    // entwurfStatus: 'kalkulation_erstellt' // ENTFERNT
-                });
+                    // 🔧 FIX Dec 1, 2025: ersatzfahrzeugGewuenscht, serviceDetails NICHT überschreiben!
+                    // Diese kommen aus annahme.html und sind bereits im Entwurf gespeichert.
+                };
+
+                await window.getCollection('partnerAnfragen').doc(entwurfId).update(updateData);
 
                 console.log('✅ Kalkulation mit Entwurf verknüpft:', entwurfId);
+                console.log('   📦 Übertragen: positionen:', kalkulationData.positionen?.length || 0);
+                console.log('   🎨 Übertragen: materialien:', kalkulationData.materialien?.length || 0);
+                console.log('   🚗 Übertragen: ersatzfahrzeugKosten:', ersatzfahrzeugKosten?.gesamt || 0, '€');
             } catch (error) {
                 console.error('❌ Fehler beim Verknüpfen mit Entwurf:', error);
             }
