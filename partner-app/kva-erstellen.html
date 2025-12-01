@@ -9446,10 +9446,32 @@
             // ============================================
             checkPageBreak(50);
 
-            // Netto berechnen (Phase 7: gesamt enthält bereits EF - keine doppelte Addition!)
-            const netto = variantData.gesamt || 0;
-            const mwst = netto * 0.19;
-            const brutto = netto + mwst;
+            // 🔧 FIX (2025-12-02): variantData.gesamt ist bereits BRUTTO!
+            // Hole die korrekten Netto/Brutto-Werte aus der Kalkulation
+            let netto, mwst, brutto;
+
+            if (variantType === 'original') {
+                // Original-Variante: Aus Kalkulation oder zurückrechnen
+                brutto = parseFloat(anfrageData.kalkulation?.summeBruttoOriginal)
+                      || parseFloat(anfrageData.summeBruttoOriginal)
+                      || parseFloat(variantData.gesamt)
+                      || 0;
+                netto = parseFloat(anfrageData.kalkulation?.summeNettoOriginal)
+                     || parseFloat(anfrageData.kalkulation?.summeNetto)
+                     || (brutto / 1.19);  // Zurückrechnen wenn Netto nicht vorhanden
+                mwst = parseFloat(anfrageData.kalkulation?.mwst) || (brutto - netto);
+            } else {
+                // Aftermarket/Zubehör-Variante
+                brutto = parseFloat(anfrageData.kalkulation?.summeBruttoAftermarket)
+                      || parseFloat(anfrageData.summeBruttoAftermarket)
+                      || parseFloat(variantData.gesamt)
+                      || 0;
+                netto = parseFloat(anfrageData.kalkulation?.summeNettoAftermarket)
+                     || (brutto / 1.19);  // Zurückrechnen wenn Netto nicht vorhanden
+                mwst = brutto - netto;
+            }
+
+            console.log(`📊 [PDF] Summen für ${variantType}: Netto=${netto.toFixed(2)}, MwSt=${mwst.toFixed(2)}, Brutto=${brutto.toFixed(2)}`);
 
             // Grauer Kasten
             doc.setFillColor(245, 245, 245);
