@@ -1175,6 +1175,7 @@
 
         // Helper: Extrahiere Preis für Fahrzeuge ohne Rechnung
         // Unterstützt beide Workflows: KVA-basiert UND vereinbarter Preis (no-KVA)
+        // 🔧 FIX (2025-12-01): Root-Level gewaehlteVariante als Fallback
         function getKVAPreis(fahrzeug) {
             let basePreis = 0;
 
@@ -1183,15 +1184,20 @@
                 basePreis = parseFloat(fahrzeug.vereinbarterPreis) || 0;
             }
             // Fallback: KVA-Preis (standard workflow)
-            else if (fahrzeug.kva) {
-                if (fahrzeug.kva.varianten && fahrzeug.kva.gewaehlteVariante) {
-                    const variante = fahrzeug.kva.varianten[fahrzeug.kva.gewaehlteVariante];
-                    basePreis = parseFloat(variante?.gesamt) || 0;
-                } else if (fahrzeug.kva.varianten?.original) {
+            else if (fahrzeug.kva?.varianten) {
+                // 🔧 FIX (2025-12-01): Vollständige Fallback-Chain für gewaehlteVariante
+                const gewaehlteVariante = fahrzeug.kva?.gewaehlteVariante
+                                       || fahrzeug.gewaehlteVariante  // Root-Level!
+                                       || fahrzeug.angebotDetails?.gewaehlteVariante
+                                       || null;
+
+                if (gewaehlteVariante && fahrzeug.kva.varianten[gewaehlteVariante]) {
+                    basePreis = parseFloat(fahrzeug.kva.varianten[gewaehlteVariante].gesamt) || 0;
+                } else if (fahrzeug.kva.varianten.original) {
                     basePreis = parseFloat(fahrzeug.kva.varianten.original.gesamt) || 0;
-                } else if (fahrzeug.kva.gesamt) {
-                    basePreis = parseFloat(fahrzeug.kva.gesamt) || 0;
                 }
+            } else if (fahrzeug.kva?.gesamt) {
+                basePreis = parseFloat(fahrzeug.kva.gesamt) || 0;
             }
 
             // 🔧 FIX (2025-11-27): GAP-5 ENTFERNT - vereinbarterPreis enthält bereits Ersatzfahrzeug-Kosten!
@@ -1478,20 +1484,39 @@
                 }
 
                 // 🔧 2025-11-18: Preis ermitteln - ZUERST vereinbarterPreis, dann KVA
+                // 🔧 FIX (2025-12-01): Root-Level gewaehlteVariante als Fallback
                 let bruttoPreis = 0;
 
                 // Priorität 1: Direkter vereinbarter Preis (no-KVA workflow)
                 if (fahrzeugData.vereinbarterPreis) {
                     bruttoPreis = parseFloat(fahrzeugData.vereinbarterPreis) || 0;
+                    console.log('💶 [RECHNUNG] Preis aus vereinbarterPreis:', bruttoPreis);
                 }
-                // Priorität 2: KVA-Preis (standard workflow)
-                else if (fahrzeugData.kva?.varianten && fahrzeugData.kva.gewaehlteVariante) {
-                    const variante = fahrzeugData.kva.varianten[fahrzeugData.kva.gewaehlteVariante];
-                    bruttoPreis = parseFloat(variante?.gesamt) || 0;
-                } else if (fahrzeugData.kva?.varianten?.original) {
-                    bruttoPreis = parseFloat(fahrzeugData.kva.varianten.original.gesamt) || 0;
+                // Priorität 2: KVA-Preis mit gewaehlter Variante
+                else if (fahrzeugData.kva?.varianten) {
+                    // 🔧 FIX (2025-12-01): Vollständige Fallback-Chain für gewaehlteVariante
+                    const gewaehlteVariante = fahrzeugData.kva?.gewaehlteVariante
+                                           || fahrzeugData.gewaehlteVariante  // Root-Level!
+                                           || fahrzeugData.angebotDetails?.gewaehlteVariante
+                                           || null;
+
+                    console.log('🎯 [RECHNUNG] gewaehlteVariante Check:', {
+                        'kva.gewaehlteVariante': fahrzeugData.kva?.gewaehlteVariante,
+                        'root.gewaehlteVariante': fahrzeugData.gewaehlteVariante,
+                        'angebotDetails.gewaehlteVariante': fahrzeugData.angebotDetails?.gewaehlteVariante,
+                        'VERWENDET': gewaehlteVariante
+                    });
+
+                    if (gewaehlteVariante && fahrzeugData.kva.varianten[gewaehlteVariante]) {
+                        bruttoPreis = parseFloat(fahrzeugData.kva.varianten[gewaehlteVariante].gesamt) || 0;
+                        console.log(`💶 [RECHNUNG] Preis aus Variante "${gewaehlteVariante}":`, bruttoPreis);
+                    } else if (fahrzeugData.kva.varianten.original) {
+                        bruttoPreis = parseFloat(fahrzeugData.kva.varianten.original.gesamt) || 0;
+                        console.log('💶 [RECHNUNG] Preis aus Variante "original" (Fallback):', bruttoPreis);
+                    }
                 } else if (fahrzeugData.kva?.gesamt) {
                     bruttoPreis = parseFloat(fahrzeugData.kva.gesamt) || 0;
+                    console.log('💶 [RECHNUNG] Preis aus kva.gesamt:', bruttoPreis);
                 }
 
                 // 🔧 FIX (2025-11-27): GAP-5 ENTFERNT - vereinbarterPreis/KVA enthält bereits Ersatzfahrzeug-Kosten!
