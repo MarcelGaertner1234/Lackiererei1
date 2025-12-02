@@ -8526,74 +8526,211 @@
 
         /**
          * Generiert Suchvorschläge basierend auf Fahrzeug-Daten und gebuchten Services
+         * Nutzt alle verfügbaren Fahrzeug-Infos für präzisere Suchergebnisse
          */
         function generateSearchSuggestions(fahrzeug) {
             const suggestions = [];
-            const markeModell = `${fahrzeug.marke || ''} ${fahrzeug.modell || ''}`.trim();
+
+            // === FAHRZEUG-IDENTIFIKATION (präzise) ===
+            const marke = fahrzeug.marke || '';
+            const modell = fahrzeug.modell || '';
+            const baujahr = fahrzeug.baujahrVon || fahrzeug.baujahr || '';
+            const motorisierung = fahrzeug.motorisierung || '';
+            const karosserie = fahrzeug.karosserieform || fahrzeug.karosserie || '';
+
+            // Basis-Suchstring: Marke + Modell
+            const markeModell = `${marke} ${modell}`.trim();
+
+            // Erweiterter Suchstring: mit Baujahr (präziser für YouTube)
+            const markeModellBaujahr = baujahr
+                ? `${markeModell} ${baujahr}`.trim()
+                : markeModell;
+
+            // Vollständiger Suchstring: mit Motor (für spezifische Anleitungen)
+            const vollstaendig = motorisierung
+                ? `${markeModellBaujahr} ${motorisierung}`.trim()
+                : markeModellBaujahr;
+
+            console.log('🎬 YouTube Suchkontext:', {
+                marke, modell, baujahr, motorisierung, karosserie,
+                markeModell, markeModellBaujahr, vollstaendig
+            });
 
             if (!markeModell) {
                 return [{ label: '🔧 Allgemeine KFZ Reparatur', query: 'KFZ Reparatur Anleitung' }];
             }
 
-            // Service-spezifische Suchvorschläge
+            // === SERVICE-DATEN AUSLESEN ===
+            const serviceData = fahrzeug.serviceData || fahrzeug.serviceDetails || {};
+            const schadenBeschreibung = fahrzeug.schadenBeschreibung || serviceData.beschreibung || '';
+
+            // Service-spezifische Suchvorschläge mit Fahrzeug-Details
             const serviceSearchTerms = {
-                'lackier': [
-                    { label: '🎨 Lackiervorbereitung', query: `${markeModell} Lackiervorbereitung` },
-                    { label: '🚪 Tür demontieren', query: `${markeModell} Tür ausbauen demontieren` },
-                    { label: '🛡️ Stoßstange demontieren', query: `${markeModell} Stoßstange ausbauen` },
-                    { label: '🔧 Kotflügel demontieren', query: `${markeModell} Kotflügel ausbauen` }
+                'lackier': () => {
+                    const terms = [
+                        { label: `🎨 ${marke} Lackiervorbereitung`, query: `${markeModellBaujahr} Lackiervorbereitung Demontage` },
+                        { label: '🚪 Tür demontieren', query: `${markeModellBaujahr} Tür ausbauen Anleitung` },
+                        { label: '🛡️ Stoßstange ab/anbauen', query: `${markeModellBaujahr} Stoßstange demontieren` },
+                        { label: '🔧 Kotflügel ausbauen', query: `${markeModellBaujahr} Kotflügel demontieren wechseln` }
+                    ];
+                    // Wenn Schadensbeschreibung vorhanden, spezifische Suche
+                    if (schadenBeschreibung) {
+                        const keywords = extractKeywords(schadenBeschreibung);
+                        if (keywords.length > 0) {
+                            terms.unshift({
+                                label: `🔍 ${keywords[0]} reparieren`,
+                                query: `${markeModellBaujahr} ${keywords[0]} reparieren Anleitung`
+                            });
+                        }
+                    }
+                    return terms;
+                },
+                'reifen': () => {
+                    const reifenGroesse = serviceData.reifengroesse || serviceData.dimension || serviceData.groesse || '';
+                    const reifenTyp = serviceData.reifentyp || serviceData.typ || '';
+                    const terms = [
+                        { label: '🛞 Reifen wechseln', query: `${markeModellBaujahr} Reifen wechseln Radwechsel` },
+                        { label: '🔧 Wagenheber Aufnahme', query: `${markeModellBaujahr} Wagenheber Ansetzpunkt Aufnahme` },
+                        { label: '⚖️ Reifen auswuchten', query: `Reifen auswuchten Anleitung Wuchtmaschine` }
+                    ];
+                    if (reifenGroesse) {
+                        terms.push({ label: `📏 ${reifenGroesse} Felgen`, query: `${marke} ${reifenGroesse} Felgen montieren` });
+                    }
+                    return terms;
+                },
+                'mechanik': () => {
+                    const reparaturArt = serviceData.art || serviceData.reparaturart || '';
+                    const terms = [
+                        { label: '🔧 Bremsen wechseln', query: `${markeModellBaujahr} Bremsbeläge Bremsscheiben wechseln` },
+                        { label: '🛢️ Ölwechsel', query: `${markeModellBaujahr} Ölwechsel Anleitung Ölfilter` },
+                        { label: '⚙️ Zahnriemen', query: `${markeModellBaujahr} Zahnriemen wechseln Steuerzeiten` }
+                    ];
+                    // Motor-spezifische Suche wenn vorhanden
+                    if (motorisierung) {
+                        terms.unshift({
+                            label: `🔧 ${motorisierung} Motor`,
+                            query: `${marke} ${motorisierung} Motor Reparatur Anleitung`
+                        });
+                    }
+                    // Reparaturart-spezifisch
+                    if (reparaturArt) {
+                        terms.unshift({
+                            label: `🔧 ${reparaturArt}`,
+                            query: `${markeModellBaujahr} ${reparaturArt} Anleitung`
+                        });
+                    }
+                    return terms;
+                },
+                'pflege': () => {
+                    const pflegePaket = serviceData.paket || serviceData.leistung || '';
+                    const terms = [
+                        { label: '✨ Polieren', query: `${marke} ${karosserie || 'Auto'} polieren Anleitung Profi` },
+                        { label: '🧽 Innenreinigung', query: `${markeModell} Innenreinigung Detailing komplett` },
+                        { label: '💎 Keramikversiegelung', query: `Keramikversiegelung ${marke} Anleitung auftragen` }
+                    ];
+                    if (karosserie) {
+                        terms.push({ label: `🚗 ${karosserie} aufbereiten`, query: `${karosserie} Fahrzeugaufbereitung Anleitung` });
+                    }
+                    return terms;
+                },
+                'glas': () => {
+                    const scheibentyp = serviceData.scheibentyp || '';
+                    const terms = [];
+                    if (scheibentyp.includes('front') || scheibentyp.includes('windschutz')) {
+                        terms.push({ label: '🔍 Frontscheibe wechseln', query: `${markeModellBaujahr} Frontscheibe Windschutzscheibe wechseln` });
+                    } else if (scheibentyp.includes('heck')) {
+                        terms.push({ label: '🔍 Heckscheibe wechseln', query: `${markeModellBaujahr} Heckscheibe wechseln` });
+                    } else if (scheibentyp.includes('seiten')) {
+                        terms.push({ label: '🔍 Seitenscheibe wechseln', query: `${markeModellBaujahr} Seitenscheibe Fensterheber` });
+                    } else {
+                        terms.push({ label: '🔍 Scheibe wechseln', query: `${markeModellBaujahr} Scheibe wechseln Verglasung` });
+                    }
+                    terms.push({ label: '🛠️ Steinschlag reparieren', query: `Steinschlag reparieren Anleitung DIY` });
+                    return terms;
+                },
+                'klima': () => {
+                    const klimaService = serviceData.klimaservice || '';
+                    const kaeltemittel = serviceData.kaeltemittel || '';
+                    const terms = [
+                        { label: '❄️ Klima befüllen', query: `${markeModellBaujahr} Klimaanlage befüllen ${kaeltemittel}`.trim() },
+                        { label: '🔧 Klimakompressor', query: `${markeModellBaujahr} Klimakompressor wechseln ausbauen` }
+                    ];
+                    if (klimaService === 'wartung') {
+                        terms.unshift({ label: '🔄 Klima Wartung', query: `${markeModell} Klimaanlage Wartung Desinfektion` });
+                    }
+                    return terms;
+                },
+                'dellen': () => {
+                    const dellenPosition = serviceData.position || serviceData.dellenposition || '';
+                    const dellenAnzahl = serviceData.dellenanzahl || '';
+                    const terms = [
+                        { label: '🔨 PDR Technik', query: `PDR Dellendrücken Anleitung Profi Technik` },
+                        { label: '🛠️ Ausbeultechnik', query: `Ausbeultechnik ohne Lackieren Delle entfernen` }
+                    ];
+                    if (dellenPosition) {
+                        terms.unshift({
+                            label: `🎯 ${dellenPosition} Delle`,
+                            query: `${marke} ${dellenPosition} Delle entfernen PDR`
+                        });
+                    }
+                    return terms;
+                },
+                'folierung': () => {
+                    const folienArt = serviceData.art || serviceData.folierungArt || '';
+                    const terms = [
+                        { label: '🎬 Folie aufziehen', query: `${markeModellBaujahr} Folie aufziehen Car Wrapping` },
+                        { label: '🔥 Wrap Technik', query: `Car Wrapping Anleitung Profi Technik` }
+                    ];
+                    if (folienArt) {
+                        terms.unshift({ label: `🎨 ${folienArt}`, query: `${marke} ${folienArt} Folierung Anleitung` });
+                    }
+                    if (karosserie) {
+                        terms.push({ label: `🚗 ${karosserie} folieren`, query: `${karosserie} komplett folieren Anleitung` });
+                    }
+                    return terms;
+                },
+                'tuev': () => [
+                    { label: '📋 TÜV Checkliste', query: `TÜV Hauptuntersuchung vorbereiten Checkliste ${baujahr ? 'Oldtimer' : ''}`.trim() },
+                    { label: '🔧 TÜV Mängel', query: `TÜV Mängel selbst beheben häufige Fehler` },
+                    { label: `🔍 ${marke} TÜV`, query: `${markeModell} TÜV Probleme häufige Mängel` }
                 ],
-                'reifen': [
-                    { label: '🛞 Reifen wechseln', query: `${markeModell} Reifen wechseln Anleitung` },
-                    { label: '🔧 Wagenheber Position', query: `${markeModell} Wagenheber Aufnahmepunkt` },
-                    { label: '⚖️ Reifen auswuchten', query: `Reifen auswuchten Anleitung` }
-                ],
-                'mechanik': [
-                    { label: '🔧 Bremsen wechseln', query: `${markeModell} Bremsen wechseln` },
-                    { label: '🛢️ Ölwechsel', query: `${markeModell} Ölwechsel Anleitung` },
-                    { label: '⚙️ Zahnriemen wechseln', query: `${markeModell} Zahnriemen wechseln` }
-                ],
-                'pflege': [
-                    { label: '✨ Polieren', query: `Auto polieren Anleitung Profi` },
-                    { label: '🧽 Innenreinigung', query: `${markeModell} Innenreinigung Detailing` },
-                    { label: '💎 Keramikversiegelung', query: `Keramikversiegelung Anleitung` }
-                ],
-                'glas': [
-                    { label: '🔍 Frontscheibe wechseln', query: `${markeModell} Windschutzscheibe wechseln` },
-                    { label: '🛠️ Steinschlag reparieren', query: `Steinschlag reparieren Anleitung` }
-                ],
-                'klima': [
-                    { label: '❄️ Klimaanlage befüllen', query: `${markeModell} Klimaanlage befüllen` },
-                    { label: '🔧 Klimakompressor', query: `${markeModell} Klimakompressor wechseln` }
-                ],
-                'dellen': [
-                    { label: '🔨 PDR Dellendrücken', query: `PDR Dellendrücken Anleitung` },
-                    { label: '🛠️ Ausbeultechnik', query: `Ausbeultechnik ohne Lackieren` }
-                ],
-                'folierung': [
-                    { label: '🎬 Folie aufziehen', query: `${markeModell} Folie aufziehen Anleitung` },
-                    { label: '🔥 Folie föhnen', query: `Car Wrapping Anleitung Profi` }
-                ],
-                'tuev': [
-                    { label: '📋 TÜV Checkliste', query: `TÜV Hauptuntersuchung vorbereiten` },
-                    { label: '🔧 TÜV Mängel beheben', query: `TÜV Mängel selbst beheben` }
-                ],
-                'versicherung': [
-                    { label: '📸 Schadensdokumentation', query: `Unfallschaden dokumentieren Anleitung` }
-                ],
-                'steinschutz': [
-                    { label: '🛡️ Steinschlagfolie', query: `Steinschlagschutzfolie aufbringen Anleitung` },
-                    { label: '🎬 PPF Installation', query: `PPF Paint Protection Film Installation` }
-                ],
-                'werbebeklebung': [
-                    { label: '📢 Beschriftung aufbringen', query: `Fahrzeugbeschriftung aufbringen Anleitung` }
-                ]
+                'versicherung': () => {
+                    const schadenTyp = serviceData.schadenart || serviceData.unfallart || '';
+                    const terms = [
+                        { label: '📸 Schadensdoku', query: `Unfallschaden dokumentieren Gutachten Anleitung` }
+                    ];
+                    if (schadenTyp) {
+                        terms.unshift({ label: `🚨 ${schadenTyp}`, query: `${marke} ${schadenTyp} Reparatur Anleitung` });
+                    }
+                    return terms;
+                },
+                'steinschutz': () => {
+                    const steinschutzUmfang = serviceData.steinschutzUmfang || serviceData.umfang || '';
+                    const terms = [
+                        { label: '🛡️ PPF aufbringen', query: `Steinschlagschutzfolie PPF aufbringen Anleitung` },
+                        { label: '🎬 PPF Installation', query: `PPF Paint Protection Film Installation Tutorial` }
+                    ];
+                    if (steinschutzUmfang === 'frontpaket' || steinschutzUmfang.includes('front')) {
+                        terms.unshift({ label: '🚗 Front PPF', query: `${marke} Frontpaket Steinschutzfolie anbringen` });
+                    }
+                    return terms;
+                },
+                'werbebeklebung': () => {
+                    const flaeche = serviceData.flaeche || '';
+                    return [
+                        { label: '📢 Beschriftung', query: `Fahrzeugbeschriftung aufbringen Anleitung Profi` },
+                        { label: '🎨 Plotterfolie', query: `Plotterfolie aufkleben Auto Beschriftung` }
+                    ];
+                }
             };
+
+            // === VORSCHLÄGE GENERIEREN ===
 
             // Haupt-Service hinzufügen
             const primaryService = fahrzeug.serviceTyp || 'lackier';
             if (serviceSearchTerms[primaryService]) {
-                suggestions.push(...serviceSearchTerms[primaryService]);
+                const terms = serviceSearchTerms[primaryService]();
+                suggestions.push(...terms);
             }
 
             // Additional Services hinzufügen
@@ -8602,23 +8739,46 @@
                     const serviceTyp = typeof s === 'string' ? s : s.serviceTyp;
                     if (serviceTyp && serviceSearchTerms[serviceTyp]) {
                         // Nur erste 2 Vorschläge pro Additional Service
-                        suggestions.push(...serviceSearchTerms[serviceTyp].slice(0, 2));
+                        const terms = serviceSearchTerms[serviceTyp]();
+                        suggestions.push(...terms.slice(0, 2));
                     }
                 });
             }
 
-            // Allgemeiner Fahrzeug-Vorschlag
+            // Allgemeiner Fahrzeug-Vorschlag (mit Baujahr für Präzision)
             suggestions.unshift({
-                label: `🚗 ${markeModell} Übersicht`,
-                query: `${markeModell} Reparatur Anleitung`
+                label: `🚗 ${markeModell} ${baujahr || ''}`.trim(),
+                query: `${vollstaendig} Reparatur Wartung Anleitung`
             });
 
-            // Duplikate entfernen und auf max. 8 begrenzen
+            // Duplikate entfernen und auf max. 10 begrenzen (mehr Auswahl)
             const uniqueSuggestions = suggestions.filter((s, i, arr) =>
                 arr.findIndex(x => x.query === s.query) === i
-            ).slice(0, 8);
+            ).slice(0, 10);
 
             return uniqueSuggestions;
+        }
+
+        /**
+         * Extrahiert relevante Keywords aus einer Schadensbeschreibung
+         */
+        function extractKeywords(text) {
+            if (!text) return [];
+
+            // Relevante KFZ-Teile und Schäden
+            const relevantTerms = [
+                'stoßstange', 'kotflügel', 'tür', 'haube', 'motorhaube', 'heckklappe',
+                'schweller', 'dach', 'spiegel', 'scheinwerfer', 'rückleuchte',
+                'felge', 'radlauf', 'a-säule', 'b-säule', 'c-säule',
+                'kratzer', 'delle', 'beule', 'rost', 'lack', 'steinschlag',
+                'riss', 'bruch', 'verformung', 'bremse', 'auspuff', 'getriebe'
+            ];
+
+            const lowerText = text.toLowerCase();
+            const found = relevantTerms.filter(term => lowerText.includes(term));
+
+            // Kapitalisieren für bessere Darstellung
+            return found.map(term => term.charAt(0).toUpperCase() + term.slice(1));
         }
 
         /**
