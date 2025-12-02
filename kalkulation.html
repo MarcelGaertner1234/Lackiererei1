@@ -19314,21 +19314,33 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
         async function loadHistorie() {
             try {
-                console.log('📜 Lade Historie aus kalkulationen...');
-                const collectionName = window.getCollectionName ? window.getCollectionName('kalkulationen') : 'kalkulationen_' + window.werkstattId;
-                console.log('📜 Collection Name:', collectionName);
+                console.log('📜 Lade KVA-Historie aus partnerAnfragen...');
 
-                const snapshot = await window.getCollection('kalkulationen')
+                // KVAs werden in partnerAnfragen gespeichert (kalkulationData Feld)
+                const snapshot = await window.getCollection('partnerAnfragen')
                     .orderBy('createdAt', 'desc')
-                    .limit(50)
+                    .limit(100)
                     .get();
 
-                console.log('📜 Snapshot size:', snapshot.size);
-                console.log('📜 Snapshot empty:', snapshot.empty);
+                console.log('📜 Alle partnerAnfragen:', snapshot.size);
+
+                // Nur Anfragen mit kalkulationData filtern
+                const kalkulationen = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.kalkulationData && data.kalkulationData.summeBrutto) {
+                        kalkulationen.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    }
+                });
+
+                console.log('📜 Davon mit KVA:', kalkulationen.length);
 
                 const container = document.getElementById('historieListe');
 
-                if (snapshot.empty) {
+                if (kalkulationen.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
                             <i data-feather="file-text"></i>
@@ -19347,8 +19359,8 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                                 <th>Datum</th>
                                 <th>Kennzeichen</th>
                                 <th>Kunde</th>
-                                <th>Positionen</th>
-                                <th>Betrag</th>
+                                <th>Fahrzeug</th>
+                                <th>Betrag (Brutto)</th>
                                 <th>Status</th>
                                 <th>Aktionen</th>
                             </tr>
@@ -19356,30 +19368,35 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                         <tbody>
                 `;
 
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const datum = new Date(data.createdAt).toLocaleDateString('de-DE');
+                kalkulationen.forEach(anfrage => {
+                    const kva = anfrage.kalkulationData;
+                    const datum = anfrage.createdAt ? new Date(anfrage.createdAt).toLocaleDateString('de-DE') : '-';
+                    const fahrzeug = anfrage.fahrzeugMarke && anfrage.fahrzeugModell
+                        ? `${anfrage.fahrzeugMarke} ${anfrage.fahrzeugModell}`
+                        : (anfrage.marke && anfrage.modell ? `${anfrage.marke} ${anfrage.modell}` : '-');
+
                     const statusBadge = {
                         'entwurf': '<span style="background: var(--color-warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Entwurf</span>',
-                        'gesendet': '<span style="background: var(--color-primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Gesendet</span>',
+                        'kva_erstellt': '<span style="background: var(--color-primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">KVA erstellt</span>',
+                        'angebot_gesendet': '<span style="background: var(--color-info); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Angebot gesendet</span>',
                         'akzeptiert': '<span style="background: var(--color-success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Akzeptiert</span>',
-                        'abgelehnt': '<span style="background: var(--color-error); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Abgelehnt</span>'
+                        'abgelehnt': '<span style="background: var(--color-error); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Abgelehnt</span>',
+                        'neu': '<span style="background: var(--color-secondary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Neu</span>'
                     };
+
+                    const summeBrutto = kva.summeBrutto || 0;
 
                     html += `
                         <tr>
                             <td>${datum}</td>
-                            <td>${data.kennzeichen || '-'}</td>
-                            <td>${data.kundenName || '-'}</td>
-                            <td>${(data.positionen?.length || 0) + (data.materialien?.length || 0)}</td>
-                            <td><strong>${data.summeBrutto?.toFixed(2) || '0.00'} €</strong></td>
-                            <td>${statusBadge[data.status] || data.status}</td>
+                            <td><strong>${anfrage.kennzeichen || '-'}</strong></td>
+                            <td>${anfrage.kundenname || anfrage.partnerName || '-'}</td>
+                            <td>${fahrzeug}</td>
+                            <td><strong>${summeBrutto.toFixed(2)} €</strong></td>
+                            <td>${statusBadge[anfrage.status] || anfrage.status || 'Unbekannt'}</td>
                             <td class="actions">
-                                <button class="btn btn-icon btn-secondary" onclick="loadKalkulationToEdit('${doc.id}')" title="Bearbeiten">
-                                    <i data-feather="edit-2"></i>
-                                </button>
-                                <button class="btn btn-icon btn-secondary" onclick="deleteKalkulation('${doc.id}')" title="Löschen" style="color: var(--color-error);">
-                                    <i data-feather="trash-2"></i>
+                                <button class="btn btn-icon btn-secondary" onclick="openKVAFromHistorie('${anfrage.id}')" title="Öffnen">
+                                    <i data-feather="eye"></i>
                                 </button>
                             </td>
                         </tr>
@@ -19392,6 +19409,27 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
             } catch (error) {
                 console.error('❌ Fehler beim Laden der Historie:', error);
+            }
+        }
+
+        // KVA aus Historie öffnen (Partner-Anfrage laden)
+        async function openKVAFromHistorie(anfrageId) {
+            try {
+                const doc = await window.getCollection('partnerAnfragen').doc(anfrageId).get();
+                if (!doc.exists) {
+                    showToast('Anfrage nicht gefunden', 'error');
+                    return;
+                }
+
+                const anfrage = doc.data();
+                console.log('📜 Öffne KVA:', anfrage);
+
+                // Zur KVA-Erstellen Seite navigieren mit Anfrage-ID
+                window.location.href = `partner-app/kva-erstellen.html?anfrageId=${anfrageId}`;
+
+            } catch (error) {
+                console.error('❌ Fehler beim Öffnen der KVA:', error);
+                showToast('Fehler beim Öffnen', 'error');
             }
         }
 
@@ -19859,6 +19897,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
         /**
          * Lädt alle KVAs für einen bestimmten Kunden
+         * KVAs werden in partnerAnfragen gespeichert (kalkulationData Feld)
          */
         async function loadKVAsForKunde(kundenName) {
             if (!kundenName) return [];
@@ -19866,21 +19905,33 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             try {
                 console.log('📋 Lade KVAs für Kunde:', kundenName);
 
-                const snapshot = await window.getCollection('kalkulationen')
-                    .where('kundenName', '==', kundenName)
+                // KVAs sind in partnerAnfragen gespeichert
+                const snapshot = await window.getCollection('partnerAnfragen')
                     .orderBy('createdAt', 'desc')
-                    .limit(20)
+                    .limit(100)
                     .get();
 
-                console.log('📋 KVAs gefunden:', snapshot.size);
-
+                // Filtern nach Kundenname UND vorhandener Kalkulation
                 const kvas = [];
                 snapshot.forEach(doc => {
-                    kvas.push({
-                        id: doc.id,
-                        ...doc.data()
-                    });
+                    const data = doc.data();
+                    const kundeMatch = (data.kundenname === kundenName) ||
+                                       (data.partnerName === kundenName) ||
+                                       (data.kundendaten?.name === kundenName);
+
+                    if (kundeMatch && data.kalkulationData && data.kalkulationData.summeBrutto) {
+                        kvas.push({
+                            id: doc.id,
+                            ...data,
+                            // KVA-Daten für einfacheren Zugriff
+                            summeBrutto: data.kalkulationData.summeBrutto,
+                            positionen: data.kalkulationData.positionen || [],
+                            materialien: data.kalkulationData.materialien || []
+                        });
+                    }
                 });
+
+                console.log('📋 KVAs gefunden für', kundenName + ':', kvas.length);
 
                 kundenKVACache[kundenName] = kvas;
                 return kvas;
@@ -19929,19 +19980,25 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                                     </thead>
                                     <tbody>
                                         ${kvas.map(kva => {
-                                            const datum = new Date(kva.createdAt).toLocaleDateString('de-DE');
-                                            const fahrzeug = kva.fahrzeugMarke ? `${kva.fahrzeugMarke} ${kva.fahrzeugModell || ''}` : '-';
+                                            const datum = kva.createdAt ? new Date(kva.createdAt).toLocaleDateString('de-DE') : '-';
+                                            const fahrzeug = kva.fahrzeugMarke && kva.fahrzeugModell
+                                                ? `${kva.fahrzeugMarke} ${kva.fahrzeugModell}`
+                                                : (kva.marke && kva.modell ? `${kva.marke} ${kva.modell}` : '-');
                                             const statusColors = {
                                                 'entwurf': '#f5a623',
-                                                'gesendet': '#007aff',
+                                                'kva_erstellt': '#007aff',
+                                                'angebot_gesendet': '#17a2b8',
                                                 'akzeptiert': '#34c759',
-                                                'abgelehnt': '#ff3b30'
+                                                'abgelehnt': '#ff3b30',
+                                                'neu': '#6c757d'
                                             };
                                             const statusLabels = {
                                                 'entwurf': 'Entwurf',
-                                                'gesendet': 'Gesendet',
+                                                'kva_erstellt': 'KVA erstellt',
+                                                'angebot_gesendet': 'Angebot gesendet',
                                                 'akzeptiert': 'Akzeptiert',
-                                                'abgelehnt': 'Abgelehnt'
+                                                'abgelehnt': 'Abgelehnt',
+                                                'neu': 'Neu'
                                             };
                                             return `
                                                 <tr style="border-bottom: 1px solid #e0e0e0;">
@@ -19955,7 +20012,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                                                         </span>
                                                     </td>
                                                     <td style="padding: 12px; text-align: center;">
-                                                        <button onclick="loadKalkulationToEdit('${kva.id}'); closeKundenKVAModal();" style="background: #007aff; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                                        <button onclick="openKVAFromHistorie('${kva.id}'); closeKundenKVAModal();" style="background: #007aff; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">
                                                             Öffnen
                                                         </button>
                                                     </td>
