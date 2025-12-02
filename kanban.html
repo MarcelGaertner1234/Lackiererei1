@@ -3069,6 +3069,9 @@
                 <button class="auftrag-tab" onclick="switchAuftragTab('pdf')" data-tab="pdf">
                     📄 PDF
                 </button>
+                <button class="auftrag-tab" onclick="switchAuftragTab('anleitungen')" data-tab="anleitungen">
+                    🎬 Anleitungen
+                </button>
             </div>
 
             <!-- Tab Content: Übersicht -->
@@ -3165,6 +3168,51 @@
             <div class="auftrag-tab-content" id="tab-pdf" style="display: none;">
                 <div id="detail-pdf" style="padding: 20px;">
                     <p style="color: var(--color-text-secondary);">Lade PDF...</p>
+                </div>
+            </div>
+
+            <!-- Tab Content: Anleitungen (YouTube Videos) -->
+            <div class="auftrag-tab-content" id="tab-anleitungen" style="display: none;">
+                <!-- Suchfeld -->
+                <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                    <input type="text"
+                           id="anleitungen-suchfeld"
+                           placeholder="🔍 Eigene Suche eingeben (z.B. BMW M4 Tür demontieren)..."
+                           style="flex: 1; padding: 12px 15px; border: 2px solid var(--color-border); border-radius: 8px; font-size: 14px; background: var(--color-background); color: var(--color-text-primary);"
+                           onkeypress="if(event.key === 'Enter') searchYouTubeManual()">
+                    <button onclick="searchYouTubeManual()"
+                            style="padding: 12px 20px; background: var(--color-primary); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+                        🔍 Suchen
+                    </button>
+                </div>
+
+                <!-- Auto-generierte Suchvorschläge -->
+                <div id="anleitungen-vorschlaege" style="margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px;">
+                    <!-- Wird dynamisch befüllt -->
+                </div>
+
+                <!-- Video-Ergebnisse -->
+                <div id="anleitungen-videos" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-text-secondary);">
+                        <div style="font-size: 48px; margin-bottom: 15px;">🎬</div>
+                        <p>Klicke auf einen Suchvorschlag oder gib eine eigene Suche ein,<br>um passende Anleitungsvideos zu finden.</p>
+                    </div>
+                </div>
+
+                <!-- Aktuell abgespieltes Video (groß) -->
+                <div id="anleitungen-player" style="display: none; margin-top: 20px;">
+                    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
+                        <iframe id="youtube-player-iframe"
+                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+                                src=""
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen>
+                        </iframe>
+                    </div>
+                    <button onclick="closeYouTubePlayer()"
+                            style="margin-top: 10px; padding: 10px 20px; background: rgba(255, 59, 48, 0.1); color: #FF3B30; border: 1px solid rgba(255, 59, 48, 0.3); border-radius: 8px; cursor: pointer; font-weight: 600;">
+                        ✕ Video schließen
+                    </button>
                 </div>
             </div>
 
@@ -8435,7 +8483,301 @@
                     loadBestellungenForModal(fahrzeugId);
                 }
             }
+
+            // Lazy Loading: Anleitungen Tab (YouTube Videos)
+            if (tabName === 'anleitungen') {
+                const fahrzeugId = document.getElementById('auftragModal').dataset.fahrzeugId;
+                if (fahrzeugId) {
+                    loadAnleitungenForModal(fahrzeugId);
+                }
+            }
         }
+
+        // ====================================================================
+        // 🎬 YOUTUBE ANLEITUNGEN SYSTEM (2025-12-02)
+        // ====================================================================
+
+        const YOUTUBE_API_KEY = 'AIzaSyD2qmcVuTGyyIxV9LEQzvkCAyrBfBJXt3s';
+        let currentAnleitungenFahrzeug = null; // Speichert aktuelles Fahrzeug für Kontext
+
+        /**
+         * Lädt Anleitungen-Tab mit auto-generierten Suchvorschlägen
+         */
+        function loadAnleitungenForModal(fahrzeugId) {
+            const fahrzeug = allFahrzeuge.find(f => String(f.id) === String(fahrzeugId));
+            if (!fahrzeug) {
+                console.error('❌ Fahrzeug nicht gefunden für Anleitungen:', fahrzeugId);
+                return;
+            }
+
+            currentAnleitungenFahrzeug = fahrzeug;
+            console.log('🎬 Lade Anleitungen für:', fahrzeug.kennzeichen, fahrzeug.marke, fahrzeug.modell);
+
+            // Generiere Suchvorschläge basierend auf Fahrzeug + Services
+            const vorschlaege = generateSearchSuggestions(fahrzeug);
+            renderSearchSuggestions(vorschlaege);
+
+            // Setze Suchfeld-Placeholder mit Fahrzeug-Info
+            const suchfeld = document.getElementById('anleitungen-suchfeld');
+            if (suchfeld) {
+                suchfeld.placeholder = `🔍 Suche z.B. "${fahrzeug.marke} ${fahrzeug.modell} Anleitung"...`;
+            }
+        }
+
+        /**
+         * Generiert Suchvorschläge basierend auf Fahrzeug-Daten und gebuchten Services
+         */
+        function generateSearchSuggestions(fahrzeug) {
+            const suggestions = [];
+            const markeModell = `${fahrzeug.marke || ''} ${fahrzeug.modell || ''}`.trim();
+
+            if (!markeModell) {
+                return [{ label: '🔧 Allgemeine KFZ Reparatur', query: 'KFZ Reparatur Anleitung' }];
+            }
+
+            // Service-spezifische Suchvorschläge
+            const serviceSearchTerms = {
+                'lackier': [
+                    { label: '🎨 Lackiervorbereitung', query: `${markeModell} Lackiervorbereitung` },
+                    { label: '🚪 Tür demontieren', query: `${markeModell} Tür ausbauen demontieren` },
+                    { label: '🛡️ Stoßstange demontieren', query: `${markeModell} Stoßstange ausbauen` },
+                    { label: '🔧 Kotflügel demontieren', query: `${markeModell} Kotflügel ausbauen` }
+                ],
+                'reifen': [
+                    { label: '🛞 Reifen wechseln', query: `${markeModell} Reifen wechseln Anleitung` },
+                    { label: '🔧 Wagenheber Position', query: `${markeModell} Wagenheber Aufnahmepunkt` },
+                    { label: '⚖️ Reifen auswuchten', query: `Reifen auswuchten Anleitung` }
+                ],
+                'mechanik': [
+                    { label: '🔧 Bremsen wechseln', query: `${markeModell} Bremsen wechseln` },
+                    { label: '🛢️ Ölwechsel', query: `${markeModell} Ölwechsel Anleitung` },
+                    { label: '⚙️ Zahnriemen wechseln', query: `${markeModell} Zahnriemen wechseln` }
+                ],
+                'pflege': [
+                    { label: '✨ Polieren', query: `Auto polieren Anleitung Profi` },
+                    { label: '🧽 Innenreinigung', query: `${markeModell} Innenreinigung Detailing` },
+                    { label: '💎 Keramikversiegelung', query: `Keramikversiegelung Anleitung` }
+                ],
+                'glas': [
+                    { label: '🔍 Frontscheibe wechseln', query: `${markeModell} Windschutzscheibe wechseln` },
+                    { label: '🛠️ Steinschlag reparieren', query: `Steinschlag reparieren Anleitung` }
+                ],
+                'klima': [
+                    { label: '❄️ Klimaanlage befüllen', query: `${markeModell} Klimaanlage befüllen` },
+                    { label: '🔧 Klimakompressor', query: `${markeModell} Klimakompressor wechseln` }
+                ],
+                'dellen': [
+                    { label: '🔨 PDR Dellendrücken', query: `PDR Dellendrücken Anleitung` },
+                    { label: '🛠️ Ausbeultechnik', query: `Ausbeultechnik ohne Lackieren` }
+                ],
+                'folierung': [
+                    { label: '🎬 Folie aufziehen', query: `${markeModell} Folie aufziehen Anleitung` },
+                    { label: '🔥 Folie föhnen', query: `Car Wrapping Anleitung Profi` }
+                ],
+                'tuev': [
+                    { label: '📋 TÜV Checkliste', query: `TÜV Hauptuntersuchung vorbereiten` },
+                    { label: '🔧 TÜV Mängel beheben', query: `TÜV Mängel selbst beheben` }
+                ],
+                'versicherung': [
+                    { label: '📸 Schadensdokumentation', query: `Unfallschaden dokumentieren Anleitung` }
+                ],
+                'steinschutz': [
+                    { label: '🛡️ Steinschlagfolie', query: `Steinschlagschutzfolie aufbringen Anleitung` },
+                    { label: '🎬 PPF Installation', query: `PPF Paint Protection Film Installation` }
+                ],
+                'werbebeklebung': [
+                    { label: '📢 Beschriftung aufbringen', query: `Fahrzeugbeschriftung aufbringen Anleitung` }
+                ]
+            };
+
+            // Haupt-Service hinzufügen
+            const primaryService = fahrzeug.serviceTyp || 'lackier';
+            if (serviceSearchTerms[primaryService]) {
+                suggestions.push(...serviceSearchTerms[primaryService]);
+            }
+
+            // Additional Services hinzufügen
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                fahrzeug.additionalServices.forEach(s => {
+                    const serviceTyp = typeof s === 'string' ? s : s.serviceTyp;
+                    if (serviceTyp && serviceSearchTerms[serviceTyp]) {
+                        // Nur erste 2 Vorschläge pro Additional Service
+                        suggestions.push(...serviceSearchTerms[serviceTyp].slice(0, 2));
+                    }
+                });
+            }
+
+            // Allgemeiner Fahrzeug-Vorschlag
+            suggestions.unshift({
+                label: `🚗 ${markeModell} Übersicht`,
+                query: `${markeModell} Reparatur Anleitung`
+            });
+
+            // Duplikate entfernen und auf max. 8 begrenzen
+            const uniqueSuggestions = suggestions.filter((s, i, arr) =>
+                arr.findIndex(x => x.query === s.query) === i
+            ).slice(0, 8);
+
+            return uniqueSuggestions;
+        }
+
+        /**
+         * Rendert die Suchvorschläge als klickbare Buttons
+         */
+        function renderSearchSuggestions(suggestions) {
+            const container = document.getElementById('anleitungen-vorschlaege');
+            if (!container) return;
+
+            container.innerHTML = suggestions.map(s => `
+                <button onclick="searchYouTube('${s.query.replace(/'/g, "\\'")}')"
+                        style="padding: 8px 14px; background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.3); border-radius: 20px; color: var(--color-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; white-space: nowrap;"
+                        onmouseover="this.style.background='rgba(33, 150, 243, 0.2)'"
+                        onmouseout="this.style.background='rgba(33, 150, 243, 0.1)'">
+                    ${s.label}
+                </button>
+            `).join('');
+        }
+
+        /**
+         * Manuelle YouTube-Suche aus dem Suchfeld
+         */
+        function searchYouTubeManual() {
+            const suchfeld = document.getElementById('anleitungen-suchfeld');
+            const query = suchfeld?.value?.trim();
+
+            if (!query) {
+                alert('Bitte gib einen Suchbegriff ein.');
+                return;
+            }
+
+            searchYouTube(query);
+        }
+
+        /**
+         * YouTube API Suche durchführen
+         */
+        async function searchYouTube(query) {
+            const container = document.getElementById('anleitungen-videos');
+            if (!container) return;
+
+            console.log('🔍 YouTube Suche:', query);
+
+            // Lade-Indikator
+            container.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <div style="font-size: 32px; animation: spin 1s linear infinite;">⏳</div>
+                    <p style="color: var(--color-text-secondary); margin-top: 15px;">Suche nach "${query}"...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(
+                    `https://www.googleapis.com/youtube/v3/search?` +
+                    `part=snippet&type=video&maxResults=6&q=${encodeURIComponent(query + ' Anleitung')}&key=${YOUTUBE_API_KEY}`
+                );
+
+                if (!response.ok) {
+                    throw new Error(`YouTube API Fehler: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('🎬 YouTube Ergebnisse:', data.items?.length || 0);
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = `
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-text-secondary);">
+                            <div style="font-size: 48px; margin-bottom: 15px;">😕</div>
+                            <p>Keine Videos gefunden für "${query}"</p>
+                            <p style="font-size: 13px; margin-top: 10px;">Versuche eine andere Suche.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Videos rendern
+                container.innerHTML = data.items.map(video => `
+                    <div onclick="playYouTubeVideo('${video.id.videoId}', '${video.snippet.title.replace(/'/g, "\\'")}')"
+                         style="cursor: pointer; border-radius: 12px; overflow: hidden; background: var(--color-surface); box-shadow: 0 2px 10px rgba(0,0,0,0.1); transition: all 0.2s;"
+                         onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 5px 20px rgba(0,0,0,0.15)'"
+                         onmouseout="this.style.transform=''; this.style.boxShadow='0 2px 10px rgba(0,0,0,0.1)'">
+                        <div style="position: relative;">
+                            <img src="${video.snippet.thumbnails.medium.url}"
+                                 alt="${video.snippet.title}"
+                                 style="width: 100%; height: 180px; object-fit: cover;">
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px; background: rgba(255,0,0,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                <span style="color: white; font-size: 24px; margin-left: 4px;">▶</span>
+                            </div>
+                        </div>
+                        <div style="padding: 12px;">
+                            <div style="font-size: 14px; font-weight: 600; color: var(--color-text-primary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                ${video.snippet.title}
+                            </div>
+                            <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 6px;">
+                                📺 ${video.snippet.channelTitle}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                console.error('❌ YouTube API Fehler:', error);
+                container.innerHTML = `
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-error);">
+                        <div style="font-size: 48px; margin-bottom: 15px;">❌</div>
+                        <p>Fehler beim Laden der Videos</p>
+                        <p style="font-size: 13px; margin-top: 10px;">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Spielt ein YouTube Video im eingebetteten Player ab
+         */
+        function playYouTubeVideo(videoId, title) {
+            console.log('▶️ Spiele Video:', videoId, title);
+
+            const playerContainer = document.getElementById('anleitungen-player');
+            const iframe = document.getElementById('youtube-player-iframe');
+
+            if (playerContainer && iframe) {
+                iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+                playerContainer.style.display = 'block';
+
+                // Scroll zum Player
+                playerContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        /**
+         * Schließt den YouTube Player
+         */
+        function closeYouTubePlayer() {
+            const playerContainer = document.getElementById('anleitungen-player');
+            const iframe = document.getElementById('youtube-player-iframe');
+
+            if (playerContainer && iframe) {
+                iframe.src = ''; // Video stoppen
+                playerContainer.style.display = 'none';
+            }
+        }
+
+        // CSS für Spinner Animation (wird einmal hinzugefügt)
+        if (!document.getElementById('youtube-spinner-style')) {
+            const style = document.createElement('style');
+            style.id = 'youtube-spinner-style';
+            style.textContent = `
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // ====================================================================
+        // END YOUTUBE ANLEITUNGEN SYSTEM
+        // ====================================================================
 
         async function loadBestellungenForModal(fahrzeugId) {
             const container = document.getElementById('detail-bestellungen');
