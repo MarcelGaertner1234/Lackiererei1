@@ -3340,17 +3340,53 @@
         };
         let isInitialLoad = true;
 
+        // 🛡️ PERFORMANCE FIX: Array to store listener unsubscribe functions
+        const badgeListenerUnsubscribes = [];
+
+        // 🛡️ PERFORMANCE FIX: Cleanup all listeners on page unload
+        window.addEventListener('beforeunload', () => {
+            console.log('🧹 Cleaning up badge listeners...');
+            badgeListenerUnsubscribes.forEach(unsubscribe => {
+                try {
+                    if (typeof unsubscribe === 'function') {
+                        unsubscribe();
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Error unsubscribing listener:', e);
+                }
+            });
+            badgeListenerUnsubscribes.length = 0;
+
+            // 🛡️ PERFORMANCE FIX: Also cleanup activeSessionsListener
+            if (typeof activeSessionsListener === 'function') {
+                try {
+                    activeSessionsListener();
+                    console.log('✅ Active sessions listener cleaned up');
+                } catch (e) {
+                    console.warn('⚠️ Error unsubscribing active sessions listener:', e);
+                }
+            }
+
+            console.log('✅ All index.html listeners cleaned up');
+        });
+
         function setupRealtimeBadgeListeners() {
             if (typeof window.getCollection !== 'function') {
                 console.warn('⚠️ getCollection not available - skipping real-time listeners');
                 return;
             }
 
+            // 🛡️ PERFORMANCE FIX: Clear existing listeners before setting up new ones
+            badgeListenerUnsubscribes.forEach(unsub => {
+                try { if (typeof unsub === 'function') unsub(); } catch (e) {}
+            });
+            badgeListenerUnsubscribes.length = 0;
+
             console.log('🔔 Setting up real-time badge listeners...');
 
             // 1. Fahrzeuge - offene Fahrzeuge
             try {
-                window.getCollection('fahrzeuge')
+                const unsubFahrzeuge = window.getCollection('fahrzeuge')
                     .where('status', '!=', 'abgeschlossen')
                     .onSnapshot((snapshot) => {
                         const count = snapshot.size;
@@ -3364,13 +3400,14 @@
                     }, (error) => {
                         console.warn('⚠️ Fahrzeuge listener error:', error);
                     });
+                badgeListenerUnsubscribes.push(unsubFahrzeuge);
             } catch (e) {
                 console.warn('⚠️ Fahrzeuge listener setup failed:', e);
             }
 
             // 2. Prozess - in Arbeit (nicht angenommen, nicht abgeschlossen)
             try {
-                window.getCollection('fahrzeuge')
+                const unsubProzess = window.getCollection('fahrzeuge')
                     .where('status', '!=', 'abgeschlossen')
                     .onSnapshot((snapshot) => {
                         const inArbeit = snapshot.docs.filter(doc => {
@@ -3387,13 +3424,14 @@
                     }, (error) => {
                         console.warn('⚠️ Prozess listener error:', error);
                     });
+                badgeListenerUnsubscribes.push(unsubProzess);
             } catch (e) {
                 console.warn('⚠️ Prozess listener setup failed:', e);
             }
 
             // 3. Partner-Anfragen - offene Anfragen
             try {
-                window.getCollection('partnerAnfragen')
+                const unsubPartner = window.getCollection('partnerAnfragen')
                     .where('status', '==', 'neu')
                     .where('isEntwurf', '==', false)
                     .onSnapshot((snapshot) => {
@@ -3408,13 +3446,14 @@
                     }, (error) => {
                         console.warn('⚠️ Partner listener error:', error);
                     });
+                badgeListenerUnsubscribes.push(unsubPartner);
             } catch (e) {
                 console.warn('⚠️ Partner listener setup failed:', e);
             }
 
             // 4. Entwürfe - offene Entwürfe
             try {
-                window.getCollection('partnerAnfragen')
+                const unsubEntwuerfe = window.getCollection('partnerAnfragen')
                     .where('isEntwurf', '==', true)
                     .where('entwurfStatus', '==', 'offen')
                     .onSnapshot((snapshot) => {
@@ -3436,13 +3475,14 @@
                     }, (error) => {
                         console.warn('⚠️ Entwürfe listener error:', error);
                     });
+                badgeListenerUnsubscribes.push(unsubEntwuerfe);
             } catch (e) {
                 console.warn('⚠️ Entwürfe listener setup failed:', e);
             }
 
             // 5. Rechnungen - offene Rechnungen
             try {
-                window.getCollection('rechnungen')
+                const unsubRechnungen = window.getCollection('rechnungen')
                     .where('status', '==', 'offen')
                     .onSnapshot((snapshot) => {
                         const count = snapshot.size;
@@ -3456,13 +3496,14 @@
                     }, (error) => {
                         console.warn('⚠️ Rechnungen listener error:', error);
                     });
+                badgeListenerUnsubscribes.push(unsubRechnungen);
             } catch (e) {
                 console.warn('⚠️ Rechnungen listener setup failed:', e);
             }
 
             // 6. Leihfahrzeuge - verfügbare
             try {
-                window.getCollection('leihfahrzeuge')
+                const unsubLeihfahrzeuge = window.getCollection('leihfahrzeuge')
                     .where('status', '==', 'verfuegbar')
                     .onSnapshot((snapshot) => {
                         const count = snapshot.size;
@@ -3476,6 +3517,7 @@
                     }, (error) => {
                         console.warn('⚠️ Leihfahrzeuge listener error:', error);
                     });
+                badgeListenerUnsubscribes.push(unsubLeihfahrzeuge);
             } catch (e) {
                 console.warn('⚠️ Leihfahrzeuge listener setup failed:', e);
             }

@@ -1825,10 +1825,29 @@
             }
         }
 
+        // 🛡️ PERFORMANCE FIX: Array to store listener unsubscribe functions
+        const kalenderListenerUnsubscribes = [];
+
+        // 🛡️ PERFORMANCE FIX: Cleanup all listeners on page unload
+        window.addEventListener('beforeunload', () => {
+            console.log('🧹 Cleaning up kalender listeners...');
+            kalenderListenerUnsubscribes.forEach(unsubscribe => {
+                try {
+                    if (typeof unsubscribe === 'function') {
+                        unsubscribe();
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Error unsubscribing listener:', e);
+                }
+            });
+            kalenderListenerUnsubscribes.length = 0;
+            console.log('✅ Kalender listeners cleaned up');
+        });
+
         // Material-Requests Realtime Listener
         function setupMaterialListener() {
             // ✅ Multi-Tenant Fix: Use getCollection() for werkstatt-specific access
-            window.getCollection('materialRequests')
+            const unsubMaterial = window.getCollection('materialRequests')
                 .orderBy('timestamp', 'desc')
                 .onSnapshot((snapshot) => {
                     window.materialRequests = [];
@@ -1848,6 +1867,7 @@
                 }, (error) => {
                     console.error('❌ Fehler bei Material-Requests Listener:', error);
                 });
+            kalenderListenerUnsubscribes.push(unsubMaterial);
         }
 
         // 🚗 PHASE 2: Leihfahrzeug-Events Realtime Listener
@@ -1858,7 +1878,7 @@
                 return;
             }
 
-            window.db.collection(`kalenderEvents_${werkstattId}`)
+            const unsubLeihfahrzeug = window.db.collection(`kalenderEvents_${werkstattId}`)
                 .where('typ', '==', 'leihfahrzeug')
                 .where('status', '==', 'aktiv')
                 .onSnapshot((snapshot) => {
@@ -1879,6 +1899,7 @@
                 }, (error) => {
                     console.error('❌ Fehler bei Leihfahrzeug-Events Listener:', error);
                 });
+            kalenderListenerUnsubscribes.push(unsubLeihfahrzeug);
         }
 
         // 📅 FIX (2025-11-27): Termin-Events (Abholung + Geplante Abnahme) aus Entwürfen
@@ -1890,7 +1911,7 @@
             }
 
             // Listener für 'abholung' Events
-            window.db.collection(`kalenderEvents_${werkstattId}`)
+            const unsubAbholung = window.db.collection(`kalenderEvents_${werkstattId}`)
                 .where('typ', '==', 'abholung')
                 .where('status', '==', 'geplant')
                 .onSnapshot((snapshot) => {
@@ -1909,9 +1930,10 @@
                 }, (error) => {
                     console.error('❌ Fehler bei Abholung-Events Listener:', error);
                 });
+            kalenderListenerUnsubscribes.push(unsubAbholung);
 
             // Listener für 'geplante_abnahme' Events
-            window.db.collection(`kalenderEvents_${werkstattId}`)
+            const unsubGeplante = window.db.collection(`kalenderEvents_${werkstattId}`)
                 .where('typ', '==', 'geplante_abnahme')
                 .where('status', '==', 'geplant')
                 .onSnapshot((snapshot) => {
@@ -1930,6 +1952,7 @@
                 }, (error) => {
                     console.error('❌ Fehler bei Geplante-Abnahme-Events Listener:', error);
                 });
+            kalenderListenerUnsubscribes.push(unsubGeplante);
         }
 
         // Filter Toggle
