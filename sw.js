@@ -14,7 +14,7 @@
 // KONFIGURATION
 // ============================================
 
-const CACHE_VERSION = 'v5.0-kalkulation-ux';
+const CACHE_VERSION = 'v5.1-kalkulation-liquid-glass';
 const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;
