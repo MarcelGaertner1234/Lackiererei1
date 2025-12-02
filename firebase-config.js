@@ -349,6 +349,38 @@ window.firebaseApp = {
       });
   },
 
+  // 🛡️ PERFORMANCE FIX Phase 1.1: Optimized listener for Kanban Board
+  // - Filters on Firestore level (not client-side) → fewer documents transferred
+  // - Excludes 'abgeschlossen' status → only active vehicles loaded
+  // - Uses composite index: status (asc) + createdAt (desc)
+  // WARNING: Requires Firestore composite index! Create at:
+  // https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/firestore/indexes
+  listenToActiveFahrzeuge: (callback, limit = 200) => {
+    console.log('⚡ [PERF] listenToActiveFahrzeuge: Firestore-side status filter active');
+    return window.getCollection('fahrzeuge')
+      .where('status', '!=', 'abgeschlossen')
+      .orderBy('status')  // Required for != filter
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .onSnapshot(snapshot => {
+        const fahrzeuge = [];
+        snapshot.forEach(doc => {
+          fahrzeuge.push({ id: doc.id, ...doc.data() });
+        });
+        console.log(`⚡ [PERF] Loaded ${fahrzeuge.length} active vehicles (Firestore-filtered)`);
+        callback(fahrzeuge);
+      }, error => {
+        // Fallback if composite index missing
+        if (error.code === 'failed-precondition' && error.message.includes('index')) {
+          console.warn('⚠️ Composite index missing! Falling back to listenToFahrzeuge()');
+          console.warn('   → Create index at: https://console.firebase.google.com/project/auto-lackierzentrum-mosbach/firestore/indexes');
+          // Graceful degradation to old method
+          return window.firebaseApp.listenToFahrzeuge(callback, limit);
+        }
+        console.error('❌ listenToActiveFahrzeuge error:', error);
+      });
+  },
+
   // CRITICAL FIX RUN #15: Add registriereKundenbesuch function
   // CRITICAL FIX RUN #17: Convert to arrow function for closure access
   // CRITICAL FIX RUN #43: Fixed all references in HTML files (firebaseApp → window.firebaseApp)

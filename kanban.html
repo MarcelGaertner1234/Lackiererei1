@@ -4162,11 +4162,14 @@
                     unsubscribeListener();
                 }
 
-                // Neuen Realtime Listener registrieren (ASYNC CALLBACK!)
-                // ✅ FIX Bug #13 (2025-11-24): Increase query limit to prevent pagination issues
-                // BEFORE: Default limit = 50 (vehicles beyond 50 not shown in Kanban)
-                // AFTER: Explicit limit = 200 (handles larger werkstatt inventories)
-                unsubscribeListener = firebaseApp.listenToFahrzeuge(async function(fahrzeuge) {
+                // 🛡️ PERFORMANCE FIX Phase 1.1: Use optimized listener with Firestore-side filter
+                // - listenToActiveFahrzeuge filters status != 'abgeschlossen' on Firestore level
+                // - Reduces data transfer and client-side processing
+                // - Requires composite index (graceful fallback if missing)
+                const listenerFn = firebaseApp.listenToActiveFahrzeuge || firebaseApp.listenToFahrzeuge;
+                console.log(`⚡ [PERF] Using ${listenerFn === firebaseApp.listenToActiveFahrzeuge ? 'listenToActiveFahrzeuge (optimized)' : 'listenToFahrzeuge (fallback)'}`);
+
+                unsubscribeListener = listenerFn(async function(fahrzeuge) {
                     console.log(`🔥 Realtime Update: ${fahrzeuge.length} Fahrzeuge empfangen`);
 
                     // 🐛 DEBUG: Check for duplicates (ID und Kennzeichen)
