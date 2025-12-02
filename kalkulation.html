@@ -19314,54 +19314,51 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
         async function loadHistorie() {
             try {
-                console.log('📜 Lade KVA-Historie aus partnerAnfragen...');
+                console.log('📜 Lade abgesendete KVAs aus partnerAnfragen...');
 
-                // KVAs werden in partnerAnfragen gespeichert
-                // Felder: kalkulationData ODER vereinbarterPreis/summeBruttoOriginal (direkte Felder)
+                // Nur abgesendete KVAs laden (Status: kva_gesendet, terminiert, storniert)
+                // Diese haben PDFs und wurden an den Partner gesendet
                 const snapshot = await window.getCollection('partnerAnfragen')
-                    .orderBy('createdAt', 'desc')
+                    .orderBy('lastUpdated', 'desc')
                     .limit(100)
                     .get();
 
                 console.log('📜 Alle partnerAnfragen:', snapshot.size);
 
-                // Anfragen mit KVA-Daten filtern (prüfe BEIDE Formate!)
-                const kalkulationen = [];
+                // Nur Anfragen mit KVA-Status filtern
+                const abgesendeteKVAs = [];
+                const relevanteStatus = ['kva_gesendet', 'terminiert', 'storniert'];
+
                 snapshot.forEach(doc => {
                     const data = doc.data();
 
-                    // Format 1: kalkulationData Objekt (älteres Format)
-                    const hasKalkulationData = data.kalkulationData && data.kalkulationData.summeBrutto;
-
-                    // Format 2: Direkte Felder (neueres Format ab Nov 2025)
-                    const hasDirectKVA = data.vereinbarterPreis || data.summeBruttoOriginal || data.kalkulationErstelltAm;
-
-                    if (hasKalkulationData || hasDirectKVA) {
-                        // Summe extrahieren (aus beiden Formaten)
-                        const summeBrutto = data.kalkulationData?.summeBrutto
+                    // Nur abgesendete KVAs (mit relevantem Status)
+                    if (relevanteStatus.includes(data.status)) {
+                        // Preis extrahieren (verschiedene Formate)
+                        const summeBrutto = data.summeBruttoOriginal
                             || data.vereinbarterPreis
-                            || data.summeBruttoOriginal
+                            || data.kva?.varianten?.original?.gesamt
+                            || data.kalkulationData?.summeBrutto
                             || 0;
 
-                        kalkulationen.push({
+                        abgesendeteKVAs.push({
                             id: doc.id,
                             ...data,
-                            // Normalisierte Summe für einfacheren Zugriff
                             _summeBrutto: summeBrutto
                         });
                     }
                 });
 
-                console.log('📜 Davon mit KVA:', kalkulationen.length);
+                console.log('📜 Abgesendete KVAs gefunden:', abgesendeteKVAs.length);
 
                 const container = document.getElementById('historieListe');
 
-                if (kalkulationen.length === 0) {
+                if (abgesendeteKVAs.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <i data-feather="file-text"></i>
-                            <h3>Keine Kalkulationen</h3>
-                            <p>Ihre erstellten Kalkulationen erscheinen hier</p>
+                            <i data-feather="send"></i>
+                            <h3>Keine abgesendeten KVAs</h3>
+                            <p>Hier erscheinen alle Kostenvoranschläge, die an Partner gesendet wurden</p>
                         </div>
                     `;
                     feather.replace();
@@ -19376,40 +19373,84 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                                 <th>Kennzeichen</th>
                                 <th>Kunde</th>
                                 <th>Fahrzeug</th>
-                                <th>Betrag (Brutto)</th>
+                                <th>Betrag</th>
                                 <th>Status</th>
-                                <th>Aktionen</th>
+                                <th>PDFs</th>
                             </tr>
                         </thead>
                         <tbody>
                 `;
 
-                kalkulationen.forEach(anfrage => {
-                    // Datum: createdAt oder kalkulationErstelltAm
+                abgesendeteKVAs.forEach(anfrage => {
+                    // Datum aus lastUpdated oder createdAt
                     let datum = '-';
-                    if (anfrage.kalkulationErstelltAm?.toDate) {
-                        datum = anfrage.kalkulationErstelltAm.toDate().toLocaleDateString('de-DE');
+                    if (anfrage.lastUpdated) {
+                        datum = new Date(anfrage.lastUpdated).toLocaleDateString('de-DE');
                     } else if (anfrage.createdAt) {
                         datum = new Date(anfrage.createdAt).toLocaleDateString('de-DE');
                     }
 
-                    // Fahrzeug aus verschiedenen Feldern
+                    // Fahrzeug
                     const fahrzeug = anfrage.fahrzeugMarke && anfrage.fahrzeugModell
                         ? `${anfrage.fahrzeugMarke} ${anfrage.fahrzeugModell}`
                         : (anfrage.marke && anfrage.modell ? `${anfrage.marke} ${anfrage.modell}` : '-');
 
-                    const statusBadge = {
-                        'offen': '<span style="background: var(--color-warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Offen</span>',
-                        'entwurf': '<span style="background: var(--color-warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Entwurf</span>',
-                        'kva_erstellt': '<span style="background: var(--color-primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">KVA erstellt</span>',
-                        'angebot_gesendet': '<span style="background: var(--color-info); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Angebot gesendet</span>',
-                        'akzeptiert': '<span style="background: var(--color-success); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Akzeptiert</span>',
-                        'abgelehnt': '<span style="background: var(--color-error); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Abgelehnt</span>',
-                        'neu': '<span style="background: var(--color-secondary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Neu</span>'
+                    // Status-Badges
+                    const statusBadges = {
+                        'kva_gesendet': '<span style="background: #2196F3; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;">📤 Gesendet</span>',
+                        'terminiert': '<span style="background: #4CAF50; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;">✅ Akzeptiert</span>',
+                        'storniert': '<span style="background: #f44336; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;">❌ Abgelehnt</span>'
                     };
 
-                    // Summe aus normalisiertem Feld
-                    const summeBrutto = anfrage._summeBrutto || 0;
+                    // PDF-Buttons generieren
+                    let pdfButtons = '<div style="display: flex; gap: 4px; flex-wrap: wrap;">';
+
+                    // Original-PDF
+                    if (anfrage.angebotPdfOriginal?.url) {
+                        const preis = anfrage.angebotPdfOriginal.preis ? ` (${anfrage.angebotPdfOriginal.preis.toFixed(0)}€)` : '';
+                        pdfButtons += `
+                            <a href="${anfrage.angebotPdfOriginal.url}" target="_blank"
+                               style="background: #1976D2; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;"
+                               title="Original-Angebot${preis}">
+                                📄 Original
+                            </a>`;
+                    }
+
+                    // Aftermarket-PDF
+                    if (anfrage.angebotPdfAftermarket?.url || anfrage.angebotPdfZubehoer?.url) {
+                        const pdfData = anfrage.angebotPdfAftermarket || anfrage.angebotPdfZubehoer;
+                        const preis = pdfData.preis ? ` (${pdfData.preis.toFixed(0)}€)` : '';
+                        pdfButtons += `
+                            <a href="${pdfData.url}" target="_blank"
+                               style="background: #388E3C; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;"
+                               title="Aftermarket-Angebot${preis}">
+                                📄 Aftermarket
+                            </a>`;
+                    }
+
+                    // Partner-PDF
+                    if (anfrage.angebotPdfPartner?.url) {
+                        const preis = anfrage.angebotPdfPartner.preis ? ` (${anfrage.angebotPdfPartner.preis.toFixed(0)}€)` : '';
+                        pdfButtons += `
+                            <a href="${anfrage.angebotPdfPartner.url}" target="_blank"
+                               style="background: #7B1FA2; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;"
+                               title="Partner-Angebot${preis}">
+                                📄 Partner
+                            </a>`;
+                    }
+
+                    // Keine PDFs vorhanden
+                    if (!anfrage.angebotPdfOriginal?.url && !anfrage.angebotPdfAftermarket?.url && !anfrage.angebotPdfZubehoer?.url && !anfrage.angebotPdfPartner?.url) {
+                        pdfButtons += '<span style="color: #999; font-size: 11px;">Keine PDFs</span>';
+                    }
+
+                    pdfButtons += '</div>';
+
+                    // Preis mit Varianten-Info
+                    let preisDisplay = anfrage._summeBrutto > 0 ? `<strong>${anfrage._summeBrutto.toFixed(2)} €</strong>` : '-';
+                    if (anfrage.hasVarianten && anfrage.summeBruttoAftermarket && anfrage.summeBruttoAftermarket !== anfrage.summeBruttoOriginal) {
+                        preisDisplay += `<br><span style="font-size: 10px; color: #666;">Aftermarket: ${anfrage.summeBruttoAftermarket.toFixed(2)} €</span>`;
+                    }
 
                     html += `
                         <tr>
@@ -19417,13 +19458,9 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                             <td><strong>${anfrage.kennzeichen || '-'}</strong></td>
                             <td>${anfrage.kundenname || anfrage.partnerName || '-'}</td>
                             <td>${fahrzeug}</td>
-                            <td><strong>${summeBrutto.toFixed(2)} €</strong></td>
-                            <td>${statusBadge[anfrage.status] || statusBadge[anfrage.entwurfStatus] || anfrage.status || 'Unbekannt'}</td>
-                            <td class="actions">
-                                <button class="btn btn-icon btn-secondary" onclick="openKVAFromHistorie('${anfrage.id}')" title="Öffnen">
-                                    <i data-feather="eye"></i>
-                                </button>
-                            </td>
+                            <td>${preisDisplay}</td>
+                            <td>${statusBadges[anfrage.status] || anfrage.status || 'Unbekannt'}</td>
+                            <td>${pdfButtons}</td>
                         </tr>
                     `;
                 });
