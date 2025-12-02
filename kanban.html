@@ -3173,21 +3173,34 @@
 
             <!-- Tab Content: Anleitungen (YouTube Videos) -->
             <div class="auftrag-tab-content" id="tab-anleitungen" style="display: none;">
-                <!-- Suchfeld -->
-                <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                <!-- Hinweis -->
+                <div style="margin-bottom: 15px; padding: 12px 15px; background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.2); border-radius: 8px; font-size: 13px; color: var(--color-text-secondary);">
+                    💡 <strong>Tipp:</strong> Klicke auf mehrere Vorschläge um sie zu kombinieren, dann drücke "Suchen"
+                </div>
+
+                <!-- Suchfeld mit Buttons -->
+                <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: stretch;">
                     <input type="text"
                            id="anleitungen-suchfeld"
-                           placeholder="🔍 Eigene Suche eingeben (z.B. BMW M4 Tür demontieren)..."
+                           placeholder="🔍 Klicke unten auf Vorschläge oder tippe hier..."
                            style="flex: 1; padding: 12px 15px; border: 2px solid var(--color-border); border-radius: 8px; font-size: 14px; background: var(--color-background); color: var(--color-text-primary);"
                            onkeypress="if(event.key === 'Enter') searchYouTubeAnleitungenManual()">
+                    <button onclick="clearAnleitungenSuchfeld()"
+                            style="padding: 12px 14px; background: rgba(255, 59, 48, 0.1); color: #FF3B30; border: 1px solid rgba(255, 59, 48, 0.3); border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;"
+                            title="Suchfeld leeren">
+                        ✕
+                    </button>
                     <button onclick="searchYouTubeAnleitungenManual()"
                             style="padding: 12px 20px; background: var(--color-primary); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
                         🔍 Suchen
                     </button>
                 </div>
 
-                <!-- Auto-generierte Suchvorschläge -->
-                <div id="anleitungen-vorschlaege" style="margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px;">
+                <!-- Auto-generierte Suchvorschläge (kombinierbar) -->
+                <div style="margin-bottom: 8px; font-size: 12px; color: var(--color-text-secondary); font-weight: 600;">
+                    📌 Klicke zum Hinzufügen:
+                </div>
+                <div id="anleitungen-vorschlaege" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 8px;">
                     <!-- Wird dynamisch befüllt -->
                 </div>
 
@@ -3195,7 +3208,7 @@
                 <div id="anleitungen-videos" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
                     <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-text-secondary);">
                         <div style="font-size: 48px; margin-bottom: 15px;">🎬</div>
-                        <p>Klicke auf einen Suchvorschlag oder gib eine eigene Suche ein,<br>um passende Anleitungsvideos zu finden.</p>
+                        <p>Kombiniere Suchbegriffe oben und drücke "Suchen"<br>für präzise Anleitungsvideos.</p>
                     </div>
                 </div>
 
@@ -8783,19 +8796,95 @@
 
         /**
          * Rendert die Suchvorschläge als klickbare Buttons
+         * Klick fügt Text zum Suchfeld hinzu (kombinierbar!)
          */
         function renderSearchSuggestions(suggestions) {
             const container = document.getElementById('anleitungen-vorschlaege');
             if (!container) return;
 
-            container.innerHTML = suggestions.map(s => `
-                <button onclick="searchYouTubeAnleitungen('${s.query.replace(/'/g, "\\'")}')"
-                        style="padding: 8px 14px; background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.3); border-radius: 20px; color: var(--color-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; white-space: nowrap;"
-                        onmouseover="this.style.background='rgba(33, 150, 243, 0.2)'"
-                        onmouseout="this.style.background='rgba(33, 150, 243, 0.1)'">
-                    ${s.label}
-                </button>
-            `).join('');
+            // Speichere die kurzen Suchbegriffe für die Buttons (ohne volle Query)
+            container.innerHTML = suggestions.map(s => {
+                // Extrahiere kurzen Begriff für Anzeige im Suchfeld
+                const shortTerm = extractShortSearchTerm(s.label, s.query);
+                return `
+                    <button onclick="addToAnleitungenSuchfeld('${shortTerm.replace(/'/g, "\\'")}')"
+                            data-full-query="${s.query.replace(/"/g, '&quot;')}"
+                            style="padding: 8px 14px; background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.3); border-radius: 20px; color: var(--color-primary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; white-space: nowrap;"
+                            onmouseover="this.style.background='rgba(33, 150, 243, 0.2)'; this.style.transform='scale(1.02)'"
+                            onmouseout="this.style.background='rgba(33, 150, 243, 0.1)'; this.style.transform='scale(1)'"
+                            title="Klicken um '${shortTerm.replace(/'/g, "\\'")}' hinzuzufügen">
+                        ${s.label}
+                    </button>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Extrahiert kurzen Suchbegriff aus Label/Query
+         */
+        function extractShortSearchTerm(label, query) {
+            // Entferne Emoji vom Label für den Suchbegriff
+            const cleanLabel = label.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '').trim();
+
+            // Für Fahrzeug-spezifische Labels, nutze den vollen Begriff
+            if (cleanLabel.includes('BMW') || cleanLabel.includes('Audi') || cleanLabel.includes('VW') ||
+                cleanLabel.includes('Mercedes') || cleanLabel.includes('Porsche')) {
+                return cleanLabel;
+            }
+
+            // Für allgemeine Labels, nutze das Label ohne Emoji
+            return cleanLabel;
+        }
+
+        /**
+         * Fügt einen Suchbegriff zum Suchfeld hinzu (kombinierbar)
+         */
+        function addToAnleitungenSuchfeld(term) {
+            const suchfeld = document.getElementById('anleitungen-suchfeld');
+            if (!suchfeld) return;
+
+            const currentValue = suchfeld.value.trim();
+
+            // Prüfe ob Begriff schon enthalten ist
+            if (currentValue.toLowerCase().includes(term.toLowerCase())) {
+                console.log('🔍 Begriff bereits im Suchfeld:', term);
+                // Visuelles Feedback - kurzes Highlight
+                suchfeld.style.borderColor = '#FF9800';
+                setTimeout(() => {
+                    suchfeld.style.borderColor = '';
+                }, 300);
+                return;
+            }
+
+            // Füge Begriff hinzu (mit Leerzeichen wenn schon Text vorhanden)
+            if (currentValue) {
+                suchfeld.value = `${currentValue} ${term}`;
+            } else {
+                suchfeld.value = term;
+            }
+
+            // Visuelles Feedback - grüner Rahmen
+            suchfeld.style.borderColor = '#4CAF50';
+            setTimeout(() => {
+                suchfeld.style.borderColor = '';
+            }, 300);
+
+            // Fokus aufs Suchfeld
+            suchfeld.focus();
+
+            console.log('➕ Zum Suchfeld hinzugefügt:', term, '→ Gesamt:', suchfeld.value);
+        }
+
+        /**
+         * Leert das Suchfeld
+         */
+        function clearAnleitungenSuchfeld() {
+            const suchfeld = document.getElementById('anleitungen-suchfeld');
+            if (suchfeld) {
+                suchfeld.value = '';
+                suchfeld.focus();
+                console.log('🗑️ Suchfeld geleert');
+            }
         }
 
         /**
@@ -8806,7 +8895,7 @@
             const query = suchfeld?.value?.trim();
 
             if (!query) {
-                alert('Bitte gib einen Suchbegriff ein.');
+                alert('Bitte füge zuerst Suchbegriffe hinzu oder tippe etwas ein.');
                 return;
             }
 
