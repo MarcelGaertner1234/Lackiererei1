@@ -14,7 +14,7 @@
 // KONFIGURATION
 // ============================================
 
-const CACHE_VERSION = 'v6.2-lieferanten-ersatzteile-verknuepfung';
+const CACHE_VERSION = 'v6.3-material-lieferanten-db-verknuepfung';
 const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;

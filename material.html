@@ -1833,7 +1833,10 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                             <div>
                                 <label class="form-label">Lieferant</label>
-                                <input type="text" id="manualBestellLieferantName" class="form-input" placeholder="z.B. AutoTeile GmbH">
+                                <select id="manualBestellLieferantName" class="form-input" onchange="fillManualLieferantKontakt()">
+                                    <option value="">-- Lieferant wählen --</option>
+                                    <!-- Dynamisch gefüllt aus kalkulation_lieferanten -->
+                                </select>
                             </div>
                             <div>
                                 <label class="form-label">Kontakt</label>
@@ -2087,20 +2090,22 @@
 
             <div style="margin-bottom: 20px;">
                 <label style="display: block; color: var(--color-text-primary); font-weight: 600; margin-bottom: 8px;">
-                    🏭 Lieferant Name:
+                    🏭 Lieferant:
                 </label>
-                <input type="text"
-                       id="bestellLieferantName"
-                       placeholder="z.B. AutoTeile GmbH"
-                       style="
-                           width: 100%;
-                           padding: 12px;
-                           border-radius: 12px;
-                           border: 2px solid var(--color-border-glass);
-                           background: var(--color-surface);
-                           color: var(--color-text-primary);
-                           font-size: 14px;
-                       " />
+                <select id="bestellLieferantName"
+                        onchange="fillLieferantKontakt()"
+                        style="
+                            width: 100%;
+                            padding: 12px;
+                            border-radius: 12px;
+                            border: 2px solid var(--color-border-glass);
+                            background: var(--color-surface);
+                            color: var(--color-text-primary);
+                            font-size: 14px;
+                        ">
+                    <option value="">-- Lieferant wählen --</option>
+                    <!-- Dynamisch gefüllt aus kalkulation_lieferanten -->
+                </select>
             </div>
 
             <div style="margin-bottom: 20px;">
@@ -2560,6 +2565,209 @@
             console.log(`📋 ${lieferanten.size} Lieferanten gefunden`);
         }
 
+        // ============================================
+        // 🆕 LIEFERANTEN AUS DATENBANK (kalkulation_lieferanten)
+        // ============================================
+
+        // Globale Variable für Lieferanten aus DB
+        window.lieferantenDB = [];
+
+        /**
+         * Lädt Lieferanten aus kalkulation_lieferanten Collection
+         */
+        async function loadLieferantenFromDB() {
+            try {
+                console.log('📦 [MATERIAL] Lade Lieferanten aus Datenbank...');
+
+                const lieferantenRef = window.getCollection('kalkulation_lieferanten');
+                const snapshot = await lieferantenRef.orderBy('name', 'asc').get();
+
+                window.lieferantenDB = [];
+                snapshot.forEach(doc => {
+                    window.lieferantenDB.push({
+                        id: doc.id,
+                        ...doc.data()
+                    });
+                });
+
+                console.log(`✅ [MATERIAL] ${window.lieferantenDB.length} Lieferanten aus DB geladen`);
+
+                // Dropdowns aktualisieren
+                updateLieferantenDropdowns();
+
+                // Filter erweitern mit DB-Lieferanten
+                enhanceLieferantFilter();
+
+            } catch (error) {
+                console.error('❌ [MATERIAL] Fehler beim Laden der Lieferanten:', error);
+            }
+        }
+
+        /**
+         * Aktualisiert alle Lieferanten-Dropdowns mit DB-Daten
+         */
+        function updateLieferantenDropdowns() {
+            const dropdowns = [
+                document.getElementById('bestellLieferantName'),
+                document.getElementById('manualBestellLieferantName')
+            ];
+
+            dropdowns.forEach(select => {
+                if (!select) return;
+
+                // Erhalte aktuellen Wert
+                const currentValue = select.value;
+
+                // Clear und Basis-Option setzen
+                select.innerHTML = '<option value="">-- Lieferant wählen --</option>';
+
+                // DB-Lieferanten hinzufügen
+                window.lieferantenDB.forEach(lieferant => {
+                    const option = document.createElement('option');
+                    option.value = lieferant.name;
+                    option.textContent = lieferant.name;
+                    option.dataset.kontakt = lieferant.kontakt || '';
+                    option.dataset.id = lieferant.id;
+                    select.appendChild(option);
+                });
+
+                // Divider für manuelle Eingabe
+                const divider = document.createElement('option');
+                divider.disabled = true;
+                divider.textContent = '─────────────────';
+                select.appendChild(divider);
+
+                // Option für neuen Lieferanten
+                const newOption = document.createElement('option');
+                newOption.value = '__new__';
+                newOption.textContent = '+ Neuen Lieferanten anlegen...';
+                select.appendChild(newOption);
+
+                // Wert wiederherstellen
+                select.value = currentValue;
+            });
+
+            console.log('✅ Lieferanten-Dropdowns aktualisiert');
+        }
+
+        /**
+         * Erweitert den Lieferanten-Filter mit DB-Daten
+         */
+        function enhanceLieferantFilter() {
+            const select = document.getElementById('lieferantFilter');
+            if (!select) return;
+
+            const currentValue = select.value;
+
+            // Sammle alle Lieferanten (aus Bestellungen + DB)
+            const allLieferanten = new Set();
+
+            // Aus Bestellungen
+            if (window.allBestellungen) {
+                window.allBestellungen.forEach(b => {
+                    if (b.lieferant?.name && b.lieferant.name.trim() !== '') {
+                        allLieferanten.add(b.lieferant.name);
+                    }
+                });
+            }
+
+            // Aus DB
+            window.lieferantenDB.forEach(l => {
+                if (l.name) allLieferanten.add(l.name);
+            });
+
+            // Filter aktualisieren
+            select.innerHTML = '<option value="">Alle Lieferanten</option>';
+
+            Array.from(allLieferanten).sort().forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+
+            select.value = currentValue;
+            console.log(`📋 [MATERIAL] Filter mit ${allLieferanten.size} Lieferanten aktualisiert`);
+        }
+
+        /**
+         * Füllt Kontaktfeld automatisch wenn Lieferant ausgewählt wird
+         */
+        function fillLieferantKontakt() {
+            const select = document.getElementById('bestellLieferantName');
+            const kontaktField = document.getElementById('bestellLieferantKontakt');
+
+            if (!select || !kontaktField) return;
+
+            const selectedValue = select.value;
+
+            // Neuen Lieferanten anlegen
+            if (selectedValue === '__new__') {
+                openNewLieferantModal('bestellLieferantName');
+                return;
+            }
+
+            // Kontakt aus DB suchen
+            const lieferant = window.lieferantenDB.find(l => l.name === selectedValue);
+            if (lieferant && lieferant.kontakt) {
+                kontaktField.value = lieferant.kontakt;
+            } else {
+                kontaktField.value = '';
+            }
+        }
+
+        /**
+         * Füllt Kontaktfeld im manuellen Modal
+         */
+        function fillManualLieferantKontakt() {
+            const select = document.getElementById('manualBestellLieferantName');
+            const kontaktField = document.getElementById('manualBestellLieferantKontakt');
+
+            if (!select || !kontaktField) return;
+
+            const selectedValue = select.value;
+
+            // Neuen Lieferanten anlegen
+            if (selectedValue === '__new__') {
+                openNewLieferantModal('manualBestellLieferantName');
+                return;
+            }
+
+            // Kontakt aus DB suchen
+            const lieferant = window.lieferantenDB.find(l => l.name === selectedValue);
+            if (lieferant && lieferant.kontakt) {
+                kontaktField.value = lieferant.kontakt;
+            } else {
+                kontaktField.value = '';
+            }
+        }
+
+        /**
+         * Öffnet Modal zum Anlegen eines neuen Lieferanten
+         */
+        function openNewLieferantModal(returnToDropdownId) {
+            // Speichere welches Dropdown zurückgesetzt werden soll
+            window.returnToDropdownId = returnToDropdownId;
+
+            // Alert mit Link zu kalkulation.html
+            const result = confirm(
+                '🏭 Neuen Lieferanten anlegen?\n\n' +
+                'Lieferanten werden zentral in der Kalkulation verwaltet.\n\n' +
+                'Möchten Sie zur Kalkulation-Seite wechseln um einen neuen Lieferanten anzulegen?'
+            );
+
+            if (result) {
+                // Öffne kalkulation.html in neuem Tab (Tab Lieferanten)
+                window.open('kalkulation.html#lieferanten', '_blank');
+            }
+
+            // Dropdown zurücksetzen
+            const dropdown = document.getElementById(returnToDropdownId);
+            if (dropdown) {
+                dropdown.value = '';
+            }
+        }
+
         // Firebase initialisieren beim Laden
         window.addEventListener('DOMContentLoaded', () => {
             initFirebase();
@@ -2608,6 +2816,10 @@
                 // 📦 PHASE 4: Lade Ersatzteile-Bestellungen
                 console.log('🔄 [PHASE 4] Loading Bestellungen...');
                 loadBestellungen();
+
+                // 🆕 PHASE 5: Lade Lieferanten aus zentraler Datenbank
+                console.log('🔄 [PHASE 5] Loading Lieferanten aus DB...');
+                loadLieferantenFromDB();
             })();
 
             // ============================================
