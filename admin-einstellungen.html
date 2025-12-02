@@ -1145,6 +1145,52 @@
                 <div id="openaiTestResult" style="margin-top: var(--space-4);"></div>
             </div>
 
+            <!-- 🆕 Dec 2, 2025: Serper.dev API für Ersatzteilsuche -->
+            <div class="card">
+                <h2 class="card-title">
+                    <i data-feather="shopping-cart"></i>
+                    Serper.dev - Ersatzteilsuche
+                </h2>
+                <p class="card-description">
+                    API für echte Preise aus Google Shopping (Ersatzteilsuche in Kalkulation Step 5).
+                </p>
+
+                <div class="alert alert-info">
+                    <i data-feather="gift"></i>
+                    <div>
+                        <strong>Kostenlos starten:</strong> 2.500 Suchanfragen gratis (ohne Kreditkarte).<br>
+                        <a href="https://serper.dev" target="_blank" style="color: var(--primary);">→ Jetzt kostenlosen Account erstellen</a>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="serperApiKey">Serper API-Key</label>
+                    <input type="password" id="serperApiKey" class="form-input" placeholder="Dein Serper.dev API-Key">
+                    <p class="form-hint">API-Key von <a href="https://serper.dev/api-key" target="_blank">serper.dev/api-key</a></p>
+                </div>
+
+                <div class="toggle-group">
+                    <span class="toggle-label">Serper-Suche aktiviert</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="serperEnabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="btn-group" style="margin-top: var(--space-5);">
+                    <button class="btn btn-primary" onclick="saveSection('systemconfig')">
+                        <i data-feather="save"></i>
+                        Speichern
+                    </button>
+                    <button class="btn btn-secondary" onclick="testSerperKey()">
+                        <i data-feather="search"></i>
+                        API-Key testen
+                    </button>
+                </div>
+
+                <div id="serperTestResult" style="margin-top: var(--space-4);"></div>
+            </div>
+
             <div class="card">
                 <h2 class="card-title">
                     <i data-feather="server"></i>
@@ -1920,6 +1966,10 @@
                 document.getElementById('backupFrequency').value = currentSettings.systemConfig.backupFrequency || 'weekly';
                 document.getElementById('analyticsEnabled').checked = currentSettings.systemConfig.analyticsEnabled !== false;
 
+                // 🆕 Dec 2, 2025: Load Serper.dev Config
+                document.getElementById('serperApiKey').value = currentSettings.systemConfig.serperApiKey || '';
+                document.getElementById('serperEnabled').checked = currentSettings.systemConfig.serperEnabled !== false;
+
                 // 🔧 2025-11-18: Load Steuer & Bank
                 if (currentSettings.steuer) {
                     document.getElementById('steuernummer').value = currentSettings.steuer.steuernummer || '';
@@ -2026,7 +2076,10 @@
                         storageMaxSize: parseInt(document.getElementById('storageMaxSize').value) || 500,
                         backupEnabled: document.getElementById('backupEnabled').checked,
                         backupFrequency: document.getElementById('backupFrequency').value,
-                        analyticsEnabled: document.getElementById('analyticsEnabled').checked
+                        analyticsEnabled: document.getElementById('analyticsEnabled').checked,
+                        // 🆕 Dec 2, 2025: Serper.dev für Ersatzteilsuche
+                        serperApiKey: document.getElementById('serperApiKey').value,
+                        serperEnabled: document.getElementById('serperEnabled').checked
                     },
                     // 🔧 2025-11-18: Steuer & Bank
                     steuer: {
@@ -2280,6 +2333,52 @@
                 }
             } catch (error) {
                 showAlertInContainer('openaiTestResult', '❌ Fehler beim Testen: ' + error.message, 'danger');
+            }
+        }
+
+        // 🆕 Dec 2, 2025: Serper.dev API Test
+        async function testSerperKey() {
+            const apiKey = document.getElementById('serperApiKey').value;
+            if (!apiKey) {
+                showAlertInContainer('serperTestResult', 'Bitte Serper API-Key eingeben', 'warning');
+                return;
+            }
+
+            try {
+                showAlertInContainer('serperTestResult', '🧪 Teste Serper API-Key...', 'info');
+
+                // Test mit einer einfachen Suchanfrage
+                const response = await fetch('https://google.serper.dev/search', {
+                    method: 'POST',
+                    headers: {
+                        'X-API-KEY': apiKey,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        q: 'test',
+                        gl: 'de',
+                        hl: 'de',
+                        num: 1
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const credits = response.headers.get('X-Credits-Remaining') || 'Unbekannt';
+                    showAlertInContainer('serperTestResult',
+                        `✅ API-Key funktioniert!<br>
+                        <small>Verbleibende Credits: ${credits}</small>`,
+                        'success'
+                    );
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    showAlertInContainer('serperTestResult',
+                        `❌ API-Key ungültig: ${errorData.message || response.statusText}`,
+                        'danger'
+                    );
+                }
+            } catch (error) {
+                showAlertInContainer('serperTestResult', '❌ Fehler beim Testen: ' + error.message, 'danger');
             }
         }
 
