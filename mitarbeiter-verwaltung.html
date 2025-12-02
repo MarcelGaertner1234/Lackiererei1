@@ -4866,46 +4866,82 @@
                         console.error('❌ Urlaub schicht type not found');
                         showToast('⚠️ Warnung: Urlaub-Schicht-Typ nicht gefunden', 'warning', 3000);
                     } else {
-                        // Loop through date range and create schichten
+                        // 🛡️ BUG #8 FIX: Batch-Write statt sequentieller Einzeloperationen
+                        // VORHER: 2 Firestore-Ops pro Tag (Query + Insert) = LANGSAM
+                        // NACHHER: Batch-Queries + Batch-Writes = ~20x SCHNELLER
+
                         const startDate = new Date(anfrage.startDatum);
                         const endDate = new Date(anfrage.endDatum);
-                        const currentDate = new Date(startDate);
 
-                        let urlaubsSchichtenErstellt = 0;
-
-                        while (currentDate <= endDate) {
-                            // Skip Sundays (day 0) - bereits als "Frei" markiert
-                            if (currentDate.getDay() !== 0) {
-                                const dateStr = currentDate.toISOString().split('T')[0];  // YYYY-MM-DD
-
-                                // Check if schicht already exists for this day (duplicate prevention)
-                                const existingShift = await window.getCollection('schichten')
-                                    .where('mitarbeiterId', '==', anfrage.mitarbeiterId)
-                                    .where('datum', '==', dateStr)
-                                    .get();
-
-                                if (existingShift.empty) {
-                                    // Create "Urlaub" schicht for this day
-                                    await window.getCollection('schichten').add({
-                                        mitarbeiterId: anfrage.mitarbeiterId,
-                                        mitarbeiterName: anfrage.mitarbeiterName,
-                                        datum: dateStr,
-                                        schichtTypId: urlaubTyp.id,
-                                        schichtTypName: urlaubTyp.name,
-                                        status: 'active',
-                                        erstelltVon: 'system',
-                                        erstelltAm: new Date().toISOString(),
-                                        werkstattId: window.werkstattId
-                                    });
-                                    urlaubsSchichtenErstellt++;
-                                }
+                        // 1. Alle Datums sammeln (ohne Sonntage)
+                        const datumList = [];
+                        const tempDate = new Date(startDate);
+                        while (tempDate <= endDate) {
+                            if (tempDate.getDay() !== 0) {  // Skip Sundays
+                                datumList.push(tempDate.toISOString().split('T')[0]);
                             }
-
-                            // Move to next day
-                            currentDate.setDate(currentDate.getDate() + 1);
+                            tempDate.setDate(tempDate.getDate() + 1);
                         }
 
-                        console.log(`✅ ${urlaubsSchichtenErstellt} Urlaubs-Schichten im Dienstplan erstellt`);
+                        console.log(`📅 ${datumList.length} Urlaubstage zu prüfen (ohne Sonntage)`);
+
+                        // 2. Alle existierenden Schichten in EINEM Query laden (in Chunks von 30 wegen Firestore-Limit)
+                        const existingDates = new Set();
+                        const chunkSize = 30;  // Firestore 'in' query limit
+
+                        for (let i = 0; i < datumList.length; i += chunkSize) {
+                            const chunk = datumList.slice(i, i + chunkSize);
+                            const existingShiftsSnapshot = await window.getCollection('schichten')
+                                .where('mitarbeiterId', '==', anfrage.mitarbeiterId)
+                                .where('datum', 'in', chunk)
+                                .get();
+
+                            existingShiftsSnapshot.docs.forEach(doc => {
+                                existingDates.add(doc.data().datum);
+                            });
+                        }
+
+                        console.log(`🔍 ${existingDates.size} existierende Schichten gefunden`);
+
+                        // 3. Batch-Write für alle neuen Schichten
+                        let batch = db.batch();
+                        let batchCount = 0;
+                        let urlaubsSchichtenErstellt = 0;
+
+                        for (const dateStr of datumList) {
+                            if (!existingDates.has(dateStr)) {
+                                const docRef = window.getCollection('schichten').doc();
+                                batch.set(docRef, {
+                                    mitarbeiterId: anfrage.mitarbeiterId,
+                                    mitarbeiterName: anfrage.mitarbeiterName,
+                                    datum: dateStr,
+                                    schichtTypId: urlaubTyp.id,
+                                    schichtTypName: urlaubTyp.name,
+                                    status: 'active',
+                                    erstelltVon: 'system',
+                                    erstelltAm: new Date().toISOString(),
+                                    werkstattId: window.werkstattId
+                                });
+                                batchCount++;
+                                urlaubsSchichtenErstellt++;
+
+                                // Firestore batch limit = 500 Operationen
+                                if (batchCount >= 500) {
+                                    await batch.commit();
+                                    console.log(`📦 Batch mit ${batchCount} Schichten committed`);
+                                    batch = db.batch();
+                                    batchCount = 0;
+                                }
+                            }
+                        }
+
+                        // Restliche Schichten committen
+                        if (batchCount > 0) {
+                            await batch.commit();
+                            console.log(`📦 Finaler Batch mit ${batchCount} Schichten committed`);
+                        }
+
+                        console.log(`✅ ${urlaubsSchichtenErstellt} Urlaubs-Schichten im Dienstplan erstellt (Batch-Optimiert)`);
                     }
                 } catch (error) {
                     console.error('❌ Fehler beim Erstellen der Urlaubs-Schichten:', error);
