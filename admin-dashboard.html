@@ -887,11 +887,19 @@
             console.log('📊 Lade Charts...');
 
             try {
-                // Load Firestore data
-                const fahrzeugeSnap = await window.getCollection('fahrzeuge').get();
-                const fahrzeuge = fahrzeugeSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                // 🛡️ PERFORMANCE FIX: Parallel loading of independent collections
+                console.log('⚡ Loading fahrzeuge + kunden in parallel...');
+                const [fahrzeugeSnap, kundenSnap] = await Promise.all([
+                    window.getCollection('fahrzeuge').get(),
+                    window.getCollection('kunden').get()
+                ]);
 
-                console.log(`✅ ${fahrzeuge.length} Fahrzeuge für Charts geladen`);
+                const fahrzeuge = fahrzeugeSnap.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                const kunden = kundenSnap.docs
+                    .filter(doc => doc.id !== '_init')
+                    .map(doc => ({id: doc.id, ...doc.data()}));
+
+                console.log(`✅ ${fahrzeuge.length} Fahrzeuge + ${kunden.length} Kunden parallel geladen`);
 
                 // Render charts grid HTML first
                 renderChartsHTML();
@@ -899,11 +907,11 @@
                 // Wait for canvas elements to be in DOM
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                // Render charts
+                // Render charts (pass kunden to avoid duplicate fetch)
                 renderFahrzeugeStatusChart(fahrzeuge);
                 renderServiceTypChart(fahrzeuge);
                 renderFahrzeugeTrendChart(fahrzeuge);
-                renderTopKundenChart(fahrzeuge);
+                renderTopKundenChart(fahrzeuge, kunden);  // 🛡️ Pass kunden as parameter
 
                 console.log('✅ Alle Charts gerendert');
 
@@ -1167,13 +1175,10 @@
         }
 
         // Chart 4: Top 10 Kunden (Bar)
-        async function renderTopKundenChart(fahrzeuge) {
+        // 🛡️ PERFORMANCE FIX: Accept kunden as parameter (pre-loaded in parallel)
+        function renderTopKundenChart(fahrzeuge, kunden) {
             try {
-                // Load kunden data
-                const kundenSnap = await window.getCollection('kunden').get();
-                const kunden = kundenSnap.docs
-                    .filter(doc => doc.id !== '_init')
-                    .map(doc => ({id: doc.id, ...doc.data()}));
+                // kunden now passed as parameter from loadCharts() - no duplicate fetch needed
 
                 // Count fahrzeuge per kunde
                 const kundenCounts = {};

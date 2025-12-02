@@ -5759,49 +5759,55 @@
                             lastSync: new Date().toISOString()  // ✅ Sync-Timestamp
                         };
 
-                        await partnerRef.set(syncData, { merge: true });
-                        console.log(`✅ Rabatt-Konditionen zu Partner "${partnerCode}" synchronisiert!`);
-                        console.log('   📊 Daten:', syncData);
-                        console.log('   📊 Partner-Dokument ID:', partnerCode);
+                        // 🛡️ PERFORMANCE FIX: Parallelize sync + auth (independent operations)
+                        console.log(`⚡ Starte parallel: Sync + Auth für Partner "${partnerCode}"...`);
 
-                        // 🆕 AUTO-ACCOUNT-ERSTELLUNG: Firebase Auth Account für Partner anlegen
-                        try {
-                            console.log(`🔐 Prüfe Firebase Auth Account für Partner "${partnerCode}"...`);
-                            // ✅ FIX: Use window.functions (europe-west3) instead of firebase.functions() (us-central1)
-                            const ensureFn = window.functions.httpsCallable('ensurePartnerAccount');
-                            const accountResult = await ensureFn({
+                        const ensureFn = window.functions.httpsCallable('ensurePartnerAccount');
+
+                        // Run both operations in parallel
+                        const [, accountResult] = await Promise.all([
+                            // Operation 1: Sync rabatt-konditionen to partner collection
+                            partnerRef.set(syncData, { merge: true }).then(() => {
+                                console.log(`✅ Rabatt-Konditionen zu Partner "${partnerCode}" synchronisiert!`);
+                                console.log('   📊 Daten:', syncData);
+                            }),
+
+                            // Operation 2: Create/check Firebase Auth account (independent)
+                            ensureFn({
                                 email: kundeData.email,
                                 kundenname: kundeData.name,
                                 werkstattId: window.werkstattId
+                            }).then(result => {
+                                console.log('✅ Partner-Account-Check abgeschlossen:', result.data);
+                                return result;
+                            }).catch(accountError => {
+                                console.error('⚠️ Fehler bei Account-Erstellung:', accountError);
+                                showToast('Warnung: Kunde gespeichert, aber Auth-Account-Erstellung fehlgeschlagen. Später erneut versuchen.', 'warning');
+                                return null;
+                            })
+                        ]);
+
+                        console.log(`✅ Parallel-Operationen abgeschlossen für Partner "${partnerCode}"`);
+
+                        // Step 3: Update with password (depends on accountResult)
+                        if (accountResult && accountResult.data?.isNewPartner && accountResult.data?.generatedPassword) {
+                            console.log('🆕 Neuer Partner erstellt - speichere Initial-Passwort');
+                            await partnerRef.update({
+                                initialPassword: accountResult.data.generatedPassword,
+                                requiresPasswordChange: true,
+                                accountCreatedAt: new Date().toISOString(),
+                                accountCreatedBy: window.currentUserEmail || 'system'
                             });
 
-                            console.log('✅ Partner-Account-Check abgeschlossen:', accountResult.data);
-
-                            // Passwort temporär in Firestore speichern (NUR bei neuen Partnern)
-                            if (accountResult.data.isNewPartner && accountResult.data.generatedPassword) {
-                                console.log('🆕 Neuer Partner erstellt - speichere Initial-Passwort');
-                                await partnerRef.update({
-                                    initialPassword: accountResult.data.generatedPassword,
-                                    requiresPasswordChange: true,
-                                    accountCreatedAt: new Date().toISOString(),
-                                    accountCreatedBy: window.currentUserEmail || 'system'
-                                });
-
-                                // Modal mit Passwort anzeigen
-                                showPartnerPasswordModal({
-                                    email: kundeData.email,
-                                    password: accountResult.data.generatedPassword,
-                                    partnerId: accountResult.data.partnerId,
-                                    name: kundeData.name
-                                });
-                            } else {
-                                console.log('ℹ️ Partner-Account existiert bereits');
-                            }
-
-                        } catch (accountError) {
-                            console.error('⚠️ Fehler bei Account-Erstellung:', accountError);
-                            // Nicht kritisch - Kunde ist bereits gespeichert
-                            showToast('Warnung: Kunde gespeichert, aber Auth-Account-Erstellung fehlgeschlagen. Später erneut versuchen.', 'warning');
+                            // Modal mit Passwort anzeigen
+                            showPartnerPasswordModal({
+                                email: kundeData.email,
+                                password: accountResult.data.generatedPassword,
+                                partnerId: accountResult.data.partnerId,
+                                name: kundeData.name
+                            });
+                        } else if (accountResult) {
+                            console.log('ℹ️ Partner-Account existiert bereits');
                         }
                     } catch (syncError) {
                         console.warn('⚠️ Fehler beim Sync zu Partner Collection:', syncError);

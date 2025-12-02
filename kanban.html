@@ -6402,25 +6402,32 @@
                         try {
                             const result = await autoCreateRechnung(fahrzeugId, invoiceVehicleData);
                             if (result && result.rechnung) {
-                                // Zweites Update um Invoice zu speichern
-                                await fahrzeugRef.update({
-                                    rechnung: result.rechnung,
-                                    lastModified: firebase.firestore.FieldValue.serverTimestamp()
-                                });
-                                console.log('✅ Rechnung automatisch erstellt:', result.rechnung.rechnungsnummer);
-                                console.log('✅ Rechnung ins Document gespeichert (zweites Update)');
+                                // 🛡️ PERFORMANCE FIX: Parallelize both updates (independent operations)
+                                const parallelUpdates = [
+                                    // Update 1: Save invoice reference to fahrzeug
+                                    fahrzeugRef.update({
+                                        rechnung: result.rechnung,
+                                        lastModified: firebase.firestore.FieldValue.serverTimestamp()
+                                    })
+                                ];
 
-                                // 🆕 2025-11-28: pendingRabatt löschen nach erfolgreicher Rechnungserstellung
+                                // Update 2: Delete pending rabatt (conditional, independent)
                                 if (result.rabattInfo?.pendingBonusId && result.rabattInfo?.partnerId) {
-                                    try {
-                                        await window.getCollection('partners').doc(result.rabattInfo.partnerId).update({
+                                    parallelUpdates.push(
+                                        window.getCollection('partners').doc(result.rabattInfo.partnerId).update({
                                             'rabattKonditionen.pendingRabatt': firebase.firestore.FieldValue.delete()
-                                        });
-                                        console.log('✅ pendingRabatt gelöscht für Partner:', result.rabattInfo.partnerId);
-                                    } catch (deleteError) {
-                                        console.warn('⚠️ pendingRabatt konnte nicht gelöscht werden:', deleteError);
-                                    }
+                                        }).then(() => {
+                                            console.log('✅ pendingRabatt gelöscht für Partner:', result.rabattInfo.partnerId);
+                                        }).catch(deleteError => {
+                                            console.warn('⚠️ pendingRabatt konnte nicht gelöscht werden:', deleteError);
+                                        })
+                                    );
                                 }
+
+                                // Execute both updates in parallel
+                                await Promise.all(parallelUpdates);
+                                console.log('✅ Rechnung automatisch erstellt:', result.rechnung.rechnungsnummer);
+                                console.log('✅ Rechnung + pendingRabatt parallel aktualisiert');
                             }
                         } catch (error) {
                             // Fehler loggen, aber Status-Update ist bereits committed
