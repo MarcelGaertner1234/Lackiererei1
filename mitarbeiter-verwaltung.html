@@ -2651,20 +2651,32 @@
         // LOAD MITARBEITER (WERKSTATT-SPECIFIC)
         // ============================================
 
+        // 🛡️ BUG #5 FIX: Global scope to prevent memory leaks
+        let mitarbeiterListenerUnsub = null;
+        let mitarbeiterBeforeunloadRegistered = false;
+
         async function loadMitarbeiter() {
             console.log('📥 Lade Mitarbeiter für werkstattId:', currentWerkstattId);
 
-            // 🛡️ PERFORMANCE FIX: Store listener unsubscribe function
-            let mitarbeiterListenerUnsub = null;
+            // 🛡️ BUG #5 FIX: Unsubscribe old listener before creating new one
+            if (mitarbeiterListenerUnsub) {
+                console.log('🧹 Cleaning up old mitarbeiter listener...');
+                mitarbeiterListenerUnsub();
+                mitarbeiterListenerUnsub = null;
+            }
 
-            // 🛡️ PERFORMANCE FIX: Cleanup listener on page unload
-            window.addEventListener('beforeunload', () => {
-                if (mitarbeiterListenerUnsub) {
-                    console.log('🧹 Cleaning up mitarbeiter listener...');
-                    mitarbeiterListenerUnsub();
-                    console.log('✅ Mitarbeiter listener cleaned up');
-                }
-            });
+            // 🛡️ BUG #5 FIX: Only register beforeunload listener ONCE
+            if (!mitarbeiterBeforeunloadRegistered) {
+                window.addEventListener('beforeunload', () => {
+                    if (mitarbeiterListenerUnsub) {
+                        console.log('🧹 Cleaning up mitarbeiter listener on page unload...');
+                        mitarbeiterListenerUnsub();
+                        console.log('✅ Mitarbeiter listener cleaned up');
+                    }
+                });
+                mitarbeiterBeforeunloadRegistered = true;
+                console.log('✅ beforeunload listener registered (once)');
+            }
 
             try {
                 // Use window.getCollection() helper from firebase-config.js
