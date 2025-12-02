@@ -961,6 +961,160 @@
             border-color: rgba(100, 60, 255, 0.3);
         }
 
+        /* ===== FERTIGSTELLUNGS-DROPDOWN (Multi-Service Koordination) ===== */
+        .fertigstellung-dropdown-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            margin-bottom: 8px;
+            background: rgba(100, 100, 100, 0.1);
+            border: 1px solid rgba(100, 100, 100, 0.2);
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .fertigstellung-dropdown-toggle:hover {
+            background: rgba(100, 100, 100, 0.15);
+            border-color: rgba(100, 100, 100, 0.3);
+        }
+
+        .fertigstellung-dropdown-toggle .toggle-icon {
+            transition: transform 0.2s ease;
+        }
+
+        .fertigstellung-dropdown-toggle.open .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .fertigstellung-dropdown-content {
+            display: none;
+            padding: 8px;
+            margin-bottom: 8px;
+            background: rgba(100, 100, 100, 0.08);
+            border: 1px solid rgba(100, 100, 100, 0.15);
+            border-radius: 6px;
+        }
+
+        .fertigstellung-dropdown-content.open {
+            display: block;
+            animation: slideDown 0.2s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fertigstellung-service-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 8px;
+            margin-bottom: 4px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 4px;
+            font-size: 10px;
+        }
+
+        .fertigstellung-service-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .fertigstellung-service-label {
+            font-weight: 600;
+            color: var(--color-text-primary);
+            flex: 1;
+        }
+
+        .fertigstellung-datum-input {
+            width: 110px;
+            padding: 4px 6px;
+            border: 1px solid rgba(0, 122, 255, 0.3);
+            border-radius: 4px;
+            font-size: 10px;
+            font-family: inherit;
+            background: white;
+            color: var(--color-text-primary);
+        }
+
+        .fertigstellung-datum-input:focus {
+            outline: none;
+            border-color: rgba(0, 122, 255, 0.6);
+            box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
+        }
+
+        .fertigstellung-datum-input:disabled {
+            background: rgba(200, 200, 200, 0.3);
+            color: var(--color-text-tertiary);
+            cursor: not-allowed;
+            border-color: rgba(100, 100, 100, 0.2);
+        }
+
+        .fertigstellung-datum-display {
+            font-size: 10px;
+            color: var(--color-text-secondary);
+            padding: 4px 6px;
+            background: rgba(200, 200, 200, 0.2);
+            border-radius: 4px;
+        }
+
+        .fertigstellung-lock-icon {
+            margin-left: 4px;
+            opacity: 0.5;
+        }
+
+        /* Dark Mode Styles */
+        [data-theme="dark"] .fertigstellung-dropdown-toggle {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+            color: var(--color-text-secondary-dark);
+        }
+
+        [data-theme="dark"] .fertigstellung-dropdown-toggle:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        [data-theme="dark"] .fertigstellung-dropdown-content {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        [data-theme="dark"] .fertigstellung-service-row {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        [data-theme="dark"] .fertigstellung-service-label {
+            color: var(--color-text-primary-dark);
+        }
+
+        [data-theme="dark"] .fertigstellung-datum-input {
+            background: rgba(30, 30, 30, 0.8);
+            border-color: rgba(0, 122, 255, 0.4);
+            color: var(--color-text-primary-dark);
+        }
+
+        [data-theme="dark"] .fertigstellung-datum-input:disabled {
+            background: rgba(60, 60, 60, 0.5);
+            color: var(--color-text-tertiary-dark);
+        }
+
+        [data-theme="dark"] .fertigstellung-datum-display {
+            background: rgba(100, 100, 100, 0.3);
+            color: var(--color-text-secondary-dark);
+        }
+
         /* ===== DARK MODE - Badges ===== */
 
         /* Dringlichkeits-Badges */
@@ -3540,6 +3694,188 @@
         }
 
         /**
+         * 🆕 FERTIGSTELLUNGS-DROPDOWN (2025-12-02): Multi-Service Koordination
+         *
+         * Zeigt ein dezentes Dropdown mit Fertigstellungsdatum pro Service.
+         * Mitarbeiter können nur Datum eingeben wenn Service auf "terminiert" steht.
+         *
+         * @param {Object} fahrzeug - Fahrzeug-Dokument aus Firestore
+         * @returns {string} HTML für das Dropdown
+         */
+        function buildFertigstellungsDropdown(fahrzeug) {
+            if (!fahrzeug) return '';
+
+            // Sammle alle Services (Primary + Additional)
+            const allServices = [];
+
+            // 1. Primary Service
+            const primaryServiceTyp = fahrzeug.serviceTyp || 'lackier';
+            allServices.push({
+                serviceTyp: primaryServiceTyp,
+                isPrimary: true
+            });
+
+            // 2. Additional Services
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                fahrzeug.additionalServices.forEach(s => {
+                    if (typeof s === 'string') {
+                        allServices.push({ serviceTyp: s, isPrimary: false });
+                    } else if (s && s.serviceTyp) {
+                        allServices.push({ serviceTyp: s.serviceTyp, isPrimary: false });
+                    }
+                });
+            }
+
+            // Wenn nur 1 Service, kein Dropdown nötig (Single-Service Auftrag)
+            if (allServices.length <= 1) {
+                return '';
+            }
+
+            // Service Labels
+            const serviceLabels = {
+                'lackier': '🎨 Lackierung',
+                'reifen': '🛞 Reifen',
+                'mechanik': '🔧 Mechanik',
+                'pflege': '✨ Pflege',
+                'tuev': '📋 TÜV',
+                'versicherung': '🛡️ Versicherung',
+                'glas': '🔍 Glas',
+                'klima': '❄️ Klima',
+                'dellen': '🔨 Dellen',
+                'folierung': '🎬 Folierung',
+                'steinschutz': '🛡️ Steinschutz',
+                'werbebeklebung': '📢 Werbung'
+            };
+
+            // Baue die Service-Zeilen
+            let serviceRows = '';
+            allServices.forEach(service => {
+                const status = getServiceStatus(fahrzeug, service.serviceTyp);
+                const isTerminiert = (status === 'terminiert');
+                const label = serviceLabels[service.serviceTyp] || `🔧 ${service.serviceTyp}`;
+
+                // Hole bestehendes Datum aus serviceStatuses
+                const existingDatum = fahrzeug.serviceStatuses?.[service.serviceTyp]?.fertigstellungsDatum || '';
+
+                // Format: YYYY-MM-DD für input type="date"
+                const datumValue = existingDatum ? existingDatum : '';
+
+                // Formatiertes Datum für Anzeige (DD.MM.YYYY)
+                let displayDatum = '—';
+                if (existingDatum) {
+                    try {
+                        const parts = existingDatum.split('-');
+                        if (parts.length === 3) {
+                            displayDatum = `${parts[2]}.${parts[1]}.${parts[0]}`;
+                        }
+                    } catch (e) {
+                        displayDatum = existingDatum;
+                    }
+                }
+
+                if (isTerminiert) {
+                    // Editierbares Input-Feld
+                    serviceRows += `
+                        <div class="fertigstellung-service-row">
+                            <span class="fertigstellung-service-label">${label}</span>
+                            <input type="date"
+                                   class="fertigstellung-datum-input"
+                                   value="${datumValue}"
+                                   data-fahrzeug-id="${fahrzeug.id}"
+                                   data-service-typ="${service.serviceTyp}"
+                                   onclick="event.stopPropagation();"
+                                   onchange="saveFertigstellungsDatum(this, '${fahrzeug.id}', '${service.serviceTyp}')">
+                        </div>
+                    `;
+                } else {
+                    // Nur Anzeige (nicht editierbar)
+                    serviceRows += `
+                        <div class="fertigstellung-service-row">
+                            <span class="fertigstellung-service-label">${label}</span>
+                            <span class="fertigstellung-datum-display">
+                                ${displayDatum}
+                                <span class="fertigstellung-lock-icon">🔒</span>
+                            </span>
+                        </div>
+                    `;
+                }
+            });
+
+            // Dropdown zusammenbauen
+            const dropdownId = `fertigstellung-${fahrzeug.id}`;
+
+            return `
+                <div class="fertigstellung-dropdown-toggle"
+                     onclick="event.stopPropagation(); toggleFertigstellungsDropdown('${dropdownId}');">
+                    <span>📅 Fertigstellung</span>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div id="${dropdownId}" class="fertigstellung-dropdown-content">
+                    ${serviceRows}
+                </div>
+            `;
+        }
+
+        /**
+         * Toggle-Funktion für Fertigstellungs-Dropdown
+         */
+        function toggleFertigstellungsDropdown(dropdownId) {
+            const content = document.getElementById(dropdownId);
+            const toggle = content?.previousElementSibling;
+
+            if (content && toggle) {
+                content.classList.toggle('open');
+                toggle.classList.toggle('open');
+            }
+        }
+
+        /**
+         * Speichert das Fertigstellungsdatum in Firestore
+         */
+        async function saveFertigstellungsDatum(inputElement, fahrzeugId, serviceTyp) {
+            const datum = inputElement.value; // Format: YYYY-MM-DD
+
+            if (!fahrzeugId || !serviceTyp) {
+                console.error('❌ saveFertigstellungsDatum: Fehlende Parameter');
+                return;
+            }
+
+            try {
+                console.log(`📅 Speichere Fertigstellungsdatum: ${serviceTyp} = ${datum || '(gelöscht)'}`);
+
+                // Update in Firestore
+                const updatePath = `serviceStatuses.${serviceTyp}.fertigstellungsDatum`;
+                await window.getCollection('fahrzeuge').doc(String(fahrzeugId)).update({
+                    [updatePath]: datum || null,
+                    [`serviceStatuses.${serviceTyp}.fertigstellungUpdatedAt`]: new Date().toISOString()
+                });
+
+                // Visuelles Feedback
+                inputElement.style.borderColor = 'rgba(76, 175, 80, 0.6)';
+                inputElement.style.boxShadow = '0 0 0 2px rgba(76, 175, 80, 0.2)';
+
+                setTimeout(() => {
+                    inputElement.style.borderColor = '';
+                    inputElement.style.boxShadow = '';
+                }, 1500);
+
+                console.log(`✅ Fertigstellungsdatum gespeichert: ${serviceTyp} = ${datum}`);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern des Fertigstellungsdatums:', error);
+
+                // Fehler-Feedback
+                inputElement.style.borderColor = 'rgba(255, 59, 48, 0.6)';
+                inputElement.style.boxShadow = '0 0 0 2px rgba(255, 59, 48, 0.2)';
+
+                setTimeout(() => {
+                    inputElement.style.borderColor = '';
+                    inputElement.style.boxShadow = '';
+                }, 2000);
+            }
+        }
+
+        /**
          * 🆕 Multi-Service Helper: Check if ALL services are complete
          *
          * Used to prevent premature invoice creation when only ONE service is finished.
@@ -4758,6 +5094,9 @@
             // 🆕 MULTI-SERVICE STATUS-TRACKING (2025-11-13): Use new badge function
             const serviceTypBadge = buildServiceBadgeWithStatus(fahrzeug);
 
+            // 🆕 FERTIGSTELLUNGS-DROPDOWN (2025-12-02): Multi-Service Koordination
+            const fertigstellungsDropdown = buildFertigstellungsDropdown(fahrzeug);
+
             // ABHOLUNGS-BADGE - FÜR ALLE PHASEN (außer "bereit" = bereits abholbereit)
             // Zeigt Abholung in ALLEN Spalten, damit Werkstatt frühzeitig planen kann
             let abholungBadge = '';
@@ -4840,6 +5179,7 @@
 
             card.innerHTML = `
                 ${serviceTypBadge}
+                ${fertigstellungsDropdown}
                 ${bereitBadge}
                 ${dringlichkeitBadge}
                 ${abholungBadge}
