@@ -19704,7 +19704,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             }
 
             container.innerHTML = filtered.map(k => `
-                <div class="kunde-card" onclick="selectKunde('${k.id}')">
+                <div class="kunde-card">
                     <div class="kunde-card__header">
                         <h4 class="kunde-card__name">${k.name || 'Unbekannter Kunde'}</h4>
                         <span class="kunde-card__badge">${k.anzahlAuftraege || 0} Aufträge</span>
@@ -19720,6 +19720,16 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                             </div>
                         `).join('')}
                         ${(k.fahrzeuge?.length || 0) > 3 ? `<span class="text-muted">+${k.fahrzeuge.length - 3} weitere</span>` : ''}
+                    </div>
+                    <div class="kunde-card__actions" style="display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border);">
+                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); showKundenKVADetails('${k.id}')" style="flex: 1;">
+                            <i data-feather="file-text"></i>
+                            KVA-Historie
+                        </button>
+                        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); selectKunde('${k.id}')" style="flex: 1;">
+                            <i data-feather="plus"></i>
+                            Neue KVA
+                        </button>
                     </div>
                 </div>
             `).join('');
@@ -19825,6 +19835,144 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             } catch (error) {
                 console.error('Fehler beim Speichern des Kunden:', error);
             }
+        }
+
+        // ============================================
+        // 🆕 KVA-HISTORIE PRO KUNDE
+        // ============================================
+
+        // Cache für KVA-Daten pro Kunde
+        let kundenKVACache = {};
+
+        /**
+         * Lädt alle KVAs für einen bestimmten Kunden
+         */
+        async function loadKVAsForKunde(kundenName) {
+            if (!kundenName) return [];
+
+            try {
+                const snapshot = await window.getCollection('kalkulationen')
+                    .where('kundenName', '==', kundenName)
+                    .orderBy('createdAt', 'desc')
+                    .limit(20)
+                    .get();
+
+                const kvas = [];
+                snapshot.forEach(doc => {
+                    kvas.push({
+                        id: doc.id,
+                        ...doc.data()
+                    });
+                });
+
+                kundenKVACache[kundenName] = kvas;
+                return kvas;
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der KVAs für Kunde:', error);
+                return [];
+            }
+        }
+
+        /**
+         * Zeigt KVA-Details für einen Kunden an
+         */
+        async function showKundenKVADetails(kundeId) {
+            const kunde = kundenDB.find(k => k.id === kundeId);
+            if (!kunde) return;
+
+            // KVAs laden
+            const kvas = await loadKVAsForKunde(kunde.name);
+
+            // Modal öffnen mit KVA-Historie
+            const modalHtml = `
+                <div class="modal-overlay" id="kundenKVAModal" style="display: flex; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 99999; background: rgba(0,0,0,0.7); justify-content: center; align-items: center;">
+                    <div class="modal" style="background: #ffffff; border-radius: 16px; max-width: 800px; width: 90%; max-height: 80vh; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.5);">
+                        <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #f5f5f7; border-bottom: 1px solid #e0e0e0;">
+                            <h3 style="margin: 0; color: #1d1d1f;">📋 KVA-Historie: ${kunde.name}</h3>
+                            <button class="modal-close" onclick="closeKundenKVAModal()" style="background: none; border: none; cursor: pointer; font-size: 24px; color: #86868b;">×</button>
+                        </div>
+                        <div class="modal-body" style="padding: 20px; max-height: 60vh; overflow-y: auto; background: #ffffff;">
+                            ${kvas.length === 0 ? `
+                                <div class="empty-state" style="text-align: center; padding: 40px; color: #86868b;">
+                                    <i data-feather="file-text" style="width: 48px; height: 48px; margin-bottom: 16px;"></i>
+                                    <h4 style="margin: 0 0 8px; color: #1d1d1f;">Keine KVAs vorhanden</h4>
+                                    <p style="margin: 0;">Für diesen Kunden wurden noch keine Kalkulationen erstellt.</p>
+                                </div>
+                            ` : `
+                                <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: #f5f5f7;">
+                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e0e0e0;">Datum</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e0e0e0;">Kennzeichen</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e0e0e0;">Fahrzeug</th>
+                                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e0e0e0;">Betrag</th>
+                                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #e0e0e0;">Status</th>
+                                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #e0e0e0;">Aktionen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${kvas.map(kva => {
+                                            const datum = new Date(kva.createdAt).toLocaleDateString('de-DE');
+                                            const fahrzeug = kva.fahrzeugMarke ? `${kva.fahrzeugMarke} ${kva.fahrzeugModell || ''}` : '-';
+                                            const statusColors = {
+                                                'entwurf': '#f5a623',
+                                                'gesendet': '#007aff',
+                                                'akzeptiert': '#34c759',
+                                                'abgelehnt': '#ff3b30'
+                                            };
+                                            const statusLabels = {
+                                                'entwurf': 'Entwurf',
+                                                'gesendet': 'Gesendet',
+                                                'akzeptiert': 'Akzeptiert',
+                                                'abgelehnt': 'Abgelehnt'
+                                            };
+                                            return `
+                                                <tr style="border-bottom: 1px solid #e0e0e0;">
+                                                    <td style="padding: 12px;">${datum}</td>
+                                                    <td style="padding: 12px; font-weight: 600;">${kva.kennzeichen || '-'}</td>
+                                                    <td style="padding: 12px;">${fahrzeug}</td>
+                                                    <td style="padding: 12px; text-align: right; font-weight: 600;">${(kva.summeBrutto || 0).toFixed(2)} €</td>
+                                                    <td style="padding: 12px; text-align: center;">
+                                                        <span style="background: ${statusColors[kva.status] || '#86868b'}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                                                            ${statusLabels[kva.status] || kva.status || 'Unbekannt'}
+                                                        </span>
+                                                    </td>
+                                                    <td style="padding: 12px; text-align: center;">
+                                                        <button onclick="loadKalkulationToEdit('${kva.id}'); closeKundenKVAModal();" style="background: #007aff; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                                                            Öffnen
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                                <div style="margin-top: 16px; padding: 12px; background: #f5f5f7; border-radius: 8px; display: flex; justify-content: space-between;">
+                                    <span style="color: #86868b;">Gesamt: ${kvas.length} KVA(s)</span>
+                                    <span style="font-weight: 600; color: #1d1d1f;">Summe: ${kvas.reduce((sum, k) => sum + (k.summeBrutto || 0), 0).toFixed(2)} €</span>
+                                </div>
+                            `}
+                        </div>
+                        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; padding: 16px 20px; background: #f5f5f7; border-top: 1px solid #e0e0e0;">
+                            <button onclick="closeKundenKVAModal()" style="background: #e0e0e0; color: #1d1d1f; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                Schließen
+                            </button>
+                            <button onclick="closeKundenKVAModal(); selectKunde('${kundeId}');" style="background: #007aff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                Neue KVA erstellen
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Modal zum DOM hinzufügen
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            feather.replace();
+        }
+
+        function closeKundenKVAModal() {
+            const modal = document.getElementById('kundenKVAModal');
+            if (modal) modal.remove();
         }
 
         // ============================================
