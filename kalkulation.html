@@ -1,23 +1,39 @@
 <!DOCTYPE html>
-<html lang="de" data-theme="dark">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>🧮 Kalkulation - Fahrzeugannahme App</title>
+
+    <!-- Aggressive No-Cache Headers -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
 
     <!-- 🌓 FOUC Prevention: Load Theme BEFORE CSS -->
     <script>
         (function() {
             const savedTheme = localStorage.getItem('theme') || 'light';
             document.documentElement.setAttribute('data-theme', savedTheme);
+            console.log(`🌓 Theme pre-loaded in <head>: ${savedTheme} (FOUC Prevention)`);
         })();
     </script>
 
-    <!-- Design System CSS -->
-    <link rel="stylesheet" href="design-system.css">
-    <link rel="stylesheet" href="components.css">
-    <link rel="stylesheet" href="animations.css">
-    <link rel="stylesheet" href="mobile-first.css">
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Apple Liquid Glass Design System -->
+    <link rel="stylesheet" href="design-system.css?v=af6b90f">
+    <link rel="stylesheet" href="components.css?v=af6b90f">
+    <link rel="stylesheet" href="animations.css?v=af6b90f">
+    <link rel="stylesheet" href="mobile-first.css?v=af6b90f">
+
+    <!-- Light Mode Readability Optimizations -->
+    <link rel="stylesheet" href="css/light-mode.css?v=nov9">
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -32,6 +48,9 @@
     <!-- Feather Icons -->
     <script src="https://unpkg.com/feather-icons"></script>
 
+    <!-- GSAP Animation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
     <!-- Sketchfab Viewer API -->
     <script src="https://static.sketchfab.com/api/sketchfab-viewer-1.12.1.js"></script>
 
@@ -42,6 +61,189 @@
     <script src="ersatzteile-db.js"></script>
 
     <style>
+        /* ============================================
+           🎨 SMOOTH THEME TRANSITIONS
+           ============================================ */
+
+        /* Global smooth transitions for theme changes */
+        :root {
+            transition: background-color var(--duration-base) var(--ease-out),
+                        color var(--duration-base) var(--ease-out);
+        }
+
+        body,
+        .page-container,
+        .content-card,
+        .tab-navigation,
+        .tab-button,
+        .back-button,
+        .theme-toggle {
+            transition: background var(--duration-base) var(--ease-out),
+                        background-color var(--duration-base) var(--ease-out),
+                        color var(--duration-base) var(--ease-out),
+                        border-color var(--duration-base) var(--ease-out),
+                        box-shadow var(--duration-base) var(--ease-out),
+                        backdrop-filter var(--duration-base) var(--ease-out);
+        }
+
+        /* Smooth icon transitions */
+        i[data-feather] {
+            transition: color var(--duration-base) var(--ease-out),
+                        stroke-width var(--duration-base) var(--ease-out),
+                        transform var(--duration-base) var(--ease-out);
+        }
+
+        /* Smooth text transitions */
+        h1, h2, h3, h4, h5, h6, p, span, a, label {
+            transition: color var(--duration-base) var(--ease-out);
+        }
+
+        /* Screen Reader Only Text (Accessibility) */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        /* ============================================
+           🌓 THEME TOGGLE BUTTON
+           Fixed Top-Right Corner - Apple Style
+           ============================================ */
+        .theme-toggle {
+            position: fixed;
+            top: var(--space-4);
+            right: var(--space-4);
+            z-index: 10000;
+            width: 56px;
+            height: 56px;
+            border-radius: var(--radius-full);
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            border: 1px solid var(--color-border-glass);
+            box-shadow: var(--shadow-lg), inset 0 1px 1px rgba(255,255,255,0.1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1) rotate(15deg);
+            box-shadow: var(--shadow-xl), inset 0 1px 1px rgba(255,255,255,0.2);
+        }
+
+        .theme-toggle:active {
+            transform: scale(0.95);
+        }
+
+        .theme-toggle__icon {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            color: var(--color-text-primary);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        /* Show sun icon in dark mode, moon in light mode */
+        [data-theme="dark"] .theme-toggle__icon--light {
+            opacity: 1;
+            transform: rotate(0deg) scale(1);
+        }
+
+        [data-theme="dark"] .theme-toggle__icon--dark {
+            opacity: 0;
+            transform: rotate(180deg) scale(0);
+        }
+
+        :root .theme-toggle__icon--light,
+        [data-theme="light"] .theme-toggle__icon--light {
+            opacity: 0;
+            transform: rotate(-180deg) scale(0);
+        }
+
+        :root .theme-toggle__icon--dark,
+        [data-theme="light"] .theme-toggle__icon--dark {
+            opacity: 1;
+            transform: rotate(0deg) scale(1);
+        }
+
+        /* Light Mode Theme Toggle styling */
+        [data-theme="light"] .theme-toggle {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Mobile: Hide fixed toggle (using mobile-header toggle instead) */
+        @media (max-width: 768px) {
+            .theme-toggle {
+                display: none;
+            }
+        }
+
+        /* Tablet: Medium-sized toggle button */
+        @media (max-width: 1024px) and (min-width: 769px) {
+            .theme-toggle {
+                width: 52px;
+                height: 52px;
+            }
+        }
+
+        /* ============================================
+           📱 MOBILE HEADER ENHANCEMENTS
+           ============================================ */
+
+        /* Mobile Header Theme Toggle Icons */
+        .mobile-header__theme-toggle .theme-icon {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        [data-theme="dark"] .mobile-header__theme-toggle .theme-icon--light {
+            opacity: 1;
+            transform: rotate(0deg) scale(1);
+        }
+
+        [data-theme="dark"] .mobile-header__theme-toggle .theme-icon--dark {
+            opacity: 0;
+            transform: rotate(180deg) scale(0);
+        }
+
+        :root .mobile-header__theme-toggle .theme-icon--light,
+        [data-theme="light"] .mobile-header__theme-toggle .theme-icon--light {
+            opacity: 0;
+            transform: rotate(-180deg) scale(0);
+        }
+
+        :root .mobile-header__theme-toggle .theme-icon--dark,
+        [data-theme="light"] .mobile-header__theme-toggle .theme-icon--dark {
+            opacity: 1;
+            transform: rotate(0deg) scale(1);
+        }
+
+        /* Desktop: Header ausblenden */
+        @media (min-width: 769px) {
+            .mobile-header {
+                display: none !important;
+            }
+        }
+
+        /* Mobile: Extra padding for mobile header */
+        @media (max-width: 768px) {
+            .page-container {
+                padding-top: calc(var(--space-6) + 60px);
+            }
+        }
+
         /* ============================================
            🧮 KALKULATION PAGE SPECIFIC STYLES
            ============================================ */
@@ -4321,6 +4523,41 @@
     </style>
 </head>
 <body>
+    <!-- 📱 MOBILE HEADER - Sticky Top (Mobile Only) -->
+    <header class="mobile-header">
+        <div class="mobile-header__logo">
+            <i data-feather="hash"></i>
+            <span>Kalkulation</span>
+        </div>
+        <div class="mobile-header__actions">
+            <!-- Dark Mode Toggle (Mobile Only) -->
+            <button
+                id="mobile-theme-toggle"
+                class="mobile-header__icon mobile-header__theme-toggle"
+                aria-label="Dunklen Modus aktivieren"
+                aria-pressed="false"
+                title="Theme wechseln">
+                <i data-feather="sun" class="theme-icon theme-icon--light" aria-hidden="true"></i>
+                <i data-feather="moon" class="theme-icon theme-icon--dark" aria-hidden="true"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- THEME TOGGLE BUTTON - Fixed Top-Right (Desktop Only) -->
+    <button
+        id="dark-mode-toggle"
+        class="theme-toggle"
+        type="button"
+        aria-label="Dunklen Modus aktivieren"
+        aria-pressed="false"
+        title="Theme wechseln (Cmd+Shift+D)">
+        <span class="sr-only" aria-live="polite" aria-atomic="true">
+            Aktuelles Theme: Hell
+        </span>
+        <i data-feather="sun" class="theme-toggle__icon theme-toggle__icon--light" aria-hidden="true"></i>
+        <i data-feather="moon" class="theme-toggle__icon theme-toggle__icon--dark" aria-hidden="true"></i>
+    </button>
+
     <div class="page-container">
         <!-- Header -->
         <header class="page-header">
@@ -18766,6 +19003,116 @@ Fahrzeugteile die du erkennen kannst:
                 });
             });
         }
+
+        // ============================================
+        // 🌓 LIGHT/DARK MODE TOGGLE
+        // ============================================
+        (function initThemeToggle() {
+            const themeToggle = document.getElementById('dark-mode-toggle');
+            const mobileThemeToggle = document.getElementById('mobile-theme-toggle');
+            const html = document.documentElement;
+
+            // Function to update Accessibility Attributes (both buttons)
+            function updateAccessibility(theme) {
+                // Update Desktop Toggle
+                const toggleButton = document.getElementById('dark-mode-toggle');
+                if (toggleButton) {
+                    toggleButton.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+                    toggleButton.setAttribute('aria-label',
+                        theme === 'dark' ? 'Hellen Modus aktivieren' : 'Dunklen Modus aktivieren'
+                    );
+                    const srText = toggleButton.querySelector('.sr-only');
+                    if (srText) {
+                        srText.textContent = `Aktuelles Theme: ${theme === 'dark' ? 'Dunkel' : 'Hell'}`;
+                    }
+                }
+
+                // Update Mobile Toggle
+                const mobileToggle = document.getElementById('mobile-theme-toggle');
+                if (mobileToggle) {
+                    mobileToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+                    mobileToggle.setAttribute('aria-label',
+                        theme === 'dark' ? 'Hellen Modus aktivieren' : 'Dunklen Modus aktivieren'
+                    );
+                }
+
+                console.log(`♿ Accessibility attributes updated for ${theme} mode`);
+            }
+
+            // Function to update Theme Toggle Button Icons stroke-width only
+            function updateThemeToggleIcons(theme) {
+                const strokeWidth = theme === 'light' ? '2.5' : '2';
+
+                // Update ONLY Theme Toggle Button Icons (not all icons on page!)
+                const toggleButton = document.getElementById('dark-mode-toggle');
+                if (toggleButton) {
+                    toggleButton.querySelectorAll('svg *[stroke]').forEach(element => {
+                        element.setAttribute('stroke-width', strokeWidth);
+                    });
+                    console.log(`🎨 Theme Toggle Icons stroke-width updated to ${strokeWidth} for ${theme} mode`);
+                }
+            }
+
+            // Get current theme (already set in <head> for FOUC prevention)
+            let currentTheme = html.getAttribute('data-theme') || 'light';
+            console.log(`🌓 Theme initialized: ${currentTheme} (from <head> pre-load)`);
+
+            // Toggle theme on button click
+            const themeToggleHandler = () => {
+                currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+                html.setAttribute('data-theme', currentTheme);
+                localStorage.setItem('theme', currentTheme);
+
+                console.log(`🌓 Theme switched to: ${currentTheme}`);
+
+                // Update accessibility attributes
+                updateAccessibility(currentTheme);
+
+                // Re-initialize Feather Icons for theme change
+                if (typeof feather !== 'undefined') {
+                    feather.replace();
+                    // Wait for feather.replace() to finish, then update stroke-width
+                    setTimeout(() => updateThemeToggleIcons(currentTheme), 50);
+                }
+            };
+
+            // Register Desktop theme toggle
+            if (themeToggle) {
+                if (window.listenerRegistry?.registerDOM) {
+                    window.listenerRegistry.registerDOM(themeToggle, 'click', themeToggleHandler, 'Theme Toggle Button (Desktop)');
+                } else {
+                    themeToggle.addEventListener('click', themeToggleHandler);
+                }
+            }
+
+            // Register Mobile theme toggle
+            if (mobileThemeToggle) {
+                if (window.listenerRegistry?.registerDOM) {
+                    window.listenerRegistry.registerDOM(mobileThemeToggle, 'click', themeToggleHandler, 'Theme Toggle Button (Mobile)');
+                } else {
+                    mobileThemeToggle.addEventListener('click', themeToggleHandler);
+                }
+            }
+
+            // Keyboard Shortcut: Cmd+Shift+D (Mac) or Ctrl+Shift+D (Windows/Linux)
+            const keyboardShortcutHandler = (e) => {
+                const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+                const modifierKey = isMac ? e.metaKey : e.ctrlKey;
+
+                if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+                    e.preventDefault();
+                    themeToggleHandler();
+                    console.log(`⌨️ Theme toggled via keyboard shortcut (${isMac ? 'Cmd' : 'Ctrl'}+Shift+D)`);
+                }
+            };
+
+            document.addEventListener('keydown', keyboardShortcutHandler);
+
+            // Initial accessibility setup
+            updateAccessibility(currentTheme);
+
+            console.log('🌓 Theme Toggle initialized (Desktop + Mobile + Keyboard Shortcut)');
+        })();
     </script>
 </body>
 </html>
