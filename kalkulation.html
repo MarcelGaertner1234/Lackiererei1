@@ -4698,6 +4698,109 @@
             gap: var(--space-3);
         }
 
+        /* Ersatzteile nach Lieferant Styles */
+        .lieferant-ersatzteile-section {
+            background: var(--color-surface-elevated);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-card);
+            margin-bottom: var(--space-4);
+            overflow: hidden;
+        }
+
+        .lieferant-ersatzteile-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-4);
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .lieferant-ersatzteile-header:hover {
+            background: var(--color-surface-hover);
+        }
+
+        .lieferant-ersatzteile-header__info {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .lieferant-ersatzteile-header__info h4 {
+            margin: 0;
+            font-size: var(--font-size-base);
+        }
+
+        .lieferant-ersatzteile-header__stats {
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+        }
+
+        .lieferant-ersatzteile-body {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .lieferant-ersatzteile-body.expanded {
+            max-height: 1000px;
+        }
+
+        .lieferant-ersatzteile-list {
+            padding: var(--space-3);
+        }
+
+        .lieferant-ersatzteil-item {
+            display: grid;
+            grid-template-columns: 1fr auto auto auto;
+            gap: var(--space-4);
+            align-items: center;
+            padding: var(--space-3);
+            border-bottom: 1px solid var(--color-border-light);
+            font-size: var(--font-size-sm);
+        }
+
+        .lieferant-ersatzteil-item:last-child {
+            border-bottom: none;
+        }
+
+        .lieferant-ersatzteil-item__name {
+            font-weight: 500;
+        }
+
+        .lieferant-ersatzteil-item__name small {
+            display: block;
+            font-weight: 400;
+            color: var(--color-text-secondary);
+            font-size: var(--font-size-xs);
+        }
+
+        .lieferant-ersatzteil-item__preis {
+            font-weight: 600;
+            color: var(--color-primary);
+        }
+
+        .lieferant-ersatzteil-item__count {
+            color: var(--color-text-secondary);
+        }
+
+        @media (max-width: 640px) {
+            .lieferant-ersatzteil-item {
+                grid-template-columns: 1fr;
+                gap: var(--space-2);
+            }
+
+            .lieferant-ersatzteil-item__preis,
+            .lieferant-ersatzteil-item__count {
+                text-align: left;
+            }
+        }
+
         .preisvergleich-results {
             background: var(--color-surface-elevated);
             border: 1px solid var(--color-border);
@@ -7648,6 +7751,20 @@
                         <i data-feather="truck"></i>
                         <h4>Keine eigenen Lieferanten</h4>
                         <p>Fügen Sie Ihre bevorzugten Lieferanten hinzu</p>
+                    </div>
+                </div>
+
+                <!-- Ersatzteile nach Lieferant -->
+                <h3 style="margin-top: var(--space-8); margin-bottom: var(--space-4);">
+                    <i data-feather="package"></i>
+                    Ersatzteile nach Lieferant
+                    <span id="ersatzteileCountBadge" class="badge badge--info" style="margin-left: 8px; font-size: 0.75rem;">0 Teile</span>
+                </h3>
+                <div id="ersatzteileByLieferantContainer">
+                    <div class="empty-state">
+                        <i data-feather="package"></i>
+                        <h4>Keine Ersatzteile erfasst</h4>
+                        <p>Ersatzteile werden hier nach Lieferant gruppiert angezeigt, sobald Sie welche in Kalkulationen verwenden</p>
                     </div>
                 </div>
             </div>
@@ -17498,8 +17615,256 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 const snapshot = await window.getCollection('kalkulation_lieferanten').orderBy('name').get();
                 lieferantenData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderLieferanten();
+                updateLieferantenDropdowns();
+                await loadErsatzteileForLieferanten();
             } catch (error) {
                 console.error('❌ Fehler beim Laden der Lieferanten:', error);
+            }
+        }
+
+        // Aktualisiert alle Lieferanten-Dropdowns mit DB-Daten
+        function updateLieferantenDropdowns() {
+            const dropdowns = [
+                document.getElementById('ersatzteilInlineLieferant'),
+                document.getElementById('ersatzteilAddLieferant')
+            ];
+
+            // Standard-Lieferanten (immer verfügbar)
+            const standardOptions = [
+                { value: '', label: 'Lieferant wählen' },
+                { value: 'DAT', label: 'DAT' },
+                { value: 'Partslink24', label: 'Partslink24' },
+                { value: 'Tecdoc', label: 'Tecdoc' },
+                { value: 'Hersteller OE', label: 'Hersteller OE' },
+                { value: 'Aftermarket', label: 'Aftermarket' },
+                { value: 'Gebraucht', label: 'Gebraucht' }
+            ];
+
+            // Eigene Lieferanten aus DB hinzufügen
+            const eigeneOptions = lieferantenData.map(l => ({
+                value: l.name,
+                label: `${l.icon || '🏢'} ${l.name}`
+            }));
+
+            dropdowns.forEach(dropdown => {
+                if (!dropdown) return;
+
+                // Aktuellen Wert merken
+                const currentValue = dropdown.value;
+
+                if (dropdown.tagName === 'SELECT') {
+                    // Select-Element: Options ersetzen
+                    dropdown.innerHTML = '';
+
+                    // Standard-Optionen
+                    standardOptions.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt.value;
+                        option.textContent = opt.label;
+                        dropdown.appendChild(option);
+                    });
+
+                    // Trennlinie wenn eigene Lieferanten vorhanden
+                    if (eigeneOptions.length > 0) {
+                        const divider = document.createElement('option');
+                        divider.disabled = true;
+                        divider.textContent = '── Eigene Lieferanten ──';
+                        dropdown.appendChild(divider);
+
+                        eigeneOptions.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt.value;
+                            option.textContent = opt.label;
+                            dropdown.appendChild(option);
+                        });
+                    }
+
+                    // Wert wiederherstellen
+                    dropdown.value = currentValue;
+                } else if (dropdown.tagName === 'INPUT') {
+                    // Input mit datalist: Datalist befüllen
+                    const datalistId = dropdown.getAttribute('list');
+                    let datalist = document.getElementById(datalistId);
+
+                    if (!datalist) {
+                        datalist = document.createElement('datalist');
+                        datalist.id = datalistId || 'lieferantSuggestions';
+                        dropdown.parentNode.appendChild(datalist);
+                        dropdown.setAttribute('list', datalist.id);
+                    }
+
+                    datalist.innerHTML = '';
+
+                    // Alle Optionen als Vorschläge
+                    [...standardOptions.slice(1), ...eigeneOptions].forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt.value;
+                        datalist.appendChild(option);
+                    });
+                }
+            });
+        }
+
+        // Lädt alle Ersatzteile und gruppiert sie nach Lieferant
+        let ersatzteileByLieferant = {};
+
+        async function loadErsatzteileForLieferanten() {
+            try {
+                const snapshot = await window.getCollection('ersatzteile').get();
+                ersatzteileByLieferant = {};
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const lieferanten = data.lieferanten || [];
+
+                    // Ersatzteil jedem Lieferanten zuordnen
+                    lieferanten.forEach(lief => {
+                        const lieferantName = lief.name || 'Unbekannt';
+                        if (!ersatzteileByLieferant[lieferantName]) {
+                            ersatzteileByLieferant[lieferantName] = [];
+                        }
+                        ersatzteileByLieferant[lieferantName].push({
+                            id: doc.id,
+                            name: data.name,
+                            teilenummer: data.teilenummer || '',
+                            preis: lief.preis || data.letzterPreis || 0,
+                            datum: lief.datum || data.updatedAt,
+                            fahrzeuge: data.fahrzeuge || [],
+                            verwendetAnzahl: data.verwendetAnzahl || 0
+                        });
+                    });
+
+                    // Falls keine Lieferanten-Array, aber lieferant-Feld existiert
+                    if (lieferanten.length === 0 && data.lieferant) {
+                        const lieferantName = data.lieferant;
+                        if (!ersatzteileByLieferant[lieferantName]) {
+                            ersatzteileByLieferant[lieferantName] = [];
+                        }
+                        ersatzteileByLieferant[lieferantName].push({
+                            id: doc.id,
+                            name: data.name,
+                            teilenummer: data.teilenummer || '',
+                            preis: data.letzterPreis || 0,
+                            datum: data.updatedAt,
+                            fahrzeuge: data.fahrzeuge || [],
+                            verwendetAnzahl: data.verwendetAnzahl || 0
+                        });
+                    }
+                });
+
+                console.log(`📦 Ersatzteile nach Lieferant gruppiert:`, Object.keys(ersatzteileByLieferant).length, 'Lieferanten');
+                renderLieferantenMitErsatzteilen();
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Ersatzteile für Lieferanten:', error);
+            }
+        }
+
+        // Rendert die Ersatzteile gruppiert nach Lieferant
+        function renderLieferantenMitErsatzteilen() {
+            const container = document.getElementById('ersatzteileByLieferantContainer');
+            const countBadge = document.getElementById('ersatzteileCountBadge');
+            if (!container) return;
+
+            const lieferantNames = Object.keys(ersatzteileByLieferant).sort();
+
+            if (lieferantNames.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i data-feather="package"></i>
+                        <h4>Keine Ersatzteile erfasst</h4>
+                        <p>Ersatzteile werden hier nach Lieferant gruppiert angezeigt, sobald Sie welche in Kalkulationen verwenden</p>
+                    </div>
+                `;
+                if (countBadge) countBadge.textContent = '0 Teile';
+                feather.replace();
+                return;
+            }
+
+            // Gesamtzahl berechnen
+            let totalTeile = 0;
+            lieferantNames.forEach(name => {
+                totalTeile += ersatzteileByLieferant[name].length;
+            });
+            if (countBadge) countBadge.textContent = `${totalTeile} Teile`;
+
+            // Icon für Lieferant ermitteln
+            function getLieferantIcon(name) {
+                // Prüfen ob eigener Lieferant mit Icon
+                const eigeneLieferant = lieferantenData.find(l => l.name === name);
+                if (eigeneLieferant?.icon) return eigeneLieferant.icon;
+
+                // Standard-Icons
+                const iconMap = {
+                    'DAT': '🔧',
+                    'Partslink24': '🚗',
+                    'Tecdoc': '📚',
+                    'TecDoc': '📚',
+                    'Hersteller OE': '🏭',
+                    'Aftermarket': '🔄',
+                    'Gebraucht': '♻️',
+                    'Stahlgruber': '🛒'
+                };
+                return iconMap[name] || '🏢';
+            }
+
+            container.innerHTML = lieferantNames.map((lieferantName, index) => {
+                const teile = ersatzteileByLieferant[lieferantName];
+                const gesamtWert = teile.reduce((sum, t) => sum + (t.preis || 0), 0);
+                const icon = getLieferantIcon(lieferantName);
+
+                return `
+                    <div class="lieferant-ersatzteile-section">
+                        <div class="lieferant-ersatzteile-header" onclick="toggleLieferantErsatzteile(${index})">
+                            <div class="lieferant-ersatzteile-header__info">
+                                <span style="font-size: 1.5rem;">${icon}</span>
+                                <h4>${lieferantName}</h4>
+                                <span class="badge badge--info">${teile.length} Teile</span>
+                            </div>
+                            <div class="lieferant-ersatzteile-header__stats">
+                                <span>Gesamtwert: <strong>${gesamtWert.toFixed(2)} €</strong></span>
+                                <i data-feather="chevron-down" class="chevron-icon" id="chevron-${index}"></i>
+                            </div>
+                        </div>
+                        <div class="lieferant-ersatzteile-body" id="lieferant-body-${index}">
+                            <div class="lieferant-ersatzteile-list">
+                                ${teile.map(teil => `
+                                    <div class="lieferant-ersatzteil-item">
+                                        <div class="lieferant-ersatzteil-item__name">
+                                            ${teil.name}
+                                            ${teil.teilenummer ? `<small>Nr: ${teil.teilenummer}</small>` : ''}
+                                        </div>
+                                        <div class="lieferant-ersatzteil-item__preis">
+                                            ${teil.preis > 0 ? teil.preis.toFixed(2) + ' €' : '-'}
+                                        </div>
+                                        <div class="lieferant-ersatzteil-item__count">
+                                            ${teil.verwendetAnzahl}× verwendet
+                                        </div>
+                                        <div class="lieferant-ersatzteil-item__fahrzeuge">
+                                            ${teil.fahrzeuge.length > 0
+                                                ? `<span class="badge badge--secondary" title="${teil.fahrzeuge.join(', ')}">${teil.fahrzeuge.length} Fahrzeuge</span>`
+                                                : ''}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            feather.replace();
+        }
+
+        // Toggle-Funktion für Lieferanten-Ersatzteile-Akkordeon
+        function toggleLieferantErsatzteile(index) {
+            const body = document.getElementById(`lieferant-body-${index}`);
+            const chevron = document.getElementById(`chevron-${index}`);
+
+            if (body) {
+                body.classList.toggle('expanded');
+            }
+            if (chevron) {
+                chevron.style.transform = body?.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
             }
         }
 
