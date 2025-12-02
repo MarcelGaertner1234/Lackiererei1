@@ -14,7 +14,7 @@
 // KONFIGURATION
 // ============================================
 
-const CACHE_VERSION = 'v6.11-historie-pdf-archiv';
+const CACHE_VERSION = 'v6.12-kalkulation-bugfixes';
 const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;

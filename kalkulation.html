@@ -13970,7 +13970,8 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
         // Ersatzteil zur Liste hinzufügen (Step 5)
         // 🆕 Nov 30, 2025: Zwei Preise (Original + Aftermarket) für KVA-Varianten
-        function addErsatzteilToList() {
+        // 🔧 Dec 2, 2025: async für await saveErsatzteilToDB()
+        async function addErsatzteilToList() {
             const name = document.getElementById('ersatzteilAddName')?.value?.trim();
             const teilenummer = document.getElementById('ersatzteilAddTeilenr')?.value?.trim();
             // 🆕 Zwei Preis-Felder
@@ -14016,8 +14017,13 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 console.log(`📦 Ersatzteil "${name}" → Service: ${selectedService}`);
             }
 
-            // In DB speichern
-            saveErsatzteilToDB(ersatzteil);
+            // In DB speichern (mit Error-Handling)
+            try {
+                await saveErsatzteilToDB(ersatzteil);
+            } catch (dbError) {
+                console.warn('⚠️ Ersatzteil-DB Speicherung fehlgeschlagen:', dbError);
+                // Kein showToast - User soll nicht verwirrt werden, Ersatzteil ist trotzdem in kalkWizardData
+            }
 
             // Formular zurücksetzen
             const nameField = document.getElementById('ersatzteilAddName');
@@ -14161,7 +14167,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                                     ${t.teil}
                                 </strong>
                                 <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary); display: block; margin-top: 4px;">
-                                    ${t.reparaturen.join(', ')}
+                                    ${(t.reparaturen || t.arbeiten || []).join(', ')}
                                 </span>
                                 ${hasErsatzteil ? `
                                     <span style="font-size: var(--font-size-xs); color: #10b981; display: block; margin-top: 4px;">
@@ -14909,8 +14915,16 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
         function updateMaterialMenge(index, value) {
             const mat = aktuelleKalkulation.materialien[index];
-            mat.menge = parseFloat(value) || 0;
-            mat.preis = mat.menge * (mat.einzelpreis || mat.preis / (mat.menge || 1));
+            const neueMenge = parseFloat(value) || 0;
+
+            // 🔧 Dec 2, 2025: Einzelpreis sichern bevor Menge auf 0 gesetzt wird
+            // Verhindert Preis-Verlust wenn User Menge auf 0 setzt und dann wieder erhöht
+            if (!mat.einzelpreis && mat.menge > 0 && mat.preis > 0) {
+                mat.einzelpreis = mat.preis / mat.menge;
+            }
+
+            mat.menge = neueMenge;
+            mat.preis = mat.menge * (mat.einzelpreis || 0);
             renderMaterialienNew();
             berechneGesamtsumme();
         }
