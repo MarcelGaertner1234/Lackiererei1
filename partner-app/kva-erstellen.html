@@ -9813,13 +9813,19 @@
                         const materialienAM = anfrageData.kalkulation.materialien || [];
 
                         // Aftermarket: Ersatzteile mit Aftermarket-Preisen
-                        const ersatzteileAftermarket = (anfrageData.kalkulation.ersatzteile || []).map(et => ({
-                            etn: et.etn || '',
-                            benennung: et.benennung || '',
-                            anzahl: et.anzahl || 1,
-                            einzelpreis: et.einzelpreisAftermarket || et.einzelpreis || 0,
-                            gesamtpreis: et.preisAftermarket || et.gesamtpreis || 0
-                        }));
+                        // 🔧 FIX Dec 2, 2025: Korrekte Feldnamen-Fallbacks (wie Original-PDF)
+                        // Firebase speichert: teilenummer, name, menge (nicht etn, benennung, anzahl!)
+                        const ersatzteileAftermarket = (anfrageData.kalkulation.ersatzteile || []).map(et => {
+                            const menge = et.menge || et.anzahl || 1;
+                            const einzelpreisAM = et.preisAftermarket ? (et.preisAftermarket / menge) : (et.einzelpreisAftermarket || et.einzelpreis || 0);
+                            return {
+                                etn: et.teilenummer || et.etn || '',
+                                benennung: et.name || et.bezeichnung || et.benennung || 'Ersatzteil',
+                                anzahl: menge,
+                                einzelpreis: einzelpreisAM,
+                                gesamtpreis: et.preisAftermarket || (einzelpreisAM * menge) || 0
+                            };
+                        });
 
                         // Positionen nach Arbeitsart aufteilen (gleiche Logik wie Original)
                         const lackierArbeitenAM = ['lackieren', 'grundieren', 'klarlack'];
