@@ -19316,7 +19316,8 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             try {
                 console.log('📜 Lade KVA-Historie aus partnerAnfragen...');
 
-                // KVAs werden in partnerAnfragen gespeichert (kalkulationData Feld)
+                // KVAs werden in partnerAnfragen gespeichert
+                // Felder: kalkulationData ODER vereinbarterPreis/summeBruttoOriginal (direkte Felder)
                 const snapshot = await window.getCollection('partnerAnfragen')
                     .orderBy('createdAt', 'desc')
                     .limit(100)
@@ -19324,14 +19325,29 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
                 console.log('📜 Alle partnerAnfragen:', snapshot.size);
 
-                // Nur Anfragen mit kalkulationData filtern
+                // Anfragen mit KVA-Daten filtern (prüfe BEIDE Formate!)
                 const kalkulationen = [];
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    if (data.kalkulationData && data.kalkulationData.summeBrutto) {
+
+                    // Format 1: kalkulationData Objekt (älteres Format)
+                    const hasKalkulationData = data.kalkulationData && data.kalkulationData.summeBrutto;
+
+                    // Format 2: Direkte Felder (neueres Format ab Nov 2025)
+                    const hasDirectKVA = data.vereinbarterPreis || data.summeBruttoOriginal || data.kalkulationErstelltAm;
+
+                    if (hasKalkulationData || hasDirectKVA) {
+                        // Summe extrahieren (aus beiden Formaten)
+                        const summeBrutto = data.kalkulationData?.summeBrutto
+                            || data.vereinbarterPreis
+                            || data.summeBruttoOriginal
+                            || 0;
+
                         kalkulationen.push({
                             id: doc.id,
-                            ...data
+                            ...data,
+                            // Normalisierte Summe für einfacheren Zugriff
+                            _summeBrutto: summeBrutto
                         });
                     }
                 });
@@ -19369,13 +19385,21 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                 `;
 
                 kalkulationen.forEach(anfrage => {
-                    const kva = anfrage.kalkulationData;
-                    const datum = anfrage.createdAt ? new Date(anfrage.createdAt).toLocaleDateString('de-DE') : '-';
+                    // Datum: createdAt oder kalkulationErstelltAm
+                    let datum = '-';
+                    if (anfrage.kalkulationErstelltAm?.toDate) {
+                        datum = anfrage.kalkulationErstelltAm.toDate().toLocaleDateString('de-DE');
+                    } else if (anfrage.createdAt) {
+                        datum = new Date(anfrage.createdAt).toLocaleDateString('de-DE');
+                    }
+
+                    // Fahrzeug aus verschiedenen Feldern
                     const fahrzeug = anfrage.fahrzeugMarke && anfrage.fahrzeugModell
                         ? `${anfrage.fahrzeugMarke} ${anfrage.fahrzeugModell}`
                         : (anfrage.marke && anfrage.modell ? `${anfrage.marke} ${anfrage.modell}` : '-');
 
                     const statusBadge = {
+                        'offen': '<span style="background: var(--color-warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Offen</span>',
                         'entwurf': '<span style="background: var(--color-warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Entwurf</span>',
                         'kva_erstellt': '<span style="background: var(--color-primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">KVA erstellt</span>',
                         'angebot_gesendet': '<span style="background: var(--color-info); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Angebot gesendet</span>',
@@ -19384,7 +19408,8 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                         'neu': '<span style="background: var(--color-secondary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">Neu</span>'
                     };
 
-                    const summeBrutto = kva.summeBrutto || 0;
+                    // Summe aus normalisiertem Feld
+                    const summeBrutto = anfrage._summeBrutto || 0;
 
                     html += `
                         <tr>
@@ -19393,7 +19418,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                             <td>${anfrage.kundenname || anfrage.partnerName || '-'}</td>
                             <td>${fahrzeug}</td>
                             <td><strong>${summeBrutto.toFixed(2)} €</strong></td>
-                            <td>${statusBadge[anfrage.status] || anfrage.status || 'Unbekannt'}</td>
+                            <td>${statusBadge[anfrage.status] || statusBadge[anfrage.entwurfStatus] || anfrage.status || 'Unbekannt'}</td>
                             <td class="actions">
                                 <button class="btn btn-icon btn-secondary" onclick="openKVAFromHistorie('${anfrage.id}')" title="Öffnen">
                                     <i data-feather="eye"></i>
@@ -19897,7 +19922,7 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
 
         /**
          * Lädt alle KVAs für einen bestimmten Kunden
-         * KVAs werden in partnerAnfragen gespeichert (kalkulationData Feld)
+         * KVAs werden in partnerAnfragen gespeichert (kalkulationData ODER direkte Felder)
          */
         async function loadKVAsForKunde(kundenName) {
             if (!kundenName) return [];
@@ -19919,14 +19944,26 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                                        (data.partnerName === kundenName) ||
                                        (data.kundendaten?.name === kundenName);
 
-                    if (kundeMatch && data.kalkulationData && data.kalkulationData.summeBrutto) {
+                    // Format 1: kalkulationData Objekt (älteres Format)
+                    const hasKalkulationData = data.kalkulationData && data.kalkulationData.summeBrutto;
+
+                    // Format 2: Direkte Felder (neueres Format ab Nov 2025)
+                    const hasDirectKVA = data.vereinbarterPreis || data.summeBruttoOriginal || data.kalkulationErstelltAm;
+
+                    if (kundeMatch && (hasKalkulationData || hasDirectKVA)) {
+                        // Summe extrahieren (aus beiden Formaten)
+                        const summeBrutto = data.kalkulationData?.summeBrutto
+                            || data.vereinbarterPreis
+                            || data.summeBruttoOriginal
+                            || 0;
+
                         kvas.push({
                             id: doc.id,
                             ...data,
-                            // KVA-Daten für einfacheren Zugriff
-                            summeBrutto: data.kalkulationData.summeBrutto,
-                            positionen: data.kalkulationData.positionen || [],
-                            materialien: data.kalkulationData.materialien || []
+                            // Normalisierte Felder für einfacheren Zugriff
+                            summeBrutto: summeBrutto,
+                            positionen: data.kalkulationData?.positionen || [],
+                            materialien: data.kalkulationData?.materialien || []
                         });
                     }
                 });
