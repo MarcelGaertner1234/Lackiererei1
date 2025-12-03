@@ -8409,6 +8409,14 @@
                 kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
             }
 
+            // 🔧 FIX Dec 3, 2025: Design-URLs aus Fahrzeug laden (falls vorhanden)
+            if (vehicle.designUrls && Object.keys(vehicle.designUrls).length > 0) {
+                kalkWizardData.existingDesignUrls = vehicle.designUrls;
+                console.log('🎨 Design-URLs aus Fahrzeug geladen:', Object.keys(vehicle.designUrls));
+            } else {
+                kalkWizardData.existingDesignUrls = {};
+            }
+
             // 🆕 FIX (Dec 3, 2025): Service-Details für ALLE 4 Pipelines laden
             // Pipeline 1+2: annahme.html speichert serviceTyp als ARRAY + additionalServices
             // Pipeline 3+4: Partner speichert serviceTyp als STRING + additionalServices
@@ -8800,6 +8808,15 @@
             // Schadensbeschreibung/Notizen aus Entwurf
             kalkWizardData.schadenBeschreibung = selectedEntwurf.schadenBeschreibung || selectedEntwurf.beschreibung || '';
             kalkWizardData.notizen = selectedEntwurf.notizen || '';
+
+            // 🔧 FIX Dec 3, 2025: Design-URLs aus Entwurf laden (für Folierung/Werbebeklebung)
+            // Problem: Ohne diesen Code werden bestehende designUrls beim Speichern überschrieben
+            if (selectedEntwurf.designUrls && Object.keys(selectedEntwurf.designUrls).length > 0) {
+                kalkWizardData.existingDesignUrls = selectedEntwurf.designUrls;
+                console.log('🎨 Design-URLs aus Entwurf geladen:', Object.keys(selectedEntwurf.designUrls));
+            } else {
+                kalkWizardData.existingDesignUrls = {};
+            }
 
             // 🆕 MULTI-SERVICE SUPPORT (2025-11-30)
             // Service-Art(en) übernehmen
@@ -10412,6 +10429,14 @@ REGELN:
             kalkWizardData.schadenBeschreibung = selectedPartnerAnfrage.schadenBeschreibung || selectedPartnerAnfrage.beschreibung || '';
             kalkWizardData.notizen = selectedPartnerAnfrage.notizen || '';
             kalkWizardData.partnerName = selectedPartnerAnfrage.partnerName || '';
+
+            // 🔧 FIX Dec 3, 2025: Design-URLs aus Partner-Anfrage laden (für Folierung/Werbebeklebung)
+            if (selectedPartnerAnfrage.designUrls && Object.keys(selectedPartnerAnfrage.designUrls).length > 0) {
+                kalkWizardData.existingDesignUrls = selectedPartnerAnfrage.designUrls;
+                console.log('🎨 Design-URLs aus Partner-Anfrage geladen:', Object.keys(selectedPartnerAnfrage.designUrls));
+            } else {
+                kalkWizardData.existingDesignUrls = {};
+            }
 
             // 🆕 MULTI-SERVICE SUPPORT (2025-11-30) - auch für Partner-Anfragen
             // Service-Art(en) übernehmen
@@ -19811,11 +19836,19 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             }
 
             try {
-                // 🆕 Design-Dateien zu Firebase Storage hochladen (falls vorhanden)
-                let designUrls = {};
+                // 🔧 FIX Dec 3, 2025: Design-URLs beibehalten oder neue hochladen
+                // Problem: Ohne diesen Code werden bestehende designUrls mit {} überschrieben
+                let designUrls = kalkWizardData.existingDesignUrls || {};
+
+                // Neue Design-Dateien zu Firebase Storage hochladen (falls vorhanden)
                 if (Object.keys(uploadedDesignFiles).length > 0) {
                     showToast('📤 Lade Design-Dateien hoch...', 'info');
-                    designUrls = await uploadDesignFilesToStorage(targetId);
+                    const newDesignUrls = await uploadDesignFilesToStorage(targetId);
+                    // Neue URLs mit bestehenden mergen (neue überschreiben alte für gleiche Felder)
+                    designUrls = { ...designUrls, ...newDesignUrls };
+                    console.log('🎨 Design-URLs aktualisiert:', Object.keys(designUrls));
+                } else if (Object.keys(designUrls).length > 0) {
+                    console.log('🎨 Bestehende Design-URLs beibehalten:', Object.keys(designUrls));
                 }
                 // Summen berechnen
                 const summeArbeit = aktuelleKalkulation.positionen.reduce((sum, p) => {
