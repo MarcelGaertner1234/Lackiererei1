@@ -1645,10 +1645,27 @@
             const einzelpreis = parseFloat(data.einzelpreis) || parseFloat(data.preis) || 0;
             const gesamtpreis = parseFloat(data.gesamtpreis) || (menge * einzelpreis);
 
-            // 🔧 FIX Dec 3, 2025: Explizite Null-Prüfung - 0 ist ein gültiger Preis!
-            // Problem: || gesamtpreis überschreibt 0-Werte (Aftermarket-Teil hat preisOriginal=0)
+            // 🔧 FIX Dec 3, 2025 v2: Korrekte Varianten-Logik für Ersatzteile
+            // Jedes Teil ist ENTWEDER Original ODER Aftermarket, NICHT beide!
+            // - hasOriginal = true, hasAftermarket = false → Original-Teil (preisAftermarket = 0)
+            // - hasOriginal = false, hasAftermarket = true → Aftermarket-Teil (preisOriginal = 0)
+            // - hasOriginal = true, hasAftermarket = true → Beide Preise (Mischfall, selten)
+            // - keins vorhanden → Legacy-Daten (beide = gesamtpreis für Abwärtskompatibilität)
             const hasOriginal = data.preisOriginal !== undefined && data.preisOriginal !== null && data.preisOriginal !== '';
             const hasAftermarket = data.preisAftermarket !== undefined && data.preisAftermarket !== null && data.preisAftermarket !== '';
+
+            // Bestimme Preise basierend auf vorhandenen Daten
+            let preisOriginal, preisAftermarket;
+
+            if (hasOriginal || hasAftermarket) {
+                // Varianten-Daten vorhanden → Werte direkt übernehmen (0 ist gültig!)
+                preisOriginal = hasOriginal ? parseFloat(data.preisOriginal) : 0;
+                preisAftermarket = hasAftermarket ? parseFloat(data.preisAftermarket) : 0;
+            } else {
+                // Legacy-Daten ohne Varianten → beide Preise = gesamtpreis
+                preisOriginal = gesamtpreis;
+                preisAftermarket = gesamtpreis;
+            }
 
             const teil = {
                 etn: data.etn || data.teilenummer || '',
@@ -1656,9 +1673,8 @@
                 anzahl: menge,
                 einzelpreis: einzelpreis,
                 gesamtpreis: gesamtpreis,
-                // 🔧 FIX: Nur Fallback wenn Feld NICHT vorhanden (nicht wenn 0)
-                preisOriginal: hasOriginal ? parseFloat(data.preisOriginal) : gesamtpreis,
-                preisAftermarket: hasAftermarket ? parseFloat(data.preisAftermarket) : (hasOriginal ? parseFloat(data.preisOriginal) : gesamtpreis)
+                preisOriginal: preisOriginal,
+                preisAftermarket: preisAftermarket
             };
 
             // In globales Array speichern
