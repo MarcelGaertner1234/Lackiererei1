@@ -1686,8 +1686,13 @@
                  ============================================ -->
 
             <!-- Quick-Toggle Filter Buttons -->
+            <!-- 🆕 Dec 3, 2025: Neuer Status-Flow: zu_bestellen → bestellt → geliefert -->
             <div class="filter-toggle-buttons">
-                <button class="filter-btn active" data-filter="bestellt" onclick="setQuickFilter('bestellt')">
+                <button class="filter-btn active" data-filter="zu_bestellen" onclick="setQuickFilter('zu_bestellen')">
+                    <span>🛒 Zu Bestellen</span>
+                    <span class="filter-count" id="filterCountZuBestellen">0</span>
+                </button>
+                <button class="filter-btn" data-filter="bestellt" onclick="setQuickFilter('bestellt')">
                     <span>📦 Bestellt</span>
                     <span class="filter-count" id="filterCountBestellt">0</span>
                 </button>
@@ -1717,8 +1722,9 @@
                         </label>
                         <select class="filter-select" id="statusFilter" onchange="applyFilters()">
                             <option value="">Alle Status</option>
+                            <option value="zu_bestellen">🛒 Zu Bestellen</option>
                             <option value="bestellt">📦 Bestellt</option>
-                            <option value="angeliefert">✅ Angeliefert</option>
+                            <option value="geliefert">✅ Geliefert</option>
                         </select>
                     </div>
 
@@ -2369,8 +2375,9 @@
          */
 
         // Global Filter State
+        // 🆕 Dec 3, 2025: Neuer Status-Flow: zu_bestellen → bestellt → geliefert
         window.filterState = {
-            quickFilter: 'bestellt', // 'bestellt', 'geliefert', 'alle'
+            quickFilter: 'zu_bestellen', // 'zu_bestellen', 'bestellt', 'geliefert', 'alle'
             statusFilter: '',
             dateFromFilter: '',
             dateToFilter: '',
@@ -2435,8 +2442,14 @@
             let filtered = [...window.allBestellungen];
 
             // 1. Quick Filter
+            // 🆕 Dec 3, 2025: Support both 'geliefert' (new) and 'angeliefert' (legacy)
             if (window.filterState.quickFilter !== 'alle') {
-                filtered = filtered.filter(b => b.status === window.filterState.quickFilter);
+                if (window.filterState.quickFilter === 'geliefert') {
+                    // Support legacy 'angeliefert' status
+                    filtered = filtered.filter(b => b.status === 'geliefert' || b.status === 'angeliefert');
+                } else {
+                    filtered = filtered.filter(b => b.status === window.filterState.quickFilter);
+                }
             }
 
             // 2. Erweiterte Filter (falls aktiviert)
@@ -2444,7 +2457,12 @@
             // Status Filter (aus Dropdown)
             const statusFilter = document.getElementById('statusFilter').value;
             if (statusFilter) {
-                filtered = filtered.filter(b => b.status === statusFilter);
+                if (statusFilter === 'geliefert') {
+                    // Support legacy 'angeliefert' status
+                    filtered = filtered.filter(b => b.status === 'geliefert' || b.status === 'angeliefert');
+                } else {
+                    filtered = filtered.filter(b => b.status === statusFilter);
+                }
             }
 
             // Datum Von
@@ -2489,8 +2507,8 @@
         function resetFilters() {
             console.log('🔄 resetFilters()');
 
-            // Reset Quick Filter to 'bestellt'
-            window.filterState.quickFilter = 'bestellt';
+            // 🆕 Dec 3, 2025: Reset Quick Filter to 'zu_bestellen' (neuer Default)
+            window.filterState.quickFilter = 'zu_bestellen';
 
             // Reset Erweiterte Filter
             document.getElementById('statusFilter').value = '';
@@ -2501,7 +2519,7 @@
             // Update UI
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('active');
-                if (btn.getAttribute('data-filter') === 'bestellt') {
+                if (btn.getAttribute('data-filter') === 'zu_bestellen') {
                     btn.classList.add('active');
                 }
             });
@@ -2516,14 +2534,18 @@
 
         /**
          * Aktualisiert Filter Count Badges
+         * 🆕 Dec 3, 2025: Neuer Status-Flow: zu_bestellen → bestellt → geliefert
          */
         function updateFilterCounts() {
             if (!window.allBestellungen) return;
 
+            const zuBestellenCount = window.allBestellungen.filter(b => b.status === 'zu_bestellen').length;
             const bestelltCount = window.allBestellungen.filter(b => b.status === 'bestellt').length;
-            const geliefertCount = window.allBestellungen.filter(b => b.status === 'angeliefert').length;
+            // Support both 'geliefert' (new) and 'angeliefert' (legacy)
+            const geliefertCount = window.allBestellungen.filter(b => b.status === 'geliefert' || b.status === 'angeliefert').length;
             const alleCount = window.allBestellungen.length;
 
+            document.getElementById('filterCountZuBestellen').textContent = zuBestellenCount;
             document.getElementById('filterCountBestellt').textContent = bestelltCount;
             document.getElementById('filterCountGeliefert').textContent = geliefertCount;
             document.getElementById('filterCountAlle').textContent = alleCount;
@@ -4815,9 +4837,22 @@
                 }
 
                 // Status Badge
-                const statusBadge = bestellung.status === 'angeliefert'
-                    ? '<span class="status-badge completed"><svg data-feather="check-circle"></svg> Angeliefert</span>'
-                    : '<span class="status-badge pending"><svg data-feather="clock"></svg> Bestellt</span>';
+                // 🆕 Dec 3, 2025: Neuer Status-Flow: zu_bestellen → bestellt → geliefert
+                let statusBadge = '';
+                switch(bestellung.status) {
+                    case 'zu_bestellen':
+                        statusBadge = '<span class="status-badge" style="background: rgba(251, 191, 36, 0.2); color: #d97706; border: 1px solid rgba(251, 191, 36, 0.4);"><svg data-feather="shopping-cart"></svg> Zu Bestellen</span>';
+                        break;
+                    case 'bestellt':
+                        statusBadge = '<span class="status-badge pending"><svg data-feather="package"></svg> Bestellt</span>';
+                        break;
+                    case 'geliefert':
+                    case 'angeliefert':  // Legacy support
+                        statusBadge = '<span class="status-badge completed"><svg data-feather="check-circle"></svg> Geliefert</span>';
+                        break;
+                    default:
+                        statusBadge = '<span class="status-badge"><svg data-feather="help-circle"></svg> ' + (bestellung.status || 'Unbekannt') + '</span>';
+                }
 
                 // Source Badge (UPDATE 2025-11-12: Erweitert um verschiedene Quellen)
                 // 🔧 FIX (2025-11-29): kva-auto Badge hinzugefügt für KVA-Pipeline Ersatzteile
@@ -4845,34 +4880,52 @@
                         sourceBadge = '<span class="status-badge" style="background: rgba(107, 114, 128, 0.15); color: #6b7280; border: 1px solid rgba(107, 114, 128, 0.3);"><svg data-feather="help-circle" style="width: 14px; height: 14px;"></svg> Unbekannt</span>';
                 }
 
-                // Angeliefert-Info (wenn vorhanden)
+                // 🆕 Dec 3, 2025: Geliefert-Info (mit Legacy Support für 'angeliefert')
                 let angeliefertInfo = '';
-                if (bestellung.status === 'angeliefert' && bestellung.angeliefertAm) {
-                    const angeliefertDate = new Date(bestellung.angeliefertAm);
-                    const angeliefertStr = angeliefertDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                if ((bestellung.status === 'geliefert' || bestellung.status === 'angeliefert') && (bestellung.geliefertAm || bestellung.angeliefertAm)) {
+                    const geliefertDate = new Date(bestellung.geliefertAm || bestellung.angeliefertAm);
+                    const geliefertStr = geliefertDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
                     angeliefertInfo = `
                         <div style="margin-top: 12px; padding: 12px; background: rgba(34, 197, 94, 0.1); border-radius: 10px; border-left: 4px solid var(--color-success);">
                             <div style="font-size: 13px; color: var(--color-success); font-weight: 600;">
-                                ✅ Angeliefert am ${angeliefertStr}
+                                ✅ Geliefert am ${geliefertStr}
                             </div>
                             <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;">
-                                von ${bestellung.angeliefertVon || 'Unbekannt'}
+                                von ${bestellung.geliefertVon || bestellung.angeliefertVon || 'Unbekannt'}
                             </div>
                         </div>
                     `;
                 }
 
-                // Button "Als angeliefert markieren" (nur bei status="bestellt" UND mit Berechtigung)
-                const showMarkButton = bestellung.status === 'bestellt' &&
-                                       typeof window.canManageBestellungen === 'function' &&
-                                       window.canManageBestellungen();
+                // 🆕 Dec 3, 2025: Neuer Status-Flow Buttons
+                const canManage = typeof window.canManageBestellungen === 'function' && window.canManageBestellungen();
 
-                // 🆕 FIX (2025-11-30): Varianten-Badge (Original/Aftermarket)
+                // Button "Als bestellt markieren" (für zu_bestellen Status)
+                const showMarkAsBestelltButton = bestellung.status === 'zu_bestellen' && canManage;
+
+                // Button "Als geliefert markieren" (für bestellt Status)
+                const showMarkButton = bestellung.status === 'bestellt' && canManage;
+
+                // 🆕 Dec 3, 2025: Varianten-Badge (Original/Aftermarket) - prüft preisTyp ODER variante
+                const varianteValue = (bestellung.preisTyp || bestellung.variante || '').toLowerCase();
                 let varianteBadge = '';
-                if (bestellung.variante === 'original') {
-                    varianteBadge = '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4caf50; border: 1px solid rgba(76, 175, 80, 0.3);">⭐ Original (OEM)</span>';
-                } else if (bestellung.variante === 'aftermarket') {
-                    varianteBadge = '<span class="status-badge" style="background: rgba(255, 152, 0, 0.15); color: #ff9800; border: 1px solid rgba(255, 152, 0, 0.3);">🔧 Aftermarket</span>';
+                if (varianteValue === 'original') {
+                    varianteBadge = '<span class="status-badge" style="background: rgba(25, 118, 210, 0.15); color: #1976d2; border: 1px solid rgba(25, 118, 210, 0.3);">🏭 Original (OEM)</span>';
+                } else if (varianteValue === 'aftermarket') {
+                    varianteBadge = '<span class="status-badge" style="background: rgba(245, 124, 0, 0.15); color: #f57c00; border: 1px solid rgba(245, 124, 0, 0.3);">🛒 Aftermarket</span>';
+                } else if (varianteValue && varianteValue !== 'unbekannt') {
+                    varianteBadge = `<span class="status-badge" style="background: rgba(107, 114, 128, 0.15); color: #6b7280; border: 1px solid rgba(107, 114, 128, 0.3);">${bestellung.preisTyp || bestellung.variante}</span>`;
+                }
+
+                // Bestell-Link Badge (wenn vorhanden)
+                const bestellLink = bestellung.bestellLink || bestellung.link || '';
+                let bestellLinkBadge = '';
+                if (bestellLink) {
+                    bestellLinkBadge = `
+                        <a href="${bestellLink}" target="_blank" class="status-badge" style="background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); text-decoration: none; cursor: pointer;" title="Zum Shop">
+                            🔗 Zum Shop →
+                        </a>
+                    `;
                 }
 
                 return `
@@ -4892,8 +4945,9 @@
                                 </div>
                                 <div style="text-align: right; display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
                                     ${statusBadge}
-                                    ${sourceBadge}
                                     ${varianteBadge}
+                                    ${bestellLinkBadge}
+                                    ${sourceBadge}
                                 </div>
                             </div>
 
@@ -4916,13 +4970,24 @@
 
                             ${angeliefertInfo}
 
+                            ${showMarkAsBestelltButton ? `
+                                <div style="margin-top: 12px;">
+                                    <button class="btn btn-primary"
+                                            style="padding: 10px 18px; font-size: 14px; width: 100%; background: linear-gradient(135deg, #f59e0b, #d97706);"
+                                            onclick="openMarkAsBestelltDialog('${bestellung.id}')">
+                                        <svg data-feather="shopping-cart"></svg>
+                                        Als bestellt markieren
+                                    </button>
+                                </div>
+                            ` : ''}
+
                             ${showMarkButton ? `
                                 <div style="margin-top: 12px;">
                                     <button class="btn btn-primary"
                                             style="padding: 10px 18px; font-size: 14px; width: 100%;"
-                                            onclick="markAsAngeliefert('${bestellung.id}')">
+                                            onclick="markAsGeliefert('${bestellung.id}')">
                                         <svg data-feather="check-circle"></svg>
-                                        Als angeliefert markieren
+                                        Als geliefert markieren
                                     </button>
                                 </div>
                             ` : ''}
@@ -4936,39 +5001,208 @@
         }
 
         /**
-         * Markiert Bestellung als angeliefert
+         * 🆕 Dec 3, 2025: Öffnet Dialog zum Markieren als bestellt
          * @param {string} bestellungId - ID der Bestellung
          */
-        async function markAsAngeliefert(bestellungId) {
-            // 🔍 DEBUG: Funktion aufgerufen
-            if (window.DEBUG) console.log('🔍 DEBUG: markAsAngeliefert() aufgerufen');
-            if (window.DEBUG) console.log('🔍 DEBUG: bestellungId:', bestellungId);
-            if (window.DEBUG) console.log('🔍 DEBUG: window.getCollection verfügbar?', typeof window.getCollection);
-            if (window.DEBUG) console.log('🔍 DEBUG: werkstattId:', window.werkstattId);
+        function openMarkAsBestelltDialog(bestellungId) {
+            // Bestellung aus Cache holen für Vorausfüllung
+            const bestellung = window.allBestellungen?.find(b => b.id === bestellungId);
 
-            if (!confirm('Bestellung als angeliefert markieren?')) {
-                if (window.DEBUG) console.log('🔍 DEBUG: User hat Confirm-Dialog abgebrochen');
+            // Dialog HTML
+            const dialogHTML = `
+                <div id="markAsBestelltDialog" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 9999;">
+                    <div class="modal-content" style="background: var(--color-surface-elevated); border-radius: 16px; padding: 24px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; border: 1px solid var(--color-border-glass);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="margin: 0; color: var(--color-text-primary); font-size: 20px;">
+                                🛒 Als bestellt markieren
+                            </h3>
+                            <button onclick="closeMarkAsBestelltDialog()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--color-text-secondary);">×</button>
+                        </div>
+
+                        <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 10px; padding: 12px; margin-bottom: 20px;">
+                            <div style="font-weight: 600; color: #d97706;">📦 ${bestellung?.benennung || 'Teil'}</div>
+                            <div style="font-size: 13px; color: var(--color-text-secondary);">ETN: ${bestellung?.etn || 'N/A'} | ${bestellung?.menge || 1}× à ${(bestellung?.einzelpreis || 0).toFixed(2)} €</div>
+                        </div>
+
+                        <form id="markAsBestelltForm" onsubmit="submitMarkAsBestellt(event, '${bestellungId}')">
+                            <div style="display: flex; flex-direction: column; gap: 16px;">
+
+                                <div class="form-group">
+                                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--color-text-primary);">
+                                        🚚 Lieferant *
+                                    </label>
+                                    <input type="text" id="bestellLieferant" required
+                                           placeholder="z.B. AutoTeile GmbH"
+                                           value="${bestellung?.lieferant?.name || ''}"
+                                           style="width: 100%; padding: 12px; border: 1px solid var(--color-border-glass); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-size: 15px;">
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--color-text-primary);">
+                                        📞 Kontakt
+                                    </label>
+                                    <input type="text" id="bestellKontakt"
+                                           placeholder="Tel. / Email"
+                                           value="${bestellung?.lieferant?.kontakt || ''}"
+                                           style="width: 100%; padding: 12px; border: 1px solid var(--color-border-glass); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-size: 15px;">
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--color-text-primary);">
+                                        🔢 Bestellnummer
+                                    </label>
+                                    <input type="text" id="bestellNummer"
+                                           placeholder="Bestellnr."
+                                           value="${bestellung?.lieferant?.bestellnummer || ''}"
+                                           style="width: 100%; padding: 12px; border: 1px solid var(--color-border-glass); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-size: 15px;">
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--color-text-primary);">
+                                        💰 Tatsächlicher Preis (€)
+                                    </label>
+                                    <input type="number" id="bestellPreis" step="0.01" min="0"
+                                           placeholder="${(bestellung?.einzelpreis || 0).toFixed(2)}"
+                                           value="${bestellung?.preisTatsaechlich || ''}"
+                                           style="width: 100%; padding: 12px; border: 1px solid var(--color-border-glass); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-size: 15px;">
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--color-text-primary);">
+                                        📅 Lieferdatum
+                                    </label>
+                                    <input type="date" id="bestellLieferdatum"
+                                           value="${bestellung?.voraussichtlicheAnkunft ? new Date(bestellung.voraussichtlicheAnkunft).toISOString().split('T')[0] : ''}"
+                                           style="width: 100%; padding: 12px; border: 1px solid var(--color-border-glass); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-size: 15px;">
+                                </div>
+
+                                <div class="form-group">
+                                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--color-text-primary);">
+                                        🔗 Bestell-Link
+                                    </label>
+                                    <input type="url" id="bestellLink"
+                                           placeholder="https://..."
+                                           value="${bestellung?.bestellLink || bestellung?.link || ''}"
+                                           style="width: 100%; padding: 12px; border: 1px solid var(--color-border-glass); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-size: 15px;">
+                                </div>
+
+                            </div>
+
+                            <div style="display: flex; gap: 12px; margin-top: 24px;">
+                                <button type="button" onclick="closeMarkAsBestelltDialog()"
+                                        style="flex: 1; padding: 14px; border: 1px solid var(--color-border-glass); border-radius: 10px; background: var(--color-surface); color: var(--color-text-primary); font-size: 15px; cursor: pointer;">
+                                    Abbrechen
+                                </button>
+                                <button type="submit"
+                                        style="flex: 1; padding: 14px; border: none; border-radius: 10px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; font-size: 15px; font-weight: 600; cursor: pointer;">
+                                    ✓ Als bestellt markieren
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            // Dialog einfügen
+            document.body.insertAdjacentHTML('beforeend', dialogHTML);
+        }
+
+        /**
+         * Schließt den "Als bestellt markieren" Dialog
+         */
+        function closeMarkAsBestelltDialog() {
+            const dialog = document.getElementById('markAsBestelltDialog');
+            if (dialog) dialog.remove();
+        }
+
+        /**
+         * Speichert Bestelldaten und setzt Status auf 'bestellt'
+         */
+        async function submitMarkAsBestellt(event, bestellungId) {
+            event.preventDefault();
+
+            const lieferant = document.getElementById('bestellLieferant').value.trim();
+            const kontakt = document.getElementById('bestellKontakt').value.trim();
+            const bestellnummer = document.getElementById('bestellNummer').value.trim();
+            const preis = document.getElementById('bestellPreis').value;
+            const lieferdatum = document.getElementById('bestellLieferdatum').value;
+            const bestellLink = document.getElementById('bestellLink').value.trim();
+
+            if (!lieferant) {
+                showToast('❌ Bitte Lieferant angeben!', 'warning');
                 return;
             }
 
             try {
-                console.log(`📦 [BESTELLUNGEN] Markiere als angeliefert: ${bestellungId}`);
+                console.log(`📦 [BESTELLUNGEN] Markiere als bestellt: ${bestellungId}`);
+
+                const currentUser = window.authManager?.getCurrentUser();
+                const userName = currentUser?.name || localStorage.getItem('userName') || 'Unbekannt';
+
+                const updateData = {
+                    status: 'bestellt',
+                    bestelltAm: new Date().toISOString(),
+                    bestelltVon: userName,
+                    lieferant: {
+                        name: lieferant,
+                        kontakt: kontakt,
+                        bestellnummer: bestellnummer
+                    }
+                };
+
+                // Optionale Felder hinzufügen wenn gefüllt
+                if (preis) {
+                    updateData.preisTatsaechlich = parseFloat(preis);
+                }
+                if (lieferdatum) {
+                    updateData.voraussichtlicheAnkunft = new Date(lieferdatum).toISOString();
+                }
+                if (bestellLink) {
+                    updateData.bestellLink = bestellLink;
+                }
+
+                await window.getCollection('bestellungen').doc(bestellungId).update(updateData);
+
+                console.log('✅ [BESTELLUNGEN] Als bestellt markiert');
+                showToast('✅ Bestellung erfolgreich als bestellt markiert!', 'success', 3000);
+
+                // Dialog schließen und Liste neu laden
+                closeMarkAsBestelltDialog();
+                loadBestellungen();
+
+            } catch (error) {
+                console.error('❌ [BESTELLUNGEN] Fehler beim Markieren als bestellt:', error);
+                showToast('Fehler: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Markiert Bestellung als geliefert (ehemals angeliefert)
+         * 🆕 Dec 3, 2025: Neuer Status 'geliefert' statt 'angeliefert'
+         * @param {string} bestellungId - ID der Bestellung
+         */
+        async function markAsGeliefert(bestellungId) {
+            if (!confirm('Bestellung als geliefert markieren?')) {
+                return;
+            }
+
+            try {
+                console.log(`📦 [BESTELLUNGEN] Markiere als geliefert: ${bestellungId}`);
 
                 const currentUser = window.authManager?.getCurrentUser();
                 const userName = currentUser?.name || localStorage.getItem('userName') || 'Unbekannt';
 
                 await window.getCollection('bestellungen').doc(bestellungId).update({
-                    status: 'angeliefert',
+                    status: 'geliefert',
+                    geliefertAm: new Date().toISOString(),
+                    geliefertVon: userName,
+                    // Legacy-Felder für Backward Compatibility
                     angeliefertAm: new Date().toISOString(),
                     angeliefertVon: userName
                 });
 
                 console.log('✅ [BESTELLUNGEN] Status aktualisiert');
-
-                // Success message
-                showToast('✅ Bestellung als angeliefert markiert!', 'success', 3000);
-
-                // Reload list
+                showToast('✅ Bestellung als geliefert markiert!', 'success', 3000);
                 loadBestellungen();
 
             } catch (error) {

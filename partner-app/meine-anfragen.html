@@ -6214,6 +6214,7 @@
                     const bestellungId = 'best_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
 
                     // Create bestellung document (mirrors annahme.html structure)
+                    // 🆕 Dec 3, 2025: Neuer Status-Flow: zu_bestellen → bestellt → geliefert
                     const bestellungData = {
                         id: bestellungId,
                         etn: bestellung.etn || '',
@@ -6221,15 +6222,18 @@
                         menge: bestellung.menge || bestellung.anzahl || 1,
                         einzelpreis: parseFloat(bestellung.einzelpreis) || 0,
                         gesamtpreis: parseFloat(bestellung.gesamtpreis) || 0,
-                        status: 'bestellt',
-                        bestelltVon: userName,
-                        bestelltAm: new Date().toISOString(),
+                        status: 'zu_bestellen',  // 🆕 Muss erst manuell bestellt werden!
+                        erstelltVon: userName,
+                        erstelltAm: new Date().toISOString(),
+                        bestelltVon: null,  // Wird gesetzt wenn tatsächlich bestellt
+                        bestelltAm: null,   // Wird gesetzt wenn tatsächlich bestellt
                         werkstattId: werkstattId,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                         fahrzeugId: String(fahrzeugId),  // CRITICAL: String type for query consistency
                         kennzeichen: kennzeichen,
                         source: 'entwurf-auto',  // Mark as created from Entwurf pipeline
                         sourceRequestId: null,
+                        preisTyp: bestellung.preisTyp || 'Unbekannt',  // 🆕 Original/Aftermarket
 
                         // Extended fields (2025-11-11)
                         preisGeschaetzt: parseFloat(bestellung.einzelpreis) || 0,
@@ -6240,6 +6244,7 @@
                             kontakt: '',
                             bestellnummer: ''
                         },
+                        bestellLink: bestellung.bestellLink || null,  // 🆕 Link aus KVA
                         notizen: ''
                     };
 
@@ -6395,6 +6400,7 @@
                     // Andere Quellen verwenden: benennung, etn, einzelpreis, anzahl
                     const einzelpreis = parseFloat(teil.einzelpreis || teil.preis) || 0;
                     const menge = parseInt(teil.anzahl || teil.menge) || 1;
+                    // 🆕 Dec 3, 2025: Neuer Status-Flow: zu_bestellen → bestellt → geliefert
                     const bestellungData = {
                         id: bestellungId,
                         etn: teil.etn || teil.teilenummer || '',
@@ -6402,29 +6408,33 @@
                         menge: menge,
                         einzelpreis: einzelpreis,
                         gesamtpreis: parseFloat(teil.gesamtpreis) || (einzelpreis * menge),
-                        status: 'bestellt',
-                        bestelltVon: userName,
-                        bestelltAm: new Date().toISOString(),
+                        status: 'zu_bestellen',  // 🆕 Muss erst manuell bestellt werden!
+                        erstelltVon: userName,
+                        erstelltAm: new Date().toISOString(),
+                        bestelltVon: null,  // Wird gesetzt wenn tatsächlich bestellt
+                        bestelltAm: null,   // Wird gesetzt wenn tatsächlich bestellt
                         werkstattId: werkstattId,
                         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                         fahrzeugId: String(fahrzeugId),  // CRITICAL: String type for query consistency
                         kennzeichen: kennzeichen,
                         source: 'kva-auto',  // Mark as created from KVA pipeline
                         sourceRequestId: null,
+                        preisTyp: teil.preisTyp || 'Unbekannt',  // 🆕 Original/Aftermarket
 
                         // Extended fields (2025-11-11)
                         // 🔧 FIX (2025-11-29): Lieferant und Bestell-Link aus kalkulation.html übernehmen
                         preisGeschaetzt: einzelpreis,
-                        lieferantName: teil.lieferant || null,
-                        lieferantId: null,
-                        bestellnummer: null,
+                        preisTatsaechlich: null,
+                        lieferant: {
+                            name: teil.lieferant || '',
+                            kontakt: '',
+                            bestellnummer: ''
+                        },
                         lieferdatum: null,
-                        bestellLink: teil.bestellLink || null,  // NEU: Link aus kalkulation.html
+                        bestellLink: teil.bestellLink || teil.link || null,  // Link aus kalkulation.html
                         angeliefertAm: null,
                         angeliefertVon: null,
-                        notizen: teil.bestellLink
-                            ? `Automatisch erstellt aus KVA-Ersatzteil (Link: ${teil.bestellLink})`
-                            : `Automatisch erstellt aus KVA-Ersatzteil`,
+                        notizen: '',
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString()
                     };
