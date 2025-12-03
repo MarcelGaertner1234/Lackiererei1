@@ -7122,10 +7122,16 @@
                     <div class="ersatzteile-complete-list">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
                             <h4 style="margin: 0;"><i data-feather="list"></i> Bestellliste</h4>
-                            <button class="btn btn-secondary" onclick="exportBestelllistePDF()">
-                                <i data-feather="download"></i>
-                                PDF Export
-                            </button>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-primary" onclick="exportBestelllisteCSV()" title="CSV-Export mit allen Feldern (empfohlen für lange Links)">
+                                    <i data-feather="file-text"></i>
+                                    CSV Export
+                                </button>
+                                <button class="btn btn-secondary" onclick="exportBestelllistePDF()">
+                                    <i data-feather="download"></i>
+                                    PDF Export
+                                </button>
+                            </div>
                         </div>
                         <div id="ersatzteileCompleteList" class="ersatzteile-table-wrapper">
                             <!-- 🆕 Nov 30, 2025: Zwei Preis-Spalten (Original + Aftermarket) -->
@@ -20704,6 +20710,119 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
         function closeKundenKVAModal() {
             const modal = document.getElementById('kundenKVAModal');
             if (modal) modal.remove();
+        }
+
+        // ============================================
+        // CSV-EXPORT BESTELLLISTE (NEU: Dec 3, 2025)
+        // ============================================
+
+        function exportBestelllisteCSV() {
+            if (kalkWizardData.ersatzteile.length === 0) {
+                showToast('Keine Ersatzteile zum Exportieren vorhanden', 'warning');
+                return;
+            }
+
+            // CSV Header mit allen relevanten Feldern
+            const headers = [
+                'Nr',
+                'Bezeichnung',
+                'Teilenummer',
+                'Menge',
+                'Typ',
+                'Preis Original (EUR)',
+                'Preis Aftermarket (EUR)',
+                'Lieferant',
+                'Service',
+                'Bestell-Link'
+            ];
+
+            // CSV Zeilen erstellen
+            const rows = kalkWizardData.ersatzteile.map((e, index) => {
+                // Typ bestimmen (Original, Aftermarket oder Beide)
+                let typ = 'Unbekannt';
+                if (e.preisTyp) {
+                    typ = e.preisTyp;
+                } else if (e.preisOriginal > 0 && e.preisAftermarket > 0) {
+                    typ = 'Beide';
+                } else if (e.preisOriginal > 0) {
+                    typ = 'Original';
+                } else if (e.preisAftermarket > 0 || e.preis > 0) {
+                    typ = 'Aftermarket';
+                }
+
+                return [
+                    index + 1,
+                    escapeCSV(e.name || '-'),
+                    escapeCSV(e.teilenummer || '-'),
+                    e.menge || 1,
+                    typ,
+                    (e.preisOriginal || 0).toFixed(2),
+                    (e.preisAftermarket || e.preis || 0).toFixed(2),
+                    escapeCSV(e.lieferant || '-'),
+                    escapeCSV(e.service || e.serviceTyp || 'Allgemein'),
+                    escapeCSV(e.link || e.bestellLink || '-')
+                ];
+            });
+
+            // Summenzeile
+            const sumOriginal = kalkWizardData.ersatzteile.reduce((sum, e) =>
+                sum + ((e.preisOriginal || 0) * (e.menge || 1)), 0);
+            const sumAftermarket = kalkWizardData.ersatzteile.reduce((sum, e) =>
+                sum + ((e.preisAftermarket || e.preis || 0) * (e.menge || 1)), 0);
+
+            rows.push([]); // Leerzeile
+            rows.push([
+                '',
+                'GESAMT (Netto)',
+                '',
+                '',
+                '',
+                sumOriginal.toFixed(2),
+                sumAftermarket.toFixed(2),
+                '',
+                '',
+                ''
+            ]);
+
+            // Fahrzeug-Info am Anfang
+            const fahrzeugInfo = [
+                ['Fahrzeug', `${kalkWizardData.fahrzeug?.marke || ''} ${kalkWizardData.fahrzeug?.modell || ''}`],
+                ['Kennzeichen', kalkWizardData.fahrzeug?.kennzeichen || '-'],
+                ['Datum', new Date().toLocaleDateString('de-DE')],
+                [] // Leerzeile
+            ];
+
+            // CSV zusammenbauen
+            const csvContent = [
+                ...fahrzeugInfo.map(row => row.join(';')),
+                headers.join(';'),
+                ...rows.map(row => row.join(';'))
+            ].join('\n');
+
+            // BOM für Excel UTF-8 Erkennung
+            const BOM = '\uFEFF';
+            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+
+            // Download
+            const fileName = `Bestellliste_${kalkWizardData.fahrzeug?.kennzeichen || 'Unbekannt'}_${new Date().toISOString().split('T')[0]}.csv`;
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            link.click();
+            URL.revokeObjectURL(link.href);
+
+            showToast('Bestellliste als CSV exportiert (öffnen mit Excel)', 'success');
+        }
+
+        // CSV-Escape-Funktion für Sonderzeichen
+        function escapeCSV(value) {
+            if (value === null || value === undefined) return '';
+            const str = String(value);
+            // Wenn Semikolon, Anführungszeichen oder Zeilenumbruch enthalten, in Anführungszeichen setzen
+            if (str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
         }
 
         // ============================================
