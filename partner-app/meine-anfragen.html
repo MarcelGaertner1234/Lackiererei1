@@ -6995,9 +6995,32 @@
                 // Vorher: In kva-erstellen.html (FALSCH - verwendete anfrageId)
                 // Jetzt: Hier in meine-anfragen.html (KORREKT - verwendet fahrzeugData.id)
                 // 🆕 FIX (2025-11-29): Erweiterter Fallback für alle Ersatzteile-Quellen
-                const ersatzteileFromKVA = anfrage.kva?.pdfImport?.editedData?.ersatzteile  // Primär: pdfImport (manuell + variantTable)
+                // 🆕 FIX (2025-12-03): Filterung nach gewählter Variante (Original/Aftermarket)
+                let ersatzteileFromKVA = anfrage.kva?.pdfImport?.editedData?.ersatzteile  // Primär: pdfImport (manuell + variantTable)
                     || anfrage.kva?.kalkulationData?.ersatzteile  // Fallback 1: kalkulationData (konvertiert)
+                    || anfrage.kalkulation?.ersatzteile  // Fallback 2: kalkulation (von kalkulation.html)
                     || [];
+
+                // 🆕 Dec 3, 2025: FILTER ERSATZTEILE NACH GEWÄHLTER VARIANTE
+                // Wenn der Partner Original oder Aftermarket gewählt hat, nur die entsprechenden Teile verwenden
+                const gewaehlteVariante = anfrage.angebotDetails?.gewaehlteVariante || anfrage.gewaehlteVariante;
+                if (gewaehlteVariante && ersatzteileFromKVA.length > 0) {
+                    const originalCount = ersatzteileFromKVA.length;
+                    const filterTyp = gewaehlteVariante === 'original' ? 'Original' : 'Aftermarket';
+
+                    // Filter nach preisTyp (wenn vorhanden)
+                    const hasPreisTypField = ersatzteileFromKVA.some(e => e.preisTyp);
+
+                    if (hasPreisTypField) {
+                        ersatzteileFromKVA = ersatzteileFromKVA.filter(e =>
+                            e.preisTyp === filterTyp || !e.preisTyp  // Keep parts without preisTyp (legacy)
+                        );
+                        console.log(`🔧 [VARIANTE] Partner wählte ${gewaehlteVariante}: ${ersatzteileFromKVA.length}/${originalCount} Ersatzteile gefiltert (${filterTyp})`);
+                    } else {
+                        console.log(`ℹ️ [VARIANTE] Ersatzteile ohne preisTyp-Feld (Legacy-Daten) - alle ${originalCount} Teile werden übernommen`);
+                    }
+                }
+
                 if (ersatzteileFromKVA.length > 0) {
                     try {
                         console.log(`🗄️ [KVA-ANNAHME] Übertrage ${ersatzteileFromKVA.length} Ersatzteile in zentrale DB...`);
