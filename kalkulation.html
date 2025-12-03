@@ -8327,18 +8327,29 @@
             selectedDbVehicle = vehicle;
 
             // Wizard-Daten befüllen
+            // 🆕 FIX (Dec 3, 2025): Erweiterte Fallback-Ketten für ALLE 4 Pipelines
+            // Pipeline 1+2: annahme.html (Single/Multi) speichert: marke, modell, kundenname (lowercase!)
+            // Pipeline 3+4: Partner (Single/Multi) speichert: fahrzeugmarke, fahrzeugmodell, kundenName (uppercase!)
             kalkWizardData.fahrzeug = {
-                marke: vehicle.fahrzeugmarke || vehicle.marke || '',
-                modell: vehicle.fahrzeugmodell || vehicle.modell || '',
-                baujahr: vehicle.baujahr || '',
+                marke: vehicle.marke || vehicle.fahrzeugmarke || '',
+                modell: vehicle.modell || vehicle.fahrzeugmodell || '',
+                baujahr: vehicle.baujahrVon || vehicle.baujahr || '',
                 kennzeichen: vehicle.kennzeichen || '',
-                farbcode: vehicle.farbnummer || vehicle.farbcode || '',
-                kunde: vehicle.kundenName || vehicle.kunde || '',
+                farbcode: vehicle.farbnummer || vehicle.farbcode || vehicle.farbname || '',
+                // 🔧 FIX: kundenname (annahme.html) vs kundenName (Partner) - beide prüfen!
+                kunde: vehicle.kundenname || vehicle.kundenName || vehicle.kunde || '',
                 // 🆕 FIX (Nov 30, 2025): Zusätzliche Felder für Meister-Übersicht
                 kmstand: vehicle.kmstand || vehicle.kilometerstand || '',
-                anliefertermin: vehicle.anliefertermin || vehicle.liefertermin || '',
-                abholtermin: vehicle.abholtermin || vehicle.fertigstellungsdatum || '',
-                ersatzfahrzeug: vehicle.ersatzfahrzeug || vehicle.ersatzfahrzeugGewuenscht || ''
+                anliefertermin: vehicle.anliefertermin || vehicle.liefertermin || vehicle.abholdatum || '',
+                abholtermin: vehicle.abholtermin || vehicle.fertigstellungsdatum || vehicle.geplantesAbnahmeDatum || '',
+                // 🔧 FIX: Boolean zu String konvertieren für Anzeige
+                ersatzfahrzeug: vehicle.ersatzfahrzeugGewuenscht === true ? 'ja' : (vehicle.ersatzfahrzeugGewuenscht === false ? 'nein' : (vehicle.ersatzfahrzeug || '')),
+                // 🆕 Zusätzliche Felder aus annahme.html
+                vin: vehicle.vin || vehicle.fahrgestellnummer || '',
+                farbname: vehicle.farbname || '',
+                farbvariante: vehicle.farbvariante || '',
+                telefon: vehicle.telefon || vehicle.kundenTelefon || '',
+                email: vehicle.kundenEmail || vehicle.email || ''
             };
             kalkWizardData.dbFahrzeugId = vehicle.id;
 
@@ -8360,6 +8371,51 @@
             if (vehicle.serviceTyp) {
                 kalkWizardData.serviceArt = vehicle.serviceTyp;
             }
+
+            // 🆕 FIX (Dec 3, 2025): Service-Details für ALLE 4 Pipelines laden
+            // Pipeline 1+2: annahme.html speichert serviceDetails + additionalServices
+            // Pipeline 3+4: Partner speichert serviceData + additionalServices
+            if (vehicle.serviceTyp) {
+                kalkWizardData.services = [vehicle.serviceTyp];
+                kalkWizardData.isMultiService = false;
+
+                // serviceDetailsPerService initialisieren
+                if (!kalkWizardData.serviceDetailsPerService) {
+                    kalkWizardData.serviceDetailsPerService = {};
+                }
+
+                // Primary Service Details laden (annahme.html: serviceDetails, Partner: serviceData)
+                const primaryDetails = vehicle.serviceDetails || vehicle.serviceData || {};
+                kalkWizardData.serviceDetailsPerService[vehicle.serviceTyp] = primaryDetails;
+                console.log(`📋 Primary Service "${vehicle.serviceTyp}" Details geladen:`, primaryDetails);
+
+                // Multi-Service: additionalServices laden
+                if (vehicle.additionalServices && Array.isArray(vehicle.additionalServices) && vehicle.additionalServices.length > 0) {
+                    kalkWizardData.isMultiService = true;
+
+                    vehicle.additionalServices.forEach(addService => {
+                        // Format kann sein: {serviceTyp, serviceDetails} ODER nur String
+                        const serviceTyp = typeof addService === 'string' ? addService : addService.serviceTyp;
+                        const serviceDetails = typeof addService === 'object' ? (addService.serviceDetails || addService.serviceData || {}) : {};
+
+                        if (serviceTyp && !kalkWizardData.services.includes(serviceTyp)) {
+                            kalkWizardData.services.push(serviceTyp);
+                            kalkWizardData.serviceDetailsPerService[serviceTyp] = serviceDetails;
+                            console.log(`📋 Additional Service "${serviceTyp}" Details geladen:`, serviceDetails);
+                        }
+                    });
+                }
+
+                console.log('✅ Alle Service-Details geladen:', {
+                    services: kalkWizardData.services,
+                    isMultiService: kalkWizardData.isMultiService,
+                    serviceDetailsPerService: kalkWizardData.serviceDetailsPerService
+                });
+            }
+
+            // 🆕 Schadensbeschreibung/Notizen laden
+            kalkWizardData.schadenBeschreibung = vehicle.notizen || vehicle.schadenBeschreibung || vehicle.beschreibung || '';
+            kalkWizardData.notizen = vehicle.notizen || '';
 
             // UI aktualisieren
             const selectedDisplay = document.getElementById('selectedDbVehicle');
@@ -8396,13 +8452,21 @@
             selectedEntwurf = null;
             selectedPartnerAnfrage = null;
             kalkWizardData.fahrzeug = {
-                marke: '', modell: '', baujahr: '', kennzeichen: '', farbcode: '', kunde: ''
+                marke: '', modell: '', baujahr: '', kennzeichen: '', farbcode: '', kunde: '',
+                kmstand: '', anliefertermin: '', abholtermin: '', ersatzfahrzeug: '',
+                vin: '', farbname: '', farbvariante: '', telefon: '', email: ''
             };
             kalkWizardData.dbFahrzeugId = null;
             kalkWizardData.entwurfId = null;
             kalkWizardData.partnerAnfrageId = null;
             kalkWizardData.entwurfPhotos = [];
             kalkWizardData.serviceArt = '';
+            // 🆕 FIX (Dec 3, 2025): Multi-Service Felder zurücksetzen
+            kalkWizardData.services = [];
+            kalkWizardData.isMultiService = false;
+            kalkWizardData.serviceDetailsPerService = {};
+            kalkWizardData.schadenBeschreibung = '';
+            kalkWizardData.notizen = '';
 
             // UI zurücksetzen
             const selectedDisplay = document.getElementById('selectedDbVehicle');
