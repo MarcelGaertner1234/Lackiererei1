@@ -1645,15 +1645,20 @@
             const einzelpreis = parseFloat(data.einzelpreis) || parseFloat(data.preis) || 0;
             const gesamtpreis = parseFloat(data.gesamtpreis) || (menge * einzelpreis);
 
+            // 🔧 FIX Dec 3, 2025: Explizite Null-Prüfung - 0 ist ein gültiger Preis!
+            // Problem: || gesamtpreis überschreibt 0-Werte (Aftermarket-Teil hat preisOriginal=0)
+            const hasOriginal = data.preisOriginal !== undefined && data.preisOriginal !== null && data.preisOriginal !== '';
+            const hasAftermarket = data.preisAftermarket !== undefined && data.preisAftermarket !== null && data.preisAftermarket !== '';
+
             const teil = {
                 etn: data.etn || data.teilenummer || '',
                 benennung: data.benennung || data.name || '',
                 anzahl: menge,
                 einzelpreis: einzelpreis,
                 gesamtpreis: gesamtpreis,
-                // 🆕 Varianten-Preise: Aus Kalkulation-Daten oder berechnen
-                preisOriginal: parseFloat(data.preisOriginal) || gesamtpreis,
-                preisAftermarket: parseFloat(data.preisAftermarket) || parseFloat(data.preisOriginal) || gesamtpreis
+                // 🔧 FIX: Nur Fallback wenn Feld NICHT vorhanden (nicht wenn 0)
+                preisOriginal: hasOriginal ? parseFloat(data.preisOriginal) : gesamtpreis,
+                preisAftermarket: hasAftermarket ? parseFloat(data.preisAftermarket) : (hasOriginal ? parseFloat(data.preisOriginal) : gesamtpreis)
             };
 
             // In globales Array speichern
@@ -1771,9 +1776,10 @@
         }
 
         function updateErsatzteileSumme() {
-            // 🆕 FIX Nov 30, 2025: Beide Summen (Original + Aftermarket) berechnen und anzeigen
-            const summeOriginal = ersatzteileData.reduce((sum, teil) => sum + (parseFloat(teil.preisOriginal) || parseFloat(teil.gesamtpreis) || 0), 0);
-            const summeAftermarket = ersatzteileData.reduce((sum, teil) => sum + (parseFloat(teil.preisAftermarket) || parseFloat(teil.preisOriginal) || parseFloat(teil.gesamtpreis) || 0), 0);
+            // 🔧 FIX Dec 3, 2025: Direkte Summen ohne Fallback-Kette
+            // preisOriginal und preisAftermarket sind bereits korrekt gesetzt (0 wenn nicht zutreffend)
+            const summeOriginal = ersatzteileData.reduce((sum, teil) => sum + (parseFloat(teil.preisOriginal) || 0), 0);
+            const summeAftermarket = ersatzteileData.reduce((sum, teil) => sum + (parseFloat(teil.preisAftermarket) || 0), 0);
 
             document.getElementById('ersatzteileOriginalSumme').textContent = summeOriginal.toFixed(2) + ' €';
             document.getElementById('ersatzteileAftermarketSumme').textContent = summeAftermarket.toFixed(2) + ' €';
@@ -2082,12 +2088,12 @@
         }
 
         function updateKostenaufschluesselung() {
-            // 🆕 FIX (Nov 30, 2025): Berechne Original/Aftermarket aus den individuellen Ersatzteilen!
-            // Die Ersatzteile haben preisOriginal und preisAftermarket - DIESE verwenden!
+            // 🔧 FIX Dec 3, 2025: Direkte Summen ohne Fallback-Kette
+            // preisOriginal und preisAftermarket sind bereits korrekt gesetzt (0 wenn nicht zutreffend)
 
             // Ersatzteile-Summen SEPARAT berechnen (Original vs Aftermarket)
-            const summeErsatzteileOriginal = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0), 0);
-            const summeErsatzteileAftermarket = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.preisAftermarket) || parseFloat(t.preisOriginal) || parseFloat(t.gesamtpreis) || 0), 0);
+            const summeErsatzteileOriginal = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.preisOriginal) || 0), 0);
+            const summeErsatzteileAftermarket = ersatzteileData.reduce((sum, t) => sum + (parseFloat(t.preisAftermarket) || 0), 0);
             const ersatzteileSumme = summeErsatzteileOriginal; // Für Anzeige (Original = Standardpreis)
 
             console.log(`📦 Ersatzteile-Summen: Original=${summeErsatzteileOriginal.toFixed(2)}€, Aftermarket=${summeErsatzteileAftermarket.toFixed(2)}€`);
