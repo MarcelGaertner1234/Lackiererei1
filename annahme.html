@@ -4981,13 +4981,59 @@
                 showToast('📄 Erstelle PDF...', 'info', 2000);
 
                 // FIX: Nov 21, 2025 - Pass full entwurfData instead of only 4 params
-                await erstelleEntwurfPDF(entwurfData, qrCodeUrl);
+                const pdfBlob = await erstelleEntwurfPDF(entwurfData, qrCodeUrl);
 
                 // ============================================
-                // 6. SUCCESS FEEDBACK
+                // 6. PDF IN FIREBASE STORAGE HOCHLADEN
                 // ============================================
 
-                showToast('✅ Entwurf gespeichert & PDF heruntergeladen!', 'success', 4000);
+                let pdfUrl = null;
+                if (pdfBlob && firebase.storage) {
+                    try {
+                        console.log('☁️ Lade PDF in Firebase Storage hoch...');
+                        showToast('☁️ Speichere PDF in Cloud...', 'info', 2000);
+
+                        const storage = firebase.storage();
+                        const pdfFileName = `Entwurf_${entwurfData.kennzeichen.replace(/\s/g, '_')}_${entwurfId}.pdf`;
+                        const pdfRef = storage.ref(`entwurf-pdfs/${window.werkstattId}/${pdfFileName}`);
+
+                        // Upload PDF Blob
+                        const uploadTask = await pdfRef.put(pdfBlob, {
+                            contentType: 'application/pdf',
+                            customMetadata: {
+                                entwurfId: entwurfId,
+                                kennzeichen: entwurfData.kennzeichen,
+                                kundenEmail: entwurfData.kundenEmail,
+                                createdAt: new Date().toISOString()
+                            }
+                        });
+
+                        // Get Download URL
+                        pdfUrl = await uploadTask.ref.getDownloadURL();
+                        console.log('✅ PDF hochgeladen:', pdfUrl);
+
+                        // Update Firestore Dokument mit PDF-URL
+                        await window.getCollection('partnerAnfragen').doc(entwurfId).update({
+                            pdfUrl: pdfUrl,
+                            pdfFileName: pdfFileName,
+                            pdfUploadedAt: new Date().toISOString()
+                        });
+
+                        console.log('✅ PDF-URL in Firestore gespeichert');
+                    } catch (uploadError) {
+                        console.warn('⚠️ PDF-Upload fehlgeschlagen (PDF wurde trotzdem lokal gespeichert):', uploadError.message);
+                        // Kein throw - PDF wurde lokal gespeichert, Upload ist optional
+                    }
+                }
+
+                // ============================================
+                // 7. SUCCESS FEEDBACK
+                // ============================================
+
+                const successMsg = pdfUrl
+                    ? '✅ Entwurf gespeichert, PDF heruntergeladen & in Cloud gesichert!'
+                    : '✅ Entwurf gespeichert & PDF heruntergeladen!';
+                showToast(successMsg, 'success', 4000);
 
                 // Kurz warten, dann redirect
                 setTimeout(() => {
