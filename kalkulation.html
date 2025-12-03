@@ -8377,46 +8377,69 @@
                 kalkWizardData.ersatzfahrzeug = kalkWizardData.fahrzeug.ersatzfahrzeug;
             }
 
-            // Wenn Service bereits gesetzt ist, übernehmen
-            if (vehicle.serviceTyp) {
-                kalkWizardData.serviceArt = vehicle.serviceTyp;
+            // 🆕 FIX (Dec 3, 2025): Service-Details für ALLE 4 Pipelines laden
+            // Pipeline 1+2: annahme.html speichert serviceTyp als ARRAY + additionalServices
+            // Pipeline 3+4: Partner speichert serviceTyp als STRING + additionalServices
+            // serviceDetailsPerService initialisieren
+            if (!kalkWizardData.serviceDetailsPerService) {
+                kalkWizardData.serviceDetailsPerService = {};
             }
 
-            // 🆕 FIX (Dec 3, 2025): Service-Details für ALLE 4 Pipelines laden
-            // Pipeline 1+2: annahme.html speichert serviceDetails + additionalServices
-            // Pipeline 3+4: Partner speichert serviceData + additionalServices
-            if (vehicle.serviceTyp) {
-                kalkWizardData.services = [vehicle.serviceTyp];
-                kalkWizardData.isMultiService = false;
+            // 🔧 FIX (Dec 3, 2025): serviceTyp kann Array ODER String sein!
+            // annahme.html: serviceTyp = ["lackier", "reifen", ...] (Array aller Services)
+            // Partner: serviceTyp = "lackier" (String, nur Primary)
+            let primaryServiceTyp = '';
+            let allServices = [];
 
-                // serviceDetailsPerService initialisieren
-                if (!kalkWizardData.serviceDetailsPerService) {
-                    kalkWizardData.serviceDetailsPerService = {};
-                }
+            if (Array.isArray(vehicle.serviceTyp)) {
+                // annahme.html Format: serviceTyp ist Array aller Services
+                primaryServiceTyp = vehicle.serviceTyp[0] || 'lackier';
+                allServices = [...vehicle.serviceTyp];
+                console.log('📋 serviceTyp ist Array (annahme.html Format):', vehicle.serviceTyp);
+            } else if (typeof vehicle.serviceTyp === 'string') {
+                // Partner Format: serviceTyp ist String (Primary Service)
+                primaryServiceTyp = vehicle.serviceTyp;
+                allServices = [vehicle.serviceTyp];
+                console.log('📋 serviceTyp ist String (Partner Format):', vehicle.serviceTyp);
+            }
+
+            // Wenn Service bereits gesetzt ist, übernehmen
+            if (primaryServiceTyp) {
+                kalkWizardData.serviceArt = primaryServiceTyp;
+            }
+
+            if (allServices.length > 0) {
+                kalkWizardData.services = allServices;
+                kalkWizardData.isMultiService = allServices.length > 1;
 
                 // Primary Service Details laden (annahme.html: serviceDetails, Partner: serviceData)
                 const primaryDetails = vehicle.serviceDetails || vehicle.serviceData || {};
-                kalkWizardData.serviceDetailsPerService[vehicle.serviceTyp] = primaryDetails;
-                console.log(`📋 Primary Service "${vehicle.serviceTyp}" Details geladen:`, primaryDetails);
+                kalkWizardData.serviceDetailsPerService[primaryServiceTyp] = primaryDetails;
+                console.log(`📋 Primary Service "${primaryServiceTyp}" Details geladen:`, primaryDetails);
 
-                // Multi-Service: additionalServices laden
+                // Additional Services Details laden (aus additionalServices Array)
                 if (vehicle.additionalServices && Array.isArray(vehicle.additionalServices) && vehicle.additionalServices.length > 0) {
-                    kalkWizardData.isMultiService = true;
-
                     vehicle.additionalServices.forEach(addService => {
                         // Format kann sein: {serviceTyp, serviceDetails} ODER nur String
                         const serviceTyp = typeof addService === 'string' ? addService : addService.serviceTyp;
                         const serviceDetails = typeof addService === 'object' ? (addService.serviceDetails || addService.serviceData || {}) : {};
 
-                        if (serviceTyp && !kalkWizardData.services.includes(serviceTyp)) {
-                            kalkWizardData.services.push(serviceTyp);
-                            kalkWizardData.serviceDetailsPerService[serviceTyp] = serviceDetails;
+                        if (serviceTyp) {
+                            // Service zur Liste hinzufügen falls nicht schon vorhanden
+                            if (!kalkWizardData.services.includes(serviceTyp)) {
+                                kalkWizardData.services.push(serviceTyp);
+                            }
+                            // Details speichern (überschreibt leere Details aus serviceTyp-Array)
+                            if (Object.keys(serviceDetails).length > 0 || !kalkWizardData.serviceDetailsPerService[serviceTyp]) {
+                                kalkWizardData.serviceDetailsPerService[serviceTyp] = serviceDetails;
+                            }
                             console.log(`📋 Additional Service "${serviceTyp}" Details geladen:`, serviceDetails);
                         }
                     });
                 }
 
                 console.log('✅ Alle Service-Details geladen:', {
+                    primaryServiceTyp,
                     services: kalkWizardData.services,
                     isMultiService: kalkWizardData.isMultiService,
                     serviceDetailsPerService: kalkWizardData.serviceDetailsPerService
