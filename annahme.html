@@ -9979,11 +9979,12 @@
             doc.setFillColor(30, 58, 95);  // Dunkelblau (weniger gesättigt)
             doc.rect(0, 0, 210, 50, 'F');
 
-            // Logo laden (falls vorhanden)
+            // Logo laden (falls vorhanden) - mit korrektem Seitenverhältnis
             let logoLoaded = false;
+            let logoWidth = 0;
             if (logoUrl) {
                 try {
-                    const logoBase64 = await new Promise((resolve, reject) => {
+                    const logoData = await new Promise((resolve, reject) => {
                         const img = new Image();
                         img.crossOrigin = 'Anonymous';
                         const timeout = setTimeout(() => reject(new Error('Logo timeout')), 3000);
@@ -9994,36 +9995,53 @@
                             canvas.height = img.height;
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0);
-                            resolve(canvas.toDataURL('image/png'));
+                            resolve({
+                                base64: canvas.toDataURL('image/png'),
+                                width: img.width,
+                                height: img.height
+                            });
                         };
                         img.onerror = () => { clearTimeout(timeout); reject(new Error('Logo error')); };
                         img.src = logoUrl;
                     });
-                    doc.addImage(logoBase64, 'PNG', 15, 8, 30, 20);
+
+                    // Proportionale Skalierung - max 32mm Höhe im Header
+                    const maxHeight = 32;
+                    const aspectRatio = logoData.width / logoData.height;
+                    const scaledHeight = maxHeight;
+                    const scaledWidth = scaledHeight * aspectRatio;
+                    logoWidth = scaledWidth;
+
+                    doc.addImage(logoData.base64, 'PNG', 12, 9, scaledWidth, scaledHeight);
                     logoLoaded = true;
-                    console.log('✅ Logo in PDF eingefügt');
+                    console.log('✅ Logo in PDF eingefügt (proportional skaliert)');
                 } catch (e) {
                     console.warn('⚠️ Logo konnte nicht geladen werden:', e.message);
                 }
             }
 
+            // Text-Position basierend auf Logo-Breite berechnen
+            const textStartX = logoLoaded ? (12 + logoWidth + 8) : 105;
+            const textAlign = logoLoaded ? 'left' : 'center';
+
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(20);
+            doc.setFontSize(22);
             doc.setFont(undefined, 'bold');
-            doc.text('Fahrzeug-Annahme', logoLoaded ? 55 : 105, 18, { align: logoLoaded ? 'left' : 'center' });
+            doc.text('Fahrzeug-Annahme', textStartX, 20, { align: textAlign });
 
-            // ENTWURF Badge (ohne Emoji)
+            // ENTWURF Badge - eleganter gestaltet
+            const badgeX = logoLoaded ? textStartX : 80;
             doc.setFillColor(255, 193, 7);  // Gelb/Orange für Entwurf
-            doc.roundedRect(logoLoaded ? 55 : 75, 22, 50, 10, 2, 2, 'F');
-            doc.setTextColor(0, 0, 0);
-            doc.setFontSize(11);
+            doc.roundedRect(badgeX, 24, 40, 8, 2, 2, 'F');
+            doc.setTextColor(50, 50, 50);
+            doc.setFontSize(9);
             doc.setFont(undefined, 'bold');
-            doc.text('ENTWURF', logoLoaded ? 80 : 100, 29, { align: 'center' });
+            doc.text('ENTWURF', badgeX + 20, 29.5, { align: 'center' });
 
-            doc.setTextColor(200, 210, 220);  // Helles Grau für Werkstatt-Name
+            doc.setTextColor(180, 195, 215);  // Dezentes Grau für Werkstatt-Name
             doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
-            doc.text(werkstattName, logoLoaded ? 55 : 105, 42, { align: logoLoaded ? 'left' : 'center' });
+            doc.text(werkstattName, textStartX, 40, { align: textAlign });
 
             // Akzent-Linie unten
             doc.setFillColor(76, 175, 80);  // Grüner Akzent
