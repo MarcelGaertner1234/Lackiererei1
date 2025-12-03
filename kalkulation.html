@@ -6869,9 +6869,18 @@
                                 <span class="ki-kontext-label">Fahrzeug:</span>
                                 <span class="ki-kontext-value" id="kiKontextFahrzeug">-</span>
                             </div>
-                            <div class="ki-kontext-item">
-                                <span class="ki-kontext-label">Benötigte Teile:</span>
-                                <span class="ki-kontext-value" id="kiKontextTeile">-</span>
+                            <div class="ki-kontext-item" style="flex-direction: column; align-items: flex-start;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <span class="ki-kontext-label">Benötigte Teile:</span>
+                                    <span style="font-size: 0.8em; color: var(--text-secondary);">(bearbeitbar - z.B. Reifengröße hinzufügen)</span>
+                                </div>
+                                <textarea id="kiKontextTeile"
+                                          rows="3"
+                                          style="width: 100%; padding: 10px; border: 2px solid #007bff; border-radius: 8px; font-family: inherit; font-size: 0.95em; resize: vertical; background: var(--bg-card);"
+                                          placeholder="z.B. Stoßfänger vorne, Reifen vorne links 225/45 R17"></textarea>
+                                <small style="color: var(--text-secondary); margin-top: 4px;">
+                                    💡 Tipp: Füge Details hinzu wie Reifengröße, OE-Nummer, Position (links/rechts) für bessere Suchergebnisse
+                                </small>
                             </div>
                         </div>
 
@@ -13382,6 +13391,7 @@ REGELN:
             }
 
             // Teile-Info - KORREKTE Feldnamen: teil (nicht name), reparaturen (nicht arbeiten)
+            // 🆕 Dec 3, 2025: Jetzt ein editierbares Textarea statt span
             const teileEl = document.getElementById('kiKontextTeile');
             if (teileEl) {
                 const teileZuErsetzen = (kalkWizardData.teile || []).filter(t => {
@@ -13392,7 +13402,8 @@ REGELN:
                         reparaturen.includes('wechseln');
                 }).map(t => t.teil || t.name);
 
-                teileEl.textContent = teileZuErsetzen.length > 0 ? teileZuErsetzen.join(', ') : 'Keine Ersatzteile benötigt';
+                // Textarea befüllen (User kann bearbeiten!)
+                teileEl.value = teileZuErsetzen.length > 0 ? teileZuErsetzen.join(', ') : '';
                 console.log('📦 KI-Kontext Teile:', teileZuErsetzen);
             }
 
@@ -13407,47 +13418,59 @@ REGELN:
             const results = document.getElementById('kiErsatzteileResults');
             const statusText = document.getElementById('kiLoadingStatus');
 
-            // Teile ermitteln die ersetzt werden müssen
-            // Hinweis: teile können verschiedene Strukturen haben:
-            // - Von Step 3/4: { teil: "Name", reparaturen: ["ersetzen", ...], needsErsatzteil: true }
-            // - Von KI-Analyse: { name: "Name", arbeiten: ["ersetzen", ...] }
-            const teileZuErsetzen = [];
+            // 🆕 Dec 3, 2025: ZUERST vom editierbaren Textarea lesen (User kann manuell bearbeiten!)
+            const teileTextarea = document.getElementById('kiKontextTeile');
+            let teileZuErsetzen = [];
 
-            (kalkWizardData.teile || []).forEach(t => {
-                // Teil-Name kann in 'teil' oder 'name' sein
-                const teilName = t.teil || t.name;
-                // Reparaturen können in 'reparaturen' oder 'arbeiten' sein
-                const reparaturen = t.reparaturen || t.arbeiten || [];
+            if (teileTextarea && teileTextarea.value.trim()) {
+                // User hat evtl. bearbeitet - Textarea-Inhalt verwenden
+                teileZuErsetzen = teileTextarea.value
+                    .split(',')
+                    .map(t => t.trim())
+                    .filter(t => t.length > 0);
+                console.log('📝 Teile aus Textarea (manuell bearbeitet):', teileZuErsetzen);
+            } else {
+                // Fallback: Automatisch aus kalkWizardData ermitteln
+                // Hinweis: teile können verschiedene Strukturen haben:
+                // - Von Step 3/4: { teil: "Name", reparaturen: ["ersetzen", ...], needsErsatzteil: true }
+                // - Von KI-Analyse: { name: "Name", arbeiten: ["ersetzen", ...] }
 
-                // Prüfen ob ersetzt werden soll (3 Wege)
-                const sollErsetzen = t.needsErsatzteil ||  // NEU: Flag aus Schritt 4
-                    reparaturen.includes('ersetzen') ||
-                    reparaturen.includes('austauschen') ||
-                    reparaturen.includes('wechseln');
+                (kalkWizardData.teile || []).forEach(t => {
+                    // Teil-Name kann in 'teil' oder 'name' sein
+                    const teilName = t.teil || t.name;
+                    // Reparaturen können in 'reparaturen' oder 'arbeiten' sein
+                    const reparaturen = t.reparaturen || t.arbeiten || [];
 
-                if (sollErsetzen && teilName && !teileZuErsetzen.includes(teilName)) {
-                    teileZuErsetzen.push(teilName);
-                    console.log('📦 Teil zum Ersetzen gefunden:', teilName, 'Reparaturen:', reparaturen, 'Flag:', t.needsErsatzteil);
-                }
-            });
+                    // Prüfen ob ersetzt werden soll (3 Wege)
+                    const sollErsetzen = t.needsErsatzteil ||  // NEU: Flag aus Schritt 4
+                        reparaturen.includes('ersetzen') ||
+                        reparaturen.includes('austauschen') ||
+                        reparaturen.includes('wechseln');
 
-            // Auch aus KI-Analyse übernommene Teile
-            if (kiErkannteSchaeden && kiErkannteSchaeden.length > 0) {
-                kiErkannteSchaeden.forEach(s => {
-                    if (s.selected && (s.empfohleneArbeiten?.includes('ersetzen') || s.empfohleneArbeiten?.includes('austauschen'))) {
-                        if (!teileZuErsetzen.includes(s.teil)) {
-                            teileZuErsetzen.push(s.teil);
-                            console.log('📦 KI-Teil zum Ersetzen:', s.teil);
-                        }
+                    if (sollErsetzen && teilName && !teileZuErsetzen.includes(teilName)) {
+                        teileZuErsetzen.push(teilName);
+                        console.log('📦 Teil zum Ersetzen gefunden:', teilName, 'Reparaturen:', reparaturen, 'Flag:', t.needsErsatzteil);
                     }
                 });
+
+                // Auch aus KI-Analyse übernommene Teile
+                if (kiErkannteSchaeden && kiErkannteSchaeden.length > 0) {
+                    kiErkannteSchaeden.forEach(s => {
+                        if (s.selected && (s.empfohleneArbeiten?.includes('ersetzen') || s.empfohleneArbeiten?.includes('austauschen'))) {
+                            if (!teileZuErsetzen.includes(s.teil)) {
+                                teileZuErsetzen.push(s.teil);
+                                console.log('📦 KI-Teil zum Ersetzen:', s.teil);
+                            }
+                        }
+                    });
+                }
             }
 
             console.log('🔍 Gesamt Teile zum Ersetzen:', teileZuErsetzen);
             console.log('📋 kalkWizardData.teile:', kalkWizardData.teile);
 
             if (teileZuErsetzen.length === 0) {
-                showToast('Keine Ersatzteile zum Suchen gefunden. Bitte "ersetzen" oder "austauschen" in Schritt 4 auswählen.', 'warning');
+                showToast('Keine Ersatzteile zum Suchen. Bitte im Textfeld oben die zu suchenden Teile eingeben (z.B. "Stoßfänger vorne, Reifen 225/45 R17").', 'warning');
                 return;
             }
 
