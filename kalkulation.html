@@ -13711,9 +13711,10 @@ REGELN:
         }
 
         // Serper Shopping API - Echte Preise aus Google Shopping!
+        // 🆕 Dec 3, 2025: Verbesserte Suchanfragen für präzisere Ergebnisse
         async function searchSerperShoppingAPI(teilName, fahrzeug, apiKey) {
-            // Optimierte Suchanfrage für Kfz-Ersatzteile
-            const query = `${fahrzeug.marke} ${fahrzeug.modell} ${teilName} Ersatzteil kaufen`;
+            // Intelligente Suchanfrage basierend auf Teile-Typ
+            const query = buildSmartSearchQuery(teilName, fahrzeug);
             console.log('🛒 Serper Shopping Suche:', query);
 
             const response = await fetch('https://google.serper.dev/shopping', {
@@ -13726,7 +13727,7 @@ REGELN:
                     q: query,
                     gl: 'de',      // Deutschland
                     hl: 'de',      // Deutsch
-                    num: 10        // Max 10 Ergebnisse pro Teil
+                    num: 15        // Mehr Ergebnisse für bessere Auswahl
                 })
             });
 
@@ -13739,6 +13740,96 @@ REGELN:
             console.log('📦 Serper Raw Response:', data);
 
             return data.shopping || [];
+        }
+
+        // 🆕 Dec 3, 2025: Intelligente Suchanfragen-Erstellung
+        function buildSmartSearchQuery(teilName, fahrzeug) {
+            const marke = fahrzeug.marke || '';
+            const modell = fahrzeug.modell || '';
+            const baujahr = fahrzeug.baujahr || fahrzeug.baujahrVon || '';
+            const teilLower = teilName.toLowerCase();
+
+            // Teile-Kategorien mit optimierten Suchbegriffen
+            const TEIL_KATEGORIEN = {
+                // REIFEN - Brauchen Dimension, nicht Fahrzeug-spezifisch
+                reifen: {
+                    keywords: ['reifen', 'rad', 'pneu', 'tire'],
+                    searchPattern: (teil, fzg) => {
+                        // Versuche Reifengröße aus serviceData zu extrahieren
+                        const reifenGroesse = kalkWizardData.serviceData?.reifengroesse ||
+                                              kalkWizardData.serviceData?.groesse ||
+                                              '';
+                        if (reifenGroesse) {
+                            return `Reifen ${reifenGroesse} kaufen`;
+                        }
+                        // Fallback: Fahrzeug-basierte Suche
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} Reifen Sommerreifen`;
+                    }
+                },
+                // KAROSSERIE - Fahrzeug-spezifisch, OE-Nummer wichtig
+                karosserie: {
+                    keywords: ['stoßstange', 'stossstange', 'kotflügel', 'kotfluegel', 'haube', 'motorhaube', 'tür', 'tuer', 'spiegel', 'scheinwerfer', 'rückleuchte', 'rueckleuchte', 'grill', 'kühlergrill', 'schweller', 'dach'],
+                    searchPattern: (teil, fzg) => {
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} ${teil} OEM Original`;
+                    }
+                },
+                // GLAS - Fahrzeug-spezifisch
+                glas: {
+                    keywords: ['scheibe', 'windschutzscheibe', 'frontscheibe', 'heckscheibe', 'seitenscheibe', 'glas'],
+                    searchPattern: (teil, fzg) => {
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} ${teil} Autoglas`;
+                    }
+                },
+                // BREMSEN - Fahrzeug-spezifisch, vorne/hinten wichtig
+                bremsen: {
+                    keywords: ['bremse', 'bremsscheibe', 'bremsbelag', 'bremsklötze', 'bremskloetze', 'bremssattel'],
+                    searchPattern: (teil, fzg) => {
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} ${teil} Bremsen Set`;
+                    }
+                },
+                // FAHRWERK - Fahrzeug-spezifisch
+                fahrwerk: {
+                    keywords: ['stoßdämpfer', 'stossdaempfer', 'feder', 'querlenker', 'spurstange', 'koppelstange', 'radlager', 'achse'],
+                    searchPattern: (teil, fzg) => {
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} ${teil} Fahrwerk`;
+                    }
+                },
+                // MOTOR - OE-Nummer oder Motorcode wichtig
+                motor: {
+                    keywords: ['motor', 'turbo', 'turbolader', 'kühler', 'kuehler', 'wasserpumpe', 'ölfilter', 'oelfilter', 'luftfilter', 'zündkerze', 'zuendkerze', 'einspritzdüse'],
+                    searchPattern: (teil, fzg) => {
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} ${teil} Motor`;
+                    }
+                },
+                // INNENRAUM
+                innenraum: {
+                    keywords: ['sitz', 'lenkrad', 'armaturenbrett', 'verkleidung', 'teppich', 'himmel', 'konsole'],
+                    searchPattern: (teil, fzg) => {
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} ${teil} Innenraum`;
+                    }
+                },
+                // ELEKTRIK
+                elektrik: {
+                    keywords: ['batterie', 'lichtmaschine', 'anlasser', 'starter', 'steuergerät', 'steuergeraet', 'sensor', 'kabel'],
+                    searchPattern: (teil, fzg) => {
+                        return `${fzg.marke} ${fzg.modell} ${baujahr} ${teil} Elektrik`;
+                    }
+                }
+            };
+
+            // Finde passende Kategorie
+            for (const [kategorie, config] of Object.entries(TEIL_KATEGORIEN)) {
+                if (config.keywords.some(kw => teilLower.includes(kw))) {
+                    const query = config.searchPattern(teilName, fahrzeug);
+                    console.log(`🔍 Kategorie "${kategorie}" erkannt → "${query}"`);
+                    return query;
+                }
+            }
+
+            // Default: Generische Suche mit mehr Kontext
+            const defaultQuery = `${marke} ${modell} ${baujahr} ${teilName} Ersatzteil OEM`.trim();
+            console.log(`🔍 Keine Kategorie → Default: "${defaultQuery}"`);
+            return defaultQuery;
         }
 
         // Serper Shopping Ergebnisse → Unser Format konvertieren
