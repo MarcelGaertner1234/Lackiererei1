@@ -12290,9 +12290,16 @@ REGELN:
                     break;
 
                 case 'date':
+                    // 🔧 FIX (Dec 3, 2025): Normalisiere YYYY-MM zu YYYY-MM-01 für date Input
+                    let dateValue = prefillValue;
+                    if (dateValue && /^\d{4}-\d{2}$/.test(dateValue)) {
+                        // TÜV-Datum ist oft nur YYYY-MM, Browser erwartet YYYY-MM-DD
+                        dateValue = `${dateValue}-01`;
+                        console.log(`🔧 Datum normalisiert: "${prefillValue}" → "${dateValue}"`);
+                    }
                     inputHtml = `
                         <input type="date" id="${fullFieldId}" name="${fieldId}" ${requiredAttr}
-                               value="${prefillValue}"
+                               value="${dateValue}"
                                onchange="saveServiceFieldValueMulti('${service}', '${fieldId}')">
                     `;
                     break;
@@ -12304,7 +12311,7 @@ REGELN:
                         <div class="file-upload-field">
                             <input type="file" id="${fullFieldId}" name="${fieldId}"
                                    accept="${acceptAttr}" ${multipleAttr}
-                                   onchange="handleDesignUpload(this, '${service}', '${fieldId}')">
+                                   onchange="handleDesignUploadMulti(this.files, '${service}', '${fieldId}')">
                             <label for="${fullFieldId}" class="file-upload-label">
                                 <i data-feather="upload"></i>
                                 <span>${config.placeholder || 'Datei hochladen'}</span>
@@ -12576,6 +12583,76 @@ REGELN:
             }));
 
             showToast(`${files.length} Design-Datei(en) hinzugefügt`, 'success');
+        }
+
+        /**
+         * 🆕 FIX (Dec 3, 2025): Design-Upload für Multi-Service mit Service-Prefix
+         * Wird von renderServiceFieldForMulti() aufgerufen mit (files, service, fieldId)
+         */
+        async function handleDesignUploadMulti(files, service, fieldId) {
+            if (!files || files.length === 0) {
+                console.warn(`⚠️ handleDesignUploadMulti: Keine Dateien für ${service}.${fieldId}`);
+                return;
+            }
+
+            console.log(`📸 Multi-Service Design-Upload für ${service}.${fieldId}:`, files.length, 'Dateien');
+
+            // Kombinierter Key für Multi-Service: service_fieldId
+            const storageKey = `${service}_${fieldId}`;
+
+            // Initialize storage für dieses Feld
+            if (!uploadedDesignFiles[storageKey]) {
+                uploadedDesignFiles[storageKey] = [];
+            }
+
+            // Dateien verarbeiten
+            for (const file of files) {
+                // Validierung: Prüfe ob es wirklich eine Datei ist
+                if (!(file instanceof Blob)) {
+                    console.error(`❌ handleDesignUploadMulti: Ungültiger Dateityp für ${service}.${fieldId}`, file);
+                    continue;
+                }
+
+                // Größenvalidierung
+                const maxSize = 10 * 1024 * 1024; // 10MB
+                if (file.size > maxSize) {
+                    showToast(`Datei "${file.name}" ist zu groß (max 10MB)`, 'warning');
+                    continue;
+                }
+
+                // Base64 konvertieren für Preview und später Upload
+                try {
+                    const base64 = await fileToBase64(file);
+                    uploadedDesignFiles[storageKey].push({
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        base64: base64,
+                        file: file // Original-File für späteren Storage-Upload
+                    });
+                } catch (error) {
+                    console.error(`❌ Fehler beim Konvertieren von ${file.name}:`, error);
+                    showToast(`Fehler bei Datei "${file.name}"`, 'error');
+                }
+            }
+
+            // Preview aktualisieren
+            updateDesignPreview();
+
+            // In kalkWizardData.serviceDetailsPerService speichern
+            if (!kalkWizardData.serviceDetailsPerService) {
+                kalkWizardData.serviceDetailsPerService = {};
+            }
+            if (!kalkWizardData.serviceDetailsPerService[service]) {
+                kalkWizardData.serviceDetailsPerService[service] = {};
+            }
+            kalkWizardData.serviceDetailsPerService[service][fieldId] = uploadedDesignFiles[storageKey].map(f => ({
+                name: f.name,
+                type: f.type,
+                size: f.size
+            }));
+
+            showToast(`${files.length} Design-Datei(en) für ${getServiceIcon(service)} hinzugefügt`, 'success');
         }
 
         function fileToBase64(file) {
