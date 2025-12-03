@@ -8335,6 +8335,29 @@
             // Partner-Struktur: vehicle.serviceData = { ... }
             const svcDetails = vehicle.serviceDetails || vehicle.serviceData || {};
 
+            // 🔧 DEBUG (Dec 3, 2025): Log alle relevanten Felder
+            console.log('📋 selectVehicleFromDB - Alle Felder:', {
+                // Termin-Felder
+                anliefertermin: vehicle.anliefertermin,
+                liefertermin: vehicle.liefertermin,
+                abholdatum: vehicle.abholdatum,
+                abholtermin: vehicle.abholtermin,
+                fertigstellungsdatum: vehicle.fertigstellungsdatum,
+                geplantesAbnahmeDatum: vehicle.geplantesAbnahmeDatum,
+                // Ersatzfahrzeug
+                ersatzfahrzeugGewuenscht_root: vehicle.ersatzfahrzeugGewuenscht,
+                ersatzfahrzeugGewuenscht_svc: svcDetails.ersatzfahrzeugGewuenscht,
+                // Farbe
+                farbnummer: vehicle.farbnummer,
+                farbname: vehicle.farbname,
+                farbnummer_svc: svcDetails.farbnummer,
+                farbname_svc: svcDetails.farbname,
+                // Abholung
+                fahrzeugAbholen: vehicle.fahrzeugAbholen,
+                abholadresse: vehicle.abholadresse,
+                abholnotiz: vehicle.abholnotiz
+            });
+
             kalkWizardData.fahrzeug = {
                 marke: vehicle.marke || vehicle.fahrzeugmarke || '',
                 modell: vehicle.modell || vehicle.fahrzeugmodell || '',
@@ -8346,8 +8369,11 @@
                 kunde: vehicle.kundenname || vehicle.kundenName || vehicle.kunde || '',
                 // 🆕 FIX (Nov 30, 2025): Zusätzliche Felder für Meister-Übersicht
                 kmstand: vehicle.kmstand || vehicle.kilometerstand || '',
-                anliefertermin: vehicle.anliefertermin || vehicle.liefertermin || vehicle.abholdatum || '',
-                abholtermin: vehicle.abholtermin || vehicle.fertigstellungsdatum || vehicle.geplantesAbnahmeDatum || '',
+                // 🔧 FIX (Dec 3, 2025): Erweiterte Fallback-Kette für Termine
+                // annahme.html hat KEIN anliefertermin Feld!
+                anliefertermin: vehicle.anliefertermin || vehicle.liefertermin || '',
+                // geplantesAbnahmeDatum ist das Abholdatum aus annahme.html
+                abholtermin: vehicle.abholtermin || vehicle.geplantesAbnahmeDatum || vehicle.fertigstellungsdatum || '',
                 // 🔧 FIX: Boolean aus NESTED serviceDetails ODER Root-Level prüfen
                 ersatzfahrzeug: (vehicle.ersatzfahrzeugGewuenscht === true || svcDetails.ersatzfahrzeugGewuenscht === true) ? 'ja' :
                     ((vehicle.ersatzfahrzeugGewuenscht === false || svcDetails.ersatzfahrzeugGewuenscht === false) ? 'nein' :
@@ -8359,8 +8385,14 @@
                 telefon: vehicle.telefon || vehicle.kundenTelefon || '',
                 email: vehicle.kundenEmail || vehicle.email || '',
                 // 🆕 Neue Felder aus NESTED serviceDetails
-                lackart: vehicle.lackart || svcDetails.lackart || ''
+                lackart: vehicle.lackart || svcDetails.lackart || '',
+                // 🆕 FIX (Dec 3, 2025): Abholung-Infos aus annahme.html
+                fahrzeugAbholen: vehicle.fahrzeugAbholen || false,
+                abholadresse: vehicle.abholadresse || '',
+                abholnotiz: vehicle.abholnotiz || ''
             };
+
+            console.log('✅ kalkWizardData.fahrzeug befüllt:', kalkWizardData.fahrzeug);
             kalkWizardData.dbFahrzeugId = vehicle.id;
 
             // 🆕 Auch auf Root-Level für einfacheren Zugriff
@@ -9138,37 +9170,44 @@
                 setTextSafe('info2bKmStand', `${parseInt(kmStand).toLocaleString('de-DE')} km`);
             }
 
-            // Anliefertermin
+            // 🔧 FIX (Dec 3, 2025): Anliefertermin
+            // annahme.html hat KEIN anliefertermin Feld - nur Partner hat das
             const anliefertermin = kalkWizardData.anliefertermin ||
                                    kalkWizardData.fahrzeug?.anliefertermin ||
-                                   kalkWizardData.termine?.anliefertermin;
-            if (anliefertermin) {
-                setTextSafe('info2bAnliefertermin', formatDateForDisplay(anliefertermin));
-            }
+                                   kalkWizardData.termine?.anliefertermin ||
+                                   '';
+            setTextSafe('info2bAnliefertermin', anliefertermin ? formatDateForDisplay(anliefertermin) : '-');
 
-            // Abholtermin
+            // 🔧 FIX (Dec 3, 2025): Abholtermin
+            // annahme.html speichert geplantesAbnahmeDatum als Abholtermin
             const abholtermin = kalkWizardData.abholtermin ||
                                kalkWizardData.fahrzeug?.abholtermin ||
-                               kalkWizardData.termine?.abholtermin;
-            if (abholtermin) {
-                setTextSafe('info2bAbholtermin', formatDateForDisplay(abholtermin));
-            }
+                               kalkWizardData.termine?.abholtermin ||
+                               '';
+            setTextSafe('info2bAbholtermin', abholtermin ? formatDateForDisplay(abholtermin) : '-');
 
-            // Ersatzfahrzeug
+            // 🔧 FIX (Dec 3, 2025): Ersatzfahrzeug
+            // Wert kommt aus nested serviceDetails.ersatzfahrzeugGewuenscht
             const ersatzfahrzeug = kalkWizardData.ersatzfahrzeug ||
                                    kalkWizardData.fahrzeug?.ersatzfahrzeug ||
-                                   kalkWizardData.ersatzfahrzeugGewuenscht;
-            if (ersatzfahrzeug) {
-                const ersatzText = ersatzfahrzeug === true || ersatzfahrzeug === 'ja' || ersatzfahrzeug === 'Ja'
-                    ? '✅ Ja, gewünscht'
-                    : ersatzfahrzeug === false || ersatzfahrzeug === 'nein' || ersatzfahrzeug === 'Nein'
-                        ? '❌ Nein'
-                        : ersatzfahrzeug;
-                setTextSafe('info2bErsatzfahrzeug', ersatzText);
+                                   kalkWizardData.ersatzfahrzeugGewuenscht ||
+                                   '';
+
+            // Debug-Log
+            console.log('🚗 Ersatzfahrzeug-Wert:', ersatzfahrzeug, typeof ersatzfahrzeug);
+
+            let ersatzText = '-';
+            if (ersatzfahrzeug === true || ersatzfahrzeug === 'ja' || ersatzfahrzeug === 'Ja') {
+                ersatzText = '✅ Ja, gewünscht';
+            } else if (ersatzfahrzeug === false || ersatzfahrzeug === 'nein' || ersatzfahrzeug === 'Nein') {
+                ersatzText = '❌ Nein';
+            } else if (ersatzfahrzeug && typeof ersatzfahrzeug === 'string' && ersatzfahrzeug.trim()) {
+                ersatzText = ersatzfahrzeug;
             }
+            setTextSafe('info2bErsatzfahrzeug', ersatzText);
 
             console.log('✅ Step 2b zusätzliche Felder befüllt:', {
-                kmStand, anliefertermin, abholtermin, ersatzfahrzeug
+                kmStand, anliefertermin, abholtermin, ersatzfahrzeug, ersatzText
             });
         }
 
