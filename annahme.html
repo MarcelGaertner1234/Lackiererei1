@@ -9973,31 +9973,65 @@
             // Load Settings
             const settings = window.settingsManager ? await window.settingsManager.loadSettings() : null;
             const werkstattName = settings?.profil?.name || 'Auto-Lackierzentrum Mosbach';
+            const logoUrl = settings?.profil?.logoUrl || null;
 
-            // 🎨 HEADER (Professional style)
-            doc.setFillColor(0, 51, 102);  // Dark blue
-            doc.rect(0, 0, 210, 45, 'F');
+            // 🎨 HEADER (Professional style - optimierte Farben)
+            doc.setFillColor(30, 58, 95);  // Dunkelblau (weniger gesättigt)
+            doc.rect(0, 0, 210, 50, 'F');
+
+            // Logo laden (falls vorhanden)
+            let logoLoaded = false;
+            if (logoUrl) {
+                try {
+                    const logoBase64 = await new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.crossOrigin = 'Anonymous';
+                        const timeout = setTimeout(() => reject(new Error('Logo timeout')), 3000);
+                        img.onload = () => {
+                            clearTimeout(timeout);
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/png'));
+                        };
+                        img.onerror = () => { clearTimeout(timeout); reject(new Error('Logo error')); };
+                        img.src = logoUrl;
+                    });
+                    doc.addImage(logoBase64, 'PNG', 15, 8, 30, 20);
+                    logoLoaded = true;
+                    console.log('✅ Logo in PDF eingefügt');
+                } catch (e) {
+                    console.warn('⚠️ Logo konnte nicht geladen werden:', e.message);
+                }
+            }
 
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(18);  // Slightly smaller
+            doc.setFontSize(20);
             doc.setFont(undefined, 'bold');
-            doc.text('Fahrzeug-Annahme', 105, 18, { align: 'center' });
+            doc.text('Fahrzeug-Annahme', logoLoaded ? 55 : 105, 18, { align: logoLoaded ? 'left' : 'center' });
 
-            doc.setFontSize(14);
-            doc.text('⚠️ ENTWURF', 105, 28, { align: 'center' });
+            // ENTWURF Badge (ohne Emoji)
+            doc.setFillColor(255, 193, 7);  // Gelb/Orange für Entwurf
+            doc.roundedRect(logoLoaded ? 55 : 75, 22, 50, 10, 2, 2, 'F');
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.text('ENTWURF', logoLoaded ? 80 : 100, 29, { align: 'center' });
 
+            doc.setTextColor(200, 210, 220);  // Helles Grau für Werkstatt-Name
             doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
-            doc.text(werkstattName, 105, 36, { align: 'center' });
+            doc.text(werkstattName, logoLoaded ? 55 : 105, 42, { align: logoLoaded ? 'left' : 'center' });
 
-            // Separator line
-            doc.setDrawColor(255, 255, 255);
-            doc.setLineWidth(0.5);
-            doc.line(15, 40, 195, 40);
+            // Akzent-Linie unten
+            doc.setFillColor(76, 175, 80);  // Grüner Akzent
+            doc.rect(0, 48, 210, 2, 'F');
 
             // 🎨 EXCEL-STYLE KUNDENDATEN TABLE
             doc.setTextColor(0, 0, 0);
-            let y = 48;
+            let y = 55;  // Nach Header + Akzent-Linie
 
             doc.autoTable({
                 startY: y,
@@ -10010,21 +10044,22 @@
                 ],
                 theme: 'grid',
                 headStyles: {
-                    fillColor: [0, 51, 102],
+                    fillColor: [30, 58, 95],  // Passend zum Header
                     textColor: 255,
                     fontStyle: 'bold',
                     fontSize: 11
                 },
                 bodyStyles: { fontSize: 10 },
+                alternateRowStyles: { fillColor: [245, 247, 250] },  // Leichtes Grau für Zebra
                 columnStyles: {
-                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    0: { fontStyle: 'bold', cellWidth: 50, textColor: [60, 60, 60] },
                     1: { cellWidth: 130 }
                 },
                 margin: { left: 15, right: 15 }
             });
 
             // 🎨 EXCEL-STYLE FAHRZEUGDATEN TABLE
-            y = doc.lastAutoTable.finalY + 5;
+            y = doc.lastAutoTable.finalY + 8;
 
             doc.autoTable({
                 startY: y,
@@ -10037,14 +10072,15 @@
                 ],
                 theme: 'grid',
                 headStyles: {
-                    fillColor: [0, 51, 102],
+                    fillColor: [30, 58, 95],  // Passend zum Header
                     textColor: 255,
                     fontStyle: 'bold',
                     fontSize: 11
                 },
                 bodyStyles: { fontSize: 10 },
+                alternateRowStyles: { fillColor: [245, 247, 250] },  // Leichtes Grau für Zebra
                 columnStyles: {
-                    0: { fontStyle: 'bold', cellWidth: 50 },
+                    0: { fontStyle: 'bold', cellWidth: 50, textColor: [60, 60, 60] },
                     1: { cellWidth: 130 }
                 },
                 margin: { left: 15, right: 15 }
@@ -10085,25 +10121,26 @@
             }
 
             doc.autoTable({
-                startY: y,
+                startY: y + 3,
                 head: [['SERVICE', 'BESCHREIBUNG']],
                 body: serviceRows,
                 theme: 'grid',
                 headStyles: {
-                    fillColor: [0, 51, 102],
+                    fillColor: [30, 58, 95],  // Passend zum Header
                     textColor: 255,
                     fontStyle: 'bold',
                     fontSize: 11
                 },
                 bodyStyles: { fontSize: 10 },
+                alternateRowStyles: { fillColor: [245, 247, 250] },
                 columnStyles: {
-                    0: { fontStyle: 'bold', cellWidth: 30, halign: 'center' },
+                    0: { fontStyle: 'bold', cellWidth: 30, halign: 'center', textColor: [76, 175, 80] },  // Grüner Akzent
                     1: { cellWidth: 150 }
                 },
                 margin: { left: 15, right: 15 }
             });
 
-            y = doc.lastAutoTable.finalY + 10;
+            y = doc.lastAutoTable.finalY + 15;
 
             // 🔲 QR-CODE SECTION
             if (qrCodeUrl) {
@@ -10122,7 +10159,7 @@
                         value: qrCodeUrl,
                         size: 300,
                         background: '#FFFFFF',
-                        foreground: '#003366',  // Auto-Lackierzentrum blue
+                        foreground: '#1E3A5F',  // Passend zum PDF Header
                         padding: 4,
                         backgroundAlpha: 1,
                         foregroundAlpha: 1,
@@ -10143,22 +10180,22 @@
                     const qrY = y;
                     const qrSize = 60;
 
-                    // Light gray background box
-                    doc.setFillColor(245, 245, 245);
-                    doc.roundedRect(qrX - (qrSize / 2) - 5, qrY - 10, qrSize + 10, qrSize + 30, 3, 3, 'F');
+                    // Light background box mit Schatten-Effekt
+                    doc.setFillColor(248, 250, 252);
+                    doc.roundedRect(qrX - (qrSize / 2) - 10, qrY - 15, qrSize + 20, qrSize + 35, 4, 4, 'F');
 
                     // "PARTNER-PORTAL" Label above QR
-                    doc.setFontSize(14);
+                    doc.setFontSize(12);
                     doc.setFont(undefined, 'bold');
-                    doc.setTextColor(0, 51, 102);
-                    doc.text('[PARTNER] PARTNER-PORTAL ZUGANG', qrX, qrY - 5, { align: 'center' });
+                    doc.setTextColor(30, 58, 95);  // Passend zum Header
+                    doc.text('PARTNER-PORTAL ZUGANG', qrX, qrY - 5, { align: 'center' });
 
                     // Add QR Code image (centered)
                     doc.addImage(qrImageData, 'PNG', qrX - (qrSize / 2), qrY, qrSize, qrSize);
 
                     // Border around QR code
-                    doc.setDrawColor(0, 51, 102);
-                    doc.setLineWidth(0.8);
+                    doc.setDrawColor(30, 58, 95);
+                    doc.setLineWidth(0.5);
                     doc.rect(qrX - (qrSize / 2), qrY, qrSize, qrSize);
 
                     // Instruction below QR code
@@ -10222,9 +10259,10 @@
 
             // 📌 FOOTER
             doc.setFontSize(8);
-            doc.setTextColor(150, 150, 150);
+            doc.setTextColor(120, 130, 140);
             doc.text(`Erstellt am: ${new Date().toLocaleDateString('de-DE')} ${new Date().toLocaleTimeString('de-DE')}`, 105, 280, { align: 'center' });
-            doc.text('(!) Dies ist ein ENTWURF - noch keine finale Annahme', 105, 285, { align: 'center' });
+            doc.setTextColor(200, 120, 60);  // Orange/Warnung für Entwurf-Hinweis
+            doc.text('Dies ist ein ENTWURF - noch keine finale Annahme', 105, 285, { align: 'center' });
 
             // Download PDF
             const filename = `Entwurf_${entwurfData.kennzeichen.replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
