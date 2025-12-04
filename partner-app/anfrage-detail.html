@@ -4148,6 +4148,187 @@
             return abhol.toISOString().split('T')[0];
         }
 
+        // ========== RABATT-SYSTEM (FIX 2025-12-04) ==========
+        // Vereinfachte Version für Einzelanfragen (ohne getDynamicStatus)
+        // Berechnet Monatsumsatz direkt aus Firestore
+
+        /**
+         * Berechnet den Monatsumsatz eines Partners aus Firestore
+         * @param {string} partnerId - Partner-ID
+         * @returns {Promise<number>} Monatsumsatz in Euro
+         */
+        async function calculateMonthlyUmsatz(partnerId) {
+            if (!partnerId) return 0;
+
+            try {
+                const now = new Date();
+                const currentYear = now.getFullYear();
+                const currentMonth = now.getMonth();
+                const monthStart = new Date(currentYear, currentMonth, 1);
+                const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+
+                // Query Firestore für abgeschlossene Anfragen dieses Monats
+                const snapshot = await window.getCollection('partnerAnfragen')
+                    .where('partnerId', '==', partnerId)
+                    .where('status', 'in', ['beauftragt', 'in_arbeit', 'abholung', 'fertig'])
+                    .get();
+
+                let umsatzMonat = 0;
+
+                snapshot.forEach(doc => {
+                    const anfrageDoc = doc.data();
+
+                    // Datum prüfen (im aktuellen Monat?)
+                    let erstelltAm = null;
+                    const dateField = anfrageDoc.createdAt || anfrageDoc.erstelltAm;
+
+                    if (dateField) {
+                        if (typeof dateField.toDate === 'function') {
+                            erstelltAm = dateField.toDate();
+                        } else if (typeof dateField === 'string') {
+                            erstelltAm = new Date(dateField);
+                        } else if (typeof dateField === 'number') {
+                            erstelltAm = new Date(dateField);
+                        }
+                    }
+
+                    if (erstelltAm && erstelltAm >= monthStart && erstelltAm <= monthEnd) {
+                        // Preis extrahieren (Priorität: vereinbarterPreis → KVA → 0)
+                        let preis = 0;
+                        if (anfrageDoc.vereinbarterPreis) {
+                            preis = parseFloat(anfrageDoc.vereinbarterPreis) || 0;
+                        } else if (anfrageDoc.kva?.varianten) {
+                            const gewaehlteVariante = anfrageDoc.kva.gewaehlteVariante || 'original';
+                            const varianteData = anfrageDoc.kva.varianten[gewaehlteVariante];
+                            if (varianteData?.gesamt) {
+                                preis = parseFloat(varianteData.gesamt) || 0;
+                            }
+                        }
+
+                        umsatzMonat += preis;
+                    }
+                });
+
+                console.log(`💰 [RABATT] Monatsumsatz für Partner ${partnerId}: ${umsatzMonat.toFixed(2)}€`);
+                return umsatzMonat;
+            } catch (error) {
+                console.error('❌ Fehler beim Berechnen des Monatsumsatzes:', error);
+                return 0;
+            }
+        }
+
+        /**
+         * Berechnet Preis mit Partner-Rabatt (vereinfachte Version für Einzelanfragen)
+         * @param {number} originalPreis - Original-Preis ohne Rabatt
+         * @param {string} partnerId - Partner-ID
+         * @returns {Promise<Object>} { finalPreis, rabattProzent, rabattBetrag, stufe, originalPreis }
+         */
+        async function calculatePriceWithRabatt(originalPreis, partnerId) {
+            console.log('\n💶 ========== calculatePriceWithRabatt() GESTARTET ==========');
+            console.log(`📊 Original-Preis: ${originalPreis}€`);
+            console.log(`📊 Partner-ID: ${partnerId}`);
+
+            // Validierung
+            if (!originalPreis || originalPreis <= 0) {
+                console.warn('⚠️ [RABATT] Ungültiger Preis:', originalPreis);
+                return { finalPreis: 0, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis: 0 };
+            }
+
+            if (!partnerId) {
+                console.warn('⚠️ [RABATT] Keine Partner-ID - kein Rabatt möglich');
+                return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+            }
+
+            try {
+                // 1. Lade Partner-Konditionen aus Firestore
+                const partnerDocRef = await window.getCollection('partners').doc(partnerId).get();
+
+                if (!partnerDocRef.exists) {
+                    console.warn('⚠️ [RABATT] Partner-Dokument nicht gefunden:', partnerId);
+                    return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+                }
+
+                const partner = partnerDocRef.data();
+                const konditionen = partner.rabattKonditionen;
+
+                console.log('✅ [RABATT] Partner-Daten geladen:', partner.name || partnerId);
+                console.log('📋 [RABATT] Konditionen vorhanden:', !!konditionen);
+                console.log('📋 [RABATT] Konditionen geprüft:', !!partner.konditionenGeprueft);
+
+                // 2. Prüfe ob Rabatt-System aktiv
+                if (!konditionen || !partner.konditionenGeprueft) {
+                    console.log('ℹ️ [RABATT] Keine aktiven Konditionen - kein Rabatt');
+                    return { finalPreis: originalPreis, rabattProzent: 0, rabattBetrag: 0, stufe: null, originalPreis };
+                }
+
+                // 3. Berechne aktuellen Monatsumsatz (VOR diesem Auftrag)
+                const umsatzMonat = await calculateMonthlyUmsatz(partnerId);
+                console.log(`💰 [RABATT] Monatsumsatz (vor Auftrag): ${umsatzMonat.toFixed(2)}€`);
+
+                // 4. Berechne Umsatz NACH diesem Auftrag (Projection)
+                const umsatzNachAuftrag = umsatzMonat + originalPreis;
+                console.log(`💰 [RABATT] Monatsumsatz (nach Auftrag): ${umsatzNachAuftrag.toFixed(2)}€`);
+
+                // 5. Finde höchste erreichte Stufe (für Rabatt-Berechnung)
+                let aktuelleStufe = null;
+                let maxAb = 0;
+
+                ['stufe1', 'stufe2', 'stufe3'].forEach(stufeKey => {
+                    const stufe = konditionen[stufeKey];
+                    if (stufe && stufe.ab <= umsatzNachAuftrag && stufe.ab > maxAb) {
+                        maxAb = stufe.ab;
+                        aktuelleStufe = { key: stufeKey, ...stufe };
+                    }
+                });
+
+                console.log('🎯 [RABATT] Höchste erreichte Stufe:', aktuelleStufe ? aktuelleStufe.key : 'keine');
+
+                // 6. Wende Rabatt an (wenn Stufe erreicht)
+                if (aktuelleStufe) {
+                    const rabattProzent = aktuelleStufe.rabatt;
+                    const rabattBetrag = originalPreis * (rabattProzent / 100);
+                    const finalPreis = originalPreis - rabattBetrag;
+
+                    console.log('═══════════════════════════════════════');
+                    console.log(`✅ [RABATT] Stufe erreicht: ${aktuelleStufe.key}`);
+                    console.log(`💶 [RABATT] Original-Preis: ${originalPreis.toFixed(2)}€`);
+                    console.log(`📉 [RABATT] Rabatt-Prozent: ${rabattProzent}%`);
+                    console.log(`💸 [RABATT] Rabatt-Betrag: -${rabattBetrag.toFixed(2)}€`);
+                    console.log(`✨ [RABATT] Final-Preis: ${finalPreis.toFixed(2)}€`);
+                    console.log('═══════════════════════════════════════\n');
+
+                    return {
+                        finalPreis,
+                        rabattProzent,
+                        rabattBetrag,
+                        stufe: aktuelleStufe,
+                        originalPreis
+                    };
+                }
+
+                // 7. Keine Stufe erreicht
+                console.log('ℹ️ [RABATT] Keine Stufe erreicht - kein Rabatt');
+                return {
+                    finalPreis: originalPreis,
+                    rabattProzent: 0,
+                    rabattBetrag: 0,
+                    stufe: null,
+                    originalPreis
+                };
+
+            } catch (error) {
+                console.error('❌ [RABATT] Fehler beim Berechnen:', error);
+                // Fallback: Original-Preis ohne Rabatt
+                return {
+                    finalPreis: originalPreis,
+                    rabattProzent: 0,
+                    rabattBetrag: 0,
+                    stufe: null,
+                    originalPreis
+                };
+            }
+        }
+
         // 🔧 FIX Bug #5h (2025-11-22): Date Sanitization Helper Functions (copied from meine-anfragen.html Lines 6205-6328)
         // PROBLEM: Same "Expected type 'Vd'" error as Bug #5 (fixed in meine-anfragen.html on Nov 22, Commit 47adbe1)
         // SOLUTION: Apply identical fix to anfrage-detail.html (duplicate annehmenKVA implementation)
@@ -5304,6 +5485,44 @@
                 const fahrzeugData = await prepareFahrzeugData(anfrage, abholtermin, []);
                 if (kundeId) {
                     fahrzeugData.kundenId = kundeId;
+                }
+
+                // 🔧 FIX (2025-12-04): Rabatt-Berechnung integriert (Sync mit meine-anfragen.html)
+                // Berechne Rabatt basierend auf Partner-Konditionen und Monatsumsatz
+                if (fahrzeugData.vereinbarterPreis && anfrage.partnerId) {
+                    console.log('💶 [RABATT] Berechne Partner-Rabatt...');
+                    try {
+                        const preisInfo = await calculatePriceWithRabatt(
+                            fahrzeugData.vereinbarterPreis,
+                            anfrage.partnerId
+                        );
+
+                        // Rabatt-Felder zum Fahrzeug hinzufügen
+                        if (preisInfo.rabattProzent > 0) {
+                            console.log(`✅ [RABATT] ${preisInfo.rabattProzent}% Rabatt angewendet: ${fahrzeugData.vereinbarterPreis.toFixed(2)}€ → ${preisInfo.finalPreis.toFixed(2)}€`);
+                            fahrzeugData.originalPreis = preisInfo.originalPreis;
+                            fahrzeugData.vereinbarterPreis = preisInfo.finalPreis;  // Mit Rabatt
+                            fahrzeugData.rabattAngewendet = preisInfo.rabattProzent;
+                            fahrzeugData.rabattStufe = preisInfo.stufe?.key || null;
+                            fahrzeugData.rabattBetrag = preisInfo.rabattBetrag || 0;
+                        } else {
+                            console.log('ℹ️ [RABATT] Kein Rabatt angewendet (keine Stufe erreicht oder keine Konditionen)');
+                            fahrzeugData.originalPreis = fahrzeugData.vereinbarterPreis;
+                            fahrzeugData.rabattAngewendet = 0;
+                            fahrzeugData.rabattStufe = null;
+                            fahrzeugData.rabattBetrag = 0;
+                        }
+                    } catch (rabattError) {
+                        console.error('❌ [RABATT] Fehler bei Rabatt-Berechnung (wird ignoriert):', rabattError);
+                        // Fallback: Preis ohne Rabatt belassen
+                        fahrzeugData.originalPreis = fahrzeugData.vereinbarterPreis;
+                        fahrzeugData.rabattAngewendet = 0;
+                        fahrzeugData.rabattStufe = null;
+                        fahrzeugData.rabattBetrag = 0;
+                    }
+                } else {
+                    // Kein Preis oder keine Partner-ID → keine Rabatt-Berechnung
+                    console.log('ℹ️ [RABATT] Keine Rabatt-Berechnung (kein Preis oder keine Partner-ID)');
                 }
 
                 // ✅ FIX Bug #5L Phase 5e (2025-11-23): FINAL FIX - Eliminate Spread-Operator!
