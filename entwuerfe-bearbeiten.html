@@ -1121,6 +1121,7 @@
                                     <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right; width: 90px;">Einzelpreis</th>
                                     <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right; width: 100px; background: rgba(76, 175, 80, 0.15);" title="Original-Teile Preis">Original</th>
                                     <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: right; width: 100px; background: rgba(255, 152, 0, 0.15);" title="Aftermarket-Teile Preis">Aftermarket</th>
+                                    <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: center; width: 40px;" title="Link zum Shop">🔗</th>
                                     <th style="padding: 8px; border-bottom: 2px solid var(--color-primary); text-align: center; width: 50px;">Aktion</th>
                                 </tr>
                             </thead>
@@ -1132,6 +1133,7 @@
                                     <td colspan="4" style="padding: 8px; text-align: right;">SUMME:</td>
                                     <td style="padding: 8px; text-align: right; color: #4caf50; background: rgba(76, 175, 80, 0.1);" id="ersatzteileOriginalSumme">0.00 €</td>
                                     <td style="padding: 8px; text-align: right; color: #ff9800; background: rgba(255, 152, 0, 0.1);" id="ersatzteileAftermarketSumme">0.00 €</td>
+                                    <td></td>
                                     <td></td>
                                 </tr>
                             </tfoot>
@@ -1667,6 +1669,9 @@
                 preisAftermarket = gesamtpreis;
             }
 
+            // 🔧 FIX Dec 4, 2025: bestellLink/url aus KVA übernehmen
+            const bestellLink = data.bestellLink || data.url || data.link || '';
+
             const teil = {
                 etn: data.etn || data.teilenummer || '',
                 benennung: data.benennung || data.name || '',
@@ -1674,7 +1679,8 @@
                 einzelpreis: einzelpreis,
                 gesamtpreis: gesamtpreis,
                 preisOriginal: preisOriginal,
-                preisAftermarket: preisAftermarket
+                preisAftermarket: preisAftermarket,
+                bestellLink: bestellLink
             };
 
             // In globales Array speichern
@@ -1712,6 +1718,9 @@
                     <input type="number" value="${teil.preisAftermarket.toFixed(2)}" onchange="updateErsatzteil(${rowIndex}, 'preisAftermarket', this.value)" min="0" step="0.01"
                            style="width: 100%; padding: 4px; border: 1px solid #ff9800; border-radius: 4px; text-align: right; font-weight: 600; color: #ff9800; font-family: 'Courier New', monospace; font-size: 11px;"
                            title="Aftermarket-Teil Preis">
+                </td>
+                <td style="padding: 4px; text-align: center;">
+                    ${teil.bestellLink ? `<a href="${teil.bestellLink}" target="_blank" title="${teil.bestellLink}" style="color: #2196f3; font-size: 14px;">🔗</a>` : '<span style="color: #ccc;">-</span>'}
                 </td>
                 <td style="padding: 4px; text-align: center;">
                     <button type="button" onclick="deleteErsatzteilRow(${rowIndex})"
@@ -2922,9 +2931,19 @@
                     // Verfügbare Leihfahrzeuge laden
                     await loadVerfuegbareLeihfahrzeuge();
 
-                    // Zugewiesenes Fahrzeug auswählen (falls vorhanden)
-                    if (currentEntwurf.zugewiesenesErsatzfahrzeug) {
-                        zugewiesenesErsatzfahrzeugSelect.value = currentEntwurf.zugewiesenesErsatzfahrzeug;
+                    // 🔧 FIX Dec 4, 2025: Ersatzfahrzeug aus KVA übernehmen (Priorität!)
+                    // Prüfe ob in der Kalkulation bereits ein Ersatzfahrzeug ausgewählt wurde
+                    const kvaErsatzfahrzeug = currentEntwurf.kalkulation?.ersatzfahrzeug;
+                    const zugewiesenesId = currentEntwurf.zugewiesenesErsatzfahrzeug || kvaErsatzfahrzeug?.fahrzeugId;
+
+                    if (zugewiesenesId) {
+                        zugewiesenesErsatzfahrzeugSelect.value = zugewiesenesId;
+                        console.log('🚗 Ersatzfahrzeug aus KVA übernommen:', zugewiesenesId);
+
+                        // Falls KVA-Daten vorhanden, auch Tagesmiete und Tage vorbefüllen
+                        if (kvaErsatzfahrzeug) {
+                            console.log('🚗 KVA Ersatzfahrzeug-Daten:', kvaErsatzfahrzeug);
+                        }
                     }
                 } else {
                     ersatzfahrzeugCheckbox.checked = false;
@@ -2934,7 +2953,11 @@
                 console.log('🚗 Ersatzfahrzeug-Status geladen:', ersatzfahrzeugCheckbox.checked);
 
                 // 🚗 Ersatzfahrzeug-Kosten berechnen (wenn Fahrzeug zugewiesen)
-                if (ersatzfahrzeugCheckbox.checked && currentEntwurf.zugewiesenesErsatzfahrzeug) {
+                // 🔧 FIX Dec 4, 2025: Auch KVA fahrzeugId prüfen
+                const kvaFahrzeugId = currentEntwurf.kalkulation?.ersatzfahrzeug?.fahrzeugId;
+                const hasZugewiesenesErsatzfahrzeug = currentEntwurf.zugewiesenesErsatzfahrzeug || kvaFahrzeugId;
+
+                if (ersatzfahrzeugCheckbox.checked && hasZugewiesenesErsatzfahrzeug) {
                     await berechneErsatzfahrzeugKosten();
                 }
 
