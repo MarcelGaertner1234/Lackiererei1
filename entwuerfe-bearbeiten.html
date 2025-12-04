@@ -2437,12 +2437,29 @@
                 entwurf.geplantesAbnahmeDatum || entwurf.abholtermin || entwurf.fertigstellungsdatum
             );
 
-            // 🔧 FIX: ersatzfahrzeugGewuenscht ist in serviceDetails gespeichert, nicht top-level
-            const ersatzfahrzeug = entwurf.ersatzfahrzeugGewuenscht === true ||
-                                   entwurf.ersatzfahrzeugGewuenscht === 'true' ||
-                                   entwurf.ersatzfahrzeug === true ||
-                                   entwurf.serviceDetails?.ersatzfahrzeugGewuenscht === true ||
-                                   entwurf.serviceDetails?.ersatzfahrzeugGewuenscht === 'true';
+            // 🔧 FIX: ersatzfahrzeugGewuenscht kann an verschiedenen Stellen gespeichert sein
+            // Prüfe auch serviceDetailsPerService für jeden Service-Typ
+            let ersatzfahrzeugValue = entwurf.ersatzfahrzeugGewuenscht ||
+                                      entwurf.ersatzfahrzeug ||
+                                      entwurf.serviceDetails?.ersatzfahrzeugGewuenscht ||
+                                      entwurf.kalkulation?.ersatzfahrzeug;
+
+            // Falls nicht gefunden, suche in serviceDetailsPerService
+            if (!ersatzfahrzeugValue && entwurf.serviceDetailsPerService) {
+                for (const serviceTyp of Object.keys(entwurf.serviceDetailsPerService)) {
+                    const serviceDetails = entwurf.serviceDetailsPerService[serviceTyp];
+                    if (serviceDetails?.ersatzfahrzeugGewuenscht) {
+                        ersatzfahrzeugValue = serviceDetails.ersatzfahrzeugGewuenscht;
+                        break;
+                    }
+                }
+            }
+
+            // Normalisiere den Wert (kann true, 'true', 'ja', 'Ja' sein)
+            const ersatzfahrzeug = ersatzfahrzeugValue === true ||
+                                   ersatzfahrzeugValue === 'true' ||
+                                   ersatzfahrzeugValue === 'ja' ||
+                                   ersatzfahrzeugValue === 'Ja';
             const ersatzfahrzeugEl = document.getElementById('summary-ersatzfahrzeug');
             ersatzfahrzeugEl.textContent = ersatzfahrzeug ? '✅ Ja, gewünscht' : '❌ Nein';
             ersatzfahrzeugEl.className = 'info-value ' + (ersatzfahrzeug ? 'success' : '');
