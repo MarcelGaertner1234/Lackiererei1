@@ -14407,14 +14407,19 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                         <div style="font-size: 1.3em; font-weight: 700; color: #28a745;">
                             ${preisDisplay}
                         </div>
-                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center;">
                             <a href="${result.url}" target="_blank"
                                style="padding: 6px 12px; background: #28a745; color: white; border-radius: 4px; font-size: 0.8em; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
                                 Zum Shop <i data-feather="external-link" style="width: 12px; height: 12px;"></i>
                             </a>
-                            <button onclick="uebernehmeSerperPreis('${result.teilName.replace(/'/g, "\\'")}', ${result.preis}, '${result.shop.replace(/'/g, "\\'")}', '${result.url}')"
+                            <select id="kiTyp_${result.id || result.teilName.replace(/[^a-zA-Z0-9]/g, '_')}"
+                                    style="padding: 6px 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.8em; background: white; cursor: pointer;">
+                                <option value="Aftermarket">🔧 Aftermarket</option>
+                                <option value="Original">🏭 Originalteil</option>
+                            </select>
+                            <button onclick="uebernehmeSerperPreisMitTyp('${result.teilName.replace(/'/g, "\\'")}', ${result.preis}, '${result.shop.replace(/'/g, "\\'")}', '${result.url}', '${result.id || result.teilName.replace(/[^a-zA-Z0-9]/g, '_')}')"
                                     style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 0.8em; font-weight: 600; cursor: pointer;">
-                                Übernehmen
+                                ✅ Übernehmen
                             </button>
                         </div>
                     </div>
@@ -14422,36 +14427,67 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
             `;
         }
 
-        // 🆕 Dec 3, 2025: Preis aus Serper-Ergebnis in Eingabefelder übernehmen (NICHT direkt zur Liste!)
-        function uebernehmeSerperPreis(teilName, preis, shop, url = '') {
-            // 🎯 FIX: Befülle die Eingabefelder im Aftermarket-Grid (Serper = Google Shopping = typisch Aftermarket)
-            // User kann danach prüfen, anpassen und manuell "Aftermarket hinzufügen" klicken
+        // 🆕 Dec 4, 2025: Preis aus Serper-Ergebnis DIREKT zur Ersatzteile-Liste hinzufügen
+        // Mit Dropdown-Auswahl: Original oder Aftermarket
+        function uebernehmeSerperPreisMitTyp(teilName, preis, shop, url, resultId) {
+            // Typ aus Dropdown lesen
+            const typSelect = document.getElementById('kiTyp_' + resultId);
+            const typ = typSelect ? typSelect.value : 'Aftermarket';
+            const isOriginal = (typ === 'Original');
 
-            // Aftermarket-Eingabefelder befüllen
-            const nameField = document.getElementById('ersatzteilAddNameAftermarket');
-            const preisField = document.getElementById('ersatzteilAddPreisAftermarket');
-            const lieferantField = document.getElementById('ersatzteilAddLieferantAftermarket');
-            const linkField = document.getElementById('ersatzteilAddLinkAftermarket');
-            const mengeField = document.getElementById('ersatzteilAddMengeAftermarket');
+            // Direkt zur Ersatzteile-Liste hinzufügen
+            kalkWizardData.ersatzteile.push({
+                name: teilName,
+                teilenummer: '',
+                preis: preis,
+                preisOriginal: isOriginal ? preis : 0,
+                preisAftermarket: isOriginal ? 0 : preis,
+                preisTyp: typ,
+                menge: 1,
+                lieferant: shop,
+                qualitaet: typ,
+                url: url,
+                kiGefunden: true
+            });
 
-            if (nameField) nameField.value = teilName;
-            if (preisField) preisField.value = preis.toFixed(2);
-            if (lieferantField) lieferantField.value = shop;
-            if (linkField && url) linkField.value = url;
-            if (mengeField && !mengeField.value) mengeField.value = 1;
+            console.log(`📦 KI-Ersatzteil "${teilName}" als ${typ} hinzugefügt → ${preis.toFixed(2)}€`);
 
-            // Scroll zum Aftermarket-Grid
-            const aftermarketGrid = document.querySelector('.ersatzteil-price-card[style*="fff3e0"]');
-            if (aftermarketGrid) {
-                aftermarketGrid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // Visual Highlight
-                aftermarketGrid.style.boxShadow = '0 0 20px rgba(245, 124, 0, 0.5)';
+            // Tabelle aktualisieren
+            renderErsatzteileTable();
+
+            // Visual Feedback
+            const typLabel = isOriginal ? '🏭 Originalteil' : '🔧 Aftermarket';
+            showToast(`✅ "${teilName}" als ${typLabel} hinzugefügt!\n\nPreis: ${preis.toFixed(2)} €`, 'success');
+
+            // Scroll zur Ersatzteile-Tabelle
+            const ersatzteileTable = document.querySelector('.ersatzteile-table');
+            if (ersatzteileTable) {
+                ersatzteileTable.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                ersatzteileTable.style.boxShadow = '0 0 20px rgba(40, 167, 69, 0.5)';
                 setTimeout(() => {
-                    aftermarketGrid.style.boxShadow = '';
+                    ersatzteileTable.style.boxShadow = '';
                 }, 2000);
             }
+        }
 
-            showToast(`✅ "${teilName}" (${preis.toFixed(2)} €) in Aftermarket-Felder übernommen.\n\nBitte prüfen & "Aftermarket hinzufügen" klicken!`, 'success');
+        // Legacy-Funktion für Abwärtskompatibilität (falls noch irgendwo verwendet)
+        function uebernehmeSerperPreis(teilName, preis, shop, url = '') {
+            // Fallback: Als Aftermarket hinzufügen
+            kalkWizardData.ersatzteile.push({
+                name: teilName,
+                teilenummer: '',
+                preis: preis,
+                preisOriginal: 0,
+                preisAftermarket: preis,
+                preisTyp: 'Aftermarket',
+                menge: 1,
+                lieferant: shop,
+                qualitaet: 'Aftermarket',
+                url: url,
+                kiGefunden: true
+            });
+            renderErsatzteileTable();
+            showToast(`✅ "${teilName}" als Aftermarket hinzugefügt!`, 'success');
         }
 
         // Legacy: Einzelnes Angebot rendern (für eBay API Ergebnisse)
