@@ -3169,33 +3169,45 @@
                 const kennzeichen = leihfahrzeug.kennzeichen || 'N/A';
                 const fahrzeugName = `${leihfahrzeug.marke || ''} ${leihfahrzeug.modell || ''} (${kennzeichen})`.trim();
 
-                // 🔧 FIX (2025-12-04): Tage berechnen (HEUTE bis abholdatum ODER geplantesAbnahmeDatum)
-                // START = HEUTE (Kunde braucht Ersatzfahrzeug ab jetzt)
-                // ENDE = abholdatum (wenn vorhanden) ODER geplantesAbnahmeDatum (Fertigstellung)
+                // 🔧 FIX (2025-12-04): Tage berechnen (Fertigstellung bis Abholung)
+                // START = Fertigstellungsdatum (wann das Fahrzeug FERTIG ist)
+                // ENDE = Abholdatum (wann der Kunde das Fahrzeug ABHOLT)
+                // Kunde braucht Ersatzfahrzeug NUR für die Zeit zwischen Fertigstellung und Abholung!
+                const fertigstellungStr = document.getElementById('geplantesAbnahmeDatum')?.value ||
+                                          currentEntwurf?.geplantesAbnahmeDatum || null;
+                const abholdatumStr = document.getElementById('abholdatum')?.value ||
+                                      currentEntwurf?.abholdatum || null;
+
                 let startDatum = new Date();
                 startDatum.setHours(0, 0, 0, 0);
+                let startQuelle = 'heute (Fallback)';
 
-                // Ende-Datum: Priorität 1 = abholdatum, Priorität 2 = geplantesAbnahmeDatum
-                const abholdatumStr = document.getElementById('abholdatum')?.value || currentEntwurf?.abholdatum || null;
-                const fertigstellungStr = document.getElementById('geplantesAbnahmeDatum')?.value || null;
-
-                let endeDatum = new Date(startDatum); // Fallback: heute
+                let endeDatum = new Date(startDatum);
                 let endeDatumQuelle = 'heute (Fallback)';
 
+                // START = Fertigstellungsdatum
+                if (fertigstellungStr) {
+                    startDatum = new Date(fertigstellungStr);
+                    startDatum.setHours(0, 0, 0, 0);
+                    startQuelle = 'Fertigstellungsdatum';
+                }
+
+                // ENDE = Abholdatum
                 if (abholdatumStr) {
                     endeDatum = new Date(abholdatumStr);
-                    endeDatumQuelle = 'Gewünschtes Abholdatum';
-                } else if (fertigstellungStr) {
-                    endeDatum = new Date(fertigstellungStr);
-                    endeDatumQuelle = 'Fertigstellungsdatum';
+                    endeDatum.setHours(0, 0, 0, 0);
+                    endeDatumQuelle = 'Abholdatum';
+                } else {
+                    // Fallback: Wenn kein Abholdatum, dann Ende = Start (0 Tage → mindestens 1)
+                    endeDatum = new Date(startDatum);
+                    endeDatumQuelle = 'Fertigstellungsdatum (kein Abholdatum)';
                 }
-                endeDatum.setHours(0, 0, 0, 0);
 
-                // Mindestens 1 Tag, negative Differenz = 1 Tag
+                // Differenz berechnen (mindestens 1 Tag)
                 const diffTime = endeDatum - startDatum;
                 const tage = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-                console.log(`📅 Ersatzfahrzeug-Tage: HEUTE → ${endeDatumQuelle} = ${tage} Tage`);
+                console.log(`📅 Ersatzfahrzeug-Tage: ${startQuelle} (${startDatum.toLocaleDateString('de-DE')}) → ${endeDatumQuelle} (${endeDatum.toLocaleDateString('de-DE')}) = ${tage} Tage`);
 
                 // Gesamt berechnen
                 const gesamt = tagesmiete * tage;
