@@ -2381,20 +2381,40 @@
                     const kalk = currentEntwurf.kalkulation;
 
                     // Ersatzteile: name→benennung, teilenummer→etn, menge→anzahl, preis→einzelpreis
-                    // 🆕 FIX Nov 30, 2025: preisOriginal + preisAftermarket für Varianten-Berechnung
+                    // 🔧 FIX Dec 4, 2025: preisOriginal + preisAftermarket KORREKT übernehmen
+                    // Problem: || Operator behandelt 0 als falsy → preisAftermarket=0 fiel auf preisOriginal zurück!
                     if (Array.isArray(kalk.ersatzteile)) {
                         kalk.ersatzteile.forEach(item => {
                             const menge = item.menge || item.anzahl || 1;
-                            const einzelpreis = item.preis || item.einzelpreis || item.preisOriginal || 0;
+                            const einzelpreis = item.preis || item.einzelpreis || item.preisOriginal || item.preisAftermarket || 0;
+                            const gesamtpreis = menge * einzelpreis;
+
+                            // 🔧 KRITISCH: Explizite Prüfung auf undefined/null, NICHT || Operator!
+                            // preisOriginal=0 bedeutet "Aftermarket-Teil", NICHT "kein Wert"!
+                            const hasPreisOriginal = item.preisOriginal !== undefined && item.preisOriginal !== null;
+                            const hasPreisAftermarket = item.preisAftermarket !== undefined && item.preisAftermarket !== null;
+
+                            let preisOriginal, preisAftermarket;
+                            if (hasPreisOriginal || hasPreisAftermarket) {
+                                // Varianten-Preise aus Kalkulation übernehmen (0 ist ein gültiger Wert!)
+                                preisOriginal = hasPreisOriginal ? parseFloat(item.preisOriginal) : 0;
+                                preisAftermarket = hasPreisAftermarket ? parseFloat(item.preisAftermarket) : 0;
+                            } else {
+                                // Legacy-Daten ohne Varianten-Preise: beide auf Gesamtpreis setzen
+                                preisOriginal = gesamtpreis;
+                                preisAftermarket = gesamtpreis;
+                            }
+
+                            console.log(`📦 Ersatzteil "${item.name}": Original=${preisOriginal}, Aftermarket=${preisAftermarket}`);
+
                             addErsatzteilRow({
                                 etn: item.teilenummer || item.etn || '',
                                 benennung: item.name || item.benennung || '',
                                 anzahl: menge,
                                 einzelpreis: einzelpreis,
-                                gesamtpreis: menge * einzelpreis,
-                                // 🆕 Varianten-Preise übernehmen
-                                preisOriginal: item.preisOriginal || (menge * einzelpreis),
-                                preisAftermarket: item.preisAftermarket || item.preisOriginal || (menge * einzelpreis)
+                                gesamtpreis: gesamtpreis,
+                                preisOriginal: preisOriginal,
+                                preisAftermarket: preisAftermarket
                             });
                         });
                     }
