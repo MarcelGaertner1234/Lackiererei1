@@ -14165,8 +14165,29 @@ REGELN:
                 if (item.extracted_price) {
                     preis = item.extracted_price;
                 } else if (item.price) {
-                    // "€49,99" oder "49.99 €" parsen
-                    const cleaned = item.price.replace(/[€$\s]/g, '').replace(',', '.');
+                    // 🔧 FIX Dec 4, 2025: Deutsche Preise korrekt parsen
+                    // Formate: "€49,99", "49.99 €", "3.690,00 €" (mit Tausendertrennzeichen)
+                    let cleaned = item.price.replace(/[€$\s]/g, '');
+
+                    // Deutsche Zahlen: 3.690,00 → Punkte sind Tausender, Komma ist Dezimal
+                    // Englische Zahlen: 3,690.00 → Kommas sind Tausender, Punkt ist Dezimal
+                    if (cleaned.includes(',') && cleaned.includes('.')) {
+                        // Hat beides - prüfe Position
+                        const lastComma = cleaned.lastIndexOf(',');
+                        const lastDot = cleaned.lastIndexOf('.');
+                        if (lastComma > lastDot) {
+                            // Deutsches Format: 3.690,00 → Punkte entfernen, Komma → Punkt
+                            cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+                        } else {
+                            // Englisches Format: 3,690.00 → Kommas entfernen
+                            cleaned = cleaned.replace(/,/g, '');
+                        }
+                    } else if (cleaned.includes(',')) {
+                        // Nur Komma: 49,99 → Komma → Punkt
+                        cleaned = cleaned.replace(',', '.');
+                    }
+                    // Nur Punkt: 49.99 → bleibt so
+
                     preis = parseFloat(cleaned) || 0;
                 }
 
@@ -14763,10 +14784,11 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                     ? '<span style="background: #ff9800; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">🛒 AM</span>'
                     : '<span style="background: #1976d2; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">🏭 OE</span>';
 
-                // Lieferant mit optionalem Link
+                // Lieferant mit optionalem Link (url ODER bestellLink)
                 let lieferantCell = e.lieferant || '-';
-                if (e.bestellLink) {
-                    lieferantCell = `<a href="${e.bestellLink}" target="_blank" class="ersatzteil-link" title="${e.bestellLink}">
+                const linkUrl = e.url || e.bestellLink;
+                if (linkUrl) {
+                    lieferantCell = `<a href="${linkUrl}" target="_blank" class="ersatzteil-link" title="${linkUrl}" style="color: #007bff; text-decoration: none;">
                         ${e.lieferant || 'Link'} <i data-feather="external-link" style="width: 12px; height: 12px;"></i>
                     </a>`;
                 }
