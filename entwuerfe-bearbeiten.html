@@ -2757,62 +2757,79 @@
                     console.log('✅ serviceDetailsPerService aus Kalkulation geladen (Priorität über additionalServices)');
                 }
 
-                // 🆕 FIX Nov 30, 2025: 2-Varianten-Preise laden (Original + Aftermarket)
-                // Priorität: 1. kalkulation.summeBruttoOriginal/Aftermarket, 2. kalkulationData
-                const kalkData = currentEntwurf.kalkulation || currentEntwurf.kalkulationData || {};
-                const summeBruttoOriginal = parseFloat(kalkData.summeBruttoOriginal) || 0;
-                const summeBruttoAftermarket = parseFloat(kalkData.summeBruttoAftermarket) || 0;
+                // 🔧 FIX Dec 4, 2025: KRITISCH! updateKostenaufschluesselung() aufrufen NACHDEM
+                // alle Ersatzteile in ersatzteileData geladen wurden!
+                // Dies berechnet die Varianten-Preise LIVE aus den geladenen Daten statt
+                // aus den gespeicherten (möglicherweise veralteten) Werten.
+                if (ersatzteileData.length > 0) {
+                    console.log('📊 Ersatzteile geladen, berechne Varianten-Preise neu aus ersatzteileData...');
+                    updateKostenaufschluesselung();
 
-                console.log('💰 Varianten-Preise aus Kalkulation:', { summeBruttoOriginal, summeBruttoAftermarket });
+                    // Nach updateKostenaufschluesselung() sind die Hidden-Inputs aktualisiert
+                    // Jetzt können wir diese Werte für die Anzeige verwenden
+                    const summeBruttoOriginal = parseFloat(document.getElementById('summeBruttoOriginal')?.value) || 0;
+                    const summeBruttoAftermarket = parseFloat(document.getElementById('summeBruttoAftermarket')?.value) || 0;
 
-                // 🆕 FIX Nov 30, 2025: Kein Ratio mehr - wir berechnen direkt aus den Ersatzteile-Preisen!
-                // Die ersatzteileData hat preisOriginal + preisAftermarket für jedes Teil
+                    console.log('💰 Varianten-Preise NEU BERECHNET:', { summeBruttoOriginal, summeBruttoAftermarket });
 
-                // Hidden Inputs setzen
-                document.getElementById('summeBruttoOriginal').value = summeBruttoOriginal || '';
-                document.getElementById('summeBruttoAftermarket').value = summeBruttoAftermarket || '';
-
-                // Varianten-Anzeige aktualisieren
-                const variantenSection = document.getElementById('variantenSection');
-                const manuellerPreisSection = document.getElementById('manuellerPreisSection');
-                const preisOriginalDisplay = document.getElementById('preisOriginalDisplay');
-                const preisAftermarketDisplay = document.getElementById('preisAftermarketDisplay');
-
-                if (summeBruttoOriginal > 0 || summeBruttoAftermarket > 0) {
-                    // Kalkulation vorhanden - Varianten anzeigen
-                    variantenSection.style.display = 'block';
-                    manuellerPreisSection.style.display = 'none';
-
-                    // Formatierte Preise anzeigen
-                    const formatCurrency = (value) => {
-                        return new Intl.NumberFormat('de-DE', {
-                            style: 'currency',
-                            currency: 'EUR'
-                        }).format(value);
-                    };
-
-                    preisOriginalDisplay.textContent = formatCurrency(summeBruttoOriginal);
-                    preisAftermarketDisplay.textContent = formatCurrency(summeBruttoAftermarket);
-
-                    // Wenn Aftermarket günstiger, hervorheben
-                    if (summeBruttoAftermarket > 0 && summeBruttoAftermarket < summeBruttoOriginal) {
-                        const savings = summeBruttoOriginal - summeBruttoAftermarket;
-                        const savingsPercent = Math.round((savings / summeBruttoOriginal) * 100);
-                        preisAftermarketDisplay.innerHTML = `
-                            ${formatCurrency(summeBruttoAftermarket)}
-                            <div style="font-size: 12px; color: #16a34a; margin-top: 4px;">
-                                💸 ${savingsPercent}% günstiger
-                            </div>
-                        `;
-                    }
-
-                    console.log('✅ Varianten-Preise angezeigt (Kalkulation vorhanden)');
+                    // Varianten-Anzeige wurde bereits von updateKostenaufschluesselung() aktualisiert
+                    // Daher überspringen wir den Rest dieses Blocks
                 } else {
-                    // Keine Kalkulation - manuellen Preis anzeigen
-                    variantenSection.style.display = 'none';
-                    manuellerPreisSection.style.display = 'block';
-                    console.log('ℹ️ Keine Kalkulation vorhanden - manueller Preis');
-                }
+                    // Keine Ersatzteile geladen - Fallback auf gespeicherte Werte
+                    // 🆕 FIX Nov 30, 2025: 2-Varianten-Preise laden (Original + Aftermarket)
+                    // Priorität: 1. kalkulation.summeBruttoOriginal/Aftermarket, 2. kalkulationData
+                    const kalkData = currentEntwurf.kalkulation || currentEntwurf.kalkulationData || {};
+                    const summeBruttoOriginal = parseFloat(kalkData.summeBruttoOriginal) || 0;
+                    const summeBruttoAftermarket = parseFloat(kalkData.summeBruttoAftermarket) || 0;
+
+                    console.log('💰 Varianten-Preise aus gespeicherter Kalkulation (keine Ersatzteile):', { summeBruttoOriginal, summeBruttoAftermarket });
+
+                    // Hidden Inputs setzen (nur wenn keine Ersatzteile geladen wurden)
+                    document.getElementById('summeBruttoOriginal').value = summeBruttoOriginal || '';
+                    document.getElementById('summeBruttoAftermarket').value = summeBruttoAftermarket || '';
+
+                    // Varianten-Anzeige aktualisieren
+                    const variantenSection = document.getElementById('variantenSection');
+                    const manuellerPreisSection = document.getElementById('manuellerPreisSection');
+                    const preisOriginalDisplay = document.getElementById('preisOriginalDisplay');
+                    const preisAftermarketDisplay = document.getElementById('preisAftermarketDisplay');
+
+                    if (summeBruttoOriginal > 0 || summeBruttoAftermarket > 0) {
+                        // Kalkulation vorhanden - Varianten anzeigen
+                        variantenSection.style.display = 'block';
+                        manuellerPreisSection.style.display = 'none';
+
+                        // Formatierte Preise anzeigen
+                        const formatCurrency = (value) => {
+                            return new Intl.NumberFormat('de-DE', {
+                                style: 'currency',
+                                currency: 'EUR'
+                            }).format(value);
+                        };
+
+                        preisOriginalDisplay.textContent = formatCurrency(summeBruttoOriginal);
+                        preisAftermarketDisplay.textContent = formatCurrency(summeBruttoAftermarket);
+
+                        // Wenn Aftermarket günstiger, hervorheben
+                        if (summeBruttoAftermarket > 0 && summeBruttoAftermarket < summeBruttoOriginal) {
+                            const savings = summeBruttoOriginal - summeBruttoAftermarket;
+                            const savingsPercent = Math.round((savings / summeBruttoOriginal) * 100);
+                            preisAftermarketDisplay.innerHTML = `
+                                ${formatCurrency(summeBruttoAftermarket)}
+                                <div style="font-size: 12px; color: #16a34a; margin-top: 4px;">
+                                    💸 ${savingsPercent}% günstiger
+                                </div>
+                            `;
+                        }
+
+                        console.log('✅ Varianten-Preise angezeigt (aus gespeicherter Kalkulation)');
+                    } else {
+                        // Keine Kalkulation - manuellen Preis anzeigen
+                        variantenSection.style.display = 'none';
+                        manuellerPreisSection.style.display = 'block';
+                        console.log('ℹ️ Keine Kalkulation vorhanden - manueller Preis');
+                    }
+                } // Ende else (keine Ersatzteile)
 
                 // 🖼️ Load Fotos (Phase 3)
                 // 🔧 DEBUG Dec 3, 2025: Log alle Foto-Felder im Entwurf
