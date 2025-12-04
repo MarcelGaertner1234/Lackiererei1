@@ -20093,16 +20093,38 @@ Gib eine realistische Preisspanne für den deutschen Markt.`
                     return sum + (parseFloat(m.preis) || parseFloat(m.verkaufspreis) || 0);
                 }, 0);
 
-                // 🆕 Nov 30, 2025: Getrennte Ersatzteile-Summen (Original + Aftermarket)
-                const summeErsatzteileOriginal = (kalkWizardData.ersatzteile || []).reduce((sum, e) => {
-                    const preis = parseFloat(e.preisOriginal) || parseFloat(e.preis) || 0;
-                    return sum + (preis * (parseFloat(e.menge) || 1));
-                }, 0);
+                // 🆕 Dec 4, 2025: Getrennte Ersatzteile-Summen (Original + Aftermarket) - KORRIGIERT!
+                // WICHTIG: NUR den jeweiligen Preis zählen, NICHT auf den anderen Typ fallbacken!
+                let summeErsatzteileOriginal = 0;
+                let summeErsatzteileAftermarket = 0;
 
-                const summeErsatzteileAftermarket = (kalkWizardData.ersatzteile || []).reduce((sum, e) => {
-                    const preis = parseFloat(e.preisAftermarket) || parseFloat(e.preisOriginal) || parseFloat(e.preis) || 0;
-                    return sum + (preis * (parseFloat(e.menge) || 1));
-                }, 0);
+                (kalkWizardData.ersatzteile || []).forEach(e => {
+                    const menge = parseFloat(e.menge) || 1;
+
+                    // Prüfe ob preisOriginal/preisAftermarket explizit gesetzt sind
+                    if (e.preisOriginal !== undefined && e.preisOriginal !== null && e.preisOriginal > 0) {
+                        summeErsatzteileOriginal += parseFloat(e.preisOriginal) * menge;
+                    }
+                    if (e.preisAftermarket !== undefined && e.preisAftermarket !== null && e.preisAftermarket > 0) {
+                        summeErsatzteileAftermarket += parseFloat(e.preisAftermarket) * menge;
+                    }
+
+                    // Fallback NUR wenn KEINE Varianten-Preise vorhanden sind (Legacy-Daten)
+                    if (e.preisOriginal === undefined && e.preisAftermarket === undefined) {
+                        const preis = parseFloat(e.preis) || 0;
+                        if (e.preisTyp === 'Aftermarket') {
+                            summeErsatzteileAftermarket += preis * menge;
+                        } else {
+                            summeErsatzteileOriginal += preis * menge;
+                        }
+                    }
+                });
+
+                console.log('📦 Ersatzteile-Summen für KVA:', {
+                    original: summeErsatzteileOriginal,
+                    aftermarket: summeErsatzteileAftermarket,
+                    ersatzteile: kalkWizardData.ersatzteile
+                });
 
                 // Backwards-Kompatibilität: summeErsatzteile = Original
                 const summeErsatzteile = summeErsatzteileOriginal;
