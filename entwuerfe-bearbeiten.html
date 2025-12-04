@@ -1293,7 +1293,7 @@
                         </tfoot>
                     </table>
                     <small style="color: #795548; display: block; margin-top: 10px;">
-                        💡 Tagesmiete × Anzahl Tage (bis geplantes Abnahmedatum)
+                        💡 Tagesmiete × Anzahl Tage (ab heute bis Abholdatum/Fertigstellung)
                     </small>
                 </div>
 
@@ -3142,26 +3142,33 @@
                 const kennzeichen = leihfahrzeug.kennzeichen || 'N/A';
                 const fahrzeugName = `${leihfahrzeug.marke || ''} ${leihfahrzeug.modell || ''} (${kennzeichen})`.trim();
 
-                // 🔧 FIX (2025-11-27): Tage berechnen (abholdatum bis geplantes Abnahmedatum)
-                // VORHER: heute als Start → falsche Tage-Berechnung
-                // NACHHER: abholdatum aus Entwurf als Start → korrekte Tage
-                const abholdatumStr = currentEntwurf?.abholdatum || null;
+                // 🔧 FIX (2025-12-04): Tage berechnen (HEUTE bis abholdatum ODER geplantesAbnahmeDatum)
+                // START = HEUTE (Kunde braucht Ersatzfahrzeug ab jetzt)
+                // ENDE = abholdatum (wenn vorhanden) ODER geplantesAbnahmeDatum (Fertigstellung)
                 let startDatum = new Date();
-                if (abholdatumStr) {
-                    startDatum = new Date(abholdatumStr);
-                }
                 startDatum.setHours(0, 0, 0, 0);
 
-                const endeDatumStr = document.getElementById('geplantesAbnahmeDatum')?.value;
-                let endeDatum = startDatum;
-                if (endeDatumStr) {
-                    endeDatum = new Date(endeDatumStr);
-                    endeDatum.setHours(0, 0, 0, 0);
-                }
+                // Ende-Datum: Priorität 1 = abholdatum, Priorität 2 = geplantesAbnahmeDatum
+                const abholdatumStr = document.getElementById('abholdatum')?.value || currentEntwurf?.abholdatum || null;
+                const fertigstellungStr = document.getElementById('geplantesAbnahmeDatum')?.value || null;
 
-                // Mindestens 1 Tag
+                let endeDatum = new Date(startDatum); // Fallback: heute
+                let endeDatumQuelle = 'heute (Fallback)';
+
+                if (abholdatumStr) {
+                    endeDatum = new Date(abholdatumStr);
+                    endeDatumQuelle = 'Gewünschtes Abholdatum';
+                } else if (fertigstellungStr) {
+                    endeDatum = new Date(fertigstellungStr);
+                    endeDatumQuelle = 'Fertigstellungsdatum';
+                }
+                endeDatum.setHours(0, 0, 0, 0);
+
+                // Mindestens 1 Tag, negative Differenz = 1 Tag
                 const diffTime = endeDatum - startDatum;
                 const tage = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+                console.log(`📅 Ersatzfahrzeug-Tage: HEUTE → ${endeDatumQuelle} = ${tage} Tage`);
 
                 // Gesamt berechnen
                 const gesamt = tagesmiete * tage;
