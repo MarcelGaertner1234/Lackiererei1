@@ -595,6 +595,70 @@
             color: #6b7280;
         }
 
+        /* Klickbarer Badge */
+        .hours-badge:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+            cursor: pointer;
+        }
+
+        /* Stunden-Details Popup */
+        .hours-breakdown {
+            background: var(--color-surface-alt, #f8f9fa);
+            border-radius: var(--radius-md, 8px);
+            padding: var(--space-3, 12px);
+            margin-bottom: var(--space-4, 16px);
+        }
+
+        .hours-breakdown-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--color-border, #e5e7eb);
+            font-size: 14px;
+        }
+
+        .hours-breakdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .hours-breakdown-total {
+            font-weight: bold;
+            margin-top: var(--space-2, 8px);
+            padding-top: var(--space-2, 8px);
+            border-top: 2px solid var(--color-border, #e5e7eb);
+        }
+
+        .hours-edit-section {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2, 8px);
+            margin-top: var(--space-4, 16px);
+            padding: var(--space-3, 12px);
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: var(--radius-md, 8px);
+        }
+
+        .hours-edit-section label {
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .hours-edit-section input {
+            width: 80px;
+            padding: 8px;
+            border: 1px solid var(--color-border, #d1d5db);
+            border-radius: var(--radius-sm, 4px);
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .hours-edit-section input:focus {
+            outline: none;
+            border-color: var(--color-primary, #3b82f6);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
         /* Mobile */
         @media (max-width: 1400px) {
             .queue-section.werkstatt {
@@ -917,6 +981,25 @@
             <div id="modalContent"></div>
             <div class="modal-actions">
                 <button class="nav-btn" onclick="closeModal()">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stunden-Details Modal -->
+    <div class="modal-overlay" id="hoursModal">
+        <div class="modal">
+            <h3 id="hoursModalTitle">Arbeitszeit-Details</h3>
+            <div id="hoursBreakdown">
+                <!-- Aufschlüsselung wird dynamisch eingefügt -->
+            </div>
+            <div class="hours-edit-section">
+                <label>Manuelle Anpassung:</label>
+                <input type="number" id="manualHoursInput" step="0.5" min="0.5" max="100" placeholder="0.0">
+                <span>Stunden</span>
+            </div>
+            <div class="modal-actions">
+                <button class="nav-btn" onclick="closeHoursModal()">Abbrechen</button>
+                <button class="nav-btn primary" onclick="saveManualHours()">Speichern</button>
             </div>
         </div>
     </div>
@@ -1302,14 +1385,14 @@
 
             // Badge-Unterscheidung: KVA (grün) vs Default (grau)
             const badgeClass = kvaHours ? 'hours-badge kva' : 'hours-badge default';
-            const badgeTitle = kvaHours ? 'Aus KVA berechnet' : 'Schätzwert (ohne KVA)';
+            const badgeTitle = kvaHours ? 'Klicken für Details (KVA)' : 'Klicken für Details (Schätzwert)';
 
             return `
                 <div class="queue-item" draggable="true" data-id="${fahrzeug.id}"
                      ondragstart="onDragStart(event)">
                     <span class="position">${position}</span>
                     <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'}</span>
-                    <span class="${badgeClass}" title="${badgeTitle}">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
+                    <span class="${badgeClass}" title="${badgeTitle}" onclick="event.stopPropagation(); showHoursDetails('${fahrzeug.id}')">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
                     <button class="info-btn" onclick="event.stopPropagation(); showDetails('${fahrzeug.id}')" title="Details" style="position:static; opacity:1; margin-left:auto;">ℹ️</button>
                     <button class="remove-btn" onclick="removeFromQueue('${fahrzeug.id}')" title="Entfernen">✕</button>
                 </div>
@@ -1683,6 +1766,171 @@
         // Close modal on outside click
         document.getElementById('detailModal').addEventListener('click', (e) => {
             if (e.target.id === 'detailModal') closeModal();
+        });
+
+        // ============================================
+        // STUNDEN-DETAILS POPUP
+        // ============================================
+
+        let currentEditFahrzeugId = null;
+
+        function showHoursDetails(fahrzeugId) {
+            const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
+            if (!fahrzeug) return;
+
+            currentEditFahrzeugId = fahrzeugId;
+
+            // Titel setzen
+            document.getElementById('hoursModalTitle').textContent =
+                `Arbeitszeit: ${fahrzeug.kennzeichen || 'Fahrzeug'}`;
+
+            // Aufschlüsselung erstellen
+            const kvaHours = window.calculateKvaHours ? window.calculateKvaHours(fahrzeug) : null;
+            let breakdownHtml = '';
+
+            if (kvaHours && fahrzeug.kalkulationData) {
+                // KVA vorhanden - zeige alle Positionen
+                breakdownHtml = '<div class="hours-breakdown">';
+                breakdownHtml += '<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">✓ Aus KVA berechnet:</div>';
+
+                // Arbeitslohn-Positionen
+                const arbeitslohn = fahrzeug.kalkulationData.arbeitslohn || [];
+                arbeitslohn.forEach(pos => {
+                    const stunden = parseFloat(pos.stunden) || 0;
+                    if (stunden > 0) {
+                        breakdownHtml += `
+                            <div class="hours-breakdown-item">
+                                <span>${pos.art || pos.position || 'Arbeit'}</span>
+                                <span>${stunden.toFixed(1)}h</span>
+                            </div>`;
+                    }
+                });
+
+                // Lackierungs-Positionen
+                const lackierung = fahrzeug.kalkulationData.lackierung || [];
+                lackierung.forEach(pos => {
+                    const stunden = parseFloat(pos.stunden) || 0;
+                    if (stunden > 0) {
+                        breakdownHtml += `
+                            <div class="hours-breakdown-item">
+                                <span>Lackierung: ${pos.bereich || pos.art || ''}</span>
+                                <span>${stunden.toFixed(1)}h</span>
+                            </div>`;
+                    }
+                });
+
+                // Gesamt
+                breakdownHtml += `
+                    <div class="hours-breakdown-item hours-breakdown-total">
+                        <span>GESAMT</span>
+                        <span>${kvaHours.toFixed(1)}h</span>
+                    </div>`;
+                breakdownHtml += '</div>';
+            } else {
+                // Kein KVA - Default erklären
+                const serviceConfig = window.SERVICE_TYPE_CONFIG?.[fahrzeug.serviceTyp] || {};
+                const defaultHours = window.SERVICE_DEFAULT_HOURS?.[fahrzeug.serviceTyp] || 1.0;
+
+                breakdownHtml = `
+                    <div class="hours-breakdown" style="background:rgba(107,114,128,0.1);">
+                        <div style="color:#6b7280;font-weight:600;margin-bottom:8px;">
+                            ⚠️ Keine KVA vorhanden - Standard-Schätzwert:
+                        </div>
+                        <div class="hours-breakdown-item">
+                            <span>${serviceConfig.label || fahrzeug.serviceTyp || 'Unbekannt'}</span>
+                            <span>${defaultHours.toFixed(1)}h (Default)</span>
+                        </div>
+                        <div style="font-size:12px;color:#9ca3af;margin-top:8px;">
+                            💡 Für genaue Zeiten: KVA/Kalkulation erstellen
+                        </div>
+                    </div>`;
+            }
+
+            // Falls manuell überschrieben wurde
+            if (fahrzeug.geschaetzteStunden && fahrzeug.geschaetzteStundenGeaendertVon) {
+                breakdownHtml += `
+                    <div style="font-size:12px;color:#3b82f6;margin-top:8px;padding:8px;background:rgba(59,130,246,0.05);border-radius:4px;">
+                        ✏️ Manuell angepasst auf ${fahrzeug.geschaetzteStunden.toFixed(1)}h
+                        von ${fahrzeug.geschaetzteStundenGeaendertVon}
+                    </div>`;
+            }
+
+            document.getElementById('hoursBreakdown').innerHTML = breakdownHtml;
+
+            // Aktuellen Wert ins Input setzen
+            const currentHours = window.getEstimatedHours ? window.getEstimatedHours(fahrzeug) : 1.0;
+            document.getElementById('manualHoursInput').value = currentHours.toFixed(1);
+
+            // Modal öffnen
+            document.getElementById('hoursModal').classList.add('active');
+        }
+
+        async function saveManualHours() {
+            if (!currentEditFahrzeugId) return;
+
+            const manualHours = parseFloat(document.getElementById('manualHoursInput').value);
+            if (isNaN(manualHours) || manualHours < 0.5) {
+                alert('Bitte geben Sie einen gültigen Wert ein (mind. 0.5h)');
+                return;
+            }
+
+            try {
+                // Disable button while saving
+                const saveBtn = event.target;
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Speichern...';
+
+                // In Firestore speichern
+                const collectionName = window.getCollectionName ? window.getCollectionName('fahrzeuge') : 'fahrzeuge';
+                await db.collection(collectionName).doc(currentEditFahrzeugId).update({
+                    geschaetzteStunden: manualHours,
+                    geschaetzteStundenGeaendertAm: firebase.firestore.FieldValue.serverTimestamp(),
+                    geschaetzteStundenGeaendertVon: window.currentUser?.displayName || 'Werkstattleiter'
+                });
+
+                // Lokales Array aktualisieren
+                const fahrzeug = allFahrzeuge.find(f => f.id === currentEditFahrzeugId);
+                if (fahrzeug) {
+                    fahrzeug.geschaetzteStunden = manualHours;
+                    fahrzeug.geschaetzteStundenGeaendertVon = window.currentUser?.displayName || 'Werkstattleiter';
+                }
+
+                // Queue-Kapazitäten neu berechnen
+                updateAllQueueCapacities();
+
+                // UI aktualisieren
+                renderAllQueues();
+
+                // Modal schließen
+                closeHoursModal();
+
+                console.log(`✓ Stunden für ${currentEditFahrzeugId} auf ${manualHours}h gesetzt`);
+
+                // Zeige kurze Bestätigung
+                if (window.showToast) {
+                    window.showToast(`Arbeitszeit auf ${manualHours}h geändert`, 'success');
+                }
+            } catch (error) {
+                console.error('Fehler beim Speichern:', error);
+                alert('Fehler beim Speichern der Stunden: ' + error.message);
+            } finally {
+                // Re-enable button
+                const saveBtn = document.querySelector('#hoursModal .nav-btn.primary');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Speichern';
+                }
+            }
+        }
+
+        function closeHoursModal() {
+            document.getElementById('hoursModal').classList.remove('active');
+            currentEditFahrzeugId = null;
+        }
+
+        // Close hours modal on outside click
+        document.getElementById('hoursModal').addEventListener('click', (e) => {
+            if (e.target.id === 'hoursModal') closeHoursModal();
         });
 
         // ============================================
