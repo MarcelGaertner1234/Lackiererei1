@@ -702,6 +702,30 @@
                 const role = userDoc.exists ? userDoc.data().role : 'mitarbeiter';
                 console.log('👤 User Role:', role, '(UID:', authUser.uid, ')');
 
+                // werkstattId aus userDoc setzen falls noch nicht vorhanden (Race Condition Fix!)
+                if (!window.werkstattId && userDoc.exists && userDoc.data().werkstattId) {
+                    window.werkstattId = userDoc.data().werkstattId;
+                    console.log('🏢 werkstattId aus userDoc gesetzt:', window.werkstattId);
+                }
+
+                // Fallback: Warte kurz auf auth-manager Restore (max 2 Sekunden)
+                if (!window.werkstattId) {
+                    console.log('⏳ Warte auf werkstattId...');
+                    let attempts = 0;
+                    while (!window.werkstattId && attempts < 20) {
+                        await new Promise(r => setTimeout(r, 100));
+                        attempts++;
+                    }
+                    if (window.werkstattId) {
+                        console.log('✅ werkstattId nach Polling verfügbar:', window.werkstattId);
+                    } else {
+                        console.error('❌ werkstattId konnte nicht geladen werden!');
+                        alert('Fehler: Werkstatt-ID nicht gefunden. Bitte neu einloggen.');
+                        window.safeNavigate ? window.safeNavigate('index.html') : window.location.href = 'index.html';
+                        return;
+                    }
+                }
+
                 if (role !== 'admin' && role !== 'werkstatt') {
                     alert('Zugriff nur für Werkstattleiter und Admins.');
                     window.safeNavigate ? window.safeNavigate('kanban.html') : window.location.href = 'kanban.html';
