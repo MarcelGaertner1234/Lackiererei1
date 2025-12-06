@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <script>
+        /// <reference path="js/types.js" />
+        // window.werkstattId is set automatically after successful login
+    </script>
+    <script>
+        window.DEBUG = (
+            localStorage.getItem('DEBUG') === 'true' ||
+            window.location.search.includes('debug=true') ||
+            window.location.hostname === 'localhost' ||
+            window.location.port === '8000'
+        );
+    </script>
+
+    <!-- FOUC Prevention -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tagesplanung - Priorisierung | Auto-Lackierzentrum Mosbach</title>
+
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
+    <!-- Design System -->
+    <link rel="stylesheet" href="design-system.css?v=tagesplanung-v1">
+    <link rel="stylesheet" href="liquid-glass.css?v=tagesplanung-v1">
+    <link rel="stylesheet" href="animations.css?v=tagesplanung-v1">
+    <link rel="stylesheet" href="mobile-first.css?v=tagesplanung-v1">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-system);
+            background: var(--color-background);
+            min-height: 100vh;
+            padding: var(--space-4);
+            color: var(--color-text-primary);
+        }
+
+        /* Header */
+        .header {
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-2xl);
+            padding: var(--space-4) var(--space-6);
+            margin-bottom: var(--space-4);
+            box-shadow: var(--shadow-xl);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo { font-size: 36px; }
+
+        .title h1 {
+            color: var(--color-primary);
+            font-size: 22px;
+            margin: 0;
+        }
+
+        .title .subtitle {
+            color: var(--color-text-secondary);
+            font-size: 13px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .date-picker {
+            padding: var(--space-2) var(--space-3);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            background: var(--color-surface);
+            font-size: 14px;
+            color: var(--color-text-primary);
+        }
+
+        .nav-btn {
+            padding: var(--space-2) var(--space-4);
+            background: linear-gradient(135deg, rgba(0, 191, 255, 0.8), rgba(0, 122, 255, 0.7));
+            border: none;
+            color: white;
+            text-decoration: none;
+            border-radius: var(--radius-lg);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .nav-btn.success {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.8), rgba(22, 163, 74, 0.7));
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: var(--space-4);
+            height: calc(100vh - 140px);
+        }
+
+        /* Ungeplant Section */
+        .ungeplant-section {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            padding: var(--space-4);
+            overflow-y: auto;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-3);
+            padding-bottom: var(--space-2);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .count-badge {
+            background: var(--color-primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .sort-select {
+            padding: 4px 8px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            background: var(--color-surface);
+        }
+
+        /* Fahrzeug Cards */
+        .fahrzeug-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            cursor: grab;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .fahrzeug-card:hover {
+            border-color: var(--color-primary);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .fahrzeug-card.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+
+        .fahrzeug-card .kennzeichen {
+            font-weight: 700;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+
+        .fahrzeug-card .info {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .fahrzeug-card .service-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .fahrzeug-card .dringlichkeit {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .dringlichkeit.hoch { background: #ef4444; }
+        .dringlichkeit.mittel { background: #f59e0b; }
+        .dringlichkeit.niedrig { background: #6b7280; }
+
+        /* Queue Section */
+        .queue-section {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: var(--space-3);
+        }
+
+        .queue-column {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            padding: var(--space-3);
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .queue-header {
+            text-align: center;
+            padding-bottom: var(--space-2);
+            margin-bottom: var(--space-2);
+            border-bottom: 2px solid var(--color-border);
+        }
+
+        .queue-header .icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+
+        .queue-header .name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .queue-header .queue-count {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .queue-items {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 100px;
+            padding: var(--space-1);
+            border: 2px dashed transparent;
+            border-radius: var(--radius-lg);
+            transition: all 0.2s;
+        }
+
+        .queue-items.drag-over {
+            border-color: var(--color-primary);
+            background: rgba(0, 122, 255, 0.05);
+        }
+
+        .queue-item {
+            background: var(--color-background);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-2);
+            margin-bottom: var(--space-2);
+            cursor: grab;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .queue-item:hover {
+            border-color: var(--color-primary);
+        }
+
+        .queue-item.dragging {
+            opacity: 0.5;
+        }
+
+        .queue-item .position {
+            background: var(--color-primary);
+            color: white;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .queue-item .kennzeichen {
+            font-weight: 600;
+            font-size: 13px;
+            flex: 1;
+        }
+
+        .queue-item .remove-btn {
+            background: none;
+            border: none;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            padding: 2px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .queue-item:hover .remove-btn {
+            opacity: 1;
+        }
+
+        .queue-item .remove-btn:hover {
+            color: #ef4444;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: var(--space-4);
+            color: var(--color-text-secondary);
+            font-size: 13px;
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            padding: var(--space-3) var(--space-4);
+            margin-bottom: var(--space-4);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-item .label {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .stat-item .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+
+        /* Service Colors */
+        .service-lackier { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
+        .service-mechanik { background: rgba(59, 130, 246, 0.15); color: #2563eb; }
+        .service-reifen { background: rgba(34, 197, 94, 0.15); color: #16a34a; }
+        .service-pflege { background: rgba(168, 85, 247, 0.15); color: #9333ea; }
+        .service-tuev { background: rgba(249, 115, 22, 0.15); color: #ea580c; }
+        .service-default { background: rgba(107, 114, 128, 0.15); color: #4b5563; }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--color-border);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--color-surface);
+            border-radius: var(--radius-xl);
+            padding: var(--space-6);
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            margin-bottom: var(--space-4);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: var(--space-3);
+            margin-top: var(--space-4);
+            justify-content: flex-end;
+        }
+
+        /* Mobile */
+        @media (max-width: 1200px) {
+            .queue-section {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 900px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            .queue-section {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .queue-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <span class="logo">📅</span>
+            <div class="title">
+                <h1>Tagesplanung</h1>
+                <span class="subtitle">Priorisierung & Abteilungs-Queues</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <input type="date" class="date-picker" id="datePicker">
+            <button class="nav-btn success" onclick="saveTagesplan()">
+                <span>💾</span> Speichern
+            </button>
+            <a href="kanban.html" class="nav-btn">
+                <span>📊</span> Kanban
+            </a>
+            <a href="liste.html" class="nav-btn">
+                <span>📋</span> Liste
+            </a>
+        </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <span class="label">Ungeplant:</span>
+            <span class="value" id="statUngeplant">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="label">Geplant:</span>
+            <span class="value" id="statGeplant">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="label">Heute fällig:</span>
+            <span class="value" id="statHeuteFaellig">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="label">Überfällig:</span>
+            <span class="value" id="statUeberfaellig" style="color: #ef4444;">0</span>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Ungeplant Section -->
+        <div class="ungeplant-section">
+            <div class="section-header">
+                <span class="section-title">
+                    ⚠️ Ungeplant
+                    <span class="count-badge" id="ungeplantCount">0</span>
+                </span>
+                <select class="sort-select" id="sortSelect" onchange="sortUngeplant()">
+                    <option value="dringlichkeit">Nach Dringlichkeit</option>
+                    <option value="datum">Nach Eingangsdatum</option>
+                    <option value="termin">Nach Termin</option>
+                </select>
+            </div>
+            <div id="ungeplantList">
+                <!-- Fahrzeuge werden hier eingefügt -->
+            </div>
+        </div>
+
+        <!-- Queue Section -->
+        <div class="queue-section">
+            <!-- Lackier Queue -->
+            <div class="queue-column" data-queue="lackier">
+                <div class="queue-header">
+                    <div class="icon">🎨</div>
+                    <div class="name">Lackierung</div>
+                    <div class="queue-count"><span id="queueCountLackier">0</span> Aufträge</div>
+                </div>
+                <div class="queue-items" id="queueLackier" data-queue="lackier">
+                    <div class="empty-state">Fahrzeuge hierher ziehen</div>
+                </div>
+            </div>
+
+            <!-- Mechanik Queue -->
+            <div class="queue-column" data-queue="mechanik">
+                <div class="queue-header">
+                    <div class="icon">🔧</div>
+                    <div class="name">Mechanik</div>
+                    <div class="queue-count"><span id="queueCountMechanik">0</span> Aufträge</div>
+                </div>
+                <div class="queue-items" id="queueMechanik" data-queue="mechanik">
+                    <div class="empty-state">Fahrzeuge hierher ziehen</div>
+                </div>
+            </div>
+
+            <!-- Reifen Queue -->
+            <div class="queue-column" data-queue="reifen">
+                <div class="queue-header">
+                    <div class="icon">🚗</div>
+                    <div class="name">Reifen</div>
+                    <div class="queue-count"><span id="queueCountReifen">0</span> Aufträge</div>
+                </div>
+                <div class="queue-items" id="queueReifen" data-queue="reifen">
+                    <div class="empty-state">Fahrzeuge hierher ziehen</div>
+                </div>
+            </div>
+
+            <!-- Pflege Queue -->
+            <div class="queue-column" data-queue="pflege">
+                <div class="queue-header">
+                    <div class="icon">✨</div>
+                    <div class="name">Pflege</div>
+                    <div class="queue-count"><span id="queueCountPflege">0</span> Aufträge</div>
+                </div>
+                <div class="queue-items" id="queuePflege" data-queue="pflege">
+                    <div class="empty-state">Fahrzeuge hierher ziehen</div>
+                </div>
+            </div>
+
+            <!-- TÜV Queue -->
+            <div class="queue-column" data-queue="tuev">
+                <div class="queue-header">
+                    <div class="icon">📋</div>
+                    <div class="name">TÜV/AU</div>
+                    <div class="queue-count"><span id="queueCountTuev">0</span> Aufträge</div>
+                </div>
+                <div class="queue-items" id="queueTuev" data-queue="tuev">
+                    <div class="empty-state">Fahrzeuge hierher ziehen</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal">
+            <h3 id="modalTitle">Fahrzeug Details</h3>
+            <div id="modalContent"></div>
+            <div class="modal-actions">
+                <button class="nav-btn" onclick="closeModal()">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <!-- App Scripts -->
+    <script src="firebase-config.js"></script>
+    <script src="listener-registry.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/service-types.js"></script>
+    <script src="js/permissions-helper.js"></script>
+    <script src="js/toast.js"></script>
+
+    <script>
+        // ============================================
+        // TAGESPLANUNG - JavaScript
+        // ============================================
+
+        // Global State
+        let allFahrzeuge = [];
+        let ungeplanteFahrzeuge = [];
+        let queuedFahrzeuge = {
+            lackier: [],
+            mechanik: [],
+            reifen: [],
+            pflege: [],
+            tuev: []
+        };
+        let selectedDate = new Date();
+        let hasUnsavedChanges = false;
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('📅 Tagesplanung wird initialisiert...');
+
+            // Set date picker to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('datePicker').value = today;
+            document.getElementById('datePicker').addEventListener('change', onDateChange);
+
+            // Wait for Firebase
+            try {
+                await window.firebaseInitialized;
+                console.log('✅ Firebase initialisiert, werkstattId:', window.werkstattId);
+
+                // Check permissions
+                const role = localStorage.getItem('mitarbeiterRolle') || 'mitarbeiter';
+                if (role !== 'admin' && role !== 'werkstatt') {
+                    alert('Zugriff nur für Werkstattleiter und Admins.');
+                    window.safeNavigate ? window.safeNavigate('kanban.html') : window.location.href = 'kanban.html';
+                    return;
+                }
+
+                await loadFahrzeuge();
+                setupDragAndDrop();
+                hideLoading();
+
+            } catch (error) {
+                console.error('❌ Initialisierungsfehler:', error);
+                hideLoading();
+                alert('Fehler beim Laden. Bitte Seite neu laden.');
+            }
+        });
+
+        // ============================================
+        // DATA LOADING
+        // ============================================
+
+        async function loadFahrzeuge() {
+            console.log('📥 Lade Fahrzeuge...');
+
+            const db = firebase.firestore();
+            const collectionName = window.getCollection ? window.getCollection('fahrzeuge') : `fahrzeuge_${window.werkstattId}`;
+
+            try {
+                // Load active vehicles (not abgeschlossen)
+                const snapshot = await db.collection(collectionName)
+                    .where('status', 'not-in', ['abgeschlossen', 'storniert'])
+                    .get();
+
+                allFahrzeuge = [];
+                snapshot.forEach(doc => {
+                    allFahrzeuge.push({ id: doc.id, ...doc.data() });
+                });
+
+                console.log(`✅ ${allFahrzeuge.length} Fahrzeuge geladen`);
+
+                // Calculate dringlichkeit scores
+                allFahrzeuge.forEach(f => {
+                    f.dringlichkeitsScore = calculateDringlichkeitsScore(f);
+                });
+
+                // Separate ungeplant vs queued
+                categorizeVehicles();
+                renderAll();
+                updateStats();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden:', error);
+            }
+        }
+
+        function categorizeVehicles() {
+            const dateStr = document.getElementById('datePicker').value;
+
+            ungeplanteFahrzeuge = [];
+            queuedFahrzeuge = {
+                lackier: [],
+                mechanik: [],
+                reifen: [],
+                pflege: [],
+                tuev: []
+            };
+
+            allFahrzeuge.forEach(f => {
+                // Check if already queued for this date
+                if (f.queueDatum && f.abteilungsQueue) {
+                    const queueDate = f.queueDatum.toDate ? f.queueDatum.toDate() : new Date(f.queueDatum);
+                    const queueDateStr = queueDate.toISOString().split('T')[0];
+
+                    if (queueDateStr === dateStr && queuedFahrzeuge[f.abteilungsQueue]) {
+                        queuedFahrzeuge[f.abteilungsQueue].push(f);
+                        return;
+                    }
+                }
+
+                // Add to ungeplant
+                ungeplanteFahrzeuge.push(f);
+            });
+
+            // Sort queues by position
+            Object.keys(queuedFahrzeuge).forEach(queue => {
+                queuedFahrzeuge[queue].sort((a, b) => (a.queuePosition || 999) - (b.queuePosition || 999));
+            });
+
+            // Sort ungeplant by dringlichkeit
+            sortUngeplant();
+        }
+
+        // ============================================
+        // DRINGLICHKEIT SCORING
+        // ============================================
+
+        function calculateDringlichkeitsScore(fahrzeug) {
+            let score = 0;
+
+            // 1. Termin-Dringlichkeit (max 50 Punkte)
+            if (fahrzeug.abholtermin || fahrzeug.geplantesAbnahmeDatum) {
+                const deadline = fahrzeug.abholtermin || fahrzeug.geplantesAbnahmeDatum;
+                const deadlineDate = deadline.toDate ? deadline.toDate() : new Date(deadline);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const daysUntil = Math.ceil((deadlineDate - today) / (1000 * 60 * 60 * 24));
+
+                if (daysUntil <= 0) score += 50;      // Überfällig
+                else if (daysUntil === 1) score += 40; // Heute
+                else if (daysUntil === 2) score += 30; // Morgen
+                else if (daysUntil <= 7) score += 15;
+            }
+
+            // 2. Wartezeit im System (max 30 Punkte)
+            if (fahrzeug.erstelltAm || fahrzeug.createdAt) {
+                const created = fahrzeug.erstelltAm || fahrzeug.createdAt;
+                const createdDate = typeof created === 'number' ? new Date(created) :
+                                   (created.toDate ? created.toDate() : new Date(created));
+                const daysWaiting = Math.floor((new Date() - createdDate) / (1000 * 60 * 60 * 24));
+                score += Math.min(daysWaiting * 3, 30);
+            }
+
+            // 3. Quick-Job Bonus (max 20 Punkte)
+            if (['reifen', 'pflege', 'tuev'].includes(fahrzeug.serviceTyp)) {
+                score += 20;
+            }
+
+            return score;
+        }
+
+        function getDringlichkeitLevel(score) {
+            if (score >= 50) return 'hoch';
+            if (score >= 25) return 'mittel';
+            return 'niedrig';
+        }
+
+        // ============================================
+        // RENDERING
+        // ============================================
+
+        function renderAll() {
+            renderUngeplant();
+            renderQueues();
+        }
+
+        function renderUngeplant() {
+            const container = document.getElementById('ungeplantList');
+            document.getElementById('ungeplantCount').textContent = ungeplanteFahrzeuge.length;
+
+            if (ungeplanteFahrzeuge.length === 0) {
+                container.innerHTML = '<div class="empty-state">Alle Fahrzeuge sind eingeplant! 🎉</div>';
+                return;
+            }
+
+            container.innerHTML = ungeplanteFahrzeuge.map(f => createFahrzeugCard(f)).join('');
+        }
+
+        function createFahrzeugCard(fahrzeug) {
+            const serviceTyp = fahrzeug.serviceTyp || 'default';
+            const serviceConfig = window.SERVICE_TYPE_CONFIG?.[serviceTyp] || { label: serviceTyp, icon: '📋' };
+            const dringlichkeit = getDringlichkeitLevel(fahrzeug.dringlichkeitsScore || 0);
+
+            // Format deadline
+            let deadlineText = '';
+            if (fahrzeug.abholtermin || fahrzeug.geplantesAbnahmeDatum) {
+                const deadline = fahrzeug.abholtermin || fahrzeug.geplantesAbnahmeDatum;
+                const deadlineDate = deadline.toDate ? deadline.toDate() : new Date(deadline);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const daysUntil = Math.ceil((deadlineDate - today) / (1000 * 60 * 60 * 24));
+
+                if (daysUntil <= 0) deadlineText = '⚠️ Überfällig';
+                else if (daysUntil === 1) deadlineText = '⏰ Heute';
+                else if (daysUntil === 2) deadlineText = '📅 Morgen';
+                else deadlineText = `📅 ${deadlineDate.toLocaleDateString('de-DE')}`;
+            }
+
+            return `
+                <div class="fahrzeug-card" draggable="true" data-id="${fahrzeug.id}" data-service="${serviceTyp}"
+                     ondragstart="onDragStart(event)" ondblclick="showDetails('${fahrzeug.id}')">
+                    <div class="dringlichkeit ${dringlichkeit}" title="Dringlichkeit: ${dringlichkeit}"></div>
+                    <div class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'}</div>
+                    <div class="info">
+                        <span class="service-badge service-${serviceTyp}">${serviceConfig.icon || '📋'} ${serviceConfig.label || serviceTyp}</span>
+                        ${deadlineText ? `<span>${deadlineText}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderQueues() {
+            Object.keys(queuedFahrzeuge).forEach(queue => {
+                const container = document.getElementById(`queue${capitalizeFirst(queue)}`);
+                const items = queuedFahrzeuge[queue];
+
+                document.getElementById(`queueCount${capitalizeFirst(queue)}`).textContent = items.length;
+
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="empty-state">Fahrzeuge hierher ziehen</div>';
+                    return;
+                }
+
+                container.innerHTML = items.map((f, index) => createQueueItem(f, index + 1)).join('');
+            });
+        }
+
+        function createQueueItem(fahrzeug, position) {
+            return `
+                <div class="queue-item" draggable="true" data-id="${fahrzeug.id}"
+                     ondragstart="onDragStart(event)" ondblclick="showDetails('${fahrzeug.id}')">
+                    <span class="position">${position}</span>
+                    <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'}</span>
+                    <button class="remove-btn" onclick="removeFromQueue('${fahrzeug.id}')" title="Entfernen">✕</button>
+                </div>
+            `;
+        }
+
+        function capitalizeFirst(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // ============================================
+        // DRAG & DROP
+        // ============================================
+
+        function setupDragAndDrop() {
+            const queueContainers = document.querySelectorAll('.queue-items');
+
+            queueContainers.forEach(container => {
+                container.addEventListener('dragover', onDragOver);
+                container.addEventListener('dragleave', onDragLeave);
+                container.addEventListener('drop', onDrop);
+            });
+
+            // Also allow dropping back to ungeplant
+            const ungeplantList = document.getElementById('ungeplantList');
+            ungeplantList.addEventListener('dragover', onDragOver);
+            ungeplantList.addEventListener('dragleave', onDragLeave);
+            ungeplantList.addEventListener('drop', onDropToUngeplant);
+        }
+
+        function onDragStart(event) {
+            const id = event.target.dataset.id;
+            event.dataTransfer.setData('text/plain', id);
+            event.target.classList.add('dragging');
+        }
+
+        function onDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('drag-over');
+        }
+
+        function onDragLeave(event) {
+            event.currentTarget.classList.remove('drag-over');
+        }
+
+        function onDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-over');
+
+            const fahrzeugId = event.dataTransfer.getData('text/plain');
+            const targetQueue = event.currentTarget.dataset.queue;
+
+            if (!fahrzeugId || !targetQueue) return;
+
+            moveToQueue(fahrzeugId, targetQueue);
+        }
+
+        function onDropToUngeplant(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-over');
+
+            const fahrzeugId = event.dataTransfer.getData('text/plain');
+            if (!fahrzeugId) return;
+
+            removeFromQueue(fahrzeugId);
+        }
+
+        // ============================================
+        // QUEUE MANAGEMENT
+        // ============================================
+
+        function moveToQueue(fahrzeugId, targetQueue) {
+            // Find vehicle
+            let fahrzeug = ungeplanteFahrzeuge.find(f => f.id === fahrzeugId);
+            let sourceQueue = null;
+
+            // Check if already in a queue
+            if (!fahrzeug) {
+                Object.keys(queuedFahrzeuge).forEach(queue => {
+                    const found = queuedFahrzeuge[queue].find(f => f.id === fahrzeugId);
+                    if (found) {
+                        fahrzeug = found;
+                        sourceQueue = queue;
+                    }
+                });
+            }
+
+            if (!fahrzeug) {
+                console.error('Fahrzeug nicht gefunden:', fahrzeugId);
+                return;
+            }
+
+            // Remove from source
+            if (sourceQueue) {
+                queuedFahrzeuge[sourceQueue] = queuedFahrzeuge[sourceQueue].filter(f => f.id !== fahrzeugId);
+            } else {
+                ungeplanteFahrzeuge = ungeplanteFahrzeuge.filter(f => f.id !== fahrzeugId);
+            }
+
+            // Add to target queue
+            fahrzeug.abteilungsQueue = targetQueue;
+            fahrzeug.queuePosition = queuedFahrzeuge[targetQueue].length + 1;
+            queuedFahrzeuge[targetQueue].push(fahrzeug);
+
+            hasUnsavedChanges = true;
+            renderAll();
+            updateStats();
+
+            console.log(`✅ ${fahrzeug.kennzeichen} → ${targetQueue} Queue (Position ${fahrzeug.queuePosition})`);
+        }
+
+        function removeFromQueue(fahrzeugId) {
+            let fahrzeug = null;
+
+            Object.keys(queuedFahrzeuge).forEach(queue => {
+                const found = queuedFahrzeuge[queue].find(f => f.id === fahrzeugId);
+                if (found) {
+                    fahrzeug = found;
+                    queuedFahrzeuge[queue] = queuedFahrzeuge[queue].filter(f => f.id !== fahrzeugId);
+                }
+            });
+
+            if (fahrzeug) {
+                delete fahrzeug.abteilungsQueue;
+                delete fahrzeug.queuePosition;
+                ungeplanteFahrzeuge.push(fahrzeug);
+
+                hasUnsavedChanges = true;
+                sortUngeplant();
+                renderAll();
+                updateStats();
+
+                console.log(`↩️ ${fahrzeug.kennzeichen} zurück zu Ungeplant`);
+            }
+        }
+
+        // ============================================
+        // SORTING
+        // ============================================
+
+        function sortUngeplant() {
+            const sortBy = document.getElementById('sortSelect').value;
+
+            ungeplanteFahrzeuge.sort((a, b) => {
+                switch (sortBy) {
+                    case 'dringlichkeit':
+                        return (b.dringlichkeitsScore || 0) - (a.dringlichkeitsScore || 0);
+
+                    case 'datum':
+                        const dateA = a.createdAt || a.erstelltAm || 0;
+                        const dateB = b.createdAt || b.erstelltAm || 0;
+                        return (typeof dateB === 'number' ? dateB : 0) - (typeof dateA === 'number' ? dateA : 0);
+
+                    case 'termin':
+                        const deadlineA = a.abholtermin || a.geplantesAbnahmeDatum || null;
+                        const deadlineB = b.abholtermin || b.geplantesAbnahmeDatum || null;
+                        if (!deadlineA && !deadlineB) return 0;
+                        if (!deadlineA) return 1;
+                        if (!deadlineB) return -1;
+                        const dateObjA = deadlineA.toDate ? deadlineA.toDate() : new Date(deadlineA);
+                        const dateObjB = deadlineB.toDate ? deadlineB.toDate() : new Date(deadlineB);
+                        return dateObjA - dateObjB;
+
+                    default:
+                        return 0;
+                }
+            });
+
+            renderUngeplant();
+        }
+
+        // ============================================
+        // SAVE
+        // ============================================
+
+        async function saveTagesplan() {
+            if (!hasUnsavedChanges) {
+                if (window.toast) {
+                    window.toast.info('Keine Änderungen zum Speichern.');
+                } else {
+                    alert('Keine Änderungen zum Speichern.');
+                }
+                return;
+            }
+
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> Speichert...';
+
+            try {
+                const db = firebase.firestore();
+                const batch = db.batch();
+                const collectionName = window.getCollection ? window.getCollection('fahrzeuge') : `fahrzeuge_${window.werkstattId}`;
+                const dateStr = document.getElementById('datePicker').value;
+                const queueDate = new Date(dateStr);
+
+                // Update queued vehicles
+                Object.keys(queuedFahrzeuge).forEach(queue => {
+                    queuedFahrzeuge[queue].forEach((f, index) => {
+                        const ref = db.collection(collectionName).doc(f.id);
+                        batch.update(ref, {
+                            abteilungsQueue: queue,
+                            queuePosition: index + 1,
+                            queueDatum: firebase.firestore.Timestamp.fromDate(queueDate),
+                            prioritaet: index + 1
+                        });
+                    });
+                });
+
+                // Clear queue data for vehicles returned to ungeplant
+                ungeplanteFahrzeuge.forEach(f => {
+                    if (f.abteilungsQueue !== undefined) {
+                        const ref = db.collection(collectionName).doc(f.id);
+                        batch.update(ref, {
+                            abteilungsQueue: firebase.firestore.FieldValue.delete(),
+                            queuePosition: firebase.firestore.FieldValue.delete(),
+                            queueDatum: firebase.firestore.FieldValue.delete(),
+                            prioritaet: firebase.firestore.FieldValue.delete()
+                        });
+                    }
+                });
+
+                await batch.commit();
+
+                hasUnsavedChanges = false;
+
+                if (window.toast) {
+                    window.toast.success('Tagesplan gespeichert!');
+                } else {
+                    alert('Tagesplan gespeichert!');
+                }
+
+                console.log('✅ Tagesplan gespeichert');
+
+            } catch (error) {
+                console.error('❌ Fehler beim Speichern:', error);
+                if (window.toast) {
+                    window.toast.error('Fehler beim Speichern: ' + error.message);
+                } else {
+                    alert('Fehler beim Speichern: ' + error.message);
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>💾</span> Speichern';
+            }
+        }
+
+        // ============================================
+        // STATS
+        // ============================================
+
+        function updateStats() {
+            let totalGeplant = 0;
+            Object.values(queuedFahrzeuge).forEach(queue => {
+                totalGeplant += queue.length;
+            });
+
+            document.getElementById('statUngeplant').textContent = ungeplanteFahrzeuge.length;
+            document.getElementById('statGeplant').textContent = totalGeplant;
+
+            // Calculate heute fällig and überfällig
+            let heuteFaellig = 0;
+            let ueberfaellig = 0;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            allFahrzeuge.forEach(f => {
+                const deadline = f.abholtermin || f.geplantesAbnahmeDatum;
+                if (deadline) {
+                    const deadlineDate = deadline.toDate ? deadline.toDate() : new Date(deadline);
+                    deadlineDate.setHours(0, 0, 0, 0);
+                    const diff = deadlineDate - today;
+
+                    if (diff < 0) ueberfaellig++;
+                    else if (diff === 0) heuteFaellig++;
+                }
+            });
+
+            document.getElementById('statHeuteFaellig').textContent = heuteFaellig;
+            document.getElementById('statUeberfaellig').textContent = ueberfaellig;
+        }
+
+        // ============================================
+        // DATE CHANGE
+        // ============================================
+
+        function onDateChange() {
+            if (hasUnsavedChanges) {
+                if (!confirm('Ungespeicherte Änderungen gehen verloren. Fortfahren?')) {
+                    document.getElementById('datePicker').value = selectedDate.toISOString().split('T')[0];
+                    return;
+                }
+            }
+
+            hasUnsavedChanges = false;
+            selectedDate = new Date(document.getElementById('datePicker').value);
+            categorizeVehicles();
+            renderAll();
+            updateStats();
+        }
+
+        // ============================================
+        // DETAIL MODAL
+        // ============================================
+
+        function showDetails(fahrzeugId) {
+            const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
+            if (!fahrzeug) return;
+
+            const serviceConfig = window.SERVICE_TYPE_CONFIG?.[fahrzeug.serviceTyp] || {};
+
+            document.getElementById('modalTitle').textContent = fahrzeug.kennzeichen || 'Fahrzeug Details';
+            document.getElementById('modalContent').innerHTML = `
+                <p><strong>Service:</strong> ${serviceConfig.label || fahrzeug.serviceTyp}</p>
+                <p><strong>Status:</strong> ${fahrzeug.status || 'N/A'}</p>
+                <p><strong>Kunde:</strong> ${fahrzeug.kundenname || 'N/A'}</p>
+                <p><strong>Marke/Modell:</strong> ${fahrzeug.marke || ''} ${fahrzeug.modell || ''}</p>
+                ${fahrzeug.notizen ? `<p><strong>Notizen:</strong> ${fahrzeug.notizen}</p>` : ''}
+                <p><strong>Dringlichkeit Score:</strong> ${fahrzeug.dringlichkeitsScore || 0}/100</p>
+            `;
+
+            document.getElementById('detailModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.remove('active');
+        }
+
+        // Close modal on outside click
+        document.getElementById('detailModal').addEventListener('click', (e) => {
+            if (e.target.id === 'detailModal') closeModal();
+        });
+
+        // ============================================
+        // HELPERS
+        // ============================================
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        // Warn before leaving with unsaved changes
+        window.addEventListener('beforeunload', (e) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+</html>

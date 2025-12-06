@@ -947,6 +947,29 @@
             color: white;
         }
 
+        /* ===== PRIORITÄTS-BADGE (Tagesplanung 2025-12-06) ===== */
+        .priority-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: linear-gradient(135deg, #0066ff, #00c8ff);
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(0, 102, 255, 0.4);
+            z-index: 10;
+        }
+
+        .kanban-card {
+            position: relative;
+        }
+
         /* ===== ADDITIONAL SERVICE BADGES ===== */
         .additional-service-badge {
             opacity: 0.7;
@@ -2806,6 +2829,17 @@
                 <h1>Prozessüberwachung - Kanban Board</h1>
                 <span class="subtitle">Auto-Lackierzentrum Mosbach</span>
             </div>
+        </div>
+        <div class="header-right" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="tagesplanung.html" class="nav-btn" title="Tagesplanung für Werkstattleiter">
+                📅 Tagesplanung
+            </a>
+            <a href="abteilungs-queue.html" class="nav-btn" title="Vereinfachte Abteilungsansicht">
+                🏭 Abteilungs-Queue
+            </a>
+            <a href="liste.html" class="nav-btn">
+                📋 Liste
+            </a>
         </div>
     </div>
 
@@ -4707,21 +4741,30 @@
                     }
                 });
 
-                // SORTIERUNG: Bei "angenommen" nach Dringlichkeit sortieren
-                if (status === 'angenommen') {
-                    fahrzeuge.sort((a, b) => {
-                        const daysA = calculateDaysUntilAbnahme(a);
-                        const daysB = calculateDaysUntilAbnahme(b);
+                // 🆕 SORTIERUNG (Tagesplanung 2025-12-06):
+                // 1. Priorisierte Fahrzeuge ZUERST (nach Queue-Position)
+                // 2. Dann nach Dringlichkeit (Abnahme-Termin)
+                fahrzeuge.sort((a, b) => {
+                    // Priorität: Fahrzeuge mit Priorität kommen zuerst
+                    const prioA = a.prioritaet || 999;
+                    const prioB = b.prioritaet || 999;
 
-                        // Fahrzeuge OHNE Termin ganz nach unten
-                        if (daysA === null && daysB === null) return 0;
-                        if (daysA === null) return 1;
-                        if (daysB === null) return -1;
+                    if (prioA !== prioB) {
+                        return prioA - prioB;  // Kleinere Priorität = wichtiger
+                    }
 
-                        // Sonst: dringendste (kleinste Tage) zuerst
-                        return daysA - daysB;
-                    });
-                }
+                    // Fallback: Nach Dringlichkeit (wie vorher)
+                    const daysA = calculateDaysUntilAbnahme(a);
+                    const daysB = calculateDaysUntilAbnahme(b);
+
+                    // Fahrzeuge OHNE Termin ganz nach unten
+                    if (daysA === null && daysB === null) return 0;
+                    if (daysA === null) return 1;
+                    if (daysB === null) return -1;
+
+                    // Sonst: dringendste (kleinste Tage) zuerst
+                    return daysA - daysB;
+                });
 
                 // Count aktualisieren
                 countEl.textContent = fahrzeuge.length;
@@ -4965,6 +5008,13 @@
                     </div>`;
                     card.classList.add('ueberfaellig-card');
                 }
+            }
+
+            // 🆕 PRIORITÄTS-BADGE (Tagesplanung 2025-12-06)
+            // Zeigt Queue-Position wenn Fahrzeug in einer Abteilungs-Queue eingeplant ist
+            let prioritaetBadge = '';
+            if (fahrzeug.prioritaet && typeof fahrzeug.prioritaet === 'number') {
+                prioritaetBadge = `<div class="priority-badge" title="Queue-Position #${fahrzeug.prioritaet}">${fahrzeug.prioritaet}</div>`;
             }
 
             // 🆕 MULTI-SERVICE: Function to build service label with details
@@ -5242,6 +5292,7 @@
             }
 
             card.innerHTML = `
+                ${prioritaetBadge}
                 ${serviceTypBadge}
                 ${fertigstellungsDropdown}
                 ${bereitBadge}

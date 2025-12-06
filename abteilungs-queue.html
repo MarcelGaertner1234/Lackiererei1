@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <script>
+        /// <reference path="js/types.js" />
+    </script>
+    <script>
+        window.DEBUG = (
+            localStorage.getItem('DEBUG') === 'true' ||
+            window.location.search.includes('debug=true') ||
+            window.location.hostname === 'localhost' ||
+            window.location.port === '8000'
+        );
+    </script>
+
+    <!-- FOUC Prevention -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abteilungs-Queue | Auto-Lackierzentrum Mosbach</title>
+
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
+    <!-- Design System -->
+    <link rel="stylesheet" href="design-system.css?v=queue-v1">
+    <link rel="stylesheet" href="liquid-glass.css?v=queue-v1">
+    <link rel="stylesheet" href="animations.css?v=queue-v1">
+    <link rel="stylesheet" href="mobile-first.css?v=queue-v1">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-system);
+            background: var(--color-background);
+            min-height: 100vh;
+            padding: var(--space-4);
+            color: var(--color-text-primary);
+        }
+
+        /* Header */
+        .header {
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-2xl);
+            padding: var(--space-4) var(--space-6);
+            margin-bottom: var(--space-4);
+            box-shadow: var(--shadow-xl);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo { font-size: 40px; }
+
+        .title h1 {
+            color: var(--color-primary);
+            font-size: 24px;
+            margin: 0;
+        }
+
+        .title .subtitle {
+            color: var(--color-text-secondary);
+            font-size: 13px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .user-badge {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-2) var(--space-3);
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-btn {
+            padding: var(--space-2) var(--space-4);
+            background: linear-gradient(135deg, rgba(0, 191, 255, 0.8), rgba(0, 122, 255, 0.7));
+            border: none;
+            color: white;
+            text-decoration: none;
+            border-radius: var(--radius-lg);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* Queue Selector */
+        .queue-selector {
+            display: flex;
+            gap: var(--space-2);
+            margin-bottom: var(--space-4);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .queue-tab {
+            padding: var(--space-3) var(--space-5);
+            background: var(--color-surface);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-xl);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .queue-tab:hover {
+            border-color: var(--color-primary);
+        }
+
+        .queue-tab.active {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            color: white;
+        }
+
+        .queue-tab .count {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 2px 8px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+        }
+
+        .queue-tab.active .count {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Current Job Card */
+        .current-job {
+            background: var(--color-surface);
+            border: 3px solid var(--color-primary);
+            border-radius: var(--radius-2xl);
+            padding: var(--space-8);
+            text-align: center;
+            margin-bottom: var(--space-4);
+            box-shadow: var(--shadow-2xl);
+        }
+
+        .current-job .label {
+            font-size: 14px;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-2);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .current-job .position {
+            background: var(--color-primary);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 auto var(--space-3);
+        }
+
+        .current-job .kennzeichen {
+            font-size: 42px;
+            font-weight: 800;
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-3);
+            letter-spacing: 2px;
+        }
+
+        .current-job .deadline {
+            font-size: 16px;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .current-job .deadline.urgent {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .current-job .actions {
+            display: flex;
+            gap: var(--space-3);
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: var(--space-4) var(--space-6);
+            border: none;
+            border-radius: var(--radius-xl);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, rgba(0, 191, 255, 0.9), rgba(0, 122, 255, 0.8));
+            color: white;
+        }
+
+        .action-btn.success {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.9), rgba(22, 163, 74, 0.8));
+            color: white;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .action-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Queue List */
+        .queue-list {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            padding: var(--space-4);
+        }
+
+        .queue-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-3);
+            padding-bottom: var(--space-2);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .queue-list-header h3 {
+            font-size: 14px;
+            color: var(--color-text-secondary);
+        }
+
+        .queue-list-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+        }
+
+        .queue-list-item {
+            background: var(--color-background);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-2) var(--space-3);
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .queue-list-item .pos {
+            background: var(--color-text-secondary);
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            padding: var(--space-4);
+            margin-top: var(--space-4);
+            display: flex;
+            justify-content: center;
+            gap: var(--space-8);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-item .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+
+        .stat-item .label {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: var(--space-8);
+            color: var(--color-text-secondary);
+        }
+
+        .empty-state .icon {
+            font-size: 60px;
+            margin-bottom: var(--space-3);
+        }
+
+        .empty-state h2 {
+            font-size: 20px;
+            margin-bottom: var(--space-2);
+            color: var(--color-text-primary);
+        }
+
+        /* Detail Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            padding: var(--space-4);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--color-surface);
+            border-radius: var(--radius-2xl);
+            padding: var(--space-6);
+            max-width: 500px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            font-size: 20px;
+            margin-bottom: var(--space-4);
+        }
+
+        .modal-content p {
+            margin-bottom: var(--space-2);
+            font-size: 14px;
+        }
+
+        .modal-content strong {
+            color: var(--color-text-secondary);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: var(--space-3);
+            margin-top: var(--space-4);
+            justify-content: flex-end;
+        }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--color-border);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Mobile Optimization */
+        @media (max-width: 600px) {
+            .current-job .kennzeichen {
+                font-size: 32px;
+            }
+
+            .queue-selector {
+                gap: var(--space-1);
+            }
+
+            .queue-tab {
+                padding: var(--space-2) var(--space-3);
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <span class="logo" id="queueIcon">🎨</span>
+            <div class="title">
+                <h1 id="queueTitle">Lackierung</h1>
+                <span class="subtitle">Abteilungs-Queue</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="user-badge">
+                <span>👤</span>
+                <span id="userName">Mitarbeiter</span>
+            </div>
+            <a href="kanban.html" class="nav-btn">
+                <span>📊</span> Kanban
+            </a>
+        </div>
+    </header>
+
+    <!-- Queue Selector -->
+    <div class="queue-selector">
+        <button class="queue-tab active" data-queue="lackier" onclick="switchQueue('lackier')">
+            <span>🎨</span> Lackierung <span class="count" id="tabCountLackier">0</span>
+        </button>
+        <button class="queue-tab" data-queue="mechanik" onclick="switchQueue('mechanik')">
+            <span>🔧</span> Mechanik <span class="count" id="tabCountMechanik">0</span>
+        </button>
+        <button class="queue-tab" data-queue="reifen" onclick="switchQueue('reifen')">
+            <span>🚗</span> Reifen <span class="count" id="tabCountReifen">0</span>
+        </button>
+        <button class="queue-tab" data-queue="pflege" onclick="switchQueue('pflege')">
+            <span>✨</span> Pflege <span class="count" id="tabCountPflege">0</span>
+        </button>
+        <button class="queue-tab" data-queue="tuev" onclick="switchQueue('tuev')">
+            <span>📋</span> TÜV <span class="count" id="tabCountTuev">0</span>
+        </button>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Current Job -->
+        <div class="current-job" id="currentJob">
+            <div class="label">📍 Dein nächster Auftrag</div>
+            <div class="position" id="currentPosition">1</div>
+            <div class="kennzeichen" id="currentKennzeichen">-</div>
+            <div class="deadline" id="currentDeadline"></div>
+            <div class="actions">
+                <button class="action-btn primary" onclick="showDetails()">
+                    <span>📋</span> Auftrag anzeigen
+                </button>
+                <button class="action-btn success" onclick="markAsFertig()">
+                    <span>✅</span> Fertig
+                </button>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="icon">🎉</div>
+            <h2>Alles erledigt!</h2>
+            <p>Keine weiteren Aufträge in dieser Queue.</p>
+        </div>
+
+        <!-- Queue List -->
+        <div class="queue-list" id="queueList">
+            <div class="queue-list-header">
+                <h3>📋 Warteschlange</h3>
+                <span id="queueListCount">0 weitere</span>
+            </div>
+            <div class="queue-list-items" id="queueListItems">
+                <!-- Items werden dynamisch eingefügt -->
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="value" id="statTodayDone">0</div>
+                <div class="label">Heute erledigt</div>
+            </div>
+            <div class="stat-item">
+                <div class="value" id="statRemaining">0</div>
+                <div class="label">Verbleibend</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal">
+            <h3 id="modalTitle">Fahrzeug Details</h3>
+            <div class="modal-content" id="modalContent"></div>
+            <div class="modal-actions">
+                <button class="nav-btn" onclick="closeModal()">Schließen</button>
+                <button class="action-btn success" onclick="markAsFertig(); closeModal();">
+                    <span>✅</span> Als Fertig markieren
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+    <!-- App Scripts -->
+    <script src="firebase-config.js"></script>
+    <script src="listener-registry.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/service-types.js"></script>
+    <script src="js/toast.js"></script>
+
+    <script>
+        // ============================================
+        // ABTEILUNGS-QUEUE - JavaScript
+        // ============================================
+
+        // Global State
+        let currentQueue = 'lackier';
+        let queueData = {
+            lackier: [],
+            mechanik: [],
+            reifen: [],
+            pflege: [],
+            tuev: []
+        };
+        let currentFahrzeug = null;
+        let todayDone = 0;
+        let unsubscribe = null;
+
+        const QUEUE_CONFIG = {
+            lackier: { icon: '🎨', name: 'Lackierung' },
+            mechanik: { icon: '🔧', name: 'Mechanik' },
+            reifen: { icon: '🚗', name: 'Reifen' },
+            pflege: { icon: '✨', name: 'Pflege' },
+            tuev: { icon: '📋', name: 'TÜV/AU' }
+        };
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('🏭 Abteilungs-Queue wird initialisiert...');
+
+            // Get queue from URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const queueParam = urlParams.get('queue');
+            if (queueParam && QUEUE_CONFIG[queueParam]) {
+                currentQueue = queueParam;
+            }
+
+            // Set user name
+            const userName = localStorage.getItem('mitarbeiterName') || 'Mitarbeiter';
+            document.getElementById('userName').textContent = userName;
+
+            // Wait for Firebase
+            try {
+                await window.firebaseInitialized;
+                console.log('✅ Firebase initialisiert, werkstattId:', window.werkstattId);
+
+                await loadTodayDone();
+                setupRealtimeListener();
+                updateQueueUI();
+                hideLoading();
+
+            } catch (error) {
+                console.error('❌ Initialisierungsfehler:', error);
+                hideLoading();
+                alert('Fehler beim Laden. Bitte Seite neu laden.');
+            }
+        });
+
+        // ============================================
+        // DATA LOADING
+        // ============================================
+
+        function setupRealtimeListener() {
+            if (unsubscribe) unsubscribe();
+
+            const db = firebase.firestore();
+            const collectionName = window.getCollection ? window.getCollection('fahrzeuge') : `fahrzeuge_${window.werkstattId}`;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayTimestamp = firebase.firestore.Timestamp.fromDate(today);
+
+            // Listen to all queued vehicles for today
+            unsubscribe = db.collection(collectionName)
+                .where('queueDatum', '>=', todayTimestamp)
+                .where('status', 'not-in', ['abgeschlossen', 'storniert', 'fertig', 'bereit'])
+                .onSnapshot(snapshot => {
+                    // Reset queues
+                    Object.keys(queueData).forEach(q => queueData[q] = []);
+
+                    snapshot.forEach(doc => {
+                        const data = { id: doc.id, ...doc.data() };
+                        if (data.abteilungsQueue && queueData[data.abteilungsQueue]) {
+                            queueData[data.abteilungsQueue].push(data);
+                        }
+                    });
+
+                    // Sort each queue by position
+                    Object.keys(queueData).forEach(q => {
+                        queueData[q].sort((a, b) => (a.queuePosition || 999) - (b.queuePosition || 999));
+                    });
+
+                    updateTabCounts();
+                    renderCurrentQueue();
+
+                }, error => {
+                    console.error('❌ Realtime Listener Fehler:', error);
+                });
+
+            // Register for cleanup
+            if (window.listenerRegistry) {
+                window.listenerRegistry.add(unsubscribe);
+            }
+        }
+
+        async function loadTodayDone() {
+            try {
+                const db = firebase.firestore();
+                const collectionName = window.getCollection ? window.getCollection('fahrzeuge') : `fahrzeuge_${window.werkstattId}`;
+
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const todayTimestamp = firebase.firestore.Timestamp.fromDate(today);
+
+                const snapshot = await db.collection(collectionName)
+                    .where('beendetAm', '>=', todayTimestamp)
+                    .get();
+
+                todayDone = snapshot.size;
+                document.getElementById('statTodayDone').textContent = todayDone;
+
+            } catch (error) {
+                console.warn('Konnte heute erledigte nicht laden:', error);
+            }
+        }
+
+        // ============================================
+        // QUEUE SWITCHING
+        // ============================================
+
+        function switchQueue(queue) {
+            currentQueue = queue;
+
+            // Update tabs
+            document.querySelectorAll('.queue-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.queue === queue);
+            });
+
+            updateQueueUI();
+            renderCurrentQueue();
+
+            // Update URL
+            const url = new URL(window.location);
+            url.searchParams.set('queue', queue);
+            window.history.replaceState({}, '', url);
+        }
+
+        function updateQueueUI() {
+            const config = QUEUE_CONFIG[currentQueue];
+            document.getElementById('queueIcon').textContent = config.icon;
+            document.getElementById('queueTitle').textContent = config.name;
+        }
+
+        function updateTabCounts() {
+            Object.keys(queueData).forEach(q => {
+                const countEl = document.getElementById(`tabCount${capitalizeFirst(q)}`);
+                if (countEl) {
+                    countEl.textContent = queueData[q].length;
+                }
+            });
+        }
+
+        // ============================================
+        // RENDERING
+        // ============================================
+
+        function renderCurrentQueue() {
+            const queue = queueData[currentQueue];
+
+            if (queue.length === 0) {
+                document.getElementById('currentJob').style.display = 'none';
+                document.getElementById('queueList').style.display = 'none';
+                document.getElementById('emptyState').style.display = 'block';
+                document.getElementById('statRemaining').textContent = '0';
+                currentFahrzeug = null;
+                return;
+            }
+
+            document.getElementById('currentJob').style.display = 'block';
+            document.getElementById('queueList').style.display = 'block';
+            document.getElementById('emptyState').style.display = 'none';
+
+            // Current job (first in queue)
+            currentFahrzeug = queue[0];
+            document.getElementById('currentPosition').textContent = '1';
+            document.getElementById('currentKennzeichen').textContent = currentFahrzeug.kennzeichen || 'N/A';
+
+            // Deadline
+            const deadlineEl = document.getElementById('currentDeadline');
+            const deadline = currentFahrzeug.abholtermin || currentFahrzeug.geplantesAbnahmeDatum;
+            if (deadline) {
+                const deadlineDate = deadline.toDate ? deadline.toDate() : new Date(deadline);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const daysUntil = Math.ceil((deadlineDate - today) / (1000 * 60 * 60 * 24));
+
+                if (daysUntil <= 0) {
+                    deadlineEl.innerHTML = '⚠️ ÜBERFÄLLIG';
+                    deadlineEl.className = 'deadline urgent';
+                } else if (daysUntil === 1) {
+                    deadlineEl.innerHTML = `⏰ Heute fällig`;
+                    deadlineEl.className = 'deadline urgent';
+                } else {
+                    deadlineEl.innerHTML = `📅 Fällig: ${deadlineDate.toLocaleDateString('de-DE')}`;
+                    deadlineEl.className = 'deadline';
+                }
+            } else {
+                deadlineEl.innerHTML = '';
+            }
+
+            // Queue list (remaining items)
+            const remaining = queue.slice(1);
+            document.getElementById('queueListCount').textContent = `${remaining.length} weitere`;
+            document.getElementById('statRemaining').textContent = queue.length;
+
+            if (remaining.length === 0) {
+                document.getElementById('queueListItems').innerHTML = '<span style="color: var(--color-text-secondary); font-size: 13px;">Keine weiteren Aufträge</span>';
+            } else {
+                document.getElementById('queueListItems').innerHTML = remaining.map((f, i) => `
+                    <div class="queue-list-item">
+                        <span class="pos">${i + 2}</span>
+                        <span>${f.kennzeichen || 'N/A'}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function capitalizeFirst(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // ============================================
+        // ACTIONS
+        // ============================================
+
+        function showDetails() {
+            if (!currentFahrzeug) return;
+
+            const f = currentFahrzeug;
+            const serviceConfig = window.SERVICE_TYPE_CONFIG?.[f.serviceTyp] || {};
+
+            document.getElementById('modalTitle').textContent = f.kennzeichen || 'Fahrzeug Details';
+            document.getElementById('modalContent').innerHTML = `
+                <p><strong>Service:</strong> ${serviceConfig.label || f.serviceTyp || 'N/A'}</p>
+                <p><strong>Status:</strong> ${f.status || 'N/A'}</p>
+                <p><strong>Kunde:</strong> ${f.kundenname || 'N/A'}</p>
+                <p><strong>Marke/Modell:</strong> ${f.marke || ''} ${f.modell || ''}</p>
+                ${f.farbnummer ? `<p><strong>Farbnummer:</strong> ${f.farbnummer}</p>` : ''}
+                ${f.vereinbarterPreis ? `<p><strong>Preis:</strong> ${f.vereinbarterPreis} €</p>` : ''}
+                ${f.notizen ? `<p><strong>Notizen:</strong> ${f.notizen}</p>` : ''}
+            `;
+
+            document.getElementById('detailModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.remove('active');
+        }
+
+        // Close modal on outside click
+        document.getElementById('detailModal').addEventListener('click', (e) => {
+            if (e.target.id === 'detailModal') closeModal();
+        });
+
+        async function markAsFertig() {
+            if (!currentFahrzeug) return;
+
+            const btn = event?.target;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span> Wird gespeichert...';
+            }
+
+            try {
+                const db = firebase.firestore();
+                const collectionName = window.getCollection ? window.getCollection('fahrzeuge') : `fahrzeuge_${window.werkstattId}`;
+
+                // Determine next status based on service type
+                const nextStatus = getNextStatus(currentFahrzeug);
+
+                await db.collection(collectionName).doc(currentFahrzeug.id).update({
+                    status: nextStatus,
+                    prozessStatus: nextStatus,
+                    beendetAm: firebase.firestore.Timestamp.now(),
+                    // Clear queue data
+                    abteilungsQueue: firebase.firestore.FieldValue.delete(),
+                    queuePosition: firebase.firestore.FieldValue.delete(),
+                    prioritaet: firebase.firestore.FieldValue.delete()
+                });
+
+                todayDone++;
+                document.getElementById('statTodayDone').textContent = todayDone;
+
+                if (window.toast) {
+                    window.toast.success(`${currentFahrzeug.kennzeichen} als ${nextStatus} markiert!`);
+                }
+
+                console.log(`✅ ${currentFahrzeug.kennzeichen} → ${nextStatus}`);
+
+                // Realtime listener will update the view
+
+            } catch (error) {
+                console.error('❌ Fehler beim Markieren:', error);
+                if (window.toast) {
+                    window.toast.error('Fehler: ' + error.message);
+                } else {
+                    alert('Fehler: ' + error.message);
+                }
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>✅</span> Fertig';
+                }
+            }
+        }
+
+        function getNextStatus(fahrzeug) {
+            // Map service type to appropriate "done" status
+            const serviceStatusMap = {
+                lackier: 'qualitaetskontrolle',
+                mechanik: 'bereit',
+                reifen: 'bereit',
+                pflege: 'bereit',
+                tuev: 'bereit'
+            };
+
+            return serviceStatusMap[fahrzeug.abteilungsQueue] || 'bereit';
+        }
+
+        // ============================================
+        // HELPERS
+        // ============================================
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        // Cleanup on navigation
+        window.addEventListener('beforeunload', () => {
+            if (unsubscribe) unsubscribe();
+        });
+    </script>
+</body>
+</html>
