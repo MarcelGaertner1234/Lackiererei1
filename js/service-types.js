@@ -532,6 +532,156 @@ window.checkServiceAvailability = async function(serviceTyp, redirectUrl = 'serv
 };
 
 // ============================================================================
+// TAGESPLANUNG: DEFAULT ARBEITSZEITEN PRO SERVICE (Phase 2 Feature)
+// ============================================================================
+
+/**
+ * Default geschätzte Arbeitszeit in Stunden pro Service-Typ
+ * Wird in Tagesplanung verwendet wenn kein individueller Wert gesetzt ist
+ *
+ * @version 1.0.0
+ * @date 2025-12-06
+ */
+window.SERVICE_DEFAULT_HOURS = {
+    // Service-Queues (12)
+    lackier: 4.0,           // Lackierung: 4h
+    mechanik: 2.0,          // Mechanik: 2h
+    reifen: 0.5,            // Reifenwechsel: 30min
+    pflege: 1.0,            // Fahrzeugpflege: 1h
+    tuev: 1.5,              // TÜV/AU: 1.5h
+    versicherung: 1.0,      // Versicherungsfall: 1h (nur Dokumentation)
+    glas: 1.0,              // Glasreparatur: 1h
+    klima: 1.0,             // Klimaservice: 1h
+    dellen: 3.0,            // Dellendrücken: 3h
+    folierung: 6.0,         // Folierung: 6h (fast ganzer Tag)
+    steinschutz: 2.0,       // Steinschutz: 2h
+    werbebeklebung: 4.0,    // Werbung: 4h
+    // Logistik-Queues (4)
+    abholen: 1.0,           // Fahrzeug abholen: 1h
+    liefern: 1.0,           // Fahrzeug liefern: 1h
+    leih_bringen: 0.5,      // Leihwagen bringen: 30min
+    leih_abholen: 0.5       // Leihwagen abholen: 30min
+};
+
+/**
+ * Default Kapazität pro Queue/Tag in Stunden
+ * Kann pro Werkstatt überschrieben werden in werkstatt-einstellungen
+ */
+window.QUEUE_DEFAULT_CAPACITY = 8.0; // 8 Arbeitsstunden pro Tag
+
+// ============================================================================
+// TAGESPLANUNG: JOB-ABHÄNGIGKEITEN (Logischer Workflow)
+// ============================================================================
+
+/**
+ * Abhängigkeitsregeln: Queue X erfordert Queue Y = fertig
+ * Null/undefined/leer = keine Abhängigkeiten (kann jederzeit geplant werden)
+ *
+ * Typischer Unfallschaden-Workflow:
+ * Abholen → Dellen/Karosserie → Lackierung → Pflege → Liefern
+ *                ↓
+ *            Mechanik (parallel möglich)
+ *                ↓
+ *            Glas (parallel möglich)
+ */
+window.QUEUE_DEPENDENCIES = {
+    // Lackierung erfordert: Dellen/Karosserie fertig (wenn vorhanden)
+    'lackier': ['dellen'],
+
+    // Pflege erfordert: Lackierung fertig (wenn vorhanden)
+    'pflege': ['lackier'],
+
+    // Liefern erfordert: ALLE Service-Arbeiten fertig
+    'liefern': ['lackier', 'mechanik', 'glas', 'pflege', 'reifen', 'tuev',
+                'klima', 'dellen', 'folierung', 'steinschutz', 'werbebeklebung'],
+
+    // Leihwagen abholen: Nur wenn Fahrzeug geliefert oder fertig
+    'leih_abholen': ['liefern']
+
+    // Queues OHNE Abhängigkeiten (können jederzeit geplant werden):
+    // abholen, leih_bringen, mechanik, glas, reifen, tuev, klima,
+    // versicherung, folierung, steinschutz, werbebeklebung, dellen
+};
+
+/**
+ * Helper: Prüft ob ein Fahrzeug in eine bestimmte Queue verschoben werden darf
+ *
+ * @param {Object} fahrzeug - Fahrzeug-Objekt mit completedQueues Array
+ * @param {string} targetQueue - Ziel-Queue ID
+ * @returns {Object} - { allowed: boolean, reason?: string }
+ *
+ * @example
+ * const check = canMoveToQueue(fahrzeug, 'lackier');
+ * if (!check.allowed) {
+ *     toast.warning(check.reason);
+ *     return;
+ * }
+ */
+window.canMoveToQueue = function(fahrzeug, targetQueue) {
+    const deps = window.QUEUE_DEPENDENCIES[targetQueue];
+
+    // Keine Abhängigkeiten → immer erlaubt
+    if (!deps || deps.length === 0) {
+        return { allowed: true };
+    }
+
+    // Prüfe ob alle Abhängigkeiten erfüllt
+    const completedQueues = fahrzeug.completedQueues || [];
+    const requiredServices = fahrzeug.requiredServices || [fahrzeug.serviceTyp];
+    const missingDeps = [];
+
+    deps.forEach(depQueue => {
+        // Prüfe ob Fahrzeug diese Queue überhaupt braucht
+        const needsThisQueue = requiredServices.includes(depQueue) ||
+                               fahrzeug.serviceTyp === depQueue ||
+                               (fahrzeug.multiService && fahrzeug.multiService[depQueue]);
+
+        // Wenn benötigt, prüfe ob bereits erledigt
+        if (needsThisQueue && !completedQueues.includes(depQueue)) {
+            const config = window.SERVICE_TYPE_CONFIG[depQueue];
+            const queueName = config ? config.displayName : depQueue;
+            missingDeps.push(queueName);
+        }
+    });
+
+    if (missingDeps.length > 0) {
+        return {
+            allowed: false,
+            reason: `Erst "${missingDeps.join('", "')}" fertigstellen`
+        };
+    }
+
+    return { allowed: true };
+};
+
+/**
+ * Helper: Berechnet geschätzte Stunden für ein Fahrzeug
+ *
+ * @param {Object} fahrzeug - Fahrzeug-Objekt
+ * @param {string} queueId - Optional: Queue-ID für Logistik-Zeiten
+ * @returns {number} - Geschätzte Stunden
+ */
+window.getEstimatedHours = function(fahrzeug, queueId = null) {
+    // 1. Explizit gesetzte Stunden haben Vorrang
+    if (fahrzeug.geschaetzteStunden) {
+        return parseFloat(fahrzeug.geschaetzteStunden);
+    }
+
+    // 2. Queue-ID für Logistik-Aufträge
+    if (queueId && window.SERVICE_DEFAULT_HOURS[queueId]) {
+        return window.SERVICE_DEFAULT_HOURS[queueId];
+    }
+
+    // 3. Service-Typ Default
+    if (fahrzeug.serviceTyp && window.SERVICE_DEFAULT_HOURS[fahrzeug.serviceTyp]) {
+        return window.SERVICE_DEFAULT_HOURS[fahrzeug.serviceTyp];
+    }
+
+    // 4. Fallback: 1 Stunde
+    return 1.0;
+};
+
+// ============================================================================
 // INITIALIZATION
 // ============================================================================
 
@@ -540,6 +690,7 @@ if (window.DEBUG) {
         canonicalTypes: Object.keys(window.SERVICE_TYPES).length,
         aliases: Object.keys(window.SERVICE_TYPE_ALIASES).length,
         configs: Object.keys(window.SERVICE_TYPE_CONFIG).length,
-        enabledServicesHelpers: ['getEnabledServices', 'isServiceEnabled', 'getEnabledServiceConfigs', 'invalidateServiceCache', 'checkServiceAvailability']
+        enabledServicesHelpers: ['getEnabledServices', 'isServiceEnabled', 'getEnabledServiceConfigs', 'invalidateServiceCache', 'checkServiceAvailability'],
+        tagesplanungHelpers: ['SERVICE_DEFAULT_HOURS', 'QUEUE_DEFAULT_CAPACITY', 'QUEUE_DEPENDENCIES', 'canMoveToQueue', 'getEstimatedHours']
     });
 }
