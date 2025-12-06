@@ -679,9 +679,20 @@
                 await window.firebaseInitialized;
                 console.log('✅ Firebase initialisiert, werkstattId:', window.werkstattId);
 
-                // Check permissions - use authManager.getCurrentUser() for correct role
-                const currentUser = window.authManager?.getCurrentUser();
-                const role = currentUser?.role || 'mitarbeiter';
+                // Check permissions - use Firebase Auth + Firestore (sessionStorage is tab-isolated!)
+                const authUser = firebase.auth().currentUser;
+                if (!authUser) {
+                    console.warn('⚠️ Nicht eingeloggt - Redirect zu index.html');
+                    alert('Bitte zuerst einloggen.');
+                    window.safeNavigate ? window.safeNavigate('index.html') : window.location.href = 'index.html';
+                    return;
+                }
+
+                // Rolle aus Firestore laden (users Collection ist global, kein Suffix)
+                const userDoc = await firebase.firestore().collection('users').doc(authUser.uid).get();
+                const role = userDoc.exists ? userDoc.data().role : 'mitarbeiter';
+                console.log('👤 User Role:', role, '(UID:', authUser.uid, ')');
+
                 if (role !== 'admin' && role !== 'werkstatt') {
                     alert('Zugriff nur für Werkstattleiter und Admins.');
                     window.safeNavigate ? window.safeNavigate('kanban.html') : window.location.href = 'kanban.html';
