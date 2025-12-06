@@ -655,29 +655,66 @@ window.canMoveToQueue = function(fahrzeug, targetQueue) {
 };
 
 /**
+ * Berechnet Arbeitsstunden aus KVA-Kalkulation
+ * Summiert arbeitslohn[].stunden + lackierung[].stunden
+ *
+ * @param {Object} fahrzeug - Fahrzeug-Objekt mit kalkulationData
+ * @returns {number|null} - Stunden aus KVA oder null wenn keine KVA vorhanden
+ *
+ * @example
+ * // Fahrzeug mit KVA:
+ * calculateKvaHours({ kalkulationData: { arbeitslohn: [{stunden: 2.5}], lackierung: [{stunden: 3}] }})
+ * // → 5.5
+ */
+window.calculateKvaHours = function(fahrzeug) {
+    if (!fahrzeug || !fahrzeug.kalkulationData) return null;
+
+    let totalHours = 0;
+
+    // Arbeitslohn-Stunden
+    const arbeitslohn = fahrzeug.kalkulationData.arbeitslohn || [];
+    arbeitslohn.forEach(pos => {
+        totalHours += parseFloat(pos.stunden) || 0;
+    });
+
+    // Lackierungs-Stunden
+    const lackierung = fahrzeug.kalkulationData.lackierung || [];
+    lackierung.forEach(pos => {
+        totalHours += parseFloat(pos.stunden) || 0;
+    });
+
+    return totalHours > 0 ? totalHours : null;
+};
+
+/**
  * Helper: Berechnet geschätzte Stunden für ein Fahrzeug
+ * Priorität: KVA > Manuell > Queue-Default > Service-Default > 1h
  *
  * @param {Object} fahrzeug - Fahrzeug-Objekt
  * @param {string} queueId - Optional: Queue-ID für Logistik-Zeiten
  * @returns {number} - Geschätzte Stunden
  */
 window.getEstimatedHours = function(fahrzeug, queueId = null) {
-    // 1. Explizit gesetzte Stunden haben Vorrang
+    // 1. KVA-Stunden haben höchste Priorität (echte Kalkulation!)
+    const kvaHours = window.calculateKvaHours(fahrzeug);
+    if (kvaHours) return kvaHours;
+
+    // 2. Explizit gesetzte Stunden
     if (fahrzeug.geschaetzteStunden) {
         return parseFloat(fahrzeug.geschaetzteStunden);
     }
 
-    // 2. Queue-ID für Logistik-Aufträge
+    // 3. Queue-ID für Logistik-Aufträge
     if (queueId && window.SERVICE_DEFAULT_HOURS[queueId]) {
         return window.SERVICE_DEFAULT_HOURS[queueId];
     }
 
-    // 3. Service-Typ Default
+    // 4. Service-Typ Default (nur Fallback wenn keine KVA!)
     if (fahrzeug.serviceTyp && window.SERVICE_DEFAULT_HOURS[fahrzeug.serviceTyp]) {
         return window.SERVICE_DEFAULT_HOURS[fahrzeug.serviceTyp];
     }
 
-    // 4. Fallback: 1 Stunde
+    // 5. Ultima Ratio: 1 Stunde
     return 1.0;
 };
 

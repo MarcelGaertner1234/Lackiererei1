@@ -576,12 +576,23 @@
         /* Stunden-Badge auf Queue-Items */
         .hours-badge {
             font-size: 10px;
-            background: rgba(0, 122, 255, 0.1);
-            color: var(--color-primary);
             padding: 2px 5px;
             border-radius: var(--radius-sm);
             font-weight: 600;
             white-space: nowrap;
+            cursor: help;
+        }
+
+        /* KVA-basierte Stunden = Grün (genau!) */
+        .hours-badge.kva {
+            background: rgba(34, 197, 94, 0.15);
+            color: #16a34a;
+        }
+
+        /* Default-Schätzung = Grau (unsicher) */
+        .hours-badge.default {
+            background: rgba(107, 114, 128, 0.15);
+            color: #6b7280;
         }
 
         /* Mobile */
@@ -1282,18 +1293,23 @@
         }
 
         function createQueueItem(fahrzeug, position, queueId = null) {
-            // Geschätzte Stunden aus service-types.js Helper
-            const hours = window.getEstimatedHours ? window.getEstimatedHours(fahrzeug, queueId) :
-                          (fahrzeug.geschaetzteStunden ||
-                           window.SERVICE_DEFAULT_HOURS?.[fahrzeug.serviceTyp] ||
-                           window.SERVICE_DEFAULT_HOURS?.[queueId] || 1.0);
+            // Prüfe ob KVA-Stunden vorhanden (genau) oder nur Schätzung
+            const kvaHours = window.calculateKvaHours ? window.calculateKvaHours(fahrzeug) : null;
+            const hours = kvaHours ||
+                          fahrzeug.geschaetzteStunden ||
+                          window.SERVICE_DEFAULT_HOURS?.[fahrzeug.serviceTyp] ||
+                          window.SERVICE_DEFAULT_HOURS?.[queueId] || 1.0;
+
+            // Badge-Unterscheidung: KVA (grün) vs Default (grau)
+            const badgeClass = kvaHours ? 'hours-badge kva' : 'hours-badge default';
+            const badgeTitle = kvaHours ? 'Aus KVA berechnet' : 'Schätzwert (ohne KVA)';
 
             return `
                 <div class="queue-item" draggable="true" data-id="${fahrzeug.id}"
                      ondragstart="onDragStart(event)">
                     <span class="position">${position}</span>
                     <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'}</span>
-                    <span class="hours-badge">${hours}h</span>
+                    <span class="${badgeClass}" title="${badgeTitle}">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
                     <button class="info-btn" onclick="event.stopPropagation(); showDetails('${fahrzeug.id}')" title="Details" style="position:static; opacity:1; margin-left:auto;">ℹ️</button>
                     <button class="remove-btn" onclick="removeFromQueue('${fahrzeug.id}')" title="Entfernen">✕</button>
                 </div>
