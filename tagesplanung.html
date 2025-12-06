@@ -679,14 +679,23 @@
                 await window.firebaseInitialized;
                 console.log('✅ Firebase initialisiert, werkstattId:', window.werkstattId);
 
-                // Check permissions - use Firebase Auth + Firestore (sessionStorage is tab-isolated!)
-                const authUser = firebase.auth().currentUser;
+                // Check permissions - WAIT for Auth State (Race Condition Fix!)
+                // firebase.auth().currentUser is null until onAuthStateChanged fires
+                console.log('⏳ Warte auf Auth State...');
+                const authUser = await new Promise((resolve) => {
+                    const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
+                        unsubscribe();  // Only fire once
+                        resolve(user);
+                    });
+                });
+
                 if (!authUser) {
                     console.warn('⚠️ Nicht eingeloggt - Redirect zu index.html');
                     alert('Bitte zuerst einloggen.');
                     window.safeNavigate ? window.safeNavigate('index.html') : window.location.href = 'index.html';
                     return;
                 }
+                console.log('✅ Auth User gefunden:', authUser.email);
 
                 // Rolle aus Firestore laden (users Collection ist global, kein Suffix)
                 const userDoc = await firebase.firestore().collection('users').doc(authUser.uid).get();
