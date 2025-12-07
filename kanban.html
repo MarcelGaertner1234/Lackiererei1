@@ -3863,9 +3863,12 @@
             }
 
             // Additional Services prüfen (falls vorhanden)
-            if (fahrzeug.zusaetzlicheServices && Array.isArray(fahrzeug.zusaetzlicheServices)) {
-                for (const service of fahrzeug.zusaetzlicheServices) {
-                    const serviceStatus = fahrzeug.serviceStatuses?.[service] || 'angenommen';
+            // 🐛 FIX #1 (2025-12-07): Korrekter Feldname ist 'additionalServices', nicht 'zusaetzlicheServices'
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                for (const service of fahrzeug.additionalServices) {
+                    // service ist ein Objekt mit {serviceTyp, ...}, nicht ein String
+                    const serviceTyp = typeof service === 'string' ? service : service.serviceTyp;
+                    const serviceStatus = fahrzeug.serviceStatuses?.[serviceTyp]?.status || fahrzeug.serviceStatuses?.[serviceTyp] || 'angenommen';
                     if (!FERTIG_STATI.includes(serviceStatus)) {
                         return false;
                     }
@@ -3945,6 +3948,21 @@
                     // Backwards-Kompatibilität mit altem markFahrzeugAsAbgeholt()
                     updateData.abgeholtAm = firebase.firestore.FieldValue.serverTimestamp();
                     updateData.abgeholtVon = window.currentUser?.displayName || 'Unbekannt';
+
+                    // 🐛 FIX #3 (2025-12-07): Auch Additional Services initialisieren
+                    // Ohne diesen Fix bleiben Multi-Service Fahrzeuge mit undefined Status!
+                    const fahrzeug = allFahrzeuge.find(f => String(f.id) === String(fahrzeugId));
+                    if (fahrzeug?.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                        fahrzeug.additionalServices.forEach(service => {
+                            const serviceTyp = typeof service === 'string' ? service : service.serviceTyp;
+                            // Nur initialisieren wenn noch nicht vorhanden
+                            if (!fahrzeug.serviceStatuses?.[serviceTyp]) {
+                                updateData[`serviceStatuses.${serviceTyp}.status`] = 'angenommen';
+                                updateData[`serviceStatuses.${serviceTyp}.timestamp`] = firebase.firestore.FieldValue.serverTimestamp();
+                            }
+                        });
+                        console.log(`   🔧 FIX #3: ${fahrzeug.additionalServices.length} Additional Services initialisiert`);
+                    }
                 }
 
                 await db.collection(collectionName).doc(fahrzeugId).update(updateData);
@@ -5190,8 +5208,13 @@
 
         // 🆕 REALITÄTSCHECK (2025-12-07): Prüft ob Fahrzeug erst abgeholt werden muss
         // Fahrzeuge mit Abholservice sollen NUR im Logistik-Tab erscheinen bis sie abgeholt wurden
+        // 📝 HINWEIS (2025-12-07): Ersatzfahrzeug OHNE Abholservice wird hier NICHT geprüft!
+        //    Warum? Weil in diesem Fall der Kunde das Fahrzeug SELBST bringt.
+        //    Das Fahrzeug IST also physisch da und kann sofort bearbeitet werden.
+        //    Der Ersatzwagen wird parallel gebracht (erscheint im Logistik-Tab "ersatz_bringen")
         function needsLogistikFirst(fahrzeug) {
             // Abholservice gewünscht aber noch nicht abgeholt?
+            // → Fahrzeug ist NICHT physisch da → nicht im Service-Tab anzeigen
             if (fahrzeug.abholserviceGewuenscht &&
                 fahrzeug.logistikStatus?.fzAbholen !== 'erledigt') {
                 return true;
