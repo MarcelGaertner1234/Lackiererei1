@@ -2449,6 +2449,46 @@
                 }
             }
 
+            // 🆕 FIX 10B (2025-12-07): Alternative Anfrage-ID via Kennzeichen-Suche
+            // Wenn FIX 10 nicht gegriffen hat (keine anfrage_id vorhanden), suche nach Kennzeichen
+            if (needsAnfrageData && !anfrageId && fahrzeug.kennzeichen) {
+                console.log(`🔍 [FIX 10B] Versuche Anfrage via Kennzeichen zu finden: ${fahrzeug.kennzeichen}`);
+                try {
+                    const kennzeichenQuery = await window.getCollection('anfragen')
+                        .where('kennzeichen', '==', fahrzeug.kennzeichen)
+                        .orderBy('createdAt', 'desc')
+                        .limit(1)
+                        .get();
+
+                    if (!kennzeichenQuery.empty) {
+                        const anfrage = kennzeichenQuery.docs[0].data();
+                        console.log('✅ [FIX 10B] Anfrage via Kennzeichen gefunden:', kennzeichenQuery.docs[0].id, Object.keys(anfrage));
+
+                        // Merge fehlende Felder aus Anfrage
+                        fahrzeug.kalkulation = fahrzeug.kalkulation || anfrage.kalkulation;
+                        fahrzeug.kalkulationData = fahrzeug.kalkulationData || anfrage.kalkulationData;
+                        fahrzeug.ersatzteile = fahrzeug.ersatzteile || anfrage.ersatzteile;
+                        fahrzeug.pdfUrl = fahrzeug.pdfUrl || anfrage.pdfUrl;
+                        fahrzeug.angebotPdfUrl = fahrzeug.angebotPdfUrl || anfrage.angebotPdfUrl;
+                        fahrzeug.entwurfPdfUrl = fahrzeug.entwurfPdfUrl || anfrage.entwurfPdfUrl;
+                        fahrzeug.gewaehlteVariante = fahrzeug.gewaehlteVariante || anfrage.gewaehlteVariante;
+                        fahrzeug.abholDatum = fahrzeug.abholDatum || anfrage.abholDatum;
+                        fahrzeug.abholZeit = fahrzeug.abholZeit || anfrage.abholZeit;
+                        fahrzeug.farbe = fahrzeug.farbe || anfrage.farbname || anfrage.farbe;
+                        fahrzeug.farbcode = fahrzeug.farbcode || anfrage.farbnummer || anfrage.farbcode;
+                        fahrzeug.kilometerstand = fahrzeug.kilometerstand || anfrage.kilometerstand || anfrage.kmstand;
+
+                        if (anfrage.kva && !fahrzeug.kva) {
+                            fahrzeug.kva = anfrage.kva;
+                        }
+                    } else {
+                        console.warn(`⚠️ [FIX 10B] Keine Anfrage mit Kennzeichen ${fahrzeug.kennzeichen} gefunden`);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [FIX 10B] Kennzeichen-Suche fehlgeschlagen:', e.message);
+                }
+            }
+
             const serviceConfig = window.SERVICE_TYPE_CONFIG?.[fahrzeug.serviceTyp] || {};
 
             // Modal-Titel setzen
@@ -2529,6 +2569,24 @@
                                         || fahrzeug.fahrzeugAbholen
                                         || fahrzeug.abholservice
                                         || false;
+
+            // 🆕 FIX 13 (2025-12-07): Erweiterte Abholtermin-Erkennung
+            // Firebase speichert: abholDatum + abholZeit (getrennt) ODER abholtermin ODER gewuenschterTermin
+            const abholterminRaw = fahrzeug.abholtermin
+                                || fahrzeug.abholDatum
+                                || fahrzeug.gewuenschterTermin
+                                || fahrzeug.serviceDetails?.abholDatum
+                                || fahrzeug.abholdatum;  // lowercase Variante
+            let abholterminDisplay = 'N/A';
+            if (abholterminRaw) {
+                const abholZeit = fahrzeug.abholZeit || fahrzeug.abholzeit || '';
+                // Wenn abholZeit vorhanden, kombiniere Datum + Zeit
+                if (abholZeit) {
+                    abholterminDisplay = `${formatDate(abholterminRaw)} ${abholZeit}`;
+                } else {
+                    abholterminDisplay = formatDate(abholterminRaw);
+                }
+            }
 
             return `
                 <div class="auftrag-info-grid">
@@ -2616,7 +2674,7 @@
                         <h4>Termine</h4>
                         <div class="info-row">
                             <span class="info-label">Abholtermin:</span>
-                            <span class="info-value">${formatDate(fahrzeug.abholtermin)}</span>
+                            <span class="info-value">${abholterminDisplay}</span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Geplante Abnahme:</span>
