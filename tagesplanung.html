@@ -2431,10 +2431,19 @@
             if (needsAnfrageData && anfrageId) {
                 console.log(`🔄 [FIX 10] Lade Anfrage-Daten nach fuer Fahrzeug ${fahrzeugId}, Anfrage: ${anfrageId}`);
                 try {
-                    const anfrageSnap = await window.getCollection('anfragen').doc(String(anfrageId)).get();
+                    // Versuche zuerst Multi-Tenant Collection (anfragen_mosbach)
+                    let anfrageSnap = await window.getCollection('anfragen').doc(String(anfrageId)).get();
+
+                    // 🆕 FIX 16 (2025-12-07): Fallback auf globale Collection fuer alte Anfragen
+                    // Alte Anfragen (vor Multi-Tenant Migration) sind in globaler 'anfragen' Collection
+                    if (!anfrageSnap.exists) {
+                        console.log(`🔄 [FIX 16] Fallback: Versuche globale anfragen Collection`);
+                        anfrageSnap = await window.db.collection('anfragen').doc(String(anfrageId)).get();
+                    }
+
                     if (anfrageSnap.exists) {
                         const anfrage = anfrageSnap.data();
-                        console.log('✅ [FIX 10] Anfrage-Daten gefunden:', Object.keys(anfrage));
+                        console.log('✅ [FIX 10/16] Anfrage-Daten gefunden:', Object.keys(anfrage));
 
                         // Merge fehlende Felder aus Anfrage
                         fahrzeug.kalkulation = fahrzeug.kalkulation || anfrage.kalkulation;
@@ -2453,7 +2462,7 @@
                             fahrzeug.kva = anfrage.kva;
                         }
                     } else {
-                        console.warn(`⚠️ [FIX 10] Anfrage ${anfrageId} nicht gefunden`);
+                        console.warn(`⚠️ [FIX 10/16] Anfrage ${anfrageId} nicht gefunden (weder in anfragen_mosbach noch in globaler anfragen Collection)`);
                     }
                 } catch (e) {
                     console.warn('⚠️ [FIX 10] Anfrage-Daten konnten nicht nachgeladen werden:', e.message);
