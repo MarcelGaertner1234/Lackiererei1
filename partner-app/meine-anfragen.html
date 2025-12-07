@@ -8158,11 +8158,41 @@
                 // CRITICAL: kalkulationData may contain nested Date objects from Entwurf/Angebot system
                 // 🆕 FIX GAP-3 (2025-11-27): ersatzfahrzeugKosten aus KVA in kalkulationData übertragen
                 // 🆕 FIX (2025-11-29): ersatzfahrzeug AUCH sanitizen (könnte Date objects enthalten)
+                // 🆕 FIX PIPELINE (2025-12-07): Feldname-Mapping für tagesplanung.html
+                // WHY CRITICAL: tagesplanung.html generateKalkulationTab() erwartet:
+                //   - arbeitslohn[] (nicht positionen!)
+                //   - ersatzteile[] (nicht materialien!)
+                // Mapping: kva.kalkulationData.positionen → kalkulationData.arbeitslohn
+                //          kva.kalkulationData.materialien → kalkulationData.ersatzteile
                 kalkulationData: {
                     ...sanitizeKalkulationDataForFirestore(anfrage.kalkulationData || {}),
+                    // 🆕 FIX (2025-12-07): positionen → arbeitslohn Mapping
+                    // Source: anfrage.kva.kalkulationData.positionen (from kalkulation.html saveKVA)
+                    // Target: fahrzeug.kalkulationData.arbeitslohn (expected by tagesplanung.html)
+                    arbeitslohn: (anfrage.kva?.kalkulationData?.positionen || anfrage.kalkulationData?.positionen || []).map(p => ({
+                        bezeichnung: p.name || p.bezeichnung || 'Position',
+                        stunden: p.aw || p.stunden || 0,  // AW = Arbeitswerte ≈ Stunden
+                        stundensatz: p.stundensatz || 85,  // Default: 85€/h
+                        gesamt: (p.aw || p.stunden || 0) * (p.stundensatz || 85)
+                    })),
+                    // 🆕 FIX (2025-12-07): materialien → ersatzteile Mapping
+                    // Source: anfrage.kva.kalkulationData.materialien (from kalkulation.html saveKVA)
+                    // Target: fahrzeug.kalkulationData.ersatzteile (expected by tagesplanung.html)
+                    ersatzteile: (anfrage.kva?.kalkulationData?.materialien || anfrage.kalkulationData?.materialien || []).map(m => ({
+                        bezeichnung: m.name || m.bezeichnung || 'Material',
+                        etn: m.artikelnummer || m.etn || '',
+                        anzahl: m.menge || m.anzahl || 1,
+                        preis: m.einzelpreis || m.preis || 0
+                    })),
+                    // Ersatzfahrzeug-Kosten (bereits vorher implementiert)
                     ersatzfahrzeug: sanitizeKalkulationDataForFirestore(
                         anfrage.kva?.ersatzfahrzeugKosten || anfrage.kalkulationData?.ersatzfahrzeug || null
-                    )
+                    ),
+                    // 🆕 FIX (2025-12-07): Gesamtsumme für Kalkulation-Tab Footer
+                    gesamtsumme: anfrage.kva?.varianten?.original?.gesamt
+                              || anfrage.kva?.kalkulationData?.summeBrutto
+                              || anfrage.kalkulationData?.summeBrutto
+                              || 0
                 },
 
                 // 🆕 FIX (2025-12-01): Ersatzfahrzeug-Wunsch zum Fahrzeug übertragen
@@ -8200,8 +8230,14 @@
                 kundenTelefon: anfrage.kundenTelefon || anfrage.telefon || anfrage.partnerTelefon || anfrage.kundendaten?.telefon || '',
                 anfrageId: anfrage.id, // Referenz zur Partner-Anfrage
 
-                // Photos & Signature (WERDEN SEPARAT IN SUBCOLLECTION GESPEICHERT)
-                photos: [], // Leerer Platzhalter - Fotos werden in fahrzeuge/{id}/fotos/vorher gespeichert
+                // Photos & Signature
+                // 🆕 FIX (2025-12-07): Fotos AUCH im Haupt-Dokument speichern (nicht nur Subcollection)
+                // WHY: tagesplanung.html generateFotosTab() sucht in fahrzeug.fotos, fahrzeug.photoUrls, etc.
+                // VORHER: photos: [] → Fotos-Tab in Auftrags-Details zeigte "Keine Fotos vorhanden"
+                fotos: anfrage.photoUrls || anfrage.fotos || anfrage.photos || anfrage.schadenfotos || anfrage.pdfImport?.fotos || [],
+                photoUrls: anfrage.photoUrls || anfrage.fotos || anfrage.photos || anfrage.schadenfotos || anfrage.pdfImport?.fotos || [],
+                schadenfotos: anfrage.schadenfotos || anfrage.photoUrls || anfrage.fotos || [],
+                photos: anfrage.photos || anfrage.photoUrls || anfrage.fotos || anfrage.schadenfotos || [],
                 // 🔧 FIX Bug #2 (2025-12-01): Multi-Service Signature Fallback-Kette
                 // Primary Service → additionalServices → Multi-Service serviceLabels Signaturen
                 signature: anfrage.signature ||

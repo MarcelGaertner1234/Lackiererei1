@@ -2497,9 +2497,21 @@
         }
 
         function generateKalkulationTab(fahrzeug) {
-            const kalk = fahrzeug.kalkulationData || fahrzeug.kvaData?.kalkulationData || {};
-            const hasData = kalk.arbeitslohn?.length || kalk.lackierung?.length ||
-                           kalk.ersatzfahrzeug || kalk.gesamtsumme;
+            // 🆕 FIX PIPELINE (2025-12-07): Erweiterte Fallback-Kette
+            // Sucht in: kalkulationData → kvaData.kalkulationData → kva.kalkulationData
+            const kalk = fahrzeug.kalkulationData
+                      || fahrzeug.kvaData?.kalkulationData
+                      || fahrzeug.kva?.kalkulationData
+                      || {};
+
+            // 🆕 FIX (2025-12-07): Feldname-Aliase für Kompatibilität
+            // kalkulation.html speichert "positionen", tagesplanung erwartet "arbeitslohn"
+            // kalkulation.html speichert "materialien", tagesplanung erwartet "ersatzteile"
+            const arbeitslohnRaw = kalk.arbeitslohn || kalk.positionen || [];
+            const ersatzteileRaw = kalk.ersatzteile || kalk.materialien || [];
+
+            const hasData = arbeitslohnRaw.length || kalk.lackierung?.length ||
+                           kalk.ersatzfahrzeug || kalk.gesamtsumme || ersatzteileRaw.length;
 
             if (!hasData) {
                 return `<div class="no-data">Keine Kalkulationsdaten vorhanden</div>`;
@@ -2508,8 +2520,16 @@
             let html = '';
             let gesamtsumme = 0;
 
-            if (kalk.arbeitslohn?.length) {
-                const arbeitslohnSumme = kalk.arbeitslohn.reduce((sum, p) => sum + (p.gesamt || 0), 0);
+            // 🆕 FIX (2025-12-07): Verwende arbeitslohnRaw statt kalk.arbeitslohn
+            if (arbeitslohnRaw.length) {
+                // Normalisiere Positionen (unterstützt beide Formate: arbeitslohn UND positionen)
+                const normalizedArbeitslohn = arbeitslohnRaw.map(p => ({
+                    bezeichnung: p.bezeichnung || p.name || p.position || 'Position',
+                    stunden: p.stunden || p.aw || 0,  // aw = Arbeitswerte aus kalkulation.html
+                    stundensatz: p.stundensatz || 85,
+                    gesamt: p.gesamt || ((p.stunden || p.aw || 0) * (p.stundensatz || 85))
+                }));
+                const arbeitslohnSumme = normalizedArbeitslohn.reduce((sum, p) => sum + (p.gesamt || 0), 0);
                 gesamtsumme += arbeitslohnSumme;
                 html += `
                     <div class="kalkulation-section">
@@ -2517,12 +2537,12 @@
                         <table class="kalkulation-table">
                             <thead><tr><th>Position</th><th>Stunden</th><th>Satz</th><th>Gesamt</th></tr></thead>
                             <tbody>
-                                ${kalk.arbeitslohn.map(p => `
+                                ${normalizedArbeitslohn.map(p => `
                                     <tr>
-                                        <td>${p.bezeichnung || p.position || 'Position'}</td>
-                                        <td>${p.stunden || 0}h</td>
-                                        <td>${(p.stundensatz || 0).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
-                                        <td>${(p.gesamt || 0).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                                        <td>${p.bezeichnung}</td>
+                                        <td>${p.stunden}h</td>
+                                        <td>${(p.stundensatz).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                                        <td>${(p.gesamt).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -2588,27 +2608,42 @@
         }
 
         function generateTeileTab(fahrzeug) {
-            const kalk = fahrzeug.kalkulationData || fahrzeug.kvaData?.kalkulationData || {};
-            const ersatzteile = kalk.ersatzteile || fahrzeug.ersatzteile || [];
+            // 🆕 FIX PIPELINE (2025-12-07): Erweiterte Fallback-Kette (wie generateKalkulationTab)
+            const kalk = fahrzeug.kalkulationData
+                      || fahrzeug.kvaData?.kalkulationData
+                      || fahrzeug.kva?.kalkulationData
+                      || {};
+            // Feldname-Aliase: ersatzteile ODER materialien
+            const ersatzteile = kalk.ersatzteile || kalk.materialien || fahrzeug.ersatzteile || [];
 
             if (!ersatzteile.length) {
                 return { html: `<div class="no-data">Keine Ersatzteile hinterlegt</div>`, count: 0 };
             }
 
-            const teileSumme = ersatzteile.reduce((sum, t) => sum + ((t.preis || 0) * (t.anzahl || 1)), 0);
+            // 🆕 FIX (2025-12-07): Normalisiere ersatzteile/materialien Format
+            // kalkulation.html: {name, menge, einzelpreis}
+            // Erwartet hier: {bezeichnung, anzahl, preis}
+            const normalizedTeile = ersatzteile.map(t => ({
+                etn: t.etn || t.artikelnummer || '-',
+                bezeichnung: t.bezeichnung || t.name || 'Ersatzteil',
+                anzahl: t.anzahl || t.menge || 1,
+                preis: t.preis || t.einzelpreis || 0
+            }));
+
+            const teileSumme = normalizedTeile.reduce((sum, t) => sum + (t.preis * t.anzahl), 0);
             const html = `
                 <div class="ersatzteile-section">
-                    <h4>Ersatzteile (${ersatzteile.length} Positionen)</h4>
+                    <h4>Ersatzteile (${normalizedTeile.length} Positionen)</h4>
                     <table class="kalkulation-table">
                         <thead><tr><th>ETN</th><th>Bezeichnung</th><th>Anz.</th><th>Preis</th><th>Gesamt</th></tr></thead>
                         <tbody>
-                            ${ersatzteile.map(t => `
+                            ${normalizedTeile.map(t => `
                                 <tr>
-                                    <td>${t.etn || t.artikelnummer || '-'}</td>
-                                    <td>${t.bezeichnung || t.name || 'Ersatzteil'}</td>
-                                    <td>${t.anzahl || 1}x</td>
-                                    <td>${(t.preis || 0).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
-                                    <td>${((t.preis || 0) * (t.anzahl || 1)).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                                    <td>${t.etn}</td>
+                                    <td>${t.bezeichnung}</td>
+                                    <td>${t.anzahl}x</td>
+                                    <td>${t.preis.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                                    <td>${(t.preis * t.anzahl).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -2617,7 +2652,7 @@
                 </div>
             `;
 
-            return { html, count: ersatzteile.length };
+            return { html, count: normalizedTeile.length };
         }
 
         // ============================================================
