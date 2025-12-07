@@ -2432,21 +2432,35 @@
             const anfrageId = fahrzeug.anfrage_id || fahrzeug.anfrageId || fahrzeug.originalAnfrageId;
 
             if (needsAnfrageData && anfrageId) {
-                console.log(`🔄 [FIX 10] Lade Anfrage-Daten nach fuer Fahrzeug ${fahrzeugId}, Anfrage: ${anfrageId}`);
+                console.log(`🔄 [FIX 10/19] Lade Anfrage-Daten nach fuer Fahrzeug ${fahrzeugId}, Anfrage: ${anfrageId}`);
                 try {
-                    // Versuche zuerst Multi-Tenant Collection (anfragen_mosbach)
-                    let anfrageSnap = await window.getCollection('anfragen').doc(String(anfrageId)).get();
+                    // 🆕 FIX 19 (2025-12-07): ZUERST in partnerAnfragen suchen!
+                    // Partner-Anfragen vom Partner-Portal sind in partnerAnfragen_mosbach gespeichert
+                    // NICHT in anfragen_mosbach (das sind Werkstatt-interne Anfragen)
+                    let anfrageSnap = await window.getCollection('partnerAnfragen').doc(String(anfrageId)).get();
+                    console.log(`🔍 [FIX 19] Suche in partnerAnfragen_mosbach: ${anfrageSnap.exists ? 'GEFUNDEN' : 'nicht gefunden'}`);
 
-                    // 🆕 FIX 16 (2025-12-07): Fallback auf globale Collection fuer alte Anfragen
-                    // Alte Anfragen (vor Multi-Tenant Migration) sind in globaler 'anfragen' Collection
+                    // FALLBACK 1: Werkstatt-Anfragen (Multi-Tenant)
                     if (!anfrageSnap.exists) {
-                        console.log(`🔄 [FIX 16] Fallback: Versuche globale anfragen Collection`);
+                        console.log(`🔄 [FIX 19] Fallback 1: Versuche anfragen Collection`);
+                        anfrageSnap = await window.getCollection('anfragen').doc(String(anfrageId)).get();
+                    }
+
+                    // FALLBACK 2: Globale partnerAnfragen (alte Migration)
+                    if (!anfrageSnap.exists) {
+                        console.log(`🔄 [FIX 19] Fallback 2: Versuche globale partnerAnfragen Collection`);
+                        anfrageSnap = await window.db.collection('partnerAnfragen').doc(String(anfrageId)).get();
+                    }
+
+                    // FALLBACK 3: Globale anfragen (alte Migration)
+                    if (!anfrageSnap.exists) {
+                        console.log(`🔄 [FIX 19] Fallback 3: Versuche globale anfragen Collection`);
                         anfrageSnap = await window.db.collection('anfragen').doc(String(anfrageId)).get();
                     }
 
                     if (anfrageSnap.exists) {
                         const anfrage = anfrageSnap.data();
-                        console.log('✅ [FIX 10/16] Anfrage-Daten gefunden:', Object.keys(anfrage));
+                        console.log('✅ [FIX 10/19] Anfrage-Daten gefunden:', Object.keys(anfrage));
 
                         // Merge fehlende Felder aus Anfrage
                         fahrzeug.kalkulation = fahrzeug.kalkulation || anfrage.kalkulation;
@@ -2468,32 +2482,48 @@
                         // 🆕 FIX 17: Track erfolgreichen Load
                         anfrageDataLoaded = true;
                     } else {
-                        console.warn(`⚠️ [FIX 10/16] Anfrage ${anfrageId} nicht gefunden (weder in anfragen_mosbach noch in globaler anfragen Collection)`);
+                        console.warn(`⚠️ [FIX 10/19] Anfrage ${anfrageId} nicht gefunden in allen 4 Collections`);
                     }
                 } catch (e) {
-                    console.warn('⚠️ [FIX 10] Anfrage-Daten konnten nicht nachgeladen werden:', e.message);
+                    console.warn('⚠️ [FIX 10/19] Anfrage-Daten konnten nicht nachgeladen werden:', e.message);
                 }
             }
 
-            // 🆕 FIX 10B/17/18 (2025-12-07): Alternative Anfrage-ID via Kennzeichen-Suche
-            // FIX 17: Läuft jetzt AUCH wenn FIX 10/16 fehlgeschlagen ist (anfrageId existiert aber Dokument nicht)
-            // FIX 18: Query OHNE orderBy (kein Composite Index nötig!) - sortiere stattdessen in JavaScript
-            // GEÄNDERTE BEDINGUNG: !anfrageDataLoaded statt !anfrageId
+            // 🆕 FIX 10B/17/18/19 (2025-12-07): Alternative Anfrage via Kennzeichen-Suche
+            // FIX 17: Läuft jetzt AUCH wenn FIX 10 fehlgeschlagen ist
+            // FIX 18: Query OHNE orderBy (kein Composite Index nötig!) - sortiere in JavaScript
+            // FIX 19: Suche ZUERST in partnerAnfragen (Partner-Portal Anfragen)!
             if (needsAnfrageData && !anfrageDataLoaded && fahrzeug.kennzeichen) {
-                console.log(`🔍 [FIX 10B/17/18] Fallback: Versuche Anfrage via Kennzeichen zu finden: ${fahrzeug.kennzeichen}`);
+                console.log(`🔍 [FIX 10B/19] Fallback: Versuche Anfrage via Kennzeichen zu finden: ${fahrzeug.kennzeichen}`);
                 try {
-                    // 🆕 FIX 18: Query OHNE orderBy (kein Index nötig!)
-                    // Versuche zuerst Multi-Tenant Collection (anfragen_mosbach)
-                    let kennzeichenQuery = await window.getCollection('anfragen')
+                    // 🆕 FIX 19: ZUERST in partnerAnfragen suchen! (Partner-Portal Anfragen)
+                    let kennzeichenQuery = await window.getCollection('partnerAnfragen')
                         .where('kennzeichen', '==', fahrzeug.kennzeichen)
-                        .get();  // Kein orderBy, kein limit - sortiere später in JS
+                        .get();
+                    console.log(`🔍 [FIX 19] Kennzeichen-Suche in partnerAnfragen_mosbach: ${kennzeichenQuery.empty ? '0' : kennzeichenQuery.docs.length} Treffer`);
 
-                    // 🆕 FIX 17: Auch globale Collection versuchen wenn Multi-Tenant leer
+                    // FALLBACK 1: Werkstatt-Anfragen (Multi-Tenant)
                     if (kennzeichenQuery.empty) {
-                        console.log(`🔄 [FIX 17/18] Fallback: Versuche globale anfragen Collection`);
+                        console.log(`🔄 [FIX 19] Fallback 1: Versuche anfragen Collection`);
+                        kennzeichenQuery = await window.getCollection('anfragen')
+                            .where('kennzeichen', '==', fahrzeug.kennzeichen)
+                            .get();
+                    }
+
+                    // FALLBACK 2: Globale partnerAnfragen (alte Migration)
+                    if (kennzeichenQuery.empty) {
+                        console.log(`🔄 [FIX 19] Fallback 2: Versuche globale partnerAnfragen Collection`);
+                        kennzeichenQuery = await window.db.collection('partnerAnfragen')
+                            .where('kennzeichen', '==', fahrzeug.kennzeichen)
+                            .get();
+                    }
+
+                    // FALLBACK 3: Globale anfragen (alte Migration)
+                    if (kennzeichenQuery.empty) {
+                        console.log(`🔄 [FIX 19] Fallback 3: Versuche globale anfragen Collection`);
                         kennzeichenQuery = await window.db.collection('anfragen')
                             .where('kennzeichen', '==', fahrzeug.kennzeichen)
-                            .get();  // Kein orderBy, kein limit
+                            .get();
                     }
 
                     if (!kennzeichenQuery.empty) {
@@ -2504,7 +2534,7 @@
                             return bTime - aTime;  // Descending (neueste zuerst)
                         });
                         const anfrage = sortedDocs[0].data();
-                        console.log('✅ [FIX 10B/17/18] Anfrage via Kennzeichen gefunden:', sortedDocs[0].id, Object.keys(anfrage));
+                        console.log('✅ [FIX 10B/19] Anfrage via Kennzeichen gefunden:', sortedDocs[0].id, Object.keys(anfrage));
 
                         // Merge fehlende Felder aus Anfrage
                         fahrzeug.kalkulation = fahrzeug.kalkulation || anfrage.kalkulation;
@@ -2524,13 +2554,13 @@
                             fahrzeug.kva = anfrage.kva;
                         }
 
-                        // 🆕 FIX 17: Track erfolgreichen Load
+                        // Track erfolgreichen Load
                         anfrageDataLoaded = true;
                     } else {
-                        console.warn(`⚠️ [FIX 10B/17/18] Keine Anfrage mit Kennzeichen ${fahrzeug.kennzeichen} gefunden (weder in anfragen_mosbach noch global)`);
+                        console.warn(`⚠️ [FIX 10B/19] Keine Anfrage mit Kennzeichen ${fahrzeug.kennzeichen} gefunden in allen 4 Collections`);
                     }
                 } catch (e) {
-                    console.warn('⚠️ [FIX 10B/17/18] Kennzeichen-Suche fehlgeschlagen:', e.message);
+                    console.warn('⚠️ [FIX 10B/19] Kennzeichen-Suche fehlgeschlagen:', e.message);
                 }
             }
 
