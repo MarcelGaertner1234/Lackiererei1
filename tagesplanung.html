@@ -691,6 +691,46 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* 🆕 Anlieferungsart-Badges (2025-12-07) */
+        .anlieferung-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+
+        .anlieferung-badge.abholung {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3B82F6;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .anlieferung-badge.selbst {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22C55E;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .abhol-info {
+            display: block;
+            font-size: 10px;
+            color: var(--color-text-muted, #6b7280);
+            margin-top: 4px;
+        }
+
+        /* Dark Mode */
+        [data-theme="dark"] .anlieferung-badge.abholung {
+            background: rgba(59, 130, 246, 0.25);
+        }
+
+        [data-theme="dark"] .anlieferung-badge.selbst {
+            background: rgba(34, 197, 94, 0.25);
+        }
     </style>
 </head>
 <body>
@@ -1282,6 +1322,26 @@
                 else deadlineText = `📅 ${deadlineDate.toLocaleDateString('de-DE')}`;
             }
 
+            // 🆕 Anlieferungsart-Badge (2025-12-07)
+            const isAbholung = fahrzeug.abholserviceGewuenscht || fahrzeug.fahrzeugAbholung === 'ja';
+            const anlieferungsBadge = isAbholung
+                ? `<span class="anlieferung-badge abholung" title="Muss abgeholt werden">🚗 Abholung</span>`
+                : `<span class="anlieferung-badge selbst" title="Kunde bringt Fahrzeug">🏠 Selbst</span>`;
+
+            // 🆕 Abholdatum/-zeit (nur wenn Abholung)
+            let abholInfo = '';
+            if (isAbholung) {
+                const abholdatum = fahrzeug.abholdatum || fahrzeug.abholtermin;
+                const abholzeit = fahrzeug.abholzeit || '';
+                if (abholdatum) {
+                    const formatAbholDate = (d) => {
+                        const date = d?.toDate ? d.toDate() : new Date(d);
+                        return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                    };
+                    abholInfo = `<span class="abhol-info">📅 Abholung: ${formatAbholDate(abholdatum)}${abholzeit ? ' ' + abholzeit : ''}</span>`;
+                }
+            }
+
             return `
                 <div class="fahrzeug-card" draggable="true" data-id="${fahrzeug.id}" data-service="${serviceTyp}"
                      ondragstart="onDragStart(event)">
@@ -1290,7 +1350,9 @@
                     <div class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'}</div>
                     <div class="info">
                         <span class="service-badge service-${serviceTyp}">${serviceConfig.icon || '📋'} ${serviceConfig.displayName || serviceTyp}</span>
+                        ${anlieferungsBadge}
                         ${deadlineText ? `<span>${deadlineText}</span>` : ''}
+                        ${abholInfo}
                     </div>
                 </div>
             `;
@@ -1387,11 +1449,15 @@
             const badgeClass = kvaHours ? 'hours-badge kva' : 'hours-badge default';
             const badgeTitle = kvaHours ? 'Klicken für Details (KVA)' : 'Klicken für Details (Schätzwert)';
 
+            // 🆕 Mini-Icon für Anlieferungsart (2025-12-07)
+            const isAbholung = fahrzeug.abholserviceGewuenscht || fahrzeug.fahrzeugAbholung === 'ja';
+            const miniIcon = isAbholung ? '🚗' : '🏠';
+
             return `
                 <div class="queue-item" draggable="true" data-id="${fahrzeug.id}"
                      ondragstart="onDragStart(event)">
                     <span class="position">${position}</span>
-                    <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'}</span>
+                    <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'} ${miniIcon}</span>
                     <span class="${badgeClass}" title="${badgeTitle}" onclick="event.stopPropagation(); showHoursDetails('${fahrzeug.id}')">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
                     <button class="info-btn" onclick="event.stopPropagation(); showDetails('${fahrzeug.id}')" title="Details" style="position:static; opacity:1; margin-left:auto;">ℹ️</button>
                     <button class="remove-btn" onclick="removeFromQueue('${fahrzeug.id}')" title="Entfernen">✕</button>
