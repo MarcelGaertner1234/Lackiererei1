@@ -765,6 +765,141 @@
             font-size: 15px;
         }
 
+        /* Bestellstatus Badges */
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .badge-gray {
+            background: #e5e7eb;
+            color: #6b7280;
+        }
+        .badge-yellow {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .badge-blue {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .badge-green {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        /* PDF-Liste */
+        .pdfs-section h4 {
+            margin-bottom: 12px;
+            color: var(--color-text);
+        }
+        .pdf-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .pdf-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--color-bg);
+            border-radius: 8px;
+            border: 1px solid var(--color-border);
+        }
+        .pdf-icon {
+            font-size: 24px;
+        }
+        .pdf-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .pdf-name {
+            font-weight: 600;
+            color: var(--color-text);
+        }
+        .pdf-date {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+        .btn-download {
+            padding: 6px 12px;
+            background: var(--color-primary);
+            color: white;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .btn-download:hover {
+            background: #005ec5;
+        }
+
+        /* Audit-Trail */
+        .audit-trail {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            padding-left: 8px;
+        }
+        .audit-event {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 8px 0;
+            position: relative;
+        }
+        .audit-event::before {
+            content: '';
+            position: absolute;
+            left: 12px;
+            top: 32px;
+            bottom: -8px;
+            width: 2px;
+            background: var(--color-border);
+        }
+        .audit-event.last::before {
+            display: none;
+        }
+        .audit-icon {
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            background: var(--color-bg);
+            border: 2px solid var(--color-border);
+            border-radius: 50%;
+            flex-shrink: 0;
+            z-index: 1;
+        }
+        .audit-content {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding-top: 2px;
+        }
+        .audit-text {
+            font-weight: 600;
+            color: var(--color-text);
+            font-size: 13px;
+        }
+        .audit-date {
+            font-size: 11px;
+            color: var(--color-text-secondary);
+        }
+        .no-events {
+            color: var(--color-text-secondary);
+            font-style: italic;
+        }
+
         /* Ersatzteile-Liste */
         .ersatzteile-list {
             font-size: 13px;
@@ -1450,6 +1585,9 @@
                 <button class="detail-tab" data-tab="teile" onclick="switchDetailTab('teile')">
                     📦 Teile <span class="tab-badge" id="teileCount">0</span>
                 </button>
+                <button class="detail-tab" data-tab="pdfs" onclick="switchDetailTab('pdfs')">
+                    📄 PDFs <span class="tab-badge" id="pdfCount">0</span>
+                </button>
             </div>
 
             <!-- Tab Contents -->
@@ -1465,6 +1603,9 @@
 
                 <!-- Tab: Teile -->
                 <div class="detail-tab-content" id="tab-teile"></div>
+
+                <!-- Tab: PDFs -->
+                <div class="detail-tab-content" id="tab-pdfs"></div>
             </div>
         </div>
     </div>
@@ -2266,7 +2407,7 @@
         let currentLightboxPhotos = [];
         let currentLightboxIndex = 0;
 
-        function showDetails(fahrzeugId) {
+        async function showDetails(fahrzeugId) {
             const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
             if (!fahrzeug) return;
 
@@ -2289,10 +2430,15 @@
             const kalkulationHtml = generateKalkulationTab(fahrzeug);
             document.getElementById('tab-kalkulation').innerHTML = kalkulationHtml;
 
-            // TAB 4: ERSATZTEILE
-            const teileResult = generateTeileTab(fahrzeug);
+            // TAB 4: ERSATZTEILE (async wegen Bestellungen-Query)
+            const teileResult = await generateTeileTab(fahrzeug);
             document.getElementById('tab-teile').innerHTML = teileResult.html;
             document.getElementById('teileCount').textContent = teileResult.count;
+
+            // TAB 5: PDFs
+            const pdfsResult = generatePDFsTab(fahrzeug);
+            document.getElementById('tab-pdfs').innerHTML = pdfsResult.html;
+            document.getElementById('pdfCount').textContent = pdfsResult.count;
 
             // Reset auf ersten Tab
             switchDetailTab('auftrag');
@@ -2433,8 +2579,128 @@
                         <div class="notizen-text">${fahrzeug.schadensbeschreibung}</div>
                     </div>
                     ` : ''}
+
+                    <div class="info-section full-width">
+                        <h4>Verlauf / Audit-Trail</h4>
+                        <div class="audit-trail">
+                            ${generateAuditTrail(fahrzeug, formatDate)}
+                        </div>
+                    </div>
                 </div>
             `;
+        }
+
+        function generateAuditTrail(fahrzeug, formatDate) {
+            const events = [];
+
+            // 1. Auftrag/Anfrage erstellt
+            if (fahrzeug.erstelltAm || fahrzeug.createdAt) {
+                events.push({
+                    date: fahrzeug.erstelltAm || fahrzeug.createdAt,
+                    event: 'Auftrag erstellt',
+                    icon: '📝'
+                });
+            }
+
+            // 2. Partner-Anfrage gesendet (falls aus Partner-App)
+            if (fahrzeug.prozessTimestamps?.anfrage_gesendet) {
+                events.push({
+                    date: fahrzeug.prozessTimestamps.anfrage_gesendet,
+                    event: 'Partner-Anfrage gesendet',
+                    icon: '📤'
+                });
+            }
+
+            // 3. KVA erstellt
+            const kva = fahrzeug.kva || fahrzeug.kvaData || {};
+            if (kva.erstelltAm || kva.createdAt) {
+                events.push({
+                    date: kva.erstelltAm || kva.createdAt,
+                    event: 'KVA erstellt',
+                    icon: '💰'
+                });
+            }
+
+            // 4. Auftrag terminiert/angenommen
+            if (fahrzeug.prozessTimestamps?.terminiert) {
+                events.push({
+                    date: fahrzeug.prozessTimestamps.terminiert,
+                    event: 'Auftrag angenommen/terminiert',
+                    icon: '✅'
+                });
+            }
+
+            // 5. Kunde hat bestätigt
+            if (fahrzeug.kundeBestaetigt && (fahrzeug.kundeBestaetigtAm || fahrzeug.kundeEntscheidungAm)) {
+                events.push({
+                    date: fahrzeug.kundeBestaetigtAm || fahrzeug.kundeEntscheidungAm,
+                    event: 'Kunde hat Angebot angenommen',
+                    icon: '👤'
+                });
+            } else if (fahrzeug.kundeAbgelehnt && fahrzeug.kundeEntscheidungAm) {
+                events.push({
+                    date: fahrzeug.kundeEntscheidungAm,
+                    event: 'Kunde hat abgelehnt',
+                    icon: '❌'
+                });
+            }
+
+            // 6. In Arbeit (gestartet)
+            if (fahrzeug.prozessTimestamps?.in_arbeit) {
+                events.push({
+                    date: fahrzeug.prozessTimestamps.in_arbeit,
+                    event: 'Arbeit gestartet',
+                    icon: '🔧'
+                });
+            }
+
+            // 7. Fertiggestellt
+            if (fahrzeug.prozessTimestamps?.fertig || fahrzeug.fertigstellungDatum) {
+                events.push({
+                    date: fahrzeug.prozessTimestamps?.fertig || fahrzeug.fertigstellungDatum,
+                    event: 'Fertiggestellt',
+                    icon: '🎉'
+                });
+            }
+
+            // 8. Ausgeliefert/Abnahme
+            if (fahrzeug.abnahmeTimestamp || fahrzeug.prozessTimestamps?.abgegeben) {
+                events.push({
+                    date: fahrzeug.abnahmeTimestamp || fahrzeug.prozessTimestamps?.abgegeben,
+                    event: 'Abnahme/Auslieferung',
+                    icon: '🚗'
+                });
+            }
+
+            // 9. Bezahlt
+            if (fahrzeug.bezahltAm) {
+                events.push({
+                    date: fahrzeug.bezahltAm,
+                    event: 'Rechnung bezahlt',
+                    icon: '💶'
+                });
+            }
+
+            if (!events.length) {
+                return '<div class="no-events">Keine Ereignisse vorhanden</div>';
+            }
+
+            // Sortiere nach Datum (älteste zuerst)
+            events.sort((a, b) => {
+                const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                return dateA - dateB;
+            });
+
+            return events.map((e, idx) => `
+                <div class="audit-event ${idx === events.length - 1 ? 'last' : ''}">
+                    <span class="audit-icon">${e.icon}</span>
+                    <div class="audit-content">
+                        <span class="audit-text">${e.event}</span>
+                        <span class="audit-date">${formatDate(e.date)}</span>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function generateFotosTab(fahrzeug) {
@@ -2607,7 +2873,7 @@
             return html;
         }
 
-        function generateTeileTab(fahrzeug) {
+        async function generateTeileTab(fahrzeug) {
             // 🆕 FIX PIPELINE (2025-12-07): Erweiterte Fallback-Kette (wie generateKalkulationTab)
             const kalk = fahrzeug.kalkulationData
                       || fahrzeug.kvaData?.kalkulationData
@@ -2620,22 +2886,77 @@
                 return { html: `<div class="no-data">Keine Ersatzteile hinterlegt</div>`, count: 0 };
             }
 
+            // 🆕 FIX 3 (2025-12-07): Bestellungen für dieses Fahrzeug laden
+            let bestellungen = [];
+            try {
+                const bestellungenSnap = await window.getCollection('bestellungen')
+                    .where('fahrzeugId', '==', String(fahrzeug.id))
+                    .get();
+                bestellungen = bestellungenSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                console.log(`📦 [TEILE-TAB] ${bestellungen.length} Bestellungen für Fahrzeug ${fahrzeug.id} geladen`);
+            } catch (e) {
+                console.warn('⚠️ [TEILE-TAB] Bestellungen konnten nicht geladen werden:', e.message);
+            }
+
+            // Status-Badge Helper
+            const getStatusBadge = (bezeichnung, etn) => {
+                // Suche Bestellung nach ETN oder Bezeichnung
+                const bestellung = bestellungen.find(b =>
+                    (etn && etn !== '-' && etn !== 'k.A.' && b.etn === etn) ||
+                    (b.bezeichnung && b.bezeichnung.toLowerCase() === bezeichnung.toLowerCase())
+                );
+
+                if (!bestellung) {
+                    return '<span class="badge badge-gray" title="Noch nicht bestellt">⏳ Offen</span>';
+                }
+
+                const formatDate = (d) => {
+                    if (!d) return '';
+                    if (d.toDate) d = d.toDate();
+                    return new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                };
+
+                switch(bestellung.status) {
+                    case 'zu_bestellen':
+                        return '<span class="badge badge-yellow" title="In Bestellliste">📝 Zu bestellen</span>';
+                    case 'bestellt':
+                        const bestellDatum = bestellung.bestelltAm ? ` (${formatDate(bestellung.bestelltAm)})` : '';
+                        const lieferDatum = bestellung.erwarteteAnkunft ? `<br><small>ETA: ${formatDate(bestellung.erwarteteAnkunft)}</small>` : '';
+                        return `<span class="badge badge-blue" title="Bestellt${bestellDatum}">📦 Bestellt${bestellDatum}</span>${lieferDatum}`;
+                    case 'angeliefert':
+                        const ankunftDatum = bestellung.angeliefertAm ? ` (${formatDate(bestellung.angeliefertAm)})` : '';
+                        return `<span class="badge badge-green" title="Geliefert${ankunftDatum}">✅ Da${ankunftDatum}</span>`;
+                    default:
+                        return '<span class="badge badge-gray">❓ Unbekannt</span>';
+                }
+            };
+
             // 🆕 FIX (2025-12-07): Normalisiere ersatzteile/materialien Format
-            // kalkulation.html: {name, menge, einzelpreis}
-            // Erwartet hier: {bezeichnung, anzahl, preis}
-            const normalizedTeile = ersatzteile.map(t => ({
-                etn: t.etn || t.artikelnummer || '-',
-                bezeichnung: t.bezeichnung || t.name || 'Ersatzteil',
-                anzahl: t.anzahl || t.menge || 1,
-                preis: t.preis || t.einzelpreis || 0
-            }));
+            // kalkulation.html: {name, menge, einzelpreis, einheit} - VERBRAUCHSMATERIALIEN (kein ETN)
+            // Erwartet hier: {bezeichnung, anzahl, preis} - ERSATZTEILE (mit ETN)
+            // 🆕 FIX #2 (2025-12-07): Intelligentere ETN-Anzeige
+            // - Verbrauchsmaterialien (einheit=Liter/kg/Set) → kein ETN erwartet → zeige "-"
+            // - Echte Ersatzteile (einheit=Stück oder etn vorhanden) → zeige ETN oder "k.A."
+            const normalizedTeile = ersatzteile.map(t => {
+                // Detect if this is a consumable material (no ETN expected)
+                const isConsumable = ['Liter', 'kg', 'Set', 'Pauschale', 'ml', 'g'].includes(t.einheit);
+                const hasETN = t.etn || t.artikelnummer;
+
+                return {
+                    etn: hasETN ? (t.etn || t.artikelnummer) : (isConsumable ? '-' : 'k.A.'),
+                    bezeichnung: t.bezeichnung || t.name || 'Material',
+                    anzahl: t.anzahl || t.menge || 1,
+                    preis: t.preis || t.einzelpreis || 0,
+                    einheit: t.einheit || 'Stück'
+                };
+            });
 
             const teileSumme = normalizedTeile.reduce((sum, t) => sum + (t.preis * t.anzahl), 0);
             const html = `
                 <div class="ersatzteile-section">
                     <h4>Ersatzteile (${normalizedTeile.length} Positionen)</h4>
                     <table class="kalkulation-table">
-                        <thead><tr><th>ETN</th><th>Bezeichnung</th><th>Anz.</th><th>Preis</th><th>Gesamt</th></tr></thead>
+                        <thead><tr><th>ETN</th><th>Bezeichnung</th><th>Anz.</th><th>Preis</th><th>Gesamt</th><th>Status</th></tr></thead>
                         <tbody>
                             ${normalizedTeile.map(t => `
                                 <tr>
@@ -2644,15 +2965,128 @@
                                     <td>${t.anzahl}x</td>
                                     <td>${t.preis.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
                                     <td>${(t.preis * t.anzahl).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                                    <td>${getStatusBadge(t.bezeichnung, t.etn)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
-                        <tfoot><tr><td colspan="4"><strong>Summe</strong></td><td><strong>${teileSumme.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</strong></td></tr></tfoot>
+                        <tfoot><tr><td colspan="5"><strong>Summe</strong></td><td><strong>${teileSumme.toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</strong></td></tr></tfoot>
                     </table>
                 </div>
             `;
 
             return { html, count: normalizedTeile.length };
+        }
+
+        // ============================================================
+        // TAB 5: PDFs
+        // ============================================================
+
+        function generatePDFsTab(fahrzeug) {
+            const pdfs = [];
+
+            const formatDate = (d) => {
+                if (!d) return 'N/A';
+                if (d.toDate) d = d.toDate();
+                return new Date(d).toLocaleDateString('de-DE', {
+                    day: '2-digit', month: '2-digit', year: 'numeric'
+                });
+            };
+
+            // 1. Annahme-PDF
+            if (fahrzeug.pdfUrl) {
+                pdfs.push({
+                    name: 'Annahme-Formular',
+                    url: fahrzeug.pdfUrl,
+                    date: fahrzeug.pdfUploadedAt || fahrzeug.annahmeTimestamp || fahrzeug.createdAt,
+                    icon: '📝'
+                });
+            }
+
+            // 2. Entwurf-PDF
+            if (fahrzeug.entwurfPdfUrl) {
+                pdfs.push({
+                    name: 'Entwurf',
+                    url: fahrzeug.entwurfPdfUrl,
+                    date: fahrzeug.entwurfErstelltAm || fahrzeug.createdAt,
+                    icon: '📋'
+                });
+            }
+
+            // 3. KVA-Angebot-PDF (beide Varianten wenn vorhanden)
+            const kva = fahrzeug.kva || fahrzeug.kvaData || {};
+            if (kva.angebotPdfUrl) {
+                pdfs.push({
+                    name: 'KVA-Angebot',
+                    url: kva.angebotPdfUrl,
+                    date: kva.erstelltAm || kva.createdAt,
+                    icon: '💰'
+                });
+            }
+            if (kva.angebotPdfUrl_variante1) {
+                pdfs.push({
+                    name: 'KVA Variante 1 (Original)',
+                    url: kva.angebotPdfUrl_variante1,
+                    date: kva.erstelltAm,
+                    icon: '💰'
+                });
+            }
+            if (kva.angebotPdfUrl_variante2) {
+                pdfs.push({
+                    name: 'KVA Variante 2 (Smart Repair)',
+                    url: kva.angebotPdfUrl_variante2,
+                    date: kva.erstelltAm,
+                    icon: '💰'
+                });
+            }
+
+            // 4. Rechnung-PDF
+            if (fahrzeug.rechnungPdfUrl) {
+                pdfs.push({
+                    name: 'Rechnung',
+                    url: fahrzeug.rechnungPdfUrl,
+                    date: fahrzeug.rechnungErstelltAm,
+                    icon: '🧾'
+                });
+            }
+
+            // 5. Abnahme-PDF
+            if (fahrzeug.abnahmePdfUrl) {
+                pdfs.push({
+                    name: 'Abnahme-Protokoll',
+                    url: fahrzeug.abnahmePdfUrl,
+                    date: fahrzeug.abnahmeTimestamp,
+                    icon: '✅'
+                });
+            }
+
+            if (!pdfs.length) {
+                return {
+                    html: '<div class="no-data">Keine PDFs vorhanden</div>',
+                    count: 0
+                };
+            }
+
+            const html = `
+                <div class="pdfs-section">
+                    <h4>Dokumente (${pdfs.length})</h4>
+                    <div class="pdf-list">
+                        ${pdfs.map(pdf => `
+                            <div class="pdf-item">
+                                <span class="pdf-icon">${pdf.icon}</span>
+                                <div class="pdf-info">
+                                    <span class="pdf-name">${pdf.name}</span>
+                                    <span class="pdf-date">${formatDate(pdf.date)}</span>
+                                </div>
+                                <a href="${pdf.url}" target="_blank" class="btn-download" title="PDF anzeigen">
+                                    📥 Download
+                                </a>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            return { html, count: pdfs.length };
         }
 
         // ============================================================
