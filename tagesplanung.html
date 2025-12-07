@@ -2411,6 +2411,9 @@
             const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
             if (!fahrzeug) return;
 
+            // 🆕 FIX 17 (2025-12-07): Track-Variable für erfolgreichen Anfrage-Daten Load
+            let anfrageDataLoaded = false;
+
             // 🆕 FIX 10 (2025-12-07): Anfrage-Daten nachladen fuer alte Fahrzeuge
             // Problem: Fahrzeuge die VOR den Fixes erstellt wurden haben keine Daten!
             // Die Daten existieren nur in der anfragen Collection
@@ -2461,6 +2464,9 @@
                         if (anfrage.kva && !fahrzeug.kva) {
                             fahrzeug.kva = anfrage.kva;
                         }
+
+                        // 🆕 FIX 17: Track erfolgreichen Load
+                        anfrageDataLoaded = true;
                     } else {
                         console.warn(`⚠️ [FIX 10/16] Anfrage ${anfrageId} nicht gefunden (weder in anfragen_mosbach noch in globaler anfragen Collection)`);
                     }
@@ -2469,20 +2475,32 @@
                 }
             }
 
-            // 🆕 FIX 10B (2025-12-07): Alternative Anfrage-ID via Kennzeichen-Suche
-            // Wenn FIX 10 nicht gegriffen hat (keine anfrage_id vorhanden), suche nach Kennzeichen
-            if (needsAnfrageData && !anfrageId && fahrzeug.kennzeichen) {
-                console.log(`🔍 [FIX 10B] Versuche Anfrage via Kennzeichen zu finden: ${fahrzeug.kennzeichen}`);
+            // 🆕 FIX 10B/17 (2025-12-07): Alternative Anfrage-ID via Kennzeichen-Suche
+            // FIX 17: Läuft jetzt AUCH wenn FIX 10/16 fehlgeschlagen ist (anfrageId existiert aber Dokument nicht)
+            // GEÄNDERTE BEDINGUNG: !anfrageDataLoaded statt !anfrageId
+            if (needsAnfrageData && !anfrageDataLoaded && fahrzeug.kennzeichen) {
+                console.log(`🔍 [FIX 10B/17] Fallback: Versuche Anfrage via Kennzeichen zu finden: ${fahrzeug.kennzeichen}`);
                 try {
-                    const kennzeichenQuery = await window.getCollection('anfragen')
+                    // Versuche zuerst Multi-Tenant Collection (anfragen_mosbach)
+                    let kennzeichenQuery = await window.getCollection('anfragen')
                         .where('kennzeichen', '==', fahrzeug.kennzeichen)
                         .orderBy('createdAt', 'desc')
                         .limit(1)
                         .get();
 
+                    // 🆕 FIX 17: Auch globale Collection versuchen wenn Multi-Tenant leer
+                    if (kennzeichenQuery.empty) {
+                        console.log(`🔄 [FIX 17] Fallback: Versuche globale anfragen Collection`);
+                        kennzeichenQuery = await window.db.collection('anfragen')
+                            .where('kennzeichen', '==', fahrzeug.kennzeichen)
+                            .orderBy('createdAt', 'desc')
+                            .limit(1)
+                            .get();
+                    }
+
                     if (!kennzeichenQuery.empty) {
                         const anfrage = kennzeichenQuery.docs[0].data();
-                        console.log('✅ [FIX 10B] Anfrage via Kennzeichen gefunden:', kennzeichenQuery.docs[0].id, Object.keys(anfrage));
+                        console.log('✅ [FIX 10B/17] Anfrage via Kennzeichen gefunden:', kennzeichenQuery.docs[0].id, Object.keys(anfrage));
 
                         // Merge fehlende Felder aus Anfrage
                         fahrzeug.kalkulation = fahrzeug.kalkulation || anfrage.kalkulation;
@@ -2501,11 +2519,14 @@
                         if (anfrage.kva && !fahrzeug.kva) {
                             fahrzeug.kva = anfrage.kva;
                         }
+
+                        // 🆕 FIX 17: Track erfolgreichen Load
+                        anfrageDataLoaded = true;
                     } else {
-                        console.warn(`⚠️ [FIX 10B] Keine Anfrage mit Kennzeichen ${fahrzeug.kennzeichen} gefunden`);
+                        console.warn(`⚠️ [FIX 10B/17] Keine Anfrage mit Kennzeichen ${fahrzeug.kennzeichen} gefunden (weder in anfragen_mosbach noch global)`);
                     }
                 } catch (e) {
-                    console.warn('⚠️ [FIX 10B] Kennzeichen-Suche fehlgeschlagen:', e.message);
+                    console.warn('⚠️ [FIX 10B/17] Kennzeichen-Suche fehlgeschlagen:', e.message);
                 }
             }
 
