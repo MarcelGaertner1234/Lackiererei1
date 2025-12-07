@@ -2466,6 +2466,32 @@
                 } catch (e) { return 'N/A'; }
             };
 
+            // 🆕 FIX 5 (2025-12-07): Erweiterte Feldname-Aliase fuer Farbe
+            // Firebase speichert in: serviceDetails.farbname, serviceDetailsPerService.lackier.farbname
+            const farbname = fahrzeug.farbe
+                          || fahrzeug.serviceDetails?.farbname
+                          || fahrzeug.serviceDetailsPerService?.lackier?.farbname
+                          || '';
+            const farbnummer = fahrzeug.farbcode
+                            || fahrzeug.serviceDetails?.farbnummer
+                            || fahrzeug.serviceDetailsPerService?.lackier?.farbnummer
+                            || '';
+            const farbeDisplay = farbname
+                ? (farbnummer ? `${farbname} (${farbnummer})` : farbname)
+                : (farbnummer || 'N/A');
+
+            // 🆕 FIX 5 (2025-12-07): Erweiterte KM-Erkennung (kmstand vs kilometerstand)
+            const kmRaw = fahrzeug.kilometerstand || fahrzeug.kmstand;
+            const kilometerstandDisplay = kmRaw
+                ? (typeof kmRaw === 'number' ? kmRaw.toLocaleString('de-DE') + ' km' : kmRaw + ' km')
+                : 'N/A';
+
+            // 🆕 FIX 6 (2025-12-07): Erweiterte Abholservice-Erkennung
+            const abholserviceGewuenscht = fahrzeug.abholserviceGewuenscht
+                                        || fahrzeug.fahrzeugAbholen
+                                        || fahrzeug.abholservice
+                                        || false;
+
             return `
                 <div class="auftrag-info-grid">
                     <div class="info-section">
@@ -2496,11 +2522,11 @@
                         </div>
                         <div class="info-row">
                             <span class="info-label">Farbe:</span>
-                            <span class="info-value">${fahrzeug.farbe || fahrzeug.farbcode || 'N/A'}</span>
+                            <span class="info-value">${farbeDisplay}</span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Kilometerstand:</span>
-                            <span class="info-value">${fahrzeug.kilometerstand ? fahrzeug.kilometerstand.toLocaleString('de-DE') + ' km' : 'N/A'}</span>
+                            <span class="info-value">${kilometerstandDisplay}</span>
                         </div>
                     </div>
 
@@ -2528,9 +2554,9 @@
                         <h4>Lieferung & Abholung</h4>
                         <div class="info-row">
                             <span class="info-label">Abholservice:</span>
-                            <span class="info-value">${fahrzeug.abholserviceGewuenscht ? 'Ja' : 'Nein'}</span>
+                            <span class="info-value">${abholserviceGewuenscht ? 'Ja' : 'Nein'}</span>
                         </div>
-                        ${fahrzeug.abholserviceGewuenscht && fahrzeug.abholadresse ? `
+                        ${abholserviceGewuenscht && fahrzeug.abholadresse ? `
                         <div class="info-row">
                             <span class="info-label">Abholadresse:</span>
                             <span class="info-value">${fahrzeug.abholadresse}</span>
@@ -2779,15 +2805,16 @@
             // kalkulation.html speichert "positionen", tagesplanung erwartet "arbeitslohn"
             const arbeitslohnRaw = kalk.arbeitslohn || kalk.positionen || [];
 
-            // 🆕 FIX (2025-12-07): Lackierung aus positionen extrahieren (kategorie === 'Lackierung')
+            // 🆕 FIX 7 (2025-12-07): Lackierung aus positionen extrahieren
             // kalkulation.html speichert KEINE separate lackierung Array!
-            // Alle Arbeiten (inkl. Lackierung) sind in positionen mit kategorie-Feld
-            const lackierungPositionen = arbeitslohnRaw.filter(p =>
-                p.kategorie === 'Lackierung' || p.kategorie === 'lackierung'
-            );
-            const sonstigeArbeit = arbeitslohnRaw.filter(p =>
-                p.kategorie !== 'Lackierung' && p.kategorie !== 'lackierung'
-            );
+            // Firebase-Daten haben "arbeit: 'lackieren'" NICHT "kategorie: 'Lackierung'"
+            // Pruefen auf BEIDE Varianten fuer Kompatibilitaet
+            const isLackierung = (p) =>
+                p.kategorie === 'Lackierung' || p.kategorie === 'lackierung' ||
+                p.arbeit === 'lackieren' || p.arbeit === 'Lackieren';
+
+            const lackierungPositionen = arbeitslohnRaw.filter(isLackierung);
+            const sonstigeArbeit = arbeitslohnRaw.filter(p => !isLackierung(p));
 
             const hasData = arbeitslohnRaw.length ||
                            kalk.ersatzfahrzeug || kalk.gesamtsumme;
@@ -2899,11 +2926,18 @@
                       || fahrzeug.kvaData?.kalkulationData
                       || fahrzeug.kva?.kalkulationData
                       || {};
-            // 🆕 FIX BUG 3 (2025-12-07): materialien Fallback ENTFERNT!
-            // materialien = Verbrauchsmaterialien (Lack, Farbe mit 0.3L, 0.2L Mengen)
-            // ersatzteile = echte Ersatzteile (Stossfaenger, Radlager, etc.)
-            // Der alte Fallback zeigte falsche Daten (Lackier-Materialien statt Ersatzteile)
-            const ersatzteile = kalk.ersatzteile || fahrzeug.ersatzteile || [];
+
+            // 🆕 FIX 8 (2025-12-07): Erweiterte Fallback-Kette MIT Laengenprüfung
+            // Problem: kalk.ersatzteile = [] (leeres Array) ist truthy und blockiert Fallback!
+            // Firebase speichert Ersatzteile an mehreren Stellen:
+            // 1. fahrzeug.ersatzteile[] - Root-Level (direkt aus Anfrage)
+            // 2. fahrzeug.kalkulation.ersatzteile[] - In kalkulation-Objekt
+            // 3. fahrzeug.kalkulationData.ersatzteile[] - In kalkulationData (anderes Format)
+            const ersatzteile =
+                (fahrzeug.kalkulation?.ersatzteile?.length ? fahrzeug.kalkulation.ersatzteile : null) ||
+                (fahrzeug.ersatzteile?.length ? fahrzeug.ersatzteile : null) ||
+                (kalk.ersatzteile?.length ? kalk.ersatzteile : null) ||
+                [];
 
             if (!ersatzteile.length) {
                 return { html: `<div class="no-data">Keine Ersatzteile hinterlegt</div>`, count: 0 };
@@ -3037,11 +3071,15 @@
 
             // 3. KVA-Angebot-PDF (beide Varianten wenn vorhanden)
             const kva = fahrzeug.kva || fahrzeug.kvaData || {};
-            if (kva.angebotPdfUrl) {
+
+            // 🆕 FIX 9 (2025-12-07): angebotPdfUrl auf Root-Level UND kva-Level pruefen
+            // Alte Fahrzeuge haben angebotPdfUrl direkt auf Root, neue in kva.angebotPdfUrl
+            const angebotPdfUrl = kva.angebotPdfUrl || fahrzeug.angebotPdfUrl;
+            if (angebotPdfUrl) {
                 pdfs.push({
                     name: 'KVA-Angebot',
-                    url: kva.angebotPdfUrl,
-                    date: kva.erstelltAm || kva.createdAt,
+                    url: angebotPdfUrl,
+                    date: kva.erstelltAm || kva.createdAt || fahrzeug.createdAt,
                     icon: '💰'
                 });
             }
