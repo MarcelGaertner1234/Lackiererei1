@@ -2411,6 +2411,44 @@
             const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
             if (!fahrzeug) return;
 
+            // 🆕 FIX 10 (2025-12-07): Anfrage-Daten nachladen fuer alte Fahrzeuge
+            // Problem: Fahrzeuge die VOR den Fixes erstellt wurden haben keine Daten!
+            // Die Daten existieren nur in der anfragen Collection
+            const needsAnfrageData = !fahrzeug.kalkulationData && !fahrzeug.kalkulation?.positionen?.length;
+            const anfrageId = fahrzeug.anfrage_id || fahrzeug.anfrageId || fahrzeug.originalAnfrageId;
+
+            if (needsAnfrageData && anfrageId) {
+                console.log(`🔄 [FIX 10] Lade Anfrage-Daten nach fuer Fahrzeug ${fahrzeugId}, Anfrage: ${anfrageId}`);
+                try {
+                    const anfrageSnap = await window.getCollection('anfragen').doc(String(anfrageId)).get();
+                    if (anfrageSnap.exists) {
+                        const anfrage = anfrageSnap.data();
+                        console.log('✅ [FIX 10] Anfrage-Daten gefunden:', Object.keys(anfrage));
+
+                        // Merge fehlende Felder aus Anfrage
+                        fahrzeug.kalkulation = fahrzeug.kalkulation || anfrage.kalkulation;
+                        fahrzeug.kalkulationData = fahrzeug.kalkulationData || anfrage.kalkulationData;
+                        fahrzeug.ersatzteile = fahrzeug.ersatzteile || anfrage.ersatzteile;
+                        fahrzeug.pdfUrl = fahrzeug.pdfUrl || anfrage.pdfUrl;
+                        fahrzeug.angebotPdfUrl = fahrzeug.angebotPdfUrl || anfrage.angebotPdfUrl;
+                        fahrzeug.entwurfPdfUrl = fahrzeug.entwurfPdfUrl || anfrage.entwurfPdfUrl;
+                        fahrzeug.gewaehlteVariante = fahrzeug.gewaehlteVariante || anfrage.gewaehlteVariante;
+                        fahrzeug.farbe = fahrzeug.farbe || anfrage.farbname || anfrage.farbe;
+                        fahrzeug.farbcode = fahrzeug.farbcode || anfrage.farbnummer || anfrage.farbcode;
+                        fahrzeug.kilometerstand = fahrzeug.kilometerstand || anfrage.kilometerstand || anfrage.kmstand;
+
+                        // Auch kva-Daten mergen falls vorhanden
+                        if (anfrage.kva && !fahrzeug.kva) {
+                            fahrzeug.kva = anfrage.kva;
+                        }
+                    } else {
+                        console.warn(`⚠️ [FIX 10] Anfrage ${anfrageId} nicht gefunden`);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [FIX 10] Anfrage-Daten konnten nicht nachgeladen werden:', e.message);
+                }
+            }
+
             const serviceConfig = window.SERVICE_TYPE_CONFIG?.[fahrzeug.serviceTyp] || {};
 
             // Modal-Titel setzen
@@ -2809,9 +2847,12 @@
             // kalkulation.html speichert KEINE separate lackierung Array!
             // Firebase-Daten haben "arbeit: 'lackieren'" NICHT "kategorie: 'Lackierung'"
             // Pruefen auf BEIDE Varianten fuer Kompatibilitaet
+            // 🆕 FIX 11 (2025-12-07): art als Alias fuer arbeit hinzugefuegt
+            // kalkulationData.arbeitslohn[] hat "art: 'lackieren'" NICHT "arbeit: 'lackieren'"!
             const isLackierung = (p) =>
                 p.kategorie === 'Lackierung' || p.kategorie === 'lackierung' ||
-                p.arbeit === 'lackieren' || p.arbeit === 'Lackieren';
+                p.arbeit === 'lackieren' || p.arbeit === 'Lackieren' ||
+                p.art === 'lackieren' || p.art === 'Lackieren';
 
             const lackierungPositionen = arbeitslohnRaw.filter(isLackierung);
             const sonstigeArbeit = arbeitslohnRaw.filter(p => !isLackierung(p));
@@ -2933,11 +2974,39 @@
             // 1. fahrzeug.ersatzteile[] - Root-Level (direkt aus Anfrage)
             // 2. fahrzeug.kalkulation.ersatzteile[] - In kalkulation-Objekt
             // 3. fahrzeug.kalkulationData.ersatzteile[] - In kalkulationData (anderes Format)
-            const ersatzteile =
+            const ersatzteileRaw =
                 (fahrzeug.kalkulation?.ersatzteile?.length ? fahrzeug.kalkulation.ersatzteile : null) ||
                 (fahrzeug.ersatzteile?.length ? fahrzeug.ersatzteile : null) ||
                 (kalk.ersatzteile?.length ? kalk.ersatzteile : null) ||
                 [];
+
+            // 🆕 FIX 12 (2025-12-07): Ersatzteile nach gewaehlteVariante filtern
+            // User-Anforderung: "ersatzteile sollte ja nur das vom kunden gewaehlte werden"
+            // Firebase hat: gewaehlteVariante: "original" oder "aftermarket"
+            // Ersatzteile haben: preisTyp: "Original" oder "Aftermarket"
+            const gewaehlteVariante = fahrzeug.gewaehlteVariante || fahrzeug.kalkulation?.gewaehlteVariante || 'original';
+            console.log(`🔍 [FIX 12] gewaehlteVariante: "${gewaehlteVariante}", ersatzteileRaw: ${ersatzteileRaw.length}`);
+
+            let ersatzteile = ersatzteileRaw;
+            if (ersatzteileRaw.length > 0) {
+                const varianteLower = gewaehlteVariante.toLowerCase();
+
+                // Filter nach preisTyp (Original/Aftermarket)
+                const filtered = ersatzteileRaw.filter(t => {
+                    const preisTyp = (t.preisTyp || t.qualitaet || '').toLowerCase();
+                    // Wenn keine preisTyp-Info vorhanden, zeigen (z.B. Verbrauchsmaterialien)
+                    if (!preisTyp) return true;
+                    // Match Original vs Aftermarket
+                    if (varianteLower === 'original' && preisTyp === 'original') return true;
+                    if (varianteLower === 'aftermarket' && preisTyp === 'aftermarket') return true;
+                    // Wenn es kein expliziter Match ist, nicht zeigen
+                    return false;
+                });
+
+                // Fallback: Wenn Filter leer, alle zeigen (fuer Verbrauchsmaterialien ohne preisTyp)
+                ersatzteile = filtered.length > 0 ? filtered : ersatzteileRaw;
+                console.log(`✅ [FIX 12] Nach Filter: ${ersatzteile.length} Ersatzteile (von ${ersatzteileRaw.length})`);
+            }
 
             if (!ersatzteile.length) {
                 return { html: `<div class="no-data">Keine Ersatzteile hinterlegt</div>`, count: 0 };
