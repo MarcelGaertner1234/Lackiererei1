@@ -2475,32 +2475,36 @@
                 }
             }
 
-            // 🆕 FIX 10B/17 (2025-12-07): Alternative Anfrage-ID via Kennzeichen-Suche
+            // 🆕 FIX 10B/17/18 (2025-12-07): Alternative Anfrage-ID via Kennzeichen-Suche
             // FIX 17: Läuft jetzt AUCH wenn FIX 10/16 fehlgeschlagen ist (anfrageId existiert aber Dokument nicht)
+            // FIX 18: Query OHNE orderBy (kein Composite Index nötig!) - sortiere stattdessen in JavaScript
             // GEÄNDERTE BEDINGUNG: !anfrageDataLoaded statt !anfrageId
             if (needsAnfrageData && !anfrageDataLoaded && fahrzeug.kennzeichen) {
-                console.log(`🔍 [FIX 10B/17] Fallback: Versuche Anfrage via Kennzeichen zu finden: ${fahrzeug.kennzeichen}`);
+                console.log(`🔍 [FIX 10B/17/18] Fallback: Versuche Anfrage via Kennzeichen zu finden: ${fahrzeug.kennzeichen}`);
                 try {
+                    // 🆕 FIX 18: Query OHNE orderBy (kein Index nötig!)
                     // Versuche zuerst Multi-Tenant Collection (anfragen_mosbach)
                     let kennzeichenQuery = await window.getCollection('anfragen')
                         .where('kennzeichen', '==', fahrzeug.kennzeichen)
-                        .orderBy('createdAt', 'desc')
-                        .limit(1)
-                        .get();
+                        .get();  // Kein orderBy, kein limit - sortiere später in JS
 
                     // 🆕 FIX 17: Auch globale Collection versuchen wenn Multi-Tenant leer
                     if (kennzeichenQuery.empty) {
-                        console.log(`🔄 [FIX 17] Fallback: Versuche globale anfragen Collection`);
+                        console.log(`🔄 [FIX 17/18] Fallback: Versuche globale anfragen Collection`);
                         kennzeichenQuery = await window.db.collection('anfragen')
                             .where('kennzeichen', '==', fahrzeug.kennzeichen)
-                            .orderBy('createdAt', 'desc')
-                            .limit(1)
-                            .get();
+                            .get();  // Kein orderBy, kein limit
                     }
 
                     if (!kennzeichenQuery.empty) {
-                        const anfrage = kennzeichenQuery.docs[0].data();
-                        console.log('✅ [FIX 10B/17] Anfrage via Kennzeichen gefunden:', kennzeichenQuery.docs[0].id, Object.keys(anfrage));
+                        // 🆕 FIX 18: In JavaScript sortieren (neueste zuerst)
+                        const sortedDocs = kennzeichenQuery.docs.sort((a, b) => {
+                            const aTime = a.data().createdAt?.toMillis?.() || a.data().createdAt || 0;
+                            const bTime = b.data().createdAt?.toMillis?.() || b.data().createdAt || 0;
+                            return bTime - aTime;  // Descending (neueste zuerst)
+                        });
+                        const anfrage = sortedDocs[0].data();
+                        console.log('✅ [FIX 10B/17/18] Anfrage via Kennzeichen gefunden:', sortedDocs[0].id, Object.keys(anfrage));
 
                         // Merge fehlende Felder aus Anfrage
                         fahrzeug.kalkulation = fahrzeug.kalkulation || anfrage.kalkulation;
@@ -2523,10 +2527,10 @@
                         // 🆕 FIX 17: Track erfolgreichen Load
                         anfrageDataLoaded = true;
                     } else {
-                        console.warn(`⚠️ [FIX 10B/17] Keine Anfrage mit Kennzeichen ${fahrzeug.kennzeichen} gefunden (weder in anfragen_mosbach noch global)`);
+                        console.warn(`⚠️ [FIX 10B/17/18] Keine Anfrage mit Kennzeichen ${fahrzeug.kennzeichen} gefunden (weder in anfragen_mosbach noch global)`);
                     }
                 } catch (e) {
-                    console.warn('⚠️ [FIX 10B/17] Kennzeichen-Suche fehlgeschlagen:', e.message);
+                    console.warn('⚠️ [FIX 10B/17/18] Kennzeichen-Suche fehlgeschlagen:', e.message);
                 }
             }
 
