@@ -2705,7 +2705,9 @@
 
         function generateFotosTab(fahrzeug) {
             // Alle Foto-Arrays normalisieren
-            const alleFotos = [
+            // FIX (2025-12-07): Deduplication hinzugefuegt - gleiche URLs in mehreren Feldern
+            // verursachten 12 Fotos statt 4 (3x Verdreifachung)
+            const alleFotosRaw = [
                 ...(fahrzeug.fotos || []),
                 ...(fahrzeug.bilder || []),
                 ...(fahrzeug.schadenfotos || []),
@@ -2713,6 +2715,9 @@
                 ...(fahrzeug.annahmeFotos || []),
                 ...(fahrzeug.pdfImport?.fotos || [])
             ].filter(url => url && typeof url === 'string');
+
+            // Duplikate entfernen (gleiche URL kann in mehreren Feldern sein)
+            const alleFotos = [...new Set(alleFotosRaw)];
 
             const fahrzeugscheinFotos = (fahrzeug.fahrzeugscheinFotos || [])
                 .filter(url => url && typeof url === 'string');
@@ -2772,12 +2777,20 @@
 
             // 🆕 FIX (2025-12-07): Feldname-Aliase für Kompatibilität
             // kalkulation.html speichert "positionen", tagesplanung erwartet "arbeitslohn"
-            // kalkulation.html speichert "materialien", tagesplanung erwartet "ersatzteile"
             const arbeitslohnRaw = kalk.arbeitslohn || kalk.positionen || [];
-            const ersatzteileRaw = kalk.ersatzteile || kalk.materialien || [];
 
-            const hasData = arbeitslohnRaw.length || kalk.lackierung?.length ||
-                           kalk.ersatzfahrzeug || kalk.gesamtsumme || ersatzteileRaw.length;
+            // 🆕 FIX (2025-12-07): Lackierung aus positionen extrahieren (kategorie === 'Lackierung')
+            // kalkulation.html speichert KEINE separate lackierung Array!
+            // Alle Arbeiten (inkl. Lackierung) sind in positionen mit kategorie-Feld
+            const lackierungPositionen = arbeitslohnRaw.filter(p =>
+                p.kategorie === 'Lackierung' || p.kategorie === 'lackierung'
+            );
+            const sonstigeArbeit = arbeitslohnRaw.filter(p =>
+                p.kategorie !== 'Lackierung' && p.kategorie !== 'lackierung'
+            );
+
+            const hasData = arbeitslohnRaw.length ||
+                           kalk.ersatzfahrzeug || kalk.gesamtsumme;
 
             if (!hasData) {
                 return `<div class="no-data">Keine Kalkulationsdaten vorhanden</div>`;
@@ -2786,27 +2799,27 @@
             let html = '';
             let gesamtsumme = 0;
 
-            // 🆕 FIX (2025-12-07): Verwende arbeitslohnRaw statt kalk.arbeitslohn
-            if (arbeitslohnRaw.length) {
-                // Normalisiere Positionen (unterstützt beide Formate: arbeitslohn UND positionen)
-                const normalizedArbeitslohn = arbeitslohnRaw.map(p => ({
+            // Sonstige Arbeiten (Karosserie, Mechanik, etc.) - NICHT Lackierung
+            if (sonstigeArbeit.length) {
+                const normalizedArbeitslohn = sonstigeArbeit.map(p => ({
                     bezeichnung: p.bezeichnung || p.name || p.position || 'Position',
-                    stunden: p.stunden || p.aw || 0,  // aw = Arbeitswerte aus kalkulation.html
-                    stundensatz: p.stundensatz || 85,
-                    gesamt: p.gesamt || ((p.stunden || p.aw || 0) * (p.stundensatz || 85))
+                    kategorie: p.kategorie || '',
+                    stunden: p.stunden || p.aw || p.arbeitswerte || 0,
+                    stundensatz: p.stundensatz || 95,
+                    gesamt: p.gesamt || p.preis || ((p.stunden || p.aw || p.arbeitswerte || 0) * (p.stundensatz || 95))
                 }));
                 const arbeitslohnSumme = normalizedArbeitslohn.reduce((sum, p) => sum + (p.gesamt || 0), 0);
                 gesamtsumme += arbeitslohnSumme;
                 html += `
                     <div class="kalkulation-section">
-                        <h4>Arbeitslohn</h4>
+                        <h4>Arbeitslohn (Karosserie/Mechanik)</h4>
                         <table class="kalkulation-table">
-                            <thead><tr><th>Position</th><th>Stunden</th><th>Satz</th><th>Gesamt</th></tr></thead>
+                            <thead><tr><th>Position</th><th>AW/Std</th><th>Satz</th><th>Gesamt</th></tr></thead>
                             <tbody>
                                 ${normalizedArbeitslohn.map(p => `
                                     <tr>
-                                        <td>${p.bezeichnung}</td>
-                                        <td>${p.stunden}h</td>
+                                        <td>${p.bezeichnung}${p.kategorie ? ` <small style="color:#888">(${p.kategorie})</small>` : ''}</td>
+                                        <td>${p.stunden}</td>
                                         <td>${(p.stundensatz).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
                                         <td>${(p.gesamt).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
                                     </tr>
@@ -2818,21 +2831,28 @@
                 `;
             }
 
-            if (kalk.lackierung?.length) {
-                const lackierungSumme = kalk.lackierung.reduce((sum, p) => sum + (p.gesamt || 0), 0);
+            // 🆕 FIX (2025-12-07): Lackierung aus positionen mit kategorie='Lackierung'
+            if (lackierungPositionen.length) {
+                const normalizedLackierung = lackierungPositionen.map(p => ({
+                    bezeichnung: p.bezeichnung || p.name || p.position || 'Position',
+                    stunden: p.stunden || p.aw || p.arbeitswerte || 0,
+                    stundensatz: p.stundensatz || 85,  // Lackierung Stundensatz default 85
+                    gesamt: p.gesamt || p.preis || ((p.stunden || p.aw || p.arbeitswerte || 0) * (p.stundensatz || 85))
+                }));
+                const lackierungSumme = normalizedLackierung.reduce((sum, p) => sum + (p.gesamt || 0), 0);
                 gesamtsumme += lackierungSumme;
                 html += `
                     <div class="kalkulation-section">
                         <h4>Lackierung</h4>
                         <table class="kalkulation-table">
-                            <thead><tr><th>Position</th><th>Stunden</th><th>Satz</th><th>Gesamt</th></tr></thead>
+                            <thead><tr><th>Position</th><th>AW/Std</th><th>Satz</th><th>Gesamt</th></tr></thead>
                             <tbody>
-                                ${kalk.lackierung.map(p => `
+                                ${normalizedLackierung.map(p => `
                                     <tr>
-                                        <td>${p.bezeichnung || p.position || 'Position'}</td>
-                                        <td>${p.stunden || 0}h</td>
-                                        <td>${(p.stundensatz || 0).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
-                                        <td>${(p.gesamt || 0).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                                        <td>${p.bezeichnung}</td>
+                                        <td>${p.stunden}</td>
+                                        <td>${(p.stundensatz).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
+                                        <td>${(p.gesamt).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'})}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -2879,8 +2899,11 @@
                       || fahrzeug.kvaData?.kalkulationData
                       || fahrzeug.kva?.kalkulationData
                       || {};
-            // Feldname-Aliase: ersatzteile ODER materialien
-            const ersatzteile = kalk.ersatzteile || kalk.materialien || fahrzeug.ersatzteile || [];
+            // 🆕 FIX BUG 3 (2025-12-07): materialien Fallback ENTFERNT!
+            // materialien = Verbrauchsmaterialien (Lack, Farbe mit 0.3L, 0.2L Mengen)
+            // ersatzteile = echte Ersatzteile (Stossfaenger, Radlager, etc.)
+            // Der alte Fallback zeigte falsche Daten (Lackier-Materialien statt Ersatzteile)
+            const ersatzteile = kalk.ersatzteile || fahrzeug.ersatzteile || [];
 
             if (!ersatzteile.length) {
                 return { html: `<div class="no-data">Keine Ersatzteile hinterlegt</div>`, count: 0 };
