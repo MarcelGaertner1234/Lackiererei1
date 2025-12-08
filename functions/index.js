@@ -2557,6 +2557,155 @@ exports.fahrzeugStatusChanged = functions
     });
 
 // ============================================
+// FUNCTION 8b: SYNC STATUS TO PARTNER-ANFRAGEN
+// ============================================
+
+/**
+ * 🆕 FIX (2025-12-08): Bi-direktionale Status-Synchronisation
+ *
+ * Wenn sich der Status eines Fahrzeugs in der Werkstatt ändert,
+ * wird dieser auch in der entsprechenden partnerAnfragen-Collection aktualisiert.
+ *
+ * Trigger: firestore.document('fahrzeuge_{werkstatt}/{fahrzeugId}').onUpdate()
+ *
+ * Synchronisiert folgende Felder:
+ * - werkstattStatus: Der aktuelle Status in der Werkstatt
+ * - prozessStatus: Der Prozess-Status (für Kanban)
+ * - lastStatusUpdate: Zeitstempel der letzten Änderung
+ *
+ * Der Partner kann so in seiner "Meine Anfragen" Übersicht sehen,
+ * in welchem Status sich sein Fahrzeug aktuell befindet.
+ */
+exports.syncStatusToPartnerAnfragen = functions
+    .region("europe-west3")
+    .firestore
+    .document("{collectionId}/{fahrzeugId}")
+    .onUpdate(async (change, context) => {
+      try {
+        const collectionId = context.params.collectionId;
+
+        // Only trigger for fahrzeuge_* collections
+        if (!collectionId.startsWith("fahrzeuge_")) {
+          return null; // Silent skip for non-vehicle collections
+        }
+
+        // Extract werkstatt from collection name (fahrzeuge_mosbach → mosbach)
+        const werkstatt = collectionId.replace("fahrzeuge_", "");
+
+        const before = change.before.data();
+        const after = change.after.data();
+        const fahrzeugId = context.params.fahrzeugId;
+
+        // Check if status or prozessStatus changed
+        const statusChanged = before.status !== after.status;
+        const prozessStatusChanged = before.prozessStatus !== after.prozessStatus;
+
+        if (!statusChanged && !prozessStatusChanged) {
+          return null; // No sync needed
+        }
+
+        console.log(`🔄 [SYNC] Fahrzeug ${fahrzeugId} Status geändert:`);
+        console.log(`   status: ${before.status} → ${after.status}`);
+        console.log(`   prozessStatus: ${before.prozessStatus} → ${after.prozessStatus}`);
+
+        // Find the corresponding partnerAnfrage
+        // Can be referenced by: partnerAnfrageId OR anfrageId
+        const anfrageId = after.partnerAnfrageId || after.anfrageId;
+
+        if (!anfrageId) {
+          console.log(`⚠️ [SYNC] Kein anfrageId/partnerAnfrageId für Fahrzeug ${fahrzeugId} - kein Sync möglich`);
+          return null;
+        }
+
+        const db = admin.firestore();
+        const partnerAnfragenRef = db.collection(`partnerAnfragen_${werkstatt}`);
+
+        // Try to find by ID first
+        let anfrageDoc = await partnerAnfragenRef.doc(String(anfrageId)).get();
+
+        // If not found, try to find by query (for older data structure)
+        if (!anfrageDoc.exists) {
+          console.log(`📋 [SYNC] AnfrageDoc ${anfrageId} nicht direkt gefunden, suche per Query...`);
+          const querySnapshot = await partnerAnfragenRef
+              .where("fahrzeugId", "==", fahrzeugId)
+              .limit(1)
+              .get();
+
+          if (!querySnapshot.empty) {
+            anfrageDoc = querySnapshot.docs[0];
+            console.log(`✅ [SYNC] Anfrage per fahrzeugId gefunden: ${anfrageDoc.id}`);
+          }
+        }
+
+        if (!anfrageDoc || !anfrageDoc.exists) {
+          console.log(`⚠️ [SYNC] Keine partnerAnfrage gefunden für Fahrzeug ${fahrzeugId}`);
+          return null;
+        }
+
+        // Mapping: Werkstatt-Status → Partner-freundlicher Status
+        const statusMapping = {
+          // Werkstatt-interne Status → Partner-Anzeige
+          "angenommen": "in_bearbeitung",
+          "in_arbeit": "in_bearbeitung",
+          "lackierung": "in_bearbeitung",
+          "trocknung": "in_bearbeitung",
+          "montage": "in_bearbeitung",
+          "qualitaetskontrolle": "in_bearbeitung",
+          "bereit_abnahme": "bereit_abholung",
+          "fertig": "abgeschlossen",
+          "abgeschlossen": "abgeschlossen",
+          "storniert": "storniert",
+        };
+
+        // Determine partner-facing status
+        const werkstattStatus = after.status;
+        const partnerStatus = statusMapping[werkstattStatus] || werkstattStatus;
+
+        // Determine human-readable status text
+        const statusTexte = {
+          "beauftragt": "Auftrag erteilt",
+          "in_bearbeitung": "In Bearbeitung",
+          "angenommen": "In Bearbeitung",
+          "anlieferung": "Warte auf Anlieferung",
+          "terminiert": "Termin vereinbart",
+          "bereit_abholung": "Bereit zur Abholung",
+          "fertig": "Fertig - Abholbereit",
+          "abgeschlossen": "Abgeschlossen",
+          "storniert": "Storniert",
+        };
+
+        const updateData = {
+          werkstattStatus: werkstattStatus,
+          werkstattStatusText: statusTexte[werkstattStatus] || werkstattStatus,
+          partnerStatus: partnerStatus,
+          partnerStatusText: statusTexte[partnerStatus] || partnerStatus,
+          prozessStatus: after.prozessStatus || null,
+          lastStatusUpdate: admin.firestore.Timestamp.now(),
+          updatedAt: admin.firestore.Timestamp.now(),
+        };
+
+        // Also sync completion date if available
+        if (after.status === "fertig" || after.status === "abgeschlossen") {
+          updateData.fertigstellungsDatum = after.fertigstellungsDatum ||
+                                            after.beendetAm ||
+                                            admin.firestore.Timestamp.now();
+        }
+
+        // Update the partnerAnfrage document
+        await partnerAnfragenRef.doc(anfrageDoc.id).update(updateData);
+
+        console.log(`✅ [SYNC] partnerAnfrage ${anfrageDoc.id} aktualisiert:`);
+        console.log(`   werkstattStatus: ${updateData.werkstattStatus}`);
+        console.log(`   partnerStatus: ${updateData.partnerStatus}`);
+
+        return {success: true, anfrageId: anfrageDoc.id, newStatus: partnerStatus};
+      } catch (error) {
+        console.error("❌ [SYNC] Error syncing status to partnerAnfragen:", error);
+        return {success: false, error: error.message};
+      }
+    });
+
+// ============================================
 // FUNCTION 9: MATERIAL ORDER OVERDUE (Scheduled)
 // ============================================
 
