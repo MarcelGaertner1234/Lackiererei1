@@ -993,6 +993,22 @@
         </div>
 
         <!-- ═══════════════════════════════════════════════════════════════════
+             ⚠️ ABGELAUFENE LEIHFAHRZEUG-ANFRAGEN
+             Angebote mit Leihfahrzeug, die >48h nicht angenommen wurden
+             ═══════════════════════════════════════════════════════════════════ -->
+        <div id="abgelaufeneSection" class="draft-selector" style="margin-top: 30px; border-left: 4px solid #f59e0b; display: none;">
+            <h2 style="color: #b45309;">
+                <i data-feather="alert-triangle"></i>
+                Abgelaufene Leihfahrzeug-Reservierungen
+            </h2>
+            <p style="color: var(--color-text-secondary); margin-bottom: 20px;">
+                Diese Angebote mit Leihfahrzeug wurden nicht innerhalb von 48h angenommen.
+                Das Leihfahrzeug wurde automatisch freigegeben.
+            </p>
+            <div id="abgelaufeneList"></div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════
              📋 AUFTRAGSINFORMATIONEN-ÜBERSICHT (Order Summary)
              Kompakte Zusammenfassung aller Entwurf-Daten oben auf der Seite
              ═══════════════════════════════════════════════════════════════════ -->
@@ -2722,6 +2738,9 @@
 
                 // Load drafts
                 await loadOffeneEntwuerfe();
+
+                // ⚠️ Load expired Leihfahrzeug requests (Dec 8, 2025)
+                await loadAbgelaufeneAnfragen();
 
                 // 🔧 FIX Nov 29, 2025: URL-Parameter ?id= verarbeiten (von kalkulation.html)
                 const urlParams = new URLSearchParams(window.location.search);
@@ -6206,6 +6225,150 @@
             }
         `;
         document.head.appendChild(style);
+
+        // ════════════════════════════════════════════════════════════════════════
+        // ⚠️ ABGELAUFENE LEIHFAHRZEUG-ANFRAGEN
+        // Anfragen, deren Leihfahrzeug-Reservierung nach 48h abgelaufen ist
+        // ════════════════════════════════════════════════════════════════════════
+
+        async function loadAbgelaufeneAnfragen() {
+            try {
+                console.log('🔄 Lade abgelaufene Leihfahrzeug-Anfragen...');
+
+                const snapshot = await window.getCollection('anfragen')
+                    .where('status', '==', 'leihfahrzeug_abgelaufen')
+                    .get();
+
+                const abgelaufeneSection = document.getElementById('abgelaufeneSection');
+                const abgelaufeneList = document.getElementById('abgelaufeneList');
+
+                if (snapshot.empty) {
+                    abgelaufeneSection.style.display = 'none';
+                    console.log('✅ Keine abgelaufenen Leihfahrzeug-Anfragen');
+                    return;
+                }
+
+                const abgelaufene = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log(`📋 ${abgelaufene.length} abgelaufene Anfragen gefunden`);
+
+                // Render cards
+                abgelaufeneList.innerHTML = abgelaufene.map(anfrage => {
+                    const abgelaufenAm = anfrage.leihfahrzeugAbgelaufenAm?.toDate
+                        ? anfrage.leihfahrzeugAbgelaufenAm.toDate().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'Unbekannt';
+
+                    const leihfahrzeug = anfrage.vorherigeLeitfahrzeugDetails ||
+                                        anfrage.kva?.zugewiesenesLeihfahrzeug ||
+                                        anfrage.kalkulationData?.ersatzfahrzeug;
+
+                    return `
+                        <div class="abgelaufen-card" style="background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid #f59e0b; border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                                <div>
+                                    <h3 style="margin: 0; color: var(--text-primary);">
+                                        🚗 ${anfrage.kennzeichen || 'Kein Kennzeichen'}
+                                    </h3>
+                                    <p style="color: var(--text-secondary); margin: 4px 0 0 0;">
+                                        ${anfrage.kundenname || 'Unbekannter Kunde'}
+                                        ${anfrage.marke ? ` - ${anfrage.marke} ${anfrage.modell || ''}` : ''}
+                                    </p>
+                                </div>
+                                <span style="background: #fef3c7; color: #b45309; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;">
+                                    ⚠️ Reservierung abgelaufen
+                                </span>
+                            </div>
+
+                            <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                                <p style="margin: 0 0 8px 0; color: #b45309; font-size: 14px;">
+                                    <strong>⏰ Abgelaufen am:</strong> ${abgelaufenAm}
+                                </p>
+                                ${leihfahrzeug ? `
+                                <p style="margin: 0; color: var(--text-secondary); font-size: 14px;">
+                                    <strong>🚙 Ehem. Leihfahrzeug:</strong> ${leihfahrzeug.kennzeichen || 'Unbekannt'}
+                                    ${leihfahrzeug.marke ? ` (${leihfahrzeug.marke} ${leihfahrzeug.modell || ''})` : ''}
+                                </p>
+                                ` : ''}
+                            </div>
+
+                            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                                <button class="btn btn-primary" onclick="reaktivierenAnfrage('${anfrage.id}')" style="display: flex; align-items: center; gap: 6px;">
+                                    <i data-feather="refresh-cw" style="width: 16px; height: 16px;"></i>
+                                    Reaktivieren (neues Leihfahrzeug)
+                                </button>
+                                <button class="btn btn-secondary" onclick="stornierenAnfrage('${anfrage.id}')" style="display: flex; align-items: center; gap: 6px; color: #ef4444;">
+                                    <i data-feather="x-circle" style="width: 16px; height: 16px;"></i>
+                                    Stornieren
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                abgelaufeneSection.style.display = 'block';
+
+                // Refresh feather icons
+                if (typeof feather !== 'undefined') feather.replace();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Laden abgelaufener Anfragen:', error);
+            }
+        }
+
+        async function reaktivierenAnfrage(anfrageId) {
+            if (!confirm('Anfrage reaktivieren?\n\nDie Anfrage wird zurück zur KVA-Erstellung gesetzt, damit ein neues Leihfahrzeug zugewiesen werden kann.')) {
+                return;
+            }
+
+            try {
+                console.log('🔄 Reaktiviere Anfrage:', anfrageId);
+
+                await window.getCollection('anfragen').doc(anfrageId).update({
+                    status: 'kva_erstellen',
+                    reaktiviertAm: firebase.firestore.FieldValue.serverTimestamp(),
+                    reaktiviertVon: window.currentUser?.name || 'Unbekannt',
+                    // Leihfahrzeug-Felder zurücksetzen
+                    'kva.zugewiesenesLeihfahrzeug': null,
+                    'kalkulationData.ersatzfahrzeug': null
+                });
+
+                showToast('✅ Anfrage reaktiviert! Sie können jetzt ein neues Leihfahrzeug zuweisen.', 'success', 4000);
+
+                // Redirect zur Kalkulation-Seite
+                setTimeout(() => {
+                    safeNavigate(`kalkulation.html?id=${anfrageId}`);
+                }, 1500);
+
+            } catch (error) {
+                console.error('❌ Fehler beim Reaktivieren:', error);
+                showToast('❌ Fehler beim Reaktivieren der Anfrage', 'error', 5000);
+            }
+        }
+
+        async function stornierenAnfrage(anfrageId) {
+            if (!confirm('Anfrage wirklich stornieren?\n\nDiese Aktion kann nicht rückgängig gemacht werden.')) {
+                return;
+            }
+
+            try {
+                console.log('❌ Storniere Anfrage:', anfrageId);
+
+                await window.getCollection('anfragen').doc(anfrageId).update({
+                    status: 'storniert',
+                    storniertAm: firebase.firestore.FieldValue.serverTimestamp(),
+                    storniertVon: window.currentUser?.name || 'Unbekannt',
+                    stornierungsgrund: 'Leihfahrzeug-Reservierung abgelaufen, nicht reaktiviert'
+                });
+
+                showToast('✅ Anfrage storniert', 'success', 3000);
+
+                // Liste aktualisieren
+                await loadAbgelaufeneAnfragen();
+
+            } catch (error) {
+                console.error('❌ Fehler beim Stornieren:', error);
+                showToast('❌ Fehler beim Stornieren der Anfrage', 'error', 5000);
+            }
+        }
     </script>
 
     <!-- 🌓 THEME TOGGLE SCRIPT -->

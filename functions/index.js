@@ -5861,6 +5861,45 @@ exports.releaseExpiredLeihfahrzeugReservations = onSchedule({
         console.log(`  ✅ Original vehicle ${anfrage.originalVehicleId} in ${collectionName} released`);
       }
 
+      // ═══════════════════════════════════════════════════════════════════════════
+      // 🔄 UPDATE KUNDENANFRAGE STATUS - For "Reaktivieren" feature
+      // When Leihfahrzeug reservation expires, mark the Kundenanfrage so it appears
+      // in entwuerfe-bearbeiten.html with "Reaktivieren" or "Stornieren" buttons
+      //
+      // The leihfahrzeugAnfragen doc has:
+      // - anfragerWerkstattId (the werkstatt that requested the Leihfahrzeug)
+      // - poolFahrzeugId (the pool vehicle ID)
+      //
+      // We search for Kundenanfragen that have this pool vehicle assigned
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (anfrage.anfragerWerkstattId && anfrage.poolFahrzeugId) {
+        const anfrageCollection = `anfragen_${anfrage.anfragerWerkstattId}`;
+        console.log(`  🔍 Searching for Kundenanfrage with poolId ${anfrage.poolFahrzeugId} in ${anfrageCollection}`);
+
+        // Search for Kundenanfragen that have this pool vehicle assigned
+        // The pool vehicle could be in kva.zugewiesenesLeihfahrzeug.poolId or kalkulationData.ersatzfahrzeug.poolId
+        const kundenanfragenSnapshot = await db.collection(anfrageCollection)
+          .where('status', 'in', ['kva_gesendet', 'angebot_gesendet', 'warte_kva', 'entwurf_komplett'])
+          .get();
+
+        for (const kundenDoc of kundenanfragenSnapshot.docs) {
+          const kundenanfrage = kundenDoc.data();
+
+          // Check if this anfrage has the matching pool vehicle
+          const kvaPoolId = kundenanfrage.kva?.zugewiesenesLeihfahrzeug?.poolId;
+          const kalkPoolId = kundenanfrage.kalkulationData?.ersatzfahrzeug?.poolId;
+
+          if (kvaPoolId === anfrage.poolFahrzeugId || kalkPoolId === anfrage.poolFahrzeugId) {
+            batch.update(kundenDoc.ref, {
+              status: 'leihfahrzeug_abgelaufen',
+              leihfahrzeugAbgelaufenAm: admin.firestore.FieldValue.serverTimestamp(),
+              vorherigeLeitfahrzeugDetails: kundenanfrage.kva?.zugewiesenesLeihfahrzeug || kundenanfrage.kalkulationData?.ersatzfahrzeug || null
+            });
+            console.log(`  📋 Kundenanfrage ${kundenDoc.id} marked as 'leihfahrzeug_abgelaufen'`);
+          }
+        }
+      }
+
       await batch.commit();
       releasedCount++;
     }
