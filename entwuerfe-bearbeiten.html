@@ -2784,10 +2784,10 @@
 
                 // 🆕 Pipeline-Optimierung (2025-12-08): Auch Fahrzeuge mit 'kalkulation_erstellt' laden
                 // Diese kommen direkt aus annahme.html → kalkulation.html
+                // 🔧 FIX Dec 8, 2025: orderBy entfernt (braucht Composite Index), stattdessen JS-Sortierung
                 try {
                     const fahrzeugeSnapshot = await window.getCollection('fahrzeuge')
                         .where('status', '==', 'kalkulation_erstellt')
-                        .orderBy('annahmeDatum', 'desc')
                         .get();
 
                     const fahrzeugeEntwuerfe = fahrzeugeSnapshot.docs.map(doc => ({
@@ -2803,6 +2803,13 @@
                         kalkulationData: doc.data().kalkulationData,
                         ...doc.data()
                     }));
+
+                    // 🔧 FIX Dec 8, 2025: JavaScript-Sortierung statt Firestore orderBy (vermeidet Index-Fehler)
+                    fahrzeugeEntwuerfe.sort((a, b) => {
+                        const dateA = a.annahmeDatum || a.datum || '';
+                        const dateB = b.annahmeDatum || b.datum || '';
+                        return dateB.localeCompare(dateA); // desc (neueste zuerst)
+                    });
 
                     offeneEntwuerfe = [...offeneEntwuerfe, ...fahrzeugeEntwuerfe];
                     console.log(`✅ ${fahrzeugeEntwuerfe.length} Fahrzeuge mit status='kalkulation_erstellt' hinzugefügt`);
