@@ -5006,10 +5006,10 @@
                             </div>
                         </div>
                         ${erstelltAm ? `<div class="varianten-datum">Erstellt: ${new Date(erstelltAm).toLocaleDateString('de-DE')}</div>` : ''}
-                        ${anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum ? `
+                        ${anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum || anfrage.geplantesAbnahmeDatum ? `
                         <div style="margin-top: 8px; padding: 6px 10px; background: #e3f2fd; border-radius: 4px; font-size: 11px; color: #1565c0;">
-                            <div>Auftragsstart: ${new Date(anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}${anfrage.abholzeit ? ` um ${anfrage.abholzeit} Uhr` : ''}</div>
-                            ${anfrage.kva?.termine?.ende || anfrage.angebotDetails?.fertigstellungsdatum ? `<div style="margin-top: 4px;">Voraussichtliches Ende: ${new Date(anfrage.kva?.termine?.ende || anfrage.angebotDetails?.fertigstellungsdatum).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</div>` : ''}
+                            <div>Auftragsstart: ${new Date(anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum || anfrage.geplantesAbnahmeDatum).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}${anfrage.abholzeit ? ` um ${anfrage.abholzeit} Uhr` : ''}</div>
+                            ${anfrage.kva?.termine?.ende || anfrage.angebotDetails?.fertigstellungsdatum || anfrage.geplantesAbnahmeDatum ? `<div style="margin-top: 4px;">Voraussichtliches Ende: ${new Date(anfrage.kva?.termine?.ende || anfrage.angebotDetails?.fertigstellungsdatum || anfrage.geplantesAbnahmeDatum).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</div>` : ''}
                         </div>
                         ` : ''}
                     </div>
@@ -6988,9 +6988,12 @@
             console.log(`📸 [STORAGE] Starte Upload von ${fotos.length} Fotos zu Firebase Storage...`);
 
             // Check if Storage is available
+            // 🔒 SECURITY FIX (2025-12-08): KEIN Base64 Fallback mehr!
+            // Base64-Fotos können 1MB Firestore-Limit überschreiten → SILENT DATA LOSS
             if (!firebase.storage) {
-                console.warn('⚠️ [STORAGE] Firebase Storage nicht verfügbar - verwende Base64 Fallback');
-                return fotos; // Return original Base64 arrays as fallback
+                console.error('❌ [STORAGE] Firebase Storage nicht verfügbar - kann Fotos nicht speichern!');
+                console.error('❌ [STORAGE] Fotos werden NICHT gespeichert (statt Base64 Fallback)');
+                return []; // Return empty array instead of Base64 (prevents Firestore 1MB limit)
             }
 
             const storage = firebase.storage();

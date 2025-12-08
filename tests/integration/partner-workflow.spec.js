@@ -29,12 +29,15 @@ test.describe('E2E: Partner Workflow', () => {
     schadenBeschreibung: 'Lackschaden vorne links'
   };
 
-  // Setup: Login as admin before each test
+  // Setup: Login as admin before each test + CLEANUP STALE DATA
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
     await waitForFirebaseReady(page);
     await loginAsTestAdmin(page);
-    console.log('✅ Partner Workflow Test: Admin authenticated');
+    // FIX (2025-12-08): Clean up BEFORE test to remove stale data from previous runs
+    await deleteVehicle(page, testKennzeichen);
+    await cleanupPartnerAnfrage(page, testKennzeichen);
+    console.log('✅ Partner Workflow Test: Admin authenticated + stale data cleaned');
   });
 
   // Cleanup: Remove test data after each test
@@ -107,6 +110,22 @@ test.describe('E2E: Partner Workflow', () => {
   });
 
   test('E2E-P4: annehmenKVA() erstellt Fahrzeug in fahrzeuge_{werkstattId}', async ({ page }) => {
+    // FIX (2025-12-08): Clean up ALL stale vehicles with same kennzeichen (multi-tenant aware)
+    // This prevents test isolation issues from accumulated test runs
+    await page.evaluate(async (kz) => {
+      const db = window.firebaseApp.db();
+      const collectionName = window.getCollectionName('fahrzeuge');
+      const snapshot = await db.collection(collectionName)
+        .where('kennzeichen', '==', kz)
+        .get();
+      for (const doc of snapshot.docs) {
+        await db.collection(collectionName).doc(doc.id).delete();
+      }
+      if (snapshot.docs.length > 0) {
+        console.log(`🧹 Cleaned ${snapshot.docs.length} stale vehicles for ${kz}`);
+      }
+    }, testKennzeichen);
+
     // Setup: Create complete anfrage with selected variant
     await createPartnerAnfrageDirectly(page, testAnfrageData);
     const kvaData = {
@@ -311,7 +330,8 @@ async function executeAnnehmenKVA(page, kennzeichen) {
       serviceTyp: anfrageData.serviceTyp,
       marke: anfrageData.marke,
       modell: anfrageData.modell,
-      vereinbarterPreis: String(selectedVariante?.preis || '1000'),
+      // FIX (2025-12-08): Production uses .gesamt, test data may use .preis
+      vereinbarterPreis: String(selectedVariante?.gesamt || selectedVariante?.preis || '1000'),
       status: 'angenommen',
       prozessStatus: 'angenommen',
       werkstattId: werkstattId,
