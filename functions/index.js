@@ -5019,18 +5019,24 @@ function createAngebotHTML(entwurf, werkstattId, logoData = null) {
   // 🆕 2025-11-26: Leihfahrzeug aus KVA extrahieren
   const leihfahrzeug = entwurf.kva?.zugewiesenesLeihfahrzeug || null;
 
-  // 🔧 BUG #8 FIX Dec 8, 2025: Ersatzteile GETRENNT nach Original/Aftermarket berechnen
-  // Statt einer gemeinsamen Summe → zwei separate Summen für PDF-Varianten
-  const ersatzteileOriginal = ersatzteile.map(item => ({
-    ...item,
-    einzelpreis: parseFloat(item.preisOriginal) || item.einzelpreis || 0,
-    gesamtpreis: (parseFloat(item.preisOriginal) || item.einzelpreis || 0) * (item.anzahl || 1)
-  }));
-  const ersatzteileAftermarket = ersatzteile.map(item => ({
-    ...item,
-    einzelpreis: parseFloat(item.preisAftermarket) || item.einzelpreis || 0,
-    gesamtpreis: (parseFloat(item.preisAftermarket) || item.einzelpreis || 0) * (item.anzahl || 1)
-  }));
+  // 🔧 BUG FIX Dec 8, 2025 (v2): Ersatzteile FILTERN statt alle mappen
+  // Ein Teil ist ENTWEDER Original ODER Aftermarket, NICHT beides!
+  // Nur Teile mit preisOriginal > 0 für Original-Liste
+  const ersatzteileOriginal = ersatzteile
+    .filter(item => parseFloat(item.preisOriginal) > 0)
+    .map(item => ({
+      ...item,
+      einzelpreis: parseFloat(item.preisOriginal),
+      gesamtpreis: parseFloat(item.preisOriginal) * (item.anzahl || 1)
+    }));
+  // Nur Teile mit preisAftermarket > 0 für Aftermarket-Liste
+  const ersatzteileAftermarket = ersatzteile
+    .filter(item => parseFloat(item.preisAftermarket) > 0)
+    .map(item => ({
+      ...item,
+      einzelpreis: parseFloat(item.preisAftermarket),
+      gesamtpreis: parseFloat(item.preisAftermarket) * (item.anzahl || 1)
+    }));
   const ersatzteileOriginalSumme = ersatzteileOriginal.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
   const ersatzteileAftermarketSumme = ersatzteileAftermarket.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
   // Legacy: Gesamt-Summe für nicht-Varianten PDFs
