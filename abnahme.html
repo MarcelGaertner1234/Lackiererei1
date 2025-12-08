@@ -866,6 +866,54 @@
             </div>
         </div>
 
+        <!-- ═══════════════════════════════════════════════════════════════════════
+             🚚 ÜBERGABE-TERMIN (Lieferung/Abholung)
+             Wann wird das fertige Fahrzeug an den Kunden übergeben?
+             ═══════════════════════════════════════════════════════════════════════ -->
+        <div class="hero-card" id="uebergabeSection" style="display: none;">
+            <div class="shine-overlay"></div>
+            <div class="hero-card__header">
+                <i data-feather="truck"></i>
+                <h3>Übergabe-Termin</h3>
+            </div>
+
+            <!-- Dynamische Info: Lieferung oder Abholung -->
+            <div id="uebergabeTypInfo" style="padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <!-- Wird dynamisch gesetzt -->
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="form-group">
+                    <label for="uebergabeDatum" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
+                        <i data-feather="calendar" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;"></i>
+                        Übergabedatum *
+                    </label>
+                    <input type="date" id="uebergabeDatum"
+                           style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-primary); font-size: 1rem;"
+                           required>
+                </div>
+                <div class="form-group">
+                    <label for="uebergabeZeit" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
+                        <i data-feather="clock" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;"></i>
+                        Uhrzeit *
+                    </label>
+                    <input type="time" id="uebergabeZeit"
+                           style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-primary); font-size: 1rem;"
+                           required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="uebergabeNotiz" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
+                    <i data-feather="file-text" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;"></i>
+                    Notiz zur Übergabe (optional)
+                </label>
+                <textarea id="uebergabeNotiz" rows="2"
+                          placeholder="z.B. Ansprechpartner, Zufahrtshinweise..."
+                          style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-primary); font-size: 1rem; resize: vertical;"></textarea>
+            </div>
+        </div>
+
         <!-- Signature Section - Hero Card (Feature 3: Haptisch) -->
         <div class="hero-card signature-card" id="signatureSection" style="display: none;">
             <div class="shine-overlay"></div>
@@ -1222,8 +1270,16 @@
             currentVehicle = vehicle;
             displayVehicleInfo(vehicle);
             document.getElementById('photoComparison').style.display = 'block';
+            document.getElementById('uebergabeSection').style.display = 'block';
             document.getElementById('signatureSection').style.display = 'block';
             document.getElementById('submitBtn').style.display = 'flex';
+
+            // 🚚 Übergabe-Typ setzen (Lieferung oder Abholung)
+            setUebergabeTypAnzeige(vehicle);
+
+            // 📅 Übergabedatum auf heute vorbelegen
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('uebergabeDatum').value = today;
 
             // Canvas initialisieren (nur einmal)
             if (!canvas.hasAttribute('data-initialized')) {
@@ -1276,6 +1332,39 @@
                 });
             } else {
                 vorherGrid.innerHTML = '<p style="color: var(--color-text-tertiary); text-align: center;">Keine Vorher-Fotos vorhanden</p>';
+            }
+
+            // Feather Icons aktualisieren
+            if (typeof feather !== 'undefined') {
+                feather.replace();
+            }
+        }
+
+        // 🚚 Übergabe-Typ dynamisch anzeigen (Lieferung oder Abholung)
+        function setUebergabeTypAnzeige(vehicle) {
+            const infoEl = document.getElementById('uebergabeTypInfo');
+            if (!infoEl) return;
+
+            // Prüfen ob Fahrzeug geliefert oder abgeholt wird
+            // Basierend auf: fahrzeugAbholung (aus Annahme), lieferungGewuenscht, oder serviceTyp
+            const istLieferung = vehicle.fahrzeugAbholung === 'ja' || vehicle.lieferungGewuenscht === true;
+
+            if (istLieferung) {
+                infoEl.innerHTML = `
+                    <i data-feather="truck" style="width: 20px; height: 20px;"></i>
+                    <strong>Lieferung:</strong> Fahrzeug wird zum Kunden gebracht
+                `;
+                infoEl.style.background = '#dbeafe';
+                infoEl.style.color = '#1e40af';
+                infoEl.style.border = '1px solid #93c5fd';
+            } else {
+                infoEl.innerHTML = `
+                    <i data-feather="home" style="width: 20px; height: 20px;"></i>
+                    <strong>Abholung:</strong> Kunde holt Fahrzeug in der Werkstatt ab
+                `;
+                infoEl.style.background = '#fef3c7';
+                infoEl.style.color = '#92400e';
+                infoEl.style.border = '1px solid #fcd34d';
             }
 
             // Feather Icons aktualisieren
@@ -1648,6 +1737,19 @@
                 return;
             }
 
+            // 🚚 FIX (2025-12-08): Übergabe-Termin validieren
+            const uebergabeDatum = document.getElementById('uebergabeDatum')?.value || '';
+            const uebergabeZeit = document.getElementById('uebergabeZeit')?.value || '';
+            const uebergabeNotiz = document.getElementById('uebergabeNotiz')?.value?.trim() || '';
+
+            if (!uebergabeDatum || !uebergabeZeit) {
+                showError('Bitte Übergabedatum und -zeit angeben!');
+                return;
+            }
+
+            // 🚚 Übergabe-Typ ermitteln (Lieferung oder Abholung)
+            const uebergabeTyp = (currentVehicle.fahrzeugAbholung === 'ja' || currentVehicle.lieferungGewuenscht === true) ? 'lieferung' : 'abholung';
+
             // 🆕 VALIDATION: Multi-Service Check (alle Services müssen fertig sein)
             const validation = canCompleteAbnahme(currentVehicle);
             if (!validation.canComplete) {
@@ -1772,6 +1874,12 @@
                 nachherPhotos,  // Will be removed before Firestore save
                 abnahmeSignature: signatureData,  // Compressed base64 (OK size ~30-50 KB)
                 abnahmeUnterschriebVon: abnahmeUnterschriftName,  // 🆕 FIX (2025-12-01): Audit-Trail - Wer hat unterschrieben? (BUG #5)
+
+                // 🚚 Übergabe-Termin (2025-12-08): Für Partner-App sichtbar
+                uebergabeDatum: uebergabeDatum,           // YYYY-MM-DD
+                uebergabeZeit: uebergabeZeit,             // HH:MM
+                uebergabeNotiz: uebergabeNotiz || null,   // Optional
+                uebergabeTyp: uebergabeTyp,               // 'lieferung' | 'abholung'
 
                 // Rechnung (if exists)
                 rechnung: currentVehicle.rechnung
@@ -2843,6 +2951,53 @@
                     const notizLines = doc.splitTextToSize(data.abholnotiz, 130);
                     doc.text(notizLines, 70, y);
                     y += notizLines.length * 5 + 2;
+                }
+            }
+
+            // 🚚 ÜBERGABE-TERMIN Section (2025-12-08)
+            // Wann wird das fertige Fahrzeug an den Kunden übergeben?
+            if (data.uebergabeDatum && data.uebergabeZeit) {
+                y += 12;
+                doc.setFillColor(34, 197, 94); // Grün für Übergabe
+                doc.rect(15, y - 5, 180, 8, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(13);
+                doc.text('[FERTIG] FAHRZEUG-UEBERGABE', 20, y);
+
+                y += 10;
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(11);
+
+                // Übergabe-Typ
+                doc.setFont(undefined, 'bold');
+                doc.text('Uebergabe-Art:', 20, y);
+                doc.setFont(undefined, 'normal');
+                const uebergabeTypText = data.uebergabeTyp === 'lieferung'
+                    ? 'Lieferung an Kunden'
+                    : 'Abholung in Werkstatt';
+                doc.text(uebergabeTypText, 70, y);
+                y += 7;
+
+                // Übergabe-Datum/-Zeit
+                doc.setFont(undefined, 'bold');
+                doc.text('Termin:', 20, y);
+                doc.setFont(undefined, 'normal');
+                let uebergabeText = formatFirestoreDate(data.uebergabeDatum);
+                if (data.uebergabeZeit) {
+                    uebergabeText += ' um ' + data.uebergabeZeit + ' Uhr';
+                }
+                doc.text(uebergabeText, 70, y);
+                y += 7;
+
+                // Übergabe-Notiz (falls vorhanden)
+                if (data.uebergabeNotiz) {
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Notiz:', 20, y);
+                    doc.setFont(undefined, 'normal');
+                    const uebergabeNotizLines = doc.splitTextToSize(data.uebergabeNotiz, 130);
+                    doc.text(uebergabeNotizLines, 70, y);
+                    y += uebergabeNotizLines.length * 5 + 2;
                 }
             }
 
