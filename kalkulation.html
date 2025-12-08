@@ -12933,12 +12933,6 @@ REGELN:
 
             // Fall 1: Aktuelles Teil wird bearbeitet → speichern wenn Reparaturen gewählt
             if (currentPart && repairs.length > 0) {
-                // 🆕 FIX Dec 8, 2025: Multi-Service Arbeiten ZUERST speichern
-                // BEVOR Checkboxen geleert werden (sonst sind arbeiten beim validateStep(4) leer!)
-                if (kalkWizardData.teile && kalkWizardData.teile.length > 0) {
-                    saveCurrentPartArbeiten();
-                }
-
                 // Prüfen ob dieses Teil schon in der Liste ist
                 const alreadyExists = kalkWizardData.teile.some(t => t.teil === currentPart);
 
@@ -12957,14 +12951,8 @@ REGELN:
                     console.log('📦 Teil automatisch hinzugefügt:', currentPart, 'Reparaturen:', repairs, 'Braucht Ersatzteil:', needsErsatzteil);
                     showToast(`${currentPart} hinzugefügt`, 'success');
                 }
-
-                // Formularfelder zurücksetzen
-                document.querySelectorAll('input[name="repair"]').forEach(cb => cb.checked = false);
-                kalkWizardData.currentPart = null;
-
-                // Ersatzteil-Hinweis entfernen
-                const hinweis = document.getElementById('ersatzteilHinweis');
-                if (hinweis) hinweis.remove();
+                // WICHTIG: Checkboxen NICHT hier leeren - erst NACH goToStep(5)!
+                // Damit validateStep(4) → saveCurrentPartArbeiten() die Checkboxen noch lesen kann
             }
 
             // Fall 2: Kein aktuelles Teil aber Teile in Liste → direkt weiter
@@ -12981,6 +12969,17 @@ REGELN:
             // Zu Schritt 5 gehen
             console.log('📋 Gehe zu Schritt 5 mit Teilen:', kalkWizardData.teile);
             goToStep(5);
+
+            // 🆕 FIX Dec 8, 2025 (v2): Checkboxen erst NACH goToStep() leeren
+            // Damit validateStep(4) → saveCurrentPartArbeiten() die angehakten Checkboxen noch lesen kann
+            // (Der erste Fix-Versuch hat saveCurrentPartArbeiten() zu früh aufgerufen, was dann
+            // von validateStep(4) mit leeren Werten überschrieben wurde)
+            if (currentPart) {
+                document.querySelectorAll('input[name="repair"]').forEach(cb => cb.checked = false);
+                kalkWizardData.currentPart = null;
+                const hinweis = document.getElementById('ersatzteilHinweis');
+                if (hinweis) hinweis.remove();
+            }
         }
 
         function updatePartsListDisplay() {
