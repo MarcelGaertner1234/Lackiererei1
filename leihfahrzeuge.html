@@ -1597,36 +1597,49 @@
         }
 
         async function approveRequest(anfrageId, poolFahrzeugId, anfragerWerkstattId) {
-            if (!confirm('Anfrage genehmigen? Das Fahrzeug wird für die anfragende Werkstatt reserviert.')) return;
+            if (!confirm('Anfrage genehmigen? Das Fahrzeug wird für 48 Stunden reserviert. Wird das Angebot nicht angenommen, wird es automatisch freigegeben.')) return;
 
             try {
-                // 1. Update request status
-                await db.collection('leihfahrzeugAnfragen').doc(anfrageId).update({
-                    status: 'genehmigt',
-                    genehmigtAm: firebase.firestore.FieldValue.serverTimestamp()
-                });
-
-                // 2. Get pool vehicle details
+                // 1. Get pool vehicle details FIRST (needed for IDs)
                 const poolDoc = await db.collection('leihfahrzeugPool').doc(poolFahrzeugId).get();
                 const poolData = poolDoc.data();
 
-                // 3. Mark pool vehicle as unavailable
-                await db.collection('leihfahrzeugPool').doc(poolFahrzeugId).update({
-                    verfuegbar: false,
-                    reserviertFuer: anfragerWerkstattId
+                // 2. Calculate 48h expiry timestamp
+                const now = new Date();
+                const reserviertBis = new Date(now.getTime() + 48 * 60 * 60 * 1000); // 48h from now
+
+                // 3. Update request status with expiry data
+                await db.collection('leihfahrzeugAnfragen').doc(anfrageId).update({
+                    status: 'genehmigt',
+                    genehmigtAm: firebase.firestore.FieldValue.serverTimestamp(),
+                    // 48h Expiry System fields
+                    reserviertBis: firebase.firestore.Timestamp.fromDate(reserviertBis),
+                    warnungGesendet: false,
+                    // Store IDs for automatic release by Cloud Function
+                    poolFahrzeugId: poolFahrzeugId,
+                    originalVehicleId: poolData?.originalId || null,
+                    besitzerWerkstattId: window.werkstattId
                 });
 
-                // 4. Update original vehicle status
+                // 4. Mark pool vehicle as unavailable
+                await db.collection('leihfahrzeugPool').doc(poolFahrzeugId).update({
+                    verfuegbar: false,
+                    reserviertFuer: anfragerWerkstattId,
+                    reserviertBis: firebase.firestore.Timestamp.fromDate(reserviertBis)
+                });
+
+                // 5. Update original vehicle status
                 if (poolData?.originalId) {
                     const collectionName = window.getCollectionName('leihfahrzeuge');
                     await db.collection(collectionName).doc(poolData.originalId).update({
                         status: 'reserviert',
                         reserviertFuer: anfragerWerkstattId,
+                        reserviertBis: firebase.firestore.Timestamp.fromDate(reserviertBis),
                         letzteAenderung: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 }
 
-                toast.success('Anfrage genehmigt!');
+                toast.success('Anfrage genehmigt! Reservierung gültig für 48 Stunden.');
                 loadIncomingRequests();
                 updateAnfragenBadge(); // Update badge count
                 loadVehicles(); // Refresh main list

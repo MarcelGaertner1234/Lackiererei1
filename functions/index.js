@@ -5801,3 +5801,125 @@ exports.testMonthlyPayroll = functions
       res.status(500).json({ success: false, error: error.message });
     }
   });
+
+// ================================================================================
+// LEIHFAHRZEUG EXPIRY SYSTEM - Automatic 48h Release
+// Runs every hour to check for expired Leihfahrzeug reservations
+// Fixes bug: Leihfahrzeuge stay blocked forever if customer never accepts offer
+// ================================================================================
+
+exports.releaseExpiredLeihfahrzeugReservations = onSchedule({
+  schedule: 'every 1 hours',
+  timeZone: 'Europe/Berlin',
+  memory: '256MiB'
+}, async (event) => {
+  console.log('🔄 [releaseExpiredLeihfahrzeugReservations] Checking for expired reservations...');
+
+  const now = admin.firestore.Timestamp.now();
+  let releasedCount = 0;
+
+  try {
+    // Find all expired requests in leihfahrzeugAnfragen
+    const expiredRequests = await db.collection('leihfahrzeugAnfragen')
+      .where('status', '==', 'genehmigt')
+      .where('reserviertBis', '<=', now)
+      .get();
+
+    console.log(`📋 Found ${expiredRequests.size} expired reservations`);
+
+    for (const doc of expiredRequests.docs) {
+      const anfrage = doc.data();
+      console.log(`⏰ Releasing expired reservation: ${doc.id}`);
+
+      const batch = db.batch();
+
+      // Update request status to 'abgelaufen'
+      batch.update(doc.ref, {
+        status: 'abgelaufen',
+        abgelaufenAm: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Release pool vehicle
+      if (anfrage.poolFahrzeugId) {
+        const poolRef = db.collection('leihfahrzeugPool').doc(anfrage.poolFahrzeugId);
+        batch.update(poolRef, {
+          verfuegbar: true,
+          reserviertFuer: admin.firestore.FieldValue.delete()
+        });
+        console.log(`  ✅ Pool vehicle ${anfrage.poolFahrzeugId} released`);
+      }
+
+      // Release original vehicle (in werkstatt collection)
+      if (anfrage.originalVehicleId && anfrage.besitzerWerkstattId) {
+        const collectionName = `leihfahrzeuge_${anfrage.besitzerWerkstattId}`;
+        const vehicleRef = db.collection(collectionName).doc(anfrage.originalVehicleId);
+        batch.update(vehicleRef, {
+          status: 'verfuegbar',
+          reserviertFuer: admin.firestore.FieldValue.delete(),
+          letzteAenderung: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`  ✅ Original vehicle ${anfrage.originalVehicleId} in ${collectionName} released`);
+      }
+
+      await batch.commit();
+      releasedCount++;
+    }
+
+    console.log(`✅ [releaseExpiredLeihfahrzeugReservations] Released ${releasedCount} expired reservations`);
+    return null;
+
+  } catch (error) {
+    console.error('❌ [releaseExpiredLeihfahrzeugReservations] Error:', error);
+    throw error;
+  }
+});
+
+// ================================================================================
+// LEIHFAHRZEUG EXPIRY WARNING - 24h Notification
+// Runs every 6 hours to notify about soon-expiring reservations
+// ================================================================================
+
+exports.notifyExpiringSoonLeihfahrzeugReservations = onSchedule({
+  schedule: 'every 6 hours',
+  timeZone: 'Europe/Berlin',
+  memory: '256MiB'
+}, async (event) => {
+  console.log('⏰ [notifyExpiringSoonLeihfahrzeugReservations] Checking for soon-expiring reservations...');
+
+  const now = admin.firestore.Timestamp.now();
+  const in24h = new Date(now.toDate().getTime() + 24 * 60 * 60 * 1000);
+  const in24hTimestamp = admin.firestore.Timestamp.fromDate(in24h);
+
+  try {
+    // Find requests expiring within 24h that haven't been notified
+    const expiringRequests = await db.collection('leihfahrzeugAnfragen')
+      .where('status', '==', 'genehmigt')
+      .where('reserviertBis', '<=', in24hTimestamp)
+      .where('reserviertBis', '>', now)
+      .where('warnungGesendet', '==', false)
+      .get();
+
+    console.log(`📋 Found ${expiringRequests.size} reservations expiring within 24h`);
+
+    for (const doc of expiringRequests.docs) {
+      const anfrage = doc.data();
+      console.log(`⚠️ Marking 24h warning for: ${doc.id}`);
+
+      // Mark as notified (warning sent)
+      await doc.ref.update({
+        warnungGesendet: true,
+        warnungGesendetAm: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Note: Email notification can be added here using AWS SES if needed
+      // For now, we just mark the warning as sent (visible in admin UI)
+    }
+
+    console.log(`✅ [notifyExpiringSoonLeihfahrzeugReservations] Processed ${expiringRequests.size} expiry warnings`);
+    return null;
+
+  } catch (error) {
+    console.error('❌ [notifyExpiringSoonLeihfahrzeugReservations] Error:', error);
+    throw error;
+  }
+});
