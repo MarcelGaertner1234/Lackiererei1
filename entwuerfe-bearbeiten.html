@@ -2769,11 +2769,11 @@
                 const validStatus = ['kalkulation_erstellt'];
                 console.log(`🔍 Query: ${collectionName} WHERE isEntwurf==true AND entwurfStatus IN [${validStatus.join(', ')}]`);
 
+                // 🔧 FIX Dec 8, 2025: orderBy entfernt (braucht Composite Index), stattdessen JS-Sortierung
                 const snapshot = await window.db
                     .collection(collectionName)
                     .where('isEntwurf', '==', true)
                     .where('entwurfStatus', 'in', validStatus)
-                    .orderBy('timestamp', 'desc')
                     .get();
 
                 offeneEntwuerfe = snapshot.docs.map(doc => ({
@@ -2781,6 +2781,13 @@
                     source: 'partnerAnfragen',  // Quelle markieren
                     ...doc.data()
                 }));
+
+                // 🔧 FIX Dec 8, 2025: JavaScript-Sortierung statt Firestore orderBy (vermeidet Index-Fehler)
+                offeneEntwuerfe.sort((a, b) => {
+                    const dateA = a.timestamp || '';
+                    const dateB = b.timestamp || '';
+                    return dateB.localeCompare(dateA); // desc (neueste zuerst)
+                });
 
                 // 🆕 Pipeline-Optimierung (2025-12-08): Auch Fahrzeuge mit 'kalkulation_erstellt' laden
                 // Diese kommen direkt aus annahme.html → kalkulation.html
