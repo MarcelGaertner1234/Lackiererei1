@@ -5614,6 +5614,65 @@
             return sanitized;
         }
 
+        // 🆕 FIX (2025-12-08): Base64-Fotos zu Firebase Storage uploaden
+        // PROBLEM: Base64-Fotos sind 60-150KB pro Stück. Bei 10+ Fotos überschreitet
+        // das Fahrzeug-Dokument Firestores 1MB-Limit → Fotos werden SILENT DISCARDED!
+        // LÖSUNG: Fotos zu Firebase Storage uploaden und nur URLs in Firestore speichern.
+        // Kopiert von meine-anfragen.html (Zeile 6974)
+        async function uploadFotosToStorage(fotos, fahrzeugId) {
+            if (!fotos || fotos.length === 0) {
+                console.log('📸 [STORAGE] Keine Fotos zum Uploaden');
+                return [];
+            }
+
+            console.log(`📸 [STORAGE] Starte Upload von ${fotos.length} Fotos zu Firebase Storage...`);
+
+            // Check if Storage is available
+            if (!firebase.storage) {
+                console.warn('⚠️ [STORAGE] Firebase Storage nicht verfügbar - verwende Base64 Fallback');
+                return fotos; // Return original Base64 arrays as fallback
+            }
+
+            const storage = firebase.storage();
+            const urls = [];
+
+            for (let i = 0; i < fotos.length; i++) {
+                const foto = fotos[i];
+
+                try {
+                    // Check if already a URL (already uploaded)
+                    if (foto && typeof foto === 'string' && foto.startsWith('https://')) {
+                        console.log(`   ✅ Foto ${i + 1}: Bereits eine URL, überspringen`);
+                        urls.push(foto);
+                        continue;
+                    }
+
+                    // Check if Base64
+                    if (foto && typeof foto === 'string' && foto.startsWith('data:')) {
+                        const storagePath = `fahrzeuge/${fahrzeugId}/foto_${Date.now()}_${i}.jpg`;
+                        const storageRef = storage.ref(storagePath);
+
+                        // Upload Base64 string
+                        await storageRef.putString(foto, 'data_url');
+
+                        // Get download URL
+                        const downloadURL = await storageRef.getDownloadURL();
+                        urls.push(downloadURL);
+
+                        console.log(`   ✅ Foto ${i + 1}: Uploaded → ${storagePath}`);
+                    } else {
+                        console.warn(`   ⚠️ Foto ${i + 1}: Ungültiges Format, übersprungen`);
+                    }
+                } catch (error) {
+                    console.error(`   ❌ Foto ${i + 1}: Upload fehlgeschlagen:`, error.message);
+                    // Keep original Base64 as fallback (will be removed later to prevent 1MB limit)
+                }
+            }
+
+            console.log(`📸 [STORAGE] Upload abgeschlossen: ${urls.length}/${fotos.length} Fotos erfolgreich`);
+            return urls;
+        }
+
         async function annehmenKVA(anfrageId, event) {
             event?.stopPropagation();
 
@@ -5849,6 +5908,34 @@
                 } else {
                     // Kein Preis oder keine Partner-ID → keine Rabatt-Berechnung
                     console.log('ℹ️ [RABATT] Keine Rabatt-Berechnung (kein Preis oder keine Partner-ID)');
+                }
+
+                // 🆕 FIX (2025-12-08): Upload Fotos to Firebase Storage BEFORE Firestore write
+                // PROBLEM: Base64-Fotos (60-150KB each) exceed Firestore's 1MB document limit → SILENT DATA LOSS!
+                // SOLUTION: Upload to Storage, store URLs instead of Base64
+                // Kopiert von meine-anfragen.html (Zeilen 7172-7199)
+                const originalFotos = anfrage.photoUrls || anfrage.fotos || anfrage.photos || anfrage.schadenfotos || anfrage.pdfImport?.fotos || [];
+                if (originalFotos.length > 0) {
+                    console.log(`📸 [STORAGE-FIX] ${originalFotos.length} Fotos gefunden - starte Upload zu Firebase Storage...`);
+                    try {
+                        const uploadedUrls = await uploadFotosToStorage(originalFotos, fahrzeugData.id);
+                        // Replace Base64 with Storage URLs in all foto fields
+                        fahrzeugData.fotos = uploadedUrls;
+                        fahrzeugData.photoUrls = uploadedUrls;
+                        fahrzeugData.schadenfotos = uploadedUrls;
+                        fahrzeugData.photos = uploadedUrls;
+                        console.log(`✅ [STORAGE-FIX] ${uploadedUrls.length} Fotos erfolgreich zu Storage hochgeladen`);
+                    } catch (uploadError) {
+                        console.error('❌ [STORAGE-FIX] Foto-Upload fehlgeschlagen:', uploadError);
+                        console.warn('⚠️ [STORAGE-FIX] Fallback: Fotos werden als leeres Array gespeichert (nicht Base64!)');
+                        // IMPORTANT: Set empty arrays instead of Base64 to prevent 1MB limit issues
+                        fahrzeugData.fotos = [];
+                        fahrzeugData.photoUrls = [];
+                        fahrzeugData.schadenfotos = [];
+                        fahrzeugData.photos = [];
+                    }
+                } else {
+                    console.log('📸 [STORAGE-FIX] Keine Fotos zum Uploaden');
                 }
 
                 // ✅ FIX Bug #5L Phase 5e (2025-11-23): FINAL FIX - Eliminate Spread-Operator!
