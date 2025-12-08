@@ -2836,11 +2836,22 @@
             return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         }
 
-        // FORMAT DATE
-        function formatDate(dateString) {
-            if (!dateString) return 'N/A';
-            const date = new Date(dateString);
-            if (isNaN(date.getTime())) return dateString;
+        // FORMAT DATE - mit Firestore Timestamp-Handling
+        function formatDate(dateInput) {
+            if (!dateInput) return 'N/A';
+
+            let date;
+            // Firestore Timestamp-Objekt erkennen (hat .seconds Eigenschaft)
+            if (dateInput && typeof dateInput === 'object' && dateInput.seconds) {
+                date = new Date(dateInput.seconds * 1000);
+            } else if (typeof dateInput.toDate === 'function') {
+                // Firebase Timestamp mit toDate() Methode
+                date = dateInput.toDate();
+            } else {
+                date = new Date(dateInput);
+            }
+
+            if (isNaN(date.getTime())) return String(dateInput);
             return date.toLocaleDateString('de-DE', {
                 day: '2-digit',
                 month: '2-digit',
@@ -3046,6 +3057,26 @@
                     }
                     break;
 
+                case 'lackier':
+                case 'lackierung':
+                    // Lackierung-spezifische Felder
+                    if (vehicle.serviceDetails.farbname) {
+                        html += `<p style="margin: 4px 0;">🎨 <strong>Farbname:</strong> ${vehicle.serviceDetails.farbname}</p>`;
+                    }
+                    if (vehicle.serviceDetails.farbnummer) {
+                        html += `<p style="margin: 4px 0;">🔢 <strong>Farbnummer:</strong> ${vehicle.serviceDetails.farbnummer}</p>`;
+                    }
+                    if (vehicle.serviceDetails.farbvariante) {
+                        html += `<p style="margin: 4px 0;">✨ <strong>Variante:</strong> ${vehicle.serviceDetails.farbvariante}</p>`;
+                    }
+                    if (vehicle.serviceDetails.oberflaeche) {
+                        html += `<p style="margin: 4px 0;">🖌️ <strong>Oberfläche:</strong> ${vehicle.serviceDetails.oberflaeche}</p>`;
+                    }
+                    if (vehicle.serviceDetails.bereich) {
+                        html += `<p style="margin: 4px 0;">📍 <strong>Bereich:</strong> ${vehicle.serviceDetails.bereich}</p>`;
+                    }
+                    break;
+
                 default:
                     // Andere Services: Generische Anzeige aller serviceDetails Felder
                     Object.keys(vehicle.serviceDetails).forEach(key => {
@@ -3205,15 +3236,19 @@
                 ` : ''}
 
                 <!-- 💶 PREISE SECTION -->
-                ${(vehicle.vereinbarterPreis || vehicle.angebotDetails?.summeBruttoOriginal || vehicle.angebotDetails?.summeBruttoAftermarket) ? `
+                ${(vehicle.vereinbarterPreis || vehicle.angebotDetails?.gewaehlt?.gesamt || vehicle.angebotDetails?.preis || vehicle.angebotDetails?.summeBruttoOriginal || vehicle.angebotDetails?.summeBruttoAftermarket) ? `
                 <div class="detail-section" style="margin: 16px 0; padding: 12px; background: #e8f5e9; border-radius: 8px;">
                     <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #2e7d32;">💶 Preise</h4>
-                    ${vehicle.vereinbarterPreis ? `
-                    <div class="detail-row">
-                        <strong>Vereinbarter Preis</strong>
-                        <span style="font-weight: bold; color: #2e7d32;">${Number(vehicle.vereinbarterPreis).toLocaleString('de-DE', {minimumFractionDigits: 2})} €</span>
-                    </div>
-                    ` : ''}
+                    ${(() => {
+                        // Fallback-Chain für den vereinbarten Preis
+                        const preis = vehicle.vereinbarterPreis || vehicle.angebotDetails?.gewaehlt?.gesamt || vehicle.angebotDetails?.preis;
+                        return preis ? `
+                        <div class="detail-row">
+                            <strong>Vereinbarter Preis</strong>
+                            <span style="font-weight: bold; color: #2e7d32;">${Number(preis).toLocaleString('de-DE', {minimumFractionDigits: 2})} €</span>
+                        </div>
+                        ` : '';
+                    })()}
                     ${vehicle.angebotDetails?.summeBruttoOriginal ? `
                     <div class="detail-row">
                         <strong>Original-Teile</strong>
