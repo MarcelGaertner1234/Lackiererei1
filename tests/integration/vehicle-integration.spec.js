@@ -77,8 +77,8 @@ test.describe('INTEGRATION: Fahrzeug Business Logic', () => {
     expect(vehicleData.vereinbarterPreis).toBe('1500.00');
     expect(vehicleData.marke).toBe('BMW');
     expect(vehicleData.modell).toBe('3er');
-    expect(vehicleData.status).toBe('angenommen');
-    expect(vehicleData.prozessStatus).toBe('angenommen');
+    expect(vehicleData.status).toBe('neu');
+    expect(vehicleData.prozessStatus).toBe('neu');
     expect(vehicleData.werkstattId).toBe('mosbach');
   });
 
@@ -143,7 +143,7 @@ test.describe('INTEGRATION: Fahrzeug Business Logic', () => {
 
     // Initial status
     let vehicleData = await getVehicleData(page, testKennzeichen);
-    expect(vehicleData.status).toBe('angenommen');
+    expect(vehicleData.status).toBe('neu');
 
     // Act: Update to "in_arbeit"
     await updateVehicleStatus(page, testKennzeichen, 'in_arbeit');

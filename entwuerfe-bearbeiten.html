@@ -2778,10 +2778,39 @@
 
                 offeneEntwuerfe = snapshot.docs.map(doc => ({
                     id: doc.id,
+                    source: 'partnerAnfragen',  // Quelle markieren
                     ...doc.data()
                 }));
 
-                console.log(`✅ ${offeneEntwuerfe.length} offene Entwürfe geladen (inkl. mit Kalkulation)`);
+                // 🆕 Pipeline-Optimierung (2025-12-08): Auch Fahrzeuge mit 'kalkulation_erstellt' laden
+                // Diese kommen direkt aus annahme.html → kalkulation.html
+                try {
+                    const fahrzeugeSnapshot = await window.getCollection('fahrzeuge')
+                        .where('status', '==', 'kalkulation_erstellt')
+                        .orderBy('annahmeDatum', 'desc')
+                        .get();
+
+                    const fahrzeugeEntwuerfe = fahrzeugeSnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        source: 'fahrzeuge',  // Quelle markieren
+                        // Map fahrzeuge fields to entwurf format
+                        kennzeichen: doc.data().kennzeichen,
+                        kundenname: doc.data().kundenname,
+                        kundenEmail: doc.data().kundenEmail,
+                        datum: doc.data().annahmeDatum,
+                        serviceTyp: doc.data().serviceTyp,
+                        fahrzeugId: doc.id,
+                        kalkulationData: doc.data().kalkulationData,
+                        ...doc.data()
+                    }));
+
+                    offeneEntwuerfe = [...offeneEntwuerfe, ...fahrzeugeEntwuerfe];
+                    console.log(`✅ ${fahrzeugeEntwuerfe.length} Fahrzeuge mit status='kalkulation_erstellt' hinzugefügt`);
+                } catch (fahrzeugeError) {
+                    console.warn('⚠️ Fahrzeuge-Query fehlgeschlagen:', fahrzeugeError);
+                }
+
+                console.log(`✅ ${offeneEntwuerfe.length} offene Entwürfe geladen (inkl. Fahrzeuge mit Kalkulation)`);
 
                 // Populate dropdown
                 const dropdown = document.getElementById('entwurfDropdown');
@@ -5430,6 +5459,19 @@
                 });
 
                 console.log('✅ Entwurf-Status aktualisiert (Email + Status update komplett)');
+
+                // 🆕 Pipeline-Optimierung (2025-12-08): Wenn Quelle 'fahrzeuge' ist, auch dort Status aktualisieren
+                if (currentEntwurf?.source === 'fahrzeuge') {
+                    try {
+                        await window.getCollection('fahrzeuge').doc(currentEntwurfId).update({
+                            status: 'kva_gesendet',
+                            kvaGesendetAm: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        console.log('✅ Fahrzeug-Status auf "kva_gesendet" aktualisiert:', currentEntwurfId);
+                    } catch (fahrzeugError) {
+                        console.warn('⚠️ Fahrzeug-Status-Update fehlgeschlagen:', fahrzeugError);
+                    }
+                }
 
                 // 🗄️ Step 5b: Speichere Kalkulations-Daten in zentrale Datenbanken (für Automatisierung & Preisvorschläge)
                 console.log('🗄️ Step 5b: Speichere Kalkulations-Daten in zentrale DBs...');

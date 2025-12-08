@@ -3,7 +3,7 @@
  *
  * Testet den kompletten Werkstatt-Workflow:
  * - Fahrzeug-Annahme → fahrzeuge_{werkstattId}
- * - Status-Übergänge (angenommen → in_arbeit → fertig → abgeholt)
+ * - Status-Übergänge (neu → in_arbeit → fertig → abgeholt)
  * - Kanban-Board Aktualisierung
  * - Abnahme → Rechnung automatisch erstellen
  *
@@ -58,14 +58,14 @@ test.describe('E2E: Werkstatt Workflow', () => {
     expect(vehicleData.kennzeichen).toBe(testKennzeichen);
     expect(vehicleData.kundenname).toBe(testKundenname);
     expect(vehicleData.serviceTyp).toBe('lackier');
-    expect(vehicleData.status).toBe('angenommen');
-    expect(vehicleData.prozessStatus).toBe('angenommen');
+    expect(vehicleData.status).toBe('neu');
+    expect(vehicleData.prozessStatus).toBe('neu');
     expect(vehicleData.werkstattId).toBe('mosbach');
     expect(vehicleData.annahmeDatum).toBeTruthy();
     expect(vehicleData.erstelltAm).toBeTruthy();
   });
 
-  test('E2E-W2: Status-Übergang: angenommen → in_arbeit', async ({ page }) => {
+  test('E2E-W2: Status-Übergang: neu → in_arbeit', async ({ page }) => {
     // Setup: Create vehicle
     await createVehicleDirectly(page, {
       kennzeichen: testKennzeichen,
@@ -98,7 +98,7 @@ test.describe('E2E: Werkstatt Workflow', () => {
     expect(vehicleData.prozessStatus).toBe('fertig');
   });
 
-  test('E2E-W4: Kompletter Workflow: angenommen → in_arbeit → fertig → abgeholt', async ({ page }) => {
+  test('E2E-W4: Kompletter Workflow: neu → in_arbeit → fertig → abgeholt', async ({ page }) => {
     // Setup: Create vehicle
     await createVehicleDirectly(page, {
       kennzeichen: testKennzeichen,

@@ -418,6 +418,82 @@
             color: var(--color-primary);
         }
 
+        /* 🔧 2025-12-07: Kapazitäts-Bar */
+        .capacity-bar {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            padding: var(--space-3) var(--space-4);
+            margin-bottom: var(--space-4);
+        }
+
+        .capacity-bar-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-2);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .capacity-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+        }
+
+        .capacity-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: var(--space-2) var(--space-3);
+            border-radius: var(--radius-lg);
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .capacity-item .service-icon {
+            font-size: 14px;
+        }
+
+        .capacity-item .usage {
+            font-weight: 700;
+        }
+
+        /* Farbcodierung: Grün <80%, Gelb 80-100%, Rot >100% */
+        .capacity-item.status-green {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+            color: #16a34a;
+        }
+
+        .capacity-item.status-yellow {
+            background: rgba(234, 179, 8, 0.15);
+            border-color: rgba(234, 179, 8, 0.4);
+            color: #ca8a04;
+        }
+
+        .capacity-item.status-red {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #dc2626;
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .capacity-percent {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-left: 2px;
+        }
+
         /* Service Colors */
         .service-lackier { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
         .service-mechanik { background: rgba(59, 130, 246, 0.15); color: #2563eb; }
@@ -1327,6 +1403,22 @@
         </div>
     </div>
 
+    <!-- 🔧 2025-12-07: Kapazitäts-Bar -->
+    <div class="capacity-bar" id="capacityBar">
+        <div class="capacity-bar-title">
+            <span>📊</span>
+            <span>Kapazitätsauslastung für <strong id="capacityDate">heute</strong>:</span>
+        </div>
+        <div class="capacity-items" id="capacityItems">
+            <!-- Wird dynamisch befüllt -->
+            <div class="capacity-item status-green">
+                <span class="service-icon">🎨</span>
+                <span>Lackierung:</span>
+                <span class="usage">-/-</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Container -->
     <div class="main-container">
         <!-- Ungeplant Section -->
@@ -1678,6 +1770,27 @@
         let selectedDate = new Date();
         let hasUnsavedChanges = false;
 
+        // 🔧 2025-12-07: Kapazitäts-Settings
+        let kapazitaetSettings = {
+            lackierung: 15, karosserie: 12, mechanik: 10, glas: 5,
+            reifen: 8, smartRepair: 6, inspektion: 8, aufbereitung: 4,
+            klima: 6, tuning: 3, leihwagen: 10, logistik: 5
+        };
+
+        // Service-Icons und Labels für Kapazitäts-Anzeige
+        const SERVICE_KAPAZITAET_CONFIG = {
+            lackierung:   { icon: '🎨', label: 'Lackierung', queues: ['lackier'] },
+            karosserie:   { icon: '🔧', label: 'Karosserie', queues: ['dellen'] },
+            mechanik:     { icon: '⚙️', label: 'Mechanik', queues: ['mechanik', 'tuev'] },
+            glas:         { icon: '🪟', label: 'Glas', queues: ['glas'] },
+            reifen:       { icon: '🛞', label: 'Reifen', queues: ['reifen'] },
+            smartRepair:  { icon: '✨', label: 'Smart Repair', queues: ['pflege'] },
+            inspektion:   { icon: '🔍', label: 'Inspektion', queues: ['versicherung'] },
+            aufbereitung: { icon: '🧹', label: 'Aufbereitung', queues: ['folierung', 'steinschutz', 'werbebeklebung'] },
+            klima:        { icon: '❄️', label: 'Klima', queues: ['klima'] },
+            logistik:     { icon: '🚚', label: 'Logistik', queues: ['abholen', 'liefern', 'leih_bringen', 'leih_abholen'] }
+        };
+
         // ============================================
         // INITIALIZATION
         // ============================================
@@ -1748,9 +1861,15 @@
                     return;
                 }
 
+                // 🔧 2025-12-07: Kapazität laden
+                await loadKapazitaetSettings();
+
                 await loadFahrzeuge();
                 setupDragAndDrop();
                 hideLoading();
+
+                // 🔧 2025-12-07: Kapazitäts-Bar aktualisieren
+                updateCapacityBar();
 
             } catch (error) {
                 console.error('❌ Initialisierungsfehler:', error);
@@ -1771,9 +1890,10 @@
             const collectionName = window.getCollectionName ? window.getCollectionName('fahrzeuge') : `fahrzeuge_${window.werkstattId}`;
 
             try {
-                // Load active vehicles (not abgeschlossen)
+                // Pipeline-Optimierung (2025-12-08): Nur Fahrzeuge mit status='beauftragt' laden
+                // Diese kommen aus Partner-Annahme (meine-anfragen.html/anfrage-detail.html)
                 const snapshot = await db.collection(collectionName)
-                    .where('status', 'not-in', ['abgeschlossen', 'storniert'])
+                    .where('status', '==', 'beauftragt')
                     .get();
 
                 allFahrzeuge = [];
@@ -1836,6 +1956,51 @@
         // DRINGLICHKEIT SCORING
         // ============================================
 
+        // 🆕 Pipeline-Optimierung (2025-12-08): Arbeitszeit aus KVA-Daten berechnen
+        function calculateWorkHours(fahrzeug) {
+            const kalkulation = fahrzeug.kalkulationData || fahrzeug.kalkulation;
+            if (!kalkulation?.positionen && !kalkulation?.arbeitslohn) return 2; // Default 2h
+
+            let totalAW = 0;
+
+            // Positionen aus kalkulationData (neues Format)
+            if (kalkulation.positionen && Array.isArray(kalkulation.positionen)) {
+                totalAW += kalkulation.positionen.reduce((sum, p) => {
+                    return sum + (parseFloat(p.arbeitswerte) || 0);
+                }, 0);
+            }
+
+            // Arbeitslohn-Array (alternatives Format)
+            if (kalkulation.arbeitslohn && Array.isArray(kalkulation.arbeitslohn)) {
+                totalAW += kalkulation.arbeitslohn.reduce((sum, a) => {
+                    return sum + (parseFloat(a.arbeitswerte) || parseFloat(a.aw) || 0);
+                }, 0);
+            }
+
+            // 1 AW = 5 Minuten → Stunden berechnen
+            const hours = (totalAW * 5) / 60;
+            return Math.max(0.5, Math.round(hours * 2) / 2); // Min 0.5h, gerundet auf 0.5h
+        }
+
+        // 🆕 Pipeline-Optimierung (2025-12-08): Zeitslots für Queue berechnen
+        function calculateTimeSlots(queueItems) {
+            const WORK_START = 8;  // 08:00
+            const WORK_END = 17;   // 17:00
+            let currentHour = WORK_START;
+
+            return queueItems.map(f => {
+                const hours = calculateWorkHours(f);
+                const startMinutes = Math.round((currentHour % 1) * 60);
+                const start = `${String(Math.floor(currentHour)).padStart(2, '0')}:${String(startMinutes).padStart(2, '0')}`;
+
+                currentHour += hours;
+                const endMinutes = Math.round((currentHour % 1) * 60);
+                const end = `${String(Math.floor(currentHour)).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+
+                return { ...f, scheduledStart: start, scheduledEnd: end, estimatedHours: hours };
+            });
+        }
+
         function calculateDringlichkeitsScore(fahrzeug) {
             let score = 0;
 
@@ -1863,10 +2028,18 @@
                 score += Math.min(daysWaiting * 3, 30);
             }
 
-            // 3. Quick-Job Bonus (max 20 Punkte)
-            if (['reifen', 'pflege', 'tuev'].includes(fahrzeug.serviceTyp)) {
-                score += 20;
-            }
+            // 3. Arbeitsaufwand-Bonus (max 20 Punkte) - Pipeline-Optimierung
+            const workHours = calculateWorkHours(fahrzeug);
+            if (workHours <= 2) score += 20;      // Schnelle Jobs priorisieren
+            else if (workHours <= 4) score += 10;
+
+            // 4. Service-Typ Bonus (max 15 Punkte) - erweitert
+            const serviceBonus = {
+                'reifen': 15, 'pflege': 15, 'tuev': 15,  // Schnell
+                'glas': 10, 'klima': 10,                  // Mittel
+                'mechanik': 5, 'lackier': 0               // Komplex
+            };
+            score += serviceBonus[fahrzeug.serviceTyp] || 0;
 
             return score;
         }
@@ -2189,6 +2362,7 @@
             hasUnsavedChanges = true;
             renderAll();
             updateStats();
+            updateCapacityBar();  // 🔧 2025-12-07: Kapazitäts-Anzeige aktualisieren
 
             const queueType = LOGISTIK_QUEUES.includes(targetQueue) ? '🚚' : '🔧';
             console.log(`${queueType} ${fahrzeug.kennzeichen} → ${targetQueue} (Position ${fahrzeug.queuePosition})`);
@@ -2215,6 +2389,7 @@
                 sortUngeplant();
                 renderAll();
                 updateStats();
+                updateCapacityBar();  // 🔧 2025-12-07: Kapazitäts-Anzeige aktualisieren
 
                 console.log(`↩️ ${fahrzeug.kennzeichen} zurück zu Ungeplant`);
             }
@@ -2267,6 +2442,17 @@
                     alert('Keine Änderungen zum Speichern.');
                 }
                 return;
+            }
+
+            // 🔧 2025-12-07: Phase 1.3 - Überbukungs-Warnung (Confirm-Dialog, keine Sperre!)
+            const overbookingCheck = checkOverbookingWarning();
+            if (overbookingCheck.isOverbooked) {
+                const userConfirmed = confirm(overbookingCheck.message);
+                if (!userConfirmed) {
+                    console.log('⚠️ Speichern abgebrochen wegen Überbuchung');
+                    return;
+                }
+                console.log('✅ Benutzer hat Überbuchung akzeptiert');
             }
 
             const btn = event.target;
@@ -2342,6 +2528,101 @@
                 btn.disabled = false;
                 btn.innerHTML = '<span>💾</span> Speichern';
             }
+        }
+
+        // ============================================
+        // 🔧 2025-12-07: KAPAZITÄT FUNCTIONS
+        // ============================================
+
+        async function loadKapazitaetSettings() {
+            try {
+                console.log('📊 Lade Kapazitätswerte aus Firestore...');
+                const werkstattId = window.werkstattId || 'mosbach';
+                const settingsRef = firebase.firestore().collection('settings').doc(`settings_${werkstattId}`);
+                const doc = await settingsRef.get();
+
+                if (doc.exists && doc.data().kapazitaet) {
+                    kapazitaetSettings = doc.data().kapazitaet;
+                    console.log('✅ Kapazitätswerte geladen:', kapazitaetSettings);
+                } else {
+                    console.log('⚠️ Keine Kapazitätswerte gefunden, verwende Defaults');
+                }
+            } catch (error) {
+                console.error('❌ Fehler beim Laden der Kapazität:', error);
+            }
+        }
+
+        function updateCapacityBar() {
+            const capacityItemsEl = document.getElementById('capacityItems');
+            const capacityDateEl = document.getElementById('capacityDate');
+
+            if (!capacityItemsEl) return;
+
+            // Datum formatieren
+            const selectedDateStr = document.getElementById('datePicker')?.value;
+            const today = new Date().toISOString().split('T')[0];
+
+            if (selectedDateStr === today) {
+                capacityDateEl.textContent = 'heute';
+            } else {
+                const d = new Date(selectedDateStr);
+                capacityDateEl.textContent = d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+            }
+
+            // HTML für Kapazitäts-Items generieren
+            let html = '';
+            let overbookedServices = [];
+
+            Object.entries(SERVICE_KAPAZITAET_CONFIG).forEach(([serviceKey, config]) => {
+                // Zähle Fahrzeuge in den zugehörigen Queues
+                let count = 0;
+                config.queues.forEach(queue => {
+                    if (queuedFahrzeuge[queue]) {
+                        count += queuedFahrzeuge[queue].length;
+                    }
+                });
+
+                // Maximale Kapazität
+                const maxCapacity = kapazitaetSettings[serviceKey] || 10;
+                const percent = Math.round((count / maxCapacity) * 100);
+
+                // Status-Klasse bestimmen: grün <80%, gelb 80-100%, rot >100%
+                let statusClass = 'status-green';
+                if (percent >= 100) {
+                    statusClass = 'status-red';
+                    overbookedServices.push(config.label);
+                } else if (percent >= 80) {
+                    statusClass = 'status-yellow';
+                }
+
+                html += `
+                    <div class="capacity-item ${statusClass}" title="${config.label}: ${count}/${maxCapacity} (${percent}%)">
+                        <span class="service-icon">${config.icon}</span>
+                        <span>${config.label}:</span>
+                        <span class="usage">${count}/${maxCapacity}</span>
+                        <span class="capacity-percent">(${percent}%)</span>
+                    </div>
+                `;
+            });
+
+            capacityItemsEl.innerHTML = html;
+
+            // Warnung bei Überbuchung speichern (für Phase 1.3)
+            window._overbookedServices = overbookedServices;
+
+            console.log('📊 Kapazitäts-Bar aktualisiert');
+        }
+
+        // Prüft auf Überbuchung und zeigt Warnung (für Phase 1.3)
+        function checkOverbookingWarning() {
+            if (window._overbookedServices && window._overbookedServices.length > 0) {
+                const services = window._overbookedServices.join(', ');
+                return {
+                    isOverbooked: true,
+                    message: `Achtung! Folgende Services sind überbucht: ${services}. Trotzdem speichern?`
+                };
+            }
+            return { isOverbooked: false };
         }
 
         // ============================================

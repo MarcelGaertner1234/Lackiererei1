@@ -277,9 +277,9 @@ async function createVehicleDirectly(page, vehicleData) {
       marke: data.marke || 'Volkswagen',
       modell: data.modell || 'Golf',
 
-      // Status fields
-      status: 'angenommen',
-      prozessStatus: 'angenommen',
+      // Status fields - Pipeline-Optimierung: neu statt angenommen
+      status: 'neu',
+      prozessStatus: 'neu',
 
       // Timestamps - CRITICAL: Use 'createdAt' (not 'erstelltAm') for getAllFahrzeuge() orderBy()
       annahmeDatum: new Date().toISOString(),
