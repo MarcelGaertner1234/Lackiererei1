@@ -2654,7 +2654,7 @@
                     <div style="display:flex; align-items:center; gap:8px; width:100%;">
                         <span class="position">${position}</span>
                         <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'} ${miniIcon}</span>
-                        <span class="${badgeClass}" title="${badgeTitle}" onclick="event.stopPropagation(); showHoursDetails('${fahrzeug.id}')">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
+                        <span class="${badgeClass}" title="${badgeTitle}" onclick="event.stopPropagation(); showHoursDetails('${fahrzeug.id}', '${queueId || ''}')">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
                         <button class="info-btn" onclick="event.stopPropagation(); showDetails('${fahrzeug.id}')" title="Details" style="position:static; opacity:1; margin-left:auto;">ℹ️</button>
                         <button class="remove-btn" onclick="removeFromQueue('${fahrzeug.id}')" title="Entfernen">✕</button>
                     </div>
@@ -4307,76 +4307,117 @@
 
         let currentEditFahrzeugId = null;
 
-        function showHoursDetails(fahrzeugId) {
+        // Helper: Queue-ID zu Label
+        function getQueueLabel(queueType) {
+            const labels = {
+                'abholen': 'Fzg. abholen',
+                'liefern': 'Fzg. liefern',
+                'leih_bringen': 'Leih bringen',
+                'leih_abholen': 'Leih abholen',
+                'lackierung': 'Lackierung',
+                'mechanik': 'Mechanik',
+                'reifen': 'Reifen'
+            };
+            return labels[queueType] || queueType;
+        }
+
+        function showHoursDetails(fahrzeugId, queueType = '') {
             const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
             if (!fahrzeug) return;
 
             currentEditFahrzeugId = fahrzeugId;
 
+            // Logistik-Queues haben Fahrzeit, keine KVA-Daten
+            const logistikQueues = ['abholen', 'liefern', 'leih_bringen', 'leih_abholen'];
+            const isLogistikQueue = queueType && logistikQueues.includes(queueType);
+
             // Titel setzen
+            const queueLabel = isLogistikQueue ? getQueueLabel(queueType) : '';
             document.getElementById('hoursModalTitle').textContent =
-                `Arbeitszeit: ${fahrzeug.kennzeichen || 'Fahrzeug'}`;
+                `Arbeitszeit: ${fahrzeug.kennzeichen || 'Fahrzeug'}${queueLabel ? ` (${queueLabel})` : ''}`;
 
             // Aufschlüsselung erstellen
-            const kvaHours = window.calculateKvaHours ? window.calculateKvaHours(fahrzeug) : null;
             let breakdownHtml = '';
 
-            if (kvaHours && fahrzeug.kalkulationData) {
-                // KVA vorhanden - zeige alle Positionen
-                breakdownHtml = '<div class="hours-breakdown">';
-                breakdownHtml += '<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">✓ Aus KVA berechnet:</div>';
-
-                // Arbeitslohn-Positionen
-                const arbeitslohn = fahrzeug.kalkulationData.arbeitslohn || [];
-                arbeitslohn.forEach(pos => {
-                    const stunden = parseFloat(pos.stunden) || 0;
-                    if (stunden > 0) {
-                        breakdownHtml += `
-                            <div class="hours-breakdown-item">
-                                <span>${pos.art || pos.position || 'Arbeit'}</span>
-                                <span>${stunden.toFixed(1)}h</span>
-                            </div>`;
-                    }
-                });
-
-                // Lackierungs-Positionen
-                const lackierung = fahrzeug.kalkulationData.lackierung || [];
-                lackierung.forEach(pos => {
-                    const stunden = parseFloat(pos.stunden) || 0;
-                    if (stunden > 0) {
-                        breakdownHtml += `
-                            <div class="hours-breakdown-item">
-                                <span>Lackierung: ${pos.bereich || pos.art || ''}</span>
-                                <span>${stunden.toFixed(1)}h</span>
-                            </div>`;
-                    }
-                });
-
-                // Gesamt
-                breakdownHtml += `
-                    <div class="hours-breakdown-item hours-breakdown-total">
-                        <span>GESAMT</span>
-                        <span>${kvaHours.toFixed(1)}h</span>
-                    </div>`;
-                breakdownHtml += '</div>';
-            } else {
-                // Kein KVA - Default erklären
-                const serviceConfig = window.SERVICE_TYPE_CONFIG?.[fahrzeug.serviceTyp] || {};
-                const defaultHours = window.SERVICE_DEFAULT_HOURS?.[fahrzeug.serviceTyp] || 1.0;
+            if (isLogistikQueue) {
+                // Logistik-Queue: Fahrzeit anzeigen
+                const defaultFahrzeit = window.SERVICE_DEFAULT_HOURS?.[queueType] || 1.0;
+                const actualHours = fahrzeug.geschaetzteStunden || defaultFahrzeit;
 
                 breakdownHtml = `
-                    <div class="hours-breakdown" style="background:rgba(107,114,128,0.1);">
-                        <div style="color:#6b7280;font-weight:600;margin-bottom:8px;">
-                            ⚠️ Keine KVA vorhanden - Standard-Schätzwert:
+                    <div class="hours-breakdown" style="background:rgba(59,130,246,0.1);">
+                        <div style="color:#3b82f6;font-weight:600;margin-bottom:8px;">
+                            🚗 Logistik-Aufgabe: ${queueLabel}
                         </div>
                         <div class="hours-breakdown-item">
-                            <span>${serviceConfig.label || fahrzeug.serviceTyp || 'Unbekannt'}</span>
-                            <span>${defaultHours.toFixed(1)}h (Default)</span>
+                            <span>Geschätzte Fahrzeit</span>
+                            <span>${actualHours.toFixed(1)}h</span>
                         </div>
-                        <div style="font-size:12px;color:#9ca3af;margin-top:8px;">
-                            💡 Für genaue Zeiten: KVA/Kalkulation erstellen
+                        <div style="font-size:12px;color:#6b7280;margin-top:8px;">
+                            💡 Zeit für An-/Abfahrt zum Kunden
                         </div>
                     </div>`;
+            } else {
+                // Werkstatt-Queue: KVA-Daten oder Default
+                const kvaHours = window.calculateKvaHours ? window.calculateKvaHours(fahrzeug) : null;
+
+                if (kvaHours && fahrzeug.kalkulationData) {
+                    // KVA vorhanden - zeige alle Positionen
+                    breakdownHtml = '<div class="hours-breakdown">';
+                    breakdownHtml += '<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">✓ Aus KVA berechnet:</div>';
+
+                    // Arbeitslohn-Positionen
+                    const arbeitslohn = fahrzeug.kalkulationData.arbeitslohn || [];
+                    arbeitslohn.forEach(pos => {
+                        const stunden = parseFloat(pos.stunden) || 0;
+                        if (stunden > 0) {
+                            breakdownHtml += `
+                                <div class="hours-breakdown-item">
+                                    <span>${pos.art || pos.position || 'Arbeit'}</span>
+                                    <span>${stunden.toFixed(1)}h</span>
+                                </div>`;
+                        }
+                    });
+
+                    // Lackierungs-Positionen
+                    const lackierung = fahrzeug.kalkulationData.lackierung || [];
+                    lackierung.forEach(pos => {
+                        const stunden = parseFloat(pos.stunden) || 0;
+                        if (stunden > 0) {
+                            breakdownHtml += `
+                                <div class="hours-breakdown-item">
+                                    <span>Lackierung: ${pos.bereich || pos.art || ''}</span>
+                                    <span>${stunden.toFixed(1)}h</span>
+                                </div>`;
+                        }
+                    });
+
+                    // Gesamt
+                    breakdownHtml += `
+                        <div class="hours-breakdown-item hours-breakdown-total">
+                            <span>GESAMT</span>
+                            <span>${kvaHours.toFixed(1)}h</span>
+                        </div>`;
+                    breakdownHtml += '</div>';
+                } else {
+                    // Kein KVA - Default erklären
+                    const serviceConfig = window.SERVICE_TYPE_CONFIG?.[fahrzeug.serviceTyp] || {};
+                    const defaultHours = window.SERVICE_DEFAULT_HOURS?.[fahrzeug.serviceTyp] || 1.0;
+
+                    breakdownHtml = `
+                        <div class="hours-breakdown" style="background:rgba(107,114,128,0.1);">
+                            <div style="color:#6b7280;font-weight:600;margin-bottom:8px;">
+                                ⚠️ Keine KVA vorhanden - Standard-Schätzwert:
+                            </div>
+                            <div class="hours-breakdown-item">
+                                <span>${serviceConfig.label || fahrzeug.serviceTyp || 'Unbekannt'}</span>
+                                <span>${defaultHours.toFixed(1)}h (Default)</span>
+                            </div>
+                            <div style="font-size:12px;color:#9ca3af;margin-top:8px;">
+                                💡 Für genaue Zeiten: KVA/Kalkulation erstellen
+                            </div>
+                        </div>`;
+                }
             }
 
             // Falls manuell überschrieben wurde
@@ -4429,10 +4470,10 @@
                 }
 
                 // Queue-Kapazitäten neu berechnen
-                updateAllQueueCapacities();
+                updateCapacityBar();
 
                 // UI aktualisieren
-                renderAllQueues();
+                renderQueues();
 
                 // Modal schließen
                 closeHoursModal();
