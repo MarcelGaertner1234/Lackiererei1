@@ -2886,6 +2886,29 @@
             ALL_QUEUES.forEach(q => queuedFahrzeuge[q] = []);
 
             allFahrzeuge.forEach(f => {
+                // 📅 NEU: servicePlan Support (2025-12-09)
+                // Wenn Fahrzeug einen servicePlan hat, prüfe ob für diesen Tag ein Service geplant ist
+                if (f.servicePlan && typeof f.servicePlan === 'object') {
+                    let addedToQueue = false;
+                    for (const [serviceType, plannedDate] of Object.entries(f.servicePlan)) {
+                        if (plannedDate === dateStr && queuedFahrzeuge[serviceType] !== undefined) {
+                            // Fahrzeug für diesen Service an diesem Tag eingeplant
+                            queuedFahrzeuge[serviceType].push({
+                                ...f,
+                                // Override für diese Queue
+                                abteilungsQueue: serviceType,
+                                queueDatum: plannedDate
+                            });
+                            addedToQueue = true;
+                        }
+                    }
+                    if (addedToQueue) return; // Mindestens eine Queue gefunden
+
+                    // Prüfe ob irgendein Service für einen anderen Tag geplant ist
+                    const hasAnyPlannedService = Object.values(f.servicePlan).some(d => d);
+                    if (hasAnyPlannedService) return; // Hat Plan für anderen Tag - nicht zu ungeplant
+                }
+
                 // Check if already queued for this date (abteilungsQueue for Service, logistikQueue for Logistik)
                 const queue = f.abteilungsQueue || f.logistikQueue;
                 if (f.queueDatum && queue) {
