@@ -3567,9 +3567,10 @@
                                         || fahrzeug.abholservice
                                         || false;
 
-            // 🆕 FIX 24 (2025-12-09): Auftragsstart berechnen aus Ende minus Leihdauer
+            // 🆕 FIX 24/25 (2025-12-09): Auftragsstart berechnen aus Ende minus Leihdauer
             // Problem: "Abholtermin" und "Geplante Abnahme" zeigten beide das ENDE-Datum!
             // Lösung: Auftragsstart = Ende - Leihdauer (wenn kein explizites abholdatum gesetzt)
+            // FIX 25: Firebase Timestamp richtig konvertieren (war RangeError: Invalid time value)
             let auftragsstart = fahrzeug.abholdatum || fahrzeug.abholDatum || fahrzeug.abholtermin || fahrzeug.anliefertermin || fahrzeug.gewuenschterTermin;
             if (!auftragsstart && fahrzeug.geplantesAbnahmeDatum) {
                 // Berechne Start aus Ende minus Leihdauer
@@ -3577,9 +3578,16 @@
                                 || fahrzeug.kalkulationData?.ersatzfahrzeug?.tage
                                 || 0;
                 if (leihdauer > 0) {
-                    const ende = new Date(fahrzeug.geplantesAbnahmeDatum);
-                    ende.setDate(ende.getDate() - leihdauer);
-                    auftragsstart = ende.toISOString().split('T')[0];
+                    // 🔧 FIX 25: Firebase Timestamp richtig konvertieren
+                    let geplantesEnde = fahrzeug.geplantesAbnahmeDatum;
+                    if (geplantesEnde?.toDate) geplantesEnde = geplantesEnde.toDate(); // Firebase Timestamp
+                    else if (typeof geplantesEnde === 'string') geplantesEnde = new Date(geplantesEnde);
+
+                    const ende = geplantesEnde instanceof Date ? geplantesEnde : new Date(geplantesEnde);
+                    if (!isNaN(ende.getTime())) { // Nur wenn gültiges Datum
+                        ende.setDate(ende.getDate() - leihdauer);
+                        auftragsstart = ende.toISOString().split('T')[0];
+                    }
                 }
             }
             const auftragszeit = fahrzeug.abholzeit || fahrzeug.abholZeit || '';
