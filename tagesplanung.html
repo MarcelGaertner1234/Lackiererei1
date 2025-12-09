@@ -4384,21 +4384,35 @@
 
             if (isLogistikQueue) {
                 // Logistik-Queue: Fahrzeit anzeigen
-                const defaultFahrzeit = window.SERVICE_DEFAULT_HOURS?.[queueType] || 1.0;
-                const actualHours = fahrzeug.geschaetzteStunden || defaultFahrzeit;
+                // Priorität: 1. Maps-Zeit, 2. geschaetzteStunden, 3. Default
+                const mapsZeitMinuten = fahrzeug.logistikDetails?.travelTimeRoundTrip;
+                const defaultFahrzeit = window.SERVICE_DEFAULT_HOURS?.[queueType] || 1.5;
+                const actualHours = mapsZeitMinuten
+                    ? (mapsZeitMinuten / 60)
+                    : (fahrzeug.geschaetzteStunden || defaultFahrzeit);
+
+                // Label und Icon je nach Quelle
+                const istMapsZeit = !!mapsZeitMinuten;
+                const zeitLabel = istMapsZeit ? '🗺️ Google Maps (Hin+Rück)' : '⏱️ Geschätzte Fahrzeit';
+                const bgColor = istMapsZeit ? 'rgba(34,197,94,0.1)' : 'rgba(59,130,246,0.1)';
+                const textColor = istMapsZeit ? '#16a34a' : '#3b82f6';
 
                 breakdownHtml = `
-                    <div class="hours-breakdown" style="background:rgba(59,130,246,0.1);">
-                        <div style="color:#3b82f6;font-weight:600;margin-bottom:8px;">
+                    <div class="hours-breakdown" style="background:${bgColor};">
+                        <div style="color:${textColor};font-weight:600;margin-bottom:8px;">
                             🚗 Logistik-Aufgabe: ${queueLabel}
                         </div>
                         <div class="hours-breakdown-item">
-                            <span>Geschätzte Fahrzeit</span>
+                            <span>${zeitLabel}</span>
                             <span>${actualHours.toFixed(1)}h</span>
                         </div>
+                        ${istMapsZeit ? `
+                        <div style="font-size:12px;color:#16a34a;margin-top:8px;">
+                            ✅ Berechnet: ${Math.round(mapsZeitMinuten)} Min (${(fahrzeug.logistikDetails?.distanceRoundTrip || 0).toFixed(1)} km)
+                        </div>` : `
                         <div style="font-size:12px;color:#6b7280;margin-top:8px;">
-                            💡 Zeit für An-/Abfahrt zum Kunden
-                        </div>
+                            💡 Zeit für An-/Abfahrt zum Kunden (Standardwert)
+                        </div>`}
                     </div>`;
             } else {
                 // Werkstatt-Queue: KVA-Daten oder Default
