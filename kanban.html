@@ -3733,14 +3733,12 @@
                     { id: 'bereit', icon: '✅', label: 'Bereit', color: 'rgba(52, 199, 89, 0.7)' }
                 ]
             },
-            // 🚚 LOGISTIK / BRING-DIENST - Separater Service für Abhol- und Lieferservice
+            // 🚚 LOGISTIK / BRING-DIENST - Konsolidiert: Abhol-Fahrt + Liefer-Fahrt
             logistik: {
                 name: '🚚 Logistik / Bring-Dienst',
                 steps: [
-                    { id: 'fz_abholen', icon: '🚗', label: 'Fahrzeug abholen', color: 'rgba(59, 130, 246, 0.8)' },
-                    { id: 'ersatz_bringen', icon: '🔄', label: 'Ersatzwagen bringen', color: 'rgba(234, 179, 8, 0.8)' },
-                    { id: 'ersatz_abholen', icon: '🔙', label: 'Ersatzwagen abholen', color: 'rgba(249, 115, 22, 0.8)' },
-                    { id: 'fz_liefern', icon: '🏁', label: 'Fahrzeug liefern', color: 'rgba(34, 197, 94, 0.8)' }
+                    { id: 'abhol_fahrt', icon: '🚗', label: 'Abhol-Fahrt', color: 'rgba(59, 130, 246, 0.8)', subInfo: 'Fzg. abholen + Leih bringen' },
+                    { id: 'liefer_fahrt', icon: '🏁', label: 'Liefer-Fahrt', color: 'rgba(34, 197, 94, 0.8)', subInfo: 'Fzg. liefern + Leih abholen' }
                 ]
             }
         };
@@ -3895,15 +3893,13 @@
         }
 
         /**
-         * Bestimmt die Logistik-Spalte für ein Fahrzeug
+         * Bestimmt die Logistik-Spalte für ein Fahrzeug (Konsolidiert: 2 Spalten)
          * @param {Object} fahrzeug - Das Fahrzeug-Objekt
          * @returns {string|null} Spalten-ID oder null wenn nicht im Logistik-Tab
          *
-         * Workflow:
-         * 1. Fahrzeug abholen (fz_abholen) - Wenn abholserviceGewuenscht && noch nicht abgeholt
-         * 2. Ersatzwagen bringen (ersatz_bringen) - Wenn ersatzfahrzeugGewuenscht && noch nicht gebracht
-         * 3. Ersatzwagen abholen (ersatz_abholen) - Wenn Fahrzeug fertig && Ersatz gebracht && noch nicht abgeholt
-         * 4. Fahrzeug liefern (fz_liefern) - Wenn Fahrzeug fertig && noch nicht geliefert
+         * Workflow (konsolidiert):
+         * 1. Abhol-Fahrt (abhol_fahrt) - Fzg. abholen ODER Leih bringen noch offen
+         * 2. Liefer-Fahrt (liefer_fahrt) - Fzg. liefern ODER Leih abholen (wenn Fzg fertig)
          */
         function getLogistikColumn(fahrzeug) {
             const logistik = fahrzeug.logistikStatus || {};
@@ -3915,33 +3911,58 @@
                 return null;
             }
 
-            // 1. Fahrzeug noch nicht abgeholt?
-            if (abholservice && logistik.fzAbholen !== 'erledigt') {
-                return 'fz_abholen';
+            // Abhol-Fahrt: Fzg. abholen ODER Leih bringen noch offen
+            const fzAbholenOffen = abholservice && logistik.fzAbholen !== 'erledigt';
+            const leihBringenOffen = ersatzwagen && logistik.ersatzBringen !== 'erledigt';
+            if (fzAbholenOffen || leihBringenOffen) {
+                return 'abhol_fahrt';
             }
 
-            // 2. Ersatzwagen noch nicht gebracht?
-            if (ersatzwagen && logistik.ersatzBringen !== 'erledigt') {
-                return 'ersatz_bringen';
-            }
-
-            // 3. Fahrzeug fertig, Ersatzwagen abholen?
-            if (ersatzwagen &&
-                logistik.ersatzBringen === 'erledigt' &&
-                logistik.ersatzAbholen !== 'erledigt' &&
-                isFahrzeugFertig(fahrzeug)) {
-                return 'ersatz_abholen';
-            }
-
-            // 4. Fahrzeug liefern? (nur wenn abholservice, sonst holt Kunde selbst ab)
-            if (abholservice &&
-                isFahrzeugFertig(fahrzeug) &&
-                logistik.fzLiefern !== 'erledigt') {
-                return 'fz_liefern';
+            // Liefer-Fahrt: Fzg. liefern ODER Leih abholen noch offen (wenn Fzg fertig)
+            if (isFahrzeugFertig(fahrzeug)) {
+                const fzLiefernOffen = abholservice && logistik.fzLiefern !== 'erledigt';
+                const leihAbholenOffen = ersatzwagen && logistik.ersatzBringen === 'erledigt' && logistik.ersatzAbholen !== 'erledigt';
+                if (fzLiefernOffen || leihAbholenOffen) {
+                    return 'liefer_fahrt';
+                }
             }
 
             // Alles erledigt oder noch in Arbeit
             return null;
+        }
+
+        /**
+         * Gibt die Sub-Tasks für eine Logistik-Spalte zurück
+         * @param {string} column - Spalten-ID (abhol_fahrt oder liefer_fahrt)
+         * @param {Object} fahrzeug - Das Fahrzeug-Objekt
+         * @returns {Array} Array mit Sub-Tasks {label, erledigt}
+         */
+        function getSubTasksForColumn(column, fahrzeug) {
+            const logistik = fahrzeug.logistikStatus || {};
+            const hatLeih = fahrzeug.zugewiesenesLeihfahrzeug || fahrzeug.ersatzfahrzeugGewuenscht;
+            const abholservice = fahrzeug.abholserviceGewuenscht || false;
+
+            if (column === 'abhol_fahrt') {
+                const tasks = [];
+                if (abholservice) {
+                    tasks.push({ label: 'Fzg. abholen', erledigt: logistik.fzAbholen === 'erledigt' });
+                }
+                if (hatLeih) {
+                    tasks.push({ label: 'Leih bringen', erledigt: logistik.ersatzBringen === 'erledigt' });
+                }
+                return tasks;
+            }
+            if (column === 'liefer_fahrt') {
+                const tasks = [];
+                if (abholservice) {
+                    tasks.push({ label: 'Fzg. liefern', erledigt: logistik.fzLiefern === 'erledigt' });
+                }
+                if (hatLeih) {
+                    tasks.push({ label: 'Leih abholen', erledigt: logistik.ersatzAbholen === 'erledigt' });
+                }
+                return tasks;
+            }
+            return [];
         }
 
         /**
@@ -4222,25 +4243,61 @@
          * @returns {string} HTML für den Button
          */
         function renderLogistikAction(fahrzeug, columnId) {
-            // GEÄNDERT 2025-12-07: Öffnet jetzt Foto-Protokoll Modal statt direkt zu markieren
-            const actionMap = {
-                'fz_abholen': { action: 'fzAbholen', label: '📷 Abholen + Protokoll', color: 'rgba(59, 130, 246, 0.8)' },
-                'ersatz_bringen': { action: 'ersatzBringen', label: '📷 Übergabe-Protokoll', color: 'rgba(234, 179, 8, 0.8)' },
-                'ersatz_abholen': { action: 'ersatzAbholen', label: '📷 Rücknahme-Protokoll', color: 'rgba(249, 115, 22, 0.8)' },
-                'fz_liefern': { action: 'fzLiefern', label: '📷 Übergabe-Protokoll', color: 'rgba(34, 197, 94, 0.8)' }
-            };
+            // GEÄNDERT 2025-12-09: Konsolidierte Spalten mit mehreren Sub-Actions
+            const logistik = fahrzeug.logistikStatus || {};
+            const abholservice = fahrzeug.abholserviceGewuenscht || false;
+            const hatLeih = fahrzeug.zugewiesenesLeihfahrzeug || fahrzeug.ersatzfahrzeugGewuenscht;
 
-            const actionInfo = actionMap[columnId];
-            if (!actionInfo) return '';
+            let buttons = '';
 
-            return `
-                <button class="logistik-action-btn"
-                        onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', '${actionInfo.action}')"
-                        style="background: ${actionInfo.color}; color: white; border: none; padding: 8px 16px;
-                               border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; width: 100%;">
-                    ${actionInfo.label}
-                </button>
-            `;
+            if (columnId === 'abhol_fahrt') {
+                // Zeige Buttons für noch nicht erledigte Sub-Tasks
+                if (abholservice && logistik.fzAbholen !== 'erledigt') {
+                    buttons += `
+                        <button class="logistik-action-btn"
+                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'fzAbholen')"
+                                style="background: rgba(59, 130, 246, 0.8); color: white; border: none; padding: 6px 12px;
+                                       border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 4px 0 0; flex: 1;">
+                            🚗 Fzg. abholen
+                        </button>
+                    `;
+                }
+                if (hatLeih && logistik.ersatzBringen !== 'erledigt') {
+                    buttons += `
+                        <button class="logistik-action-btn"
+                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'ersatzBringen')"
+                                style="background: rgba(234, 179, 8, 0.8); color: white; border: none; padding: 6px 12px;
+                                       border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 0 0 0; flex: 1;">
+                            🔄 Leih bringen
+                        </button>
+                    `;
+                }
+            } else if (columnId === 'liefer_fahrt') {
+                if (abholservice && logistik.fzLiefern !== 'erledigt') {
+                    buttons += `
+                        <button class="logistik-action-btn"
+                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'fzLiefern')"
+                                style="background: rgba(34, 197, 94, 0.8); color: white; border: none; padding: 6px 12px;
+                                       border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 4px 0 0; flex: 1;">
+                            🏁 Fzg. liefern
+                        </button>
+                    `;
+                }
+                if (hatLeih && logistik.ersatzAbholen !== 'erledigt') {
+                    buttons += `
+                        <button class="logistik-action-btn"
+                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'ersatzAbholen')"
+                                style="background: rgba(249, 115, 22, 0.8); color: white; border: none; padding: 6px 12px;
+                                       border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 0 0 0; flex: 1;">
+                            🔙 Leih abholen
+                        </button>
+                    `;
+                }
+            }
+
+            if (!buttons) return '';
+
+            return `<div style="display: flex; flex-wrap: wrap; margin-top: 8px;">${buttons}</div>`;
         }
 
         // 🆕 HELPER FUNCTIONS - Multi-Service Status-Tracking (2025-11-13)
@@ -5261,6 +5318,13 @@
                         return logistikColumn === status;
                     });
 
+                    // 🆕 Nach Queue-Position sortieren (aus Tagesplanung)
+                    fahrzeuge.sort((a, b) => {
+                        const posA = a.queuePosition || 999;
+                        const posB = b.queuePosition || 999;
+                        return posA - posB;
+                    });
+
                     // Update Count
                     countEl.textContent = fahrzeuge.length;
 
@@ -5277,6 +5341,7 @@
                         const card = document.createElement('div');
                         card.className = 'kanban-card';
                         card.dataset.id = f.id;
+                        card.style.position = 'relative'; // Für Position-Badge
 
                         // Service-Badge (zeigt den Service an)
                         const serviceTyp = f.serviceTyp || 'lackier';
@@ -5285,7 +5350,34 @@
                         // Abholadresse für Kontext
                         const adresse = f.abholadresse || 'Keine Adresse';
 
+                        // 🆕 Queue-Position Badge (aus Tagesplanung)
+                        const queuePositionBadge = f.queuePosition
+                            ? `<span style="position:absolute;top:8px;right:8px;background:#3b82f6;color:white;font-size:11px;font-weight:bold;padding:2px 8px;border-radius:10px;">#${f.queuePosition}</span>`
+                            : '';
+
+                        // 🆕 Leihfahrzeug Info
+                        const leihfahrzeug = f.zugewiesenesLeihfahrzeug;
+                        const leihfahrzeugInfo = leihfahrzeug
+                            ? `<div style="font-size:11px;color:#f59e0b;margin-top:6px;padding:4px 8px;background:rgba(245,158,11,0.1);border-radius:4px;">🚙 Leihfahrzeug: <strong>${leihfahrzeug}</strong></div>`
+                            : '';
+
+                        // 🆕 Sub-Tasks mit Status
+                        const subTasks = getSubTasksForColumn(status, f);
+                        const subTasksHtml = subTasks.length > 0
+                            ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">
+                                ${subTasks.map(task => `
+                                    <span style="display:inline-block;font-size:10px;padding:2px 6px;border-radius:4px;
+                                        ${task.erledigt
+                                            ? 'background:#d1fae5;color:#065f46;'
+                                            : 'background:#fef3c7;color:#92400e;'}">
+                                        ${task.erledigt ? '✅' : '⬜'} ${task.label}
+                                    </span>
+                                `).join('')}
+                               </div>`
+                            : '';
+
                         card.innerHTML = `
+                            ${queuePositionBadge}
                             <div class="card-service-badge" style="background: rgba(88, 86, 214, 0.15); color: #5856D6; font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;">
                                 ${serviceName}
                             </div>
@@ -5300,11 +5392,16 @@
                                 <span>📍</span> ${adresse}
                             </div>
                             ${f.telefon ? `<div class="card-info"><span>📱</span> <a href="tel:${f.telefon}">${f.telefon}</a></div>` : ''}
+                            ${leihfahrzeugInfo}
+                            ${subTasksHtml}
                             ${renderLogistikAction(f, status)}
                         `;
 
-                        // Klick auf Karte öffnet Detail-Modal
-                        card.addEventListener('click', () => showFahrzeugDetails(f.id));
+                        // Klick auf Karte öffnet Detail-Ansicht in liste.html
+                        const cardClickHandler = () => {
+                            safeNavigate(`liste.html?showDetails=${f.id}`);
+                        };
+                        window.listenerRegistry.registerDOM(card, 'click', cardClickHandler, `Logistik Card Click: ${f.kennzeichen}`);
 
                         container.appendChild(card);
                     });
