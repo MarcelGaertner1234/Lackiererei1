@@ -1059,6 +1059,25 @@
             box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
         }
 
+        /* 📅 Service-Vorplanung: Geplante Tage */
+        .kapazitaet-day.planned {
+            background: var(--color-primary) !important;
+            color: white !important;
+            font-weight: 700;
+            border-color: var(--color-primary);
+        }
+
+        .kapazitaet-day:hover {
+            cursor: pointer;
+            transform: scale(1.08);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1;
+        }
+
+        .kapazitaet-day:active {
+            transform: scale(0.95);
+        }
+
         .kapazitaet-day .day-name {
             font-weight: 600;
             color: var(--color-text-secondary);
@@ -4672,13 +4691,12 @@
                 const werkstattId = window.werkstattId;
                 if (!werkstattId) return [];
 
-                // Woche berechnen: 3 Tage vor und nach dem Datum
+                // 🔧 FIX: 6 Tage VOR bis ZUM Fertigstellungsdatum (nicht ±3 Tage)
                 const startOfWeek = new Date(centerDate);
-                startOfWeek.setDate(startOfWeek.getDate() - 3);
+                startOfWeek.setDate(startOfWeek.getDate() - 6); // 6 Tage vorher
                 startOfWeek.setHours(0, 0, 0, 0);
 
-                const endOfWeek = new Date(centerDate);
-                endOfWeek.setDate(endOfWeek.getDate() + 3);
+                const endOfWeek = new Date(centerDate); // Endet am Fertigstellungsdatum
                 endOfWeek.setHours(23, 59, 59, 999);
 
                 const startStr = startOfWeek.toISOString().split('T')[0];
@@ -4782,17 +4800,16 @@
                 // Kapazitäts-Einstellungen laden (falls noch nicht geladen)
                 await loadKapazitaetSettings();
 
-                const centerDate = new Date(dateValue);
+                const centerDate = new Date(dateValue); // = Fertigstellungsdatum
 
                 // Fahrzeuge für die Woche laden
                 const fahrzeuge = await loadFahrzeugeForWeek(centerDate);
 
-                // Wochendaten berechnen
+                // 🔧 FIX: Wochendaten - 6 Tage VOR bis ZUM Fertigstellungsdatum
                 const startOfWeek = new Date(centerDate);
-                startOfWeek.setDate(startOfWeek.getDate() - 3);
+                startOfWeek.setDate(startOfWeek.getDate() - 6); // 6 Tage vorher
 
-                const endOfWeek = new Date(centerDate);
-                endOfWeek.setDate(endOfWeek.getDate() + 3);
+                const endOfWeek = new Date(centerDate); // Endet am Fertigstellungsdatum
 
                 // Wochen-Label aktualisieren
                 if (wocheLabel) {
@@ -4816,19 +4833,31 @@
                 // Normalisiere Service-Namen (lackierung -> lackier)
                 services = services.map(s => window.normalizeServiceType ? window.normalizeServiceType(s) : s);
 
+                // 🚗 NEU: Abholservice hinzufügen wenn gewünscht
+                const abholserviceGewuenscht = currentEntwurf?.abholserviceGewuenscht ||
+                    document.getElementById('abholserviceGewuenschtJa')?.checked;
+                if (abholserviceGewuenscht && !services.includes('abhol_fahrt')) {
+                    services.unshift('abhol_fahrt'); // Am Anfang einfügen
+                }
+
                 console.log('📊 Services für Kapazitätsvorschau:', services);
+
+                // servicePlan initialisieren falls nicht vorhanden
+                if (!currentEntwurf.servicePlan) {
+                    currentEntwurf.servicePlan = {};
+                }
 
                 // 🔧 NEU: Tabellen-Layout mit Header-Zeile und Service-Zeilen
                 let html = '';
 
-                // 1. Header-Zeile mit Wochentagen
+                // 1. Header-Zeile mit Wochentagen (7 Tage: -6 bis 0)
                 html += `<div class="kapazitaet-header-row">
                     <div class="kapazitaet-header-cell"></div>`; // Leere Zelle für Service-Label-Spalte
 
-                for (let i = -3; i <= 3; i++) {
+                for (let i = -6; i <= 0; i++) {
                     const day = new Date(centerDate);
                     day.setDate(day.getDate() + i);
-                    const isSelected = i === 0;
+                    const isSelected = i === 0; // Fertigstellungsdatum hervorheben
                     const dayName = day.toLocaleDateString('de-DE', { weekday: 'short' });
                     const dayDate = `${day.getDate()}.${day.getMonth() + 1}`;
 
@@ -4839,21 +4868,27 @@
                 }
                 html += `</div>`;
 
-                // 2. Service-Zeilen
+                // 2. Service-Zeilen (klickbar für Vorplanung!)
                 for (const serviceType of services) {
-                    const config = window.SERVICE_TYPE_CONFIG?.[serviceType] || { icon: '🔧', displayName: serviceType };
+                    const config = window.SERVICE_TYPE_CONFIG?.[serviceType] ||
+                        (serviceType === 'abhol_fahrt' ? { icon: '🚗', displayName: 'Abholung' } : { icon: '🔧', displayName: serviceType });
 
                     html += `<div class="kapazitaet-service-row">
                         <div class="service-label">${config.icon || '🔧'} ${config.displayName || serviceType}</div>`;
 
-                    for (let i = -3; i <= 3; i++) {
+                    for (let i = -6; i <= 0; i++) {
                         const day = new Date(centerDate);
                         day.setDate(day.getDate() + i);
+                        const dateStr = day.toISOString().split('T')[0];
 
                         const capacity = calculateDayCapacity(fahrzeuge, day, serviceType);
                         const isSelected = i === 0;
+                        const isPlanned = currentEntwurf.servicePlan[serviceType] === dateStr;
 
-                        html += `<div class="kapazitaet-day status-${capacity.status} ${isSelected ? 'selected' : ''}">
+                        html += `<div class="kapazitaet-day status-${capacity.status} ${isSelected ? 'selected' : ''} ${isPlanned ? 'planned' : ''}"
+                            data-service="${serviceType}"
+                            data-date="${dateStr}"
+                            onclick="selectServiceDay('${serviceType}', '${dateStr}')">
                             ${capacity.count}/${capacity.max}
                         </div>`;
                     }
@@ -4870,6 +4905,33 @@
                 console.error('❌ Kapazitätsvorschau Fehler:', error);
                 previewEl.classList.remove('visible');
             }
+        }
+
+        /**
+         * 📅 Service-Vorplanung: Tag für einen Service auswählen
+         * @param {string} serviceType - Service-Typ (z.B. 'lackier', 'abhol_fahrt')
+         * @param {string} dateStr - Datum im ISO-Format (z.B. '2026-01-05')
+         */
+        function selectServiceDay(serviceType, dateStr) {
+            // servicePlan initialisieren falls nicht vorhanden
+            if (!currentEntwurf.servicePlan) {
+                currentEntwurf.servicePlan = {};
+            }
+
+            // Toggle: Wenn schon ausgewählt, abwählen
+            if (currentEntwurf.servicePlan[serviceType] === dateStr) {
+                delete currentEntwurf.servicePlan[serviceType];
+                console.log(`📅 Service-Plan: ${serviceType} abgewählt`);
+            } else {
+                currentEntwurf.servicePlan[serviceType] = dateStr;
+                console.log(`📅 Service-Plan: ${serviceType} → ${dateStr}`);
+            }
+
+            // UI aktualisieren
+            updateKapazitaetPreview();
+
+            // Zusammenfassung loggen
+            console.log('📅 Aktueller Service-Plan:', currentEntwurf.servicePlan);
         }
 
         /**
@@ -5258,7 +5320,10 @@
                     abholadresse: document.getElementById('abholadresse')?.value || '',
                     abholdatum: document.getElementById('abholdatum')?.value || '',
                     abholzeit: document.getElementById('abholzeit')?.value || '',
-                    abholnotiz: document.getElementById('abholnotiz')?.value || ''
+                    abholnotiz: document.getElementById('abholnotiz')?.value || '',
+
+                    // 📅 Service-Vorplanung (FIX: Dez 09, 2025)
+                    servicePlan: currentEntwurf.servicePlan || {}
                 };
 
                 // 🚗 FIX (2025-11-27): Ersatzfahrzeug-Kosten aus Input-Feldern lesen (nicht neu berechnen!)
@@ -5980,6 +6045,9 @@
                     abholdatum: document.getElementById('abholdatum')?.value || '',
                     abholzeit: document.getElementById('abholzeit')?.value || '',
                     abholnotiz: document.getElementById('abholnotiz')?.value || '',
+
+                    // 📅 Service-Vorplanung (FIX: Dez 09, 2025)
+                    servicePlan: currentEntwurf.servicePlan || {},
 
                     // Metadata
                     angebotErstelltAm: new Date().toISOString(),
