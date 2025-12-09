@@ -3567,23 +3567,28 @@
                                         || fahrzeug.abholservice
                                         || false;
 
-            // 🆕 FIX 13/23 (2025-12-07): Erweiterte Abholtermin-Erkennung
-            // Firebase speichert: abholDatum + abholZeit (getrennt) ODER abholtermin ODER gewuenschterTermin
-            // FIX 23: geplantesAbnahmeDatum hinzugefügt (Screenshot zeigt dass es funktioniert!)
-            const abholterminRaw = fahrzeug.abholtermin
-                                || fahrzeug.abholDatum
-                                || fahrzeug.abholdatum     // lowercase zuerst (aus Partner-Anfrage)
-                                || fahrzeug.geplantesAbnahmeDatum  // 🆕 FIX 23: Funktioniert im Screenshot!
-                                || fahrzeug.gewuenschterTermin
-                                || fahrzeug.serviceDetails?.abholDatum;
-            let abholterminDisplay = 'N/A';
-            if (abholterminRaw) {
-                const abholZeit = fahrzeug.abholZeit || fahrzeug.abholzeit || '';
-                // Wenn abholZeit vorhanden, kombiniere Datum + Zeit
-                if (abholZeit) {
-                    abholterminDisplay = `${formatDate(abholterminRaw)} ${abholZeit}`;
+            // 🆕 FIX 24 (2025-12-09): Auftragsstart berechnen aus Ende minus Leihdauer
+            // Problem: "Abholtermin" und "Geplante Abnahme" zeigten beide das ENDE-Datum!
+            // Lösung: Auftragsstart = Ende - Leihdauer (wenn kein explizites abholdatum gesetzt)
+            let auftragsstart = fahrzeug.abholdatum || fahrzeug.abholDatum || fahrzeug.abholtermin || fahrzeug.anliefertermin || fahrzeug.gewuenschterTermin;
+            if (!auftragsstart && fahrzeug.geplantesAbnahmeDatum) {
+                // Berechne Start aus Ende minus Leihdauer
+                const leihdauer = fahrzeug.kva?.zugewiesenesLeihfahrzeug?.tage
+                                || fahrzeug.kalkulationData?.ersatzfahrzeug?.tage
+                                || 0;
+                if (leihdauer > 0) {
+                    const ende = new Date(fahrzeug.geplantesAbnahmeDatum);
+                    ende.setDate(ende.getDate() - leihdauer);
+                    auftragsstart = ende.toISOString().split('T')[0];
+                }
+            }
+            const auftragszeit = fahrzeug.abholzeit || fahrzeug.abholZeit || '';
+            let auftragsstartDisplay = 'N/A';
+            if (auftragsstart) {
+                if (auftragszeit) {
+                    auftragsstartDisplay = `${formatDate(auftragsstart)}, ${auftragszeit}`;
                 } else {
-                    abholterminDisplay = formatDate(abholterminRaw);
+                    auftragsstartDisplay = formatDate(auftragsstart);
                 }
             }
 
@@ -3672,12 +3677,18 @@
                     <div class="info-section">
                         <h4>Termine</h4>
                         <div class="info-row">
-                            <span class="info-label">Abholtermin:</span>
-                            <span class="info-value">${abholterminDisplay}</span>
+                            <span class="info-label">Auftragsstart:</span>
+                            <span class="info-value">${auftragsstartDisplay}</span>
                         </div>
+                        ${ersatzfahrzeugGewuenscht ? `
                         <div class="info-row">
-                            <span class="info-label">Geplante Abnahme:</span>
-                            <span class="info-value">${formatDate(fahrzeug.geplantesAbnahmeDatum)}</span>
+                            <span class="info-label">Leihfahrzeug-Übergabe:</span>
+                            <span class="info-value">${auftragsstartDisplay}</span>
+                        </div>
+                        ` : ''}
+                        <div class="info-row">
+                            <span class="info-label">Voraussichtliches Ende:</span>
+                            <span class="info-value">${formatDate(fahrzeug.geplantesAbnahmeDatum) || 'N/A'}</span>
                         </div>
                         ${fahrzeug.fertigstellungDatum ? `
                         <div class="info-row">
