@@ -5080,10 +5080,21 @@
                         ${anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum || anfrage.geplantesAbnahmeDatum ? `
                         <div style="margin-top: 8px; padding: 6px 10px; background: #e3f2fd; border-radius: 4px; font-size: 11px; color: #1565c0;">
                             ${(() => {
-                                const startDatumRaw = anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum || anfrage.geplantesAbnahmeDatum;
-                                const startDatum = new Date(startDatumRaw).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+                                // 🔧 FIX v3: Start-Datum berechnen aus Ende minus Leihdauer wenn kein explizites Abholdatum
+                                let startDatumRaw = anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum;
+                                if (!startDatumRaw && anfrage.geplantesAbnahmeDatum) {
+                                    const leihdauer = anfrage.kva?.zugewiesenesLeihfahrzeug?.tage || anfrage.kalkulationData?.ersatzfahrzeug?.tage || 0;
+                                    if (leihdauer > 0) {
+                                        const ende = new Date(anfrage.geplantesAbnahmeDatum);
+                                        ende.setDate(ende.getDate() - leihdauer);
+                                        startDatumRaw = ende.toISOString().split('T')[0];
+                                    } else {
+                                        startDatumRaw = anfrage.geplantesAbnahmeDatum; // Fallback wenn keine Leihdauer
+                                    }
+                                }
+                                const startDatum = startDatumRaw ? new Date(startDatumRaw).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
                                 const startZeit = anfrage.abholzeit || anfrage.kva?.termine?.startzeit || '';
-                                const countdown = getCountdownText(startDatumRaw, startZeit);
+                                const countdown = startDatumRaw ? getCountdownText(startDatumRaw, startZeit) : null;
                                 return `
                                     <div>Auftragsstart: ${startDatum}${startZeit ? ' um ' + startZeit + ' Uhr' : ''}</div>
                                     ${countdown ? '<div style="color: #16a34a; font-weight: 600; margin-top: 2px;">⏱️ ' + countdown + '</div>' : ''}
@@ -5616,8 +5627,16 @@
                         <span class="card-info-label">Leihfahrzeug:</span>
                         <span class="card-info-value">${(() => {
                             const kennzeichen = anfrage.kva?.zugewiesenesLeihfahrzeug?.kennzeichen || anfrage.kalkulationData?.ersatzfahrzeug?.kennzeichen || 'Wird zugewiesen';
-                            // 🔧 FIX v2: EXAKT die gleichen 4 Fallbacks wie beim Countdown (Zeile 5083)!
-                            const uebergabeDatum = anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum || anfrage.geplantesAbnahmeDatum;
+                            // 🔧 FIX v3: Start-Datum berechnen aus Ende minus Leihdauer wenn kein explizites Abholdatum
+                            let uebergabeDatum = anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum;
+                            if (!uebergabeDatum && anfrage.geplantesAbnahmeDatum) {
+                                const leihdauer = anfrage.kva?.zugewiesenesLeihfahrzeug?.tage || anfrage.kalkulationData?.ersatzfahrzeug?.tage || 0;
+                                if (leihdauer > 0) {
+                                    const ende = new Date(anfrage.geplantesAbnahmeDatum);
+                                    ende.setDate(ende.getDate() - leihdauer);
+                                    uebergabeDatum = ende.toISOString().split('T')[0];
+                                }
+                            }
                             const uebergabeZeit = anfrage.abholzeit || '';
                             if (kennzeichen !== 'Wird zugewiesen' && uebergabeDatum) {
                                 const datumStr = new Date(uebergabeDatum).toLocaleDateString('de-DE', {weekday: 'short', day: '2-digit', month: '2-digit'});
