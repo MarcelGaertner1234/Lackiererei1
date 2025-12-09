@@ -556,11 +556,10 @@ window.SERVICE_DEFAULT_HOURS = {
     folierung: 6.0,         // Folierung: 6h (fast ganzer Tag)
     steinschutz: 2.0,       // Steinschutz: 2h
     werbebeklebung: 4.0,    // Werbung: 4h
-    // Logistik-Queues (4)
-    abholen: 1.0,           // Fahrzeug abholen: 1h
-    liefern: 1.0,           // Fahrzeug liefern: 1h
-    leih_bringen: 0.5,      // Leihwagen bringen: 30min
-    leih_abholen: 0.5       // Leihwagen abholen: 30min
+    // Logistik-Queues (2 kombinierte Fahrten)
+    abhol_fahrt: 1.5,       // Abhol-Fahrt (Fzg abholen + Leih bringen): 1.5h Fallback
+    liefer_fahrt: 1.5       // Liefer-Fahrt (Fzg liefern + Leih abholen): 1.5h Fallback
+    // Hinweis: Wird dynamisch via Google Maps berechnet wenn verfügbar
 };
 
 /**
@@ -591,15 +590,12 @@ window.QUEUE_DEPENDENCIES = {
     // Pflege erfordert: Lackierung fertig (wenn vorhanden)
     'pflege': ['lackier'],
 
-    // Liefern erfordert: ALLE Service-Arbeiten fertig
-    'liefern': ['lackier', 'mechanik', 'glas', 'pflege', 'reifen', 'tuev',
-                'klima', 'dellen', 'folierung', 'steinschutz', 'werbebeklebung'],
-
-    // Leihwagen abholen: Nur wenn Fahrzeug geliefert oder fertig
-    'leih_abholen': ['liefern']
+    // Liefer-Fahrt erfordert: ALLE Service-Arbeiten fertig
+    'liefer_fahrt': ['lackier', 'mechanik', 'glas', 'pflege', 'reifen', 'tuev',
+                     'klima', 'dellen', 'folierung', 'steinschutz', 'werbebeklebung']
 
     // Queues OHNE Abhängigkeiten (können jederzeit geplant werden):
-    // abholen, leih_bringen, mechanik, glas, reifen, tuev, klima,
+    // abhol_fahrt, mechanik, glas, reifen, tuev, klima,
     // versicherung, folierung, steinschutz, werbebeklebung, dellen
 };
 
@@ -652,6 +648,35 @@ window.canMoveToQueue = function(fahrzeug, targetQueue) {
     }
 
     return { allowed: true };
+};
+
+/**
+ * Helper: Gibt die Sub-Tasks für eine kombinierte Logistik-Queue zurück
+ *
+ * @param {string} queueId - 'abhol_fahrt' oder 'liefer_fahrt'
+ * @param {Object} fahrzeug - Fahrzeug-Objekt mit zugewiesenesLeihfahrzeug
+ * @returns {string[]} - Array von Sub-Task Labels
+ *
+ * @example
+ * getLogistikSubTasks('abhol_fahrt', { zugewiesenesLeihfahrzeug: 'MOS-L 123' })
+ * // → ['Fzg. abholen', 'Leih bringen']
+ */
+window.getLogistikSubTasks = function(queueId, fahrzeug) {
+    if (queueId === 'abhol_fahrt') {
+        const tasks = ['Fzg. abholen'];
+        if (fahrzeug?.zugewiesenesLeihfahrzeug) {
+            tasks.push('Leih bringen');
+        }
+        return tasks;
+    }
+    if (queueId === 'liefer_fahrt') {
+        const tasks = ['Fzg. liefern'];
+        if (fahrzeug?.zugewiesenesLeihfahrzeug) {
+            tasks.push('Leih abholen');
+        }
+        return tasks;
+    }
+    return [];
 };
 
 /**

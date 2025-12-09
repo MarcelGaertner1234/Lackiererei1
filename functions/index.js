@@ -30,6 +30,7 @@ const rateLimiter = require('./helpers/rate-limiter');
 const openaiApiKey = defineSecret('OPENAI_API_KEY');
 const awsAccessKeyId = defineSecret('AWS_ACCESS_KEY_ID');
 const awsSecretAccessKey = defineSecret('AWS_SECRET_ACCESS_KEY');
+const googleMapsApiKey = defineSecret('GOOGLE_MAPS_API_KEY');
 
 // Helper function: Get and validate AWS SES Client
 function getAWSSESClient() {
@@ -6111,3 +6112,146 @@ exports.notifyExpiringSoonLeihfahrzeugReservations = onSchedule({
     throw error;
   }
 });
+
+// ================================================================================
+// GOOGLE MAPS TRAVEL TIME CALCULATION
+// Calculates driving time from workshop to customer address (round-trip)
+// ================================================================================
+
+exports.calculateTravelTime = functions
+  .region("europe-west3")
+  .runWith({
+    secrets: [googleMapsApiKey],
+    timeoutSeconds: 30,
+    memory: '256MB'
+  })
+  .https.onCall(async (data, context) => {
+    console.log('🚗 [calculateTravelTime] Starting travel time calculation...');
+
+    // Validate authentication
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Login required');
+    }
+
+    const { fahrzeugId, destination } = data;
+    if (!destination) {
+      throw new functions.https.HttpsError('invalid-argument', 'destination (Kundenadresse) required');
+    }
+
+    try {
+      // Get werkstattId from user document
+      const userDoc = await db.collection('users').doc(context.auth.uid).get();
+      const werkstattId = userDoc.data()?.werkstattId || 'mosbach';
+      console.log(`📍 WerkstattId: ${werkstattId}`);
+
+      // Get workshop address from settings
+      const settingsDoc = await db.collection(`einstellungen_${werkstattId}`).doc('config').get();
+      const origin = settingsDoc.data()?.profil?.adresse;
+
+      if (!origin) {
+        console.error('❌ Workshop address not configured');
+        throw new functions.https.HttpsError('failed-precondition', 'Werkstatt-Adresse nicht konfiguriert');
+      }
+
+      console.log(`📍 Origin: ${origin}`);
+      console.log(`📍 Destination: ${destination}`);
+
+      // Check cache first
+      const routeHash = crypto.createHash('sha256')
+        .update(`${origin.toLowerCase()}|${destination.toLowerCase()}`)
+        .digest('hex');
+
+      const cacheRef = db.collection(`routeCache_${werkstattId}`).doc(routeHash);
+      const cached = await cacheRef.get();
+
+      if (cached.exists) {
+        const cacheData = cached.data();
+        const expiresAt = cacheData.expiresAt?.toDate();
+        if (expiresAt && expiresAt > new Date()) {
+          console.log(`✅ Cache hit for route: ${routeHash.substring(0, 8)}`);
+          return {
+            durationMinutes: cacheData.durationMinutes,
+            durationRoundTrip: cacheData.durationMinutes * 2,
+            distanceKm: cacheData.distanceKm,
+            distanceRoundTrip: cacheData.distanceKm * 2,
+            cached: true
+          };
+        }
+      }
+
+      // Call Google Maps Distance Matrix API
+      const apiKey = googleMapsApiKey.value();
+      if (!apiKey) {
+        throw new functions.https.HttpsError('failed-precondition', 'GOOGLE_MAPS_API_KEY nicht konfiguriert');
+      }
+
+      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?` +
+        `origins=${encodeURIComponent(origin)}` +
+        `&destinations=${encodeURIComponent(destination)}` +
+        `&mode=driving` +
+        `&language=de` +
+        `&key=${apiKey}`;
+
+      console.log('🌐 Calling Google Maps API...');
+      const response = await fetch(url);
+      const result = await response.json();
+
+      if (result.status !== 'OK') {
+        console.error('❌ Google Maps API error:', result.status, result.error_message);
+        throw new functions.https.HttpsError('internal', `Google Maps Fehler: ${result.status}`);
+      }
+
+      const element = result.rows?.[0]?.elements?.[0];
+      if (!element || element.status !== 'OK') {
+        console.error('❌ Route not found:', element?.status);
+        throw new functions.https.HttpsError('not-found', 'Route konnte nicht berechnet werden');
+      }
+
+      const durationMinutes = Math.ceil(element.duration.value / 60);
+      const distanceKm = Math.round(element.distance.value / 100) / 10;
+
+      console.log(`✅ Route calculated: ${durationMinutes} min, ${distanceKm} km`);
+
+      // Cache result for 30 days
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await cacheRef.set({
+        routeHash,
+        origin,
+        destination,
+        durationMinutes,
+        distanceKm,
+        calculatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt)
+      });
+
+      // Update fahrzeug document if provided
+      if (fahrzeugId) {
+        const fahrzeugRef = db.collection(`fahrzeuge_${werkstattId}`).doc(fahrzeugId);
+        await fahrzeugRef.update({
+          'logistikDetails.travelTimeMinutes': durationMinutes,
+          'logistikDetails.travelTimeRoundTrip': durationMinutes * 2,
+          'logistikDetails.distanceKm': distanceKm,
+          'logistikDetails.distanceRoundTrip': distanceKm * 2,
+          'logistikDetails.calculatedAt': admin.firestore.FieldValue.serverTimestamp(),
+          'logistikDetails.routeOrigin': origin,
+          'logistikDetails.routeDestination': destination
+        });
+        console.log(`✅ Updated fahrzeug ${fahrzeugId} with travel time`);
+      }
+
+      return {
+        durationMinutes,
+        durationRoundTrip: durationMinutes * 2,
+        distanceKm,
+        distanceRoundTrip: distanceKm * 2,
+        cached: false
+      };
+
+    } catch (error) {
+      console.error('❌ [calculateTravelTime] Error:', error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError('internal', error.message);
+    }
+  });
