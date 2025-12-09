@@ -977,6 +977,31 @@
             gap: 6px;
         }
 
+        /* Multi-Service Layout */
+        .kapazitaet-service-row {
+            margin-bottom: 12px;
+        }
+
+        .kapazitaet-service-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .service-label {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--color-text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .kapazitaet-week-row {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+
         .kapazitaet-day {
             text-align: center;
             padding: 8px 4px;
@@ -4732,28 +4757,51 @@
                     wocheLabel.textContent = `${formatDate(startOfWeek)} - ${formatDate(endOfWeek)}${endOfWeek.getFullYear()}`;
                 }
 
-                // Service-Typ ermitteln (aus aktuellem Entwurf oder Default)
-                const serviceType = currentEntwurf?.service?.toLowerCase() || 'lackierung';
+                // 🔧 FIX: Alle Services aus serviceTyp ermitteln (kann Array sein!)
+                let services = [];
+                if (currentEntwurf?.serviceTyp) {
+                    if (Array.isArray(currentEntwurf.serviceTyp)) {
+                        services = currentEntwurf.serviceTyp;
+                    } else {
+                        services = [currentEntwurf.serviceTyp];
+                    }
+                }
+                // Fallback: service-Feld oder Default
+                if (services.length === 0) {
+                    services = [currentEntwurf?.service?.toLowerCase() || 'lackier'];
+                }
+                // Normalisiere Service-Namen (lackierung -> lackier)
+                services = services.map(s => window.normalizeServiceType ? window.normalizeServiceType(s) : s);
 
-                // HTML für 7 Tage generieren
+                console.log('📊 Services für Kapazitätsvorschau:', services);
+
+                // HTML für jeden Service generieren (Multi-Service Layout)
                 let html = '';
-                for (let i = -3; i <= 3; i++) {
-                    const day = new Date(centerDate);
-                    day.setDate(day.getDate() + i);
+                for (const serviceType of services) {
+                    const config = window.SERVICE_TYPE_CONFIG?.[serviceType] || { icon: '🔧', displayName: serviceType };
 
-                    const capacity = calculateDayCapacity(fahrzeuge, day, serviceType);
-                    const isSelected = i === 0;
+                    html += `<div class="kapazitaet-service-row">
+                        <div class="service-label">${config.icon || '🔧'} ${config.displayName || serviceType}</div>
+                        <div class="kapazitaet-week-row">`;
 
-                    const dayName = day.toLocaleDateString('de-DE', { weekday: 'short' });
-                    const dayDate = `${day.getDate()}.${day.getMonth() + 1}`;
+                    for (let i = -3; i <= 3; i++) {
+                        const day = new Date(centerDate);
+                        day.setDate(day.getDate() + i);
 
-                    html += `
-                        <div class="kapazitaet-day status-${capacity.status} ${isSelected ? 'selected' : ''}">
-                            <div class="day-name">${dayName}</div>
-                            <div class="day-date">${dayDate}</div>
-                            <div class="day-usage">${capacity.count}/${capacity.max}</div>
-                        </div>
-                    `;
+                        const capacity = calculateDayCapacity(fahrzeuge, day, serviceType);
+                        const isSelected = i === 0;
+
+                        const dayDate = `${day.getDate()}.${day.getMonth() + 1}`;
+
+                        html += `
+                            <div class="kapazitaet-day status-${capacity.status} ${isSelected ? 'selected' : ''}">
+                                <div class="day-date">${dayDate}</div>
+                                <div class="day-usage">${capacity.count}/${capacity.max}</div>
+                            </div>
+                        `;
+                    }
+
+                    html += `</div></div>`;
                 }
 
                 weekGrid.innerHTML = html;
