@@ -382,6 +382,47 @@ git add . && git commit -m "type: description" && git push
 
 ---
 
+## Common Gotchas (from Production)
+
+These patterns caused real bugs. Avoid them:
+
+```javascript
+// ❌ Timestamp inconsistency - breaks date comparisons
+storniertAm: new Date().toISOString()  // String!
+
+// ✅ CORRECT - Firestore native timestamp
+storniertAm: firebase.firestore.Timestamp.now()  // Timestamp object
+
+// ❌ Radio button crash - null if nothing selected
+document.querySelector('input[name="x"]:checked').value
+
+// ✅ CORRECT - null-safe with fallback
+document.querySelector('input[name="x"]:checked')?.value || 'default'
+
+// ❌ Deprecated method - will be removed
+text.substr(0, 10)  // substr(start, length)
+
+// ✅ CORRECT - modern method
+text.substring(0, 10)  // substring(start, end) - different semantics!
+
+// ❌ Double-click bug - async operation runs twice
+async function submit() { await saveData(); }
+
+// ✅ CORRECT - disable button during operation
+async function submit() {
+    btn.disabled = true;
+    try { await saveData(); }
+    finally { btn.disabled = false; }
+}
+```
+
+**Key Rules:**
+- Bug screening has ~75% false positive rate - ALWAYS verify in code before fixing
+- `ersatzfahrzeugGewuenscht === true` → `prozessStatus: 'anlieferung'` (not just `abholserviceGewuenscht`)
+- Partner-App cannot read werkstatt settings (permission-denied) - embed `werkstattDaten` in documents
+
+---
+
 ## External Resources
 
 - **GitHub:** https://github.com/MarcelGaertner1234/Lackiererei1
@@ -390,6 +431,6 @@ git add . && git commit -m "type: description" && git push
 
 ---
 
-_Version: 10.0 (Konsolidiert am 2025-12-08)_
+_Version: 10.1 (Updated 2025-12-09)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_
