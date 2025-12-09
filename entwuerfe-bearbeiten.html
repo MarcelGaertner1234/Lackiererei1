@@ -938,6 +938,149 @@
                 padding: var(--space-3);
             }
         }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           📊 KAPAZITÄTSVORSCHAU - Wochenansicht bei Datumsauswahl
+           Zeigt Werkstattkapazität für die Woche um das gewählte Datum
+           ═══════════════════════════════════════════════════════════════════ */
+
+        .kapazitaet-preview {
+            margin-top: 12px;
+            padding: 16px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            display: none;
+        }
+
+        .kapazitaet-preview.visible {
+            display: block;
+            animation: slideInDown 0.3s ease-out;
+        }
+
+        .kapazitaet-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+        }
+
+        .kapazitaet-header strong {
+            color: var(--color-text-primary);
+        }
+
+        .kapazitaet-week {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+        }
+
+        .kapazitaet-day {
+            text-align: center;
+            padding: 8px 4px;
+            border-radius: var(--radius-md);
+            font-size: 11px;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .kapazitaet-day.selected {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+        }
+
+        .kapazitaet-day .day-name {
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            margin-bottom: 2px;
+        }
+
+        .kapazitaet-day .day-date {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--color-text-primary);
+            margin-bottom: 4px;
+        }
+
+        .kapazitaet-day .day-usage {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 4px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Kapazitäts-Status-Farben */
+        .kapazitaet-day.status-green {
+            background: rgba(34, 197, 94, 0.15);
+        }
+        .kapazitaet-day.status-green .day-usage {
+            color: #22c55e;
+        }
+
+        .kapazitaet-day.status-yellow {
+            background: rgba(234, 179, 8, 0.2);
+        }
+        .kapazitaet-day.status-yellow .day-usage {
+            color: #eab308;
+        }
+
+        .kapazitaet-day.status-red {
+            background: rgba(239, 68, 68, 0.2);
+        }
+        .kapazitaet-day.status-red .day-usage {
+            color: #ef4444;
+        }
+
+        /* Light Mode für Kapazitätsvorschau */
+        [data-theme="light"] .kapazitaet-preview {
+            background: #f8fafc;
+            border-color: rgba(0,0,0,0.1);
+        }
+
+        [data-theme="light"] .kapazitaet-day.status-green {
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        [data-theme="light"] .kapazitaet-day.status-yellow {
+            background: rgba(234, 179, 8, 0.15);
+        }
+
+        [data-theme="light"] .kapazitaet-day.status-red {
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        /* Mobile Responsive für Kapazitätsvorschau */
+        @media (max-width: 768px) {
+            .kapazitaet-week {
+                gap: 4px;
+            }
+            .kapazitaet-day {
+                padding: 6px 2px;
+                font-size: 10px;
+            }
+            .kapazitaet-day .day-date {
+                font-size: 11px;
+            }
+            .kapazitaet-day .day-usage {
+                font-size: 9px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .kapazitaet-week {
+                grid-template-columns: repeat(7, 1fr);
+                gap: 2px;
+            }
+            .kapazitaet-day {
+                padding: 4px 1px;
+            }
+            .kapazitaet-day .day-name {
+                font-size: 9px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2201,6 +2344,17 @@
                     <small style="color: var(--color-text-tertiary);">
                         📅 Wann wird das Fahrzeug voraussichtlich fertig sein?
                     </small>
+
+                    <!-- 📊 Kapazitätsvorschau - Wochenansicht (Dec 2025) -->
+                    <div id="kapazitaetPreview" class="kapazitaet-preview">
+                        <div class="kapazitaet-header">
+                            <span>📊</span>
+                            <span>Kapazität für Woche <strong id="kapazitaetWocheLabel"></strong>:</span>
+                        </div>
+                        <div class="kapazitaet-week" id="kapazitaetWeekGrid">
+                            <!-- 7 Tage werden dynamisch generiert -->
+                        </div>
+                    </div>
                 </div>
 
                         </div>
@@ -4234,6 +4388,11 @@
 
                 console.log('✅ Entwurf geladen und Formular ausgefüllt');
 
+                // 📊 Kapazitätsvorschau initial aktualisieren (Dec 2025)
+                if (currentEntwurf.geplantesAbnahmeDatum) {
+                    await updateKapazitaetPreview();
+                }
+
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Entwurfs:', error);
                 showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
@@ -4372,6 +4531,8 @@
                     abnahmeDatum.addEventListener('change', async function() {
                         console.log('📅 Fertigstellungsdatum geändert → Ersatzfahrzeug-Kosten neu berechnen');
                         await berechneErsatzfahrzeugKosten();
+                        // 📊 Kapazitätsvorschau aktualisieren (Dec 2025)
+                        await updateKapazitaetPreview();
                     });
                 }
 
@@ -4385,6 +4546,224 @@
                 }
 
                 console.log('✅ Ersatzfahrzeug Toggle initialisiert (mit Abholdatum + Fertigstellung)');
+            }
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           📊 KAPAZITÄTSVORSCHAU - Funktionen (Dec 2025)
+           Zeigt Werkstattkapazität für die Woche um das gewählte Datum
+           ═══════════════════════════════════════════════════════════════════ */
+
+        // Cache für Kapazitäts-Einstellungen
+        let kapazitaetSettings = null;
+
+        /**
+         * Lädt Kapazitäts-Einstellungen aus Firestore
+         */
+        async function loadKapazitaetSettings() {
+            if (kapazitaetSettings) return kapazitaetSettings;
+
+            try {
+                const werkstattId = window.werkstattId;
+                if (!werkstattId) {
+                    console.warn('⚠️ Kapazität: Keine werkstattId');
+                    return null;
+                }
+
+                const settingsRef = window.db.collection(`einstellungen_${werkstattId}`).doc('config');
+                const doc = await settingsRef.get();
+
+                if (doc.exists && doc.data().kapazitaet) {
+                    kapazitaetSettings = doc.data().kapazitaet;
+                    console.log('📊 Kapazitäts-Einstellungen geladen:', kapazitaetSettings);
+                } else {
+                    // Default-Werte falls keine Einstellungen vorhanden
+                    kapazitaetSettings = {
+                        lackierung: 10,
+                        mechanik: 5,
+                        reifen: 8,
+                        default: 10
+                    };
+                    console.log('📊 Kapazität: Nutze Default-Werte');
+                }
+
+                return kapazitaetSettings;
+            } catch (error) {
+                console.error('❌ Kapazität laden fehlgeschlagen:', error);
+                return null;
+            }
+        }
+
+        /**
+         * Lädt Fahrzeuge für eine Woche (3 Tage vor und nach dem Datum)
+         * @param {Date} centerDate - Das Zentrum der Woche
+         * @returns {Promise<Array>} - Fahrzeuge mit queueDatum in der Woche
+         */
+        async function loadFahrzeugeForWeek(centerDate) {
+            try {
+                const werkstattId = window.werkstattId;
+                if (!werkstattId) return [];
+
+                // Woche berechnen: 3 Tage vor und nach dem Datum
+                const startOfWeek = new Date(centerDate);
+                startOfWeek.setDate(startOfWeek.getDate() - 3);
+                startOfWeek.setHours(0, 0, 0, 0);
+
+                const endOfWeek = new Date(centerDate);
+                endOfWeek.setDate(endOfWeek.getDate() + 3);
+                endOfWeek.setHours(23, 59, 59, 999);
+
+                const startStr = startOfWeek.toISOString().split('T')[0];
+                const endStr = endOfWeek.toISOString().split('T')[0];
+
+                console.log(`📊 Lade Fahrzeuge für Woche: ${startStr} bis ${endStr}`);
+
+                // Fahrzeuge mit queueDatum ODER geplantesAbnahmeDatum in der Woche laden
+                const fahrzeugeRef = window.db.collection(`fahrzeuge_${werkstattId}`);
+
+                // Alle Fahrzeuge laden und client-seitig filtern
+                // (Firestore unterstützt keine OR-Queries über verschiedene Felder)
+                const snapshot = await fahrzeugeRef.get();
+
+                const fahrzeuge = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+
+                    // Datum ermitteln (queueDatum hat Priorität, dann geplantesAbnahmeDatum)
+                    let datumStr = data.queueDatum || data.geplantesAbnahmeDatum;
+
+                    // Firebase Timestamp zu String konvertieren
+                    if (datumStr?.toDate) {
+                        datumStr = datumStr.toDate().toISOString().split('T')[0];
+                    } else if (datumStr instanceof Date) {
+                        datumStr = datumStr.toISOString().split('T')[0];
+                    }
+
+                    // Prüfen ob Datum in der Woche liegt
+                    if (datumStr && datumStr >= startStr && datumStr <= endStr) {
+                        fahrzeuge.push({
+                            ...data,
+                            id: doc.id,
+                            datumStr: datumStr
+                        });
+                    }
+                });
+
+                console.log(`📊 ${fahrzeuge.length} Fahrzeuge in der Woche gefunden`);
+                return fahrzeuge;
+
+            } catch (error) {
+                console.error('❌ Fahrzeuge für Woche laden fehlgeschlagen:', error);
+                return [];
+            }
+        }
+
+        /**
+         * Berechnet Kapazität für einen Tag
+         * @param {Array} fahrzeuge - Alle Fahrzeuge der Woche
+         * @param {Date} date - Der Tag
+         * @param {string} serviceType - Service-Typ (z.B. 'lackierung')
+         * @returns {{count: number, max: number, percent: number, status: string}}
+         */
+        function calculateDayCapacity(fahrzeuge, date, serviceType = 'lackierung') {
+            const dateStr = date.toISOString().split('T')[0];
+
+            // Fahrzeuge für diesen Tag zählen
+            const count = fahrzeuge.filter(f => f.datumStr === dateStr).length;
+
+            // Max-Kapazität aus Einstellungen
+            const max = kapazitaetSettings?.[serviceType] || kapazitaetSettings?.default || 10;
+
+            // Prozent berechnen
+            const percent = Math.round((count / max) * 100);
+
+            // Status bestimmen
+            let status = 'green';
+            if (percent >= 100) {
+                status = 'red';
+            } else if (percent >= 80) {
+                status = 'yellow';
+            }
+
+            return { count, max, percent, status };
+        }
+
+        /**
+         * Aktualisiert die Kapazitätsvorschau basierend auf dem gewählten Datum
+         */
+        async function updateKapazitaetPreview() {
+            const previewEl = document.getElementById('kapazitaetPreview');
+            const weekGrid = document.getElementById('kapazitaetWeekGrid');
+            const wocheLabel = document.getElementById('kapazitaetWocheLabel');
+
+            if (!previewEl || !weekGrid) {
+                console.warn('⚠️ Kapazitätsvorschau: UI-Elemente nicht gefunden');
+                return;
+            }
+
+            // Datum aus Input holen
+            const dateValue = document.getElementById('geplantesAbnahmeDatum')?.value;
+            if (!dateValue) {
+                previewEl.classList.remove('visible');
+                return;
+            }
+
+            console.log('📊 Kapazitätsvorschau aktualisieren für:', dateValue);
+
+            try {
+                // Kapazitäts-Einstellungen laden (falls noch nicht geladen)
+                await loadKapazitaetSettings();
+
+                const centerDate = new Date(dateValue);
+
+                // Fahrzeuge für die Woche laden
+                const fahrzeuge = await loadFahrzeugeForWeek(centerDate);
+
+                // Wochendaten berechnen
+                const startOfWeek = new Date(centerDate);
+                startOfWeek.setDate(startOfWeek.getDate() - 3);
+
+                const endOfWeek = new Date(centerDate);
+                endOfWeek.setDate(endOfWeek.getDate() + 3);
+
+                // Wochen-Label aktualisieren
+                if (wocheLabel) {
+                    const formatDate = (d) => `${d.getDate()}.${d.getMonth() + 1}.`;
+                    wocheLabel.textContent = `${formatDate(startOfWeek)} - ${formatDate(endOfWeek)}${endOfWeek.getFullYear()}`;
+                }
+
+                // Service-Typ ermitteln (aus aktuellem Entwurf oder Default)
+                const serviceType = currentEntwurf?.service?.toLowerCase() || 'lackierung';
+
+                // HTML für 7 Tage generieren
+                let html = '';
+                for (let i = -3; i <= 3; i++) {
+                    const day = new Date(centerDate);
+                    day.setDate(day.getDate() + i);
+
+                    const capacity = calculateDayCapacity(fahrzeuge, day, serviceType);
+                    const isSelected = i === 0;
+
+                    const dayName = day.toLocaleDateString('de-DE', { weekday: 'short' });
+                    const dayDate = `${day.getDate()}.${day.getMonth() + 1}`;
+
+                    html += `
+                        <div class="kapazitaet-day status-${capacity.status} ${isSelected ? 'selected' : ''}">
+                            <div class="day-name">${dayName}</div>
+                            <div class="day-date">${dayDate}</div>
+                            <div class="day-usage">${capacity.count}/${capacity.max}</div>
+                        </div>
+                    `;
+                }
+
+                weekGrid.innerHTML = html;
+                previewEl.classList.add('visible');
+
+                console.log('✅ Kapazitätsvorschau aktualisiert');
+
+            } catch (error) {
+                console.error('❌ Kapazitätsvorschau Fehler:', error);
+                previewEl.classList.remove('visible');
             }
         }
 
