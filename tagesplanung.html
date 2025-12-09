@@ -1959,6 +1959,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
 
     <!-- App Scripts -->
     <script src="firebase-config.js"></script>
@@ -1994,6 +1995,18 @@
         let selectedDate = new Date();
         let hasUnsavedChanges = false;
 
+        // 🚗 2025-12-09: Firebase Functions für Fahrzeit-Berechnung
+        let functions = null;
+        try {
+            functions = firebase.functions();
+            functions.useEmulator && functions.useEmulator('localhost', 5001); // For local testing
+            // Region setzen (europe-west3)
+            functions = firebase.app().functions('europe-west3');
+            console.log('✅ Firebase Functions initialisiert (europe-west3)');
+        } catch (e) {
+            console.warn('⚠️ Firebase Functions nicht verfügbar:', e.message);
+        }
+
         // 🔧 2025-12-07: Kapazitäts-Settings
         let kapazitaetSettings = {
             lackierung: 15, karosserie: 12, mechanik: 10, glas: 5,
@@ -2012,8 +2025,67 @@
             inspektion:   { icon: '🔍', label: 'Inspektion', queues: ['versicherung'] },
             aufbereitung: { icon: '🧹', label: 'Aufbereitung', queues: ['folierung', 'steinschutz', 'werbebeklebung'] },
             klima:        { icon: '❄️', label: 'Klima', queues: ['klima'] },
-            logistik:     { icon: '🚚', label: 'Logistik', queues: ['abholen', 'liefern', 'leih_bringen', 'leih_abholen'] }
+            logistik:     { icon: '🚚', label: 'Logistik', queues: ['abhol_fahrt', 'liefer_fahrt'] }
         };
+
+        // ============================================
+        // FAHRZEIT-BERECHNUNG (Google Maps)
+        // ============================================
+
+        /**
+         * Berechnet die Fahrzeit für ein Fahrzeug via Google Maps Cloud Function
+         * @param {Object} fahrzeug - Das Fahrzeug-Objekt
+         */
+        async function calculateTravelTimeForFahrzeug(fahrzeug) {
+            if (!functions) {
+                console.warn('⚠️ Firebase Functions nicht verfügbar - nutze Default-Zeiten');
+                return;
+            }
+
+            // Prüfen ob Kundenadresse vorhanden
+            const kundenAdresse = fahrzeug.abholadresse || fahrzeug.kundenadresse;
+            if (!kundenAdresse) {
+                console.warn(`⚠️ ${fahrzeug.kennzeichen}: Keine Kundenadresse für Fahrzeit-Berechnung`);
+                return;
+            }
+
+            console.log(`🗺️ Berechne Fahrzeit für ${fahrzeug.kennzeichen}...`);
+
+            try {
+                const calculateTravelTime = functions.httpsCallable('calculateTravelTime');
+                const result = await calculateTravelTime({
+                    fahrzeugId: fahrzeug.id,
+                    kundenAdresse: kundenAdresse,
+                    werkstattId: window.werkstattId
+                });
+
+                if (result.data) {
+                    // Update lokales Fahrzeug-Objekt
+                    fahrzeug.logistikDetails = {
+                        ...(fahrzeug.logistikDetails || {}),
+                        travelTimeOneWay: result.data.durationMinutes,
+                        travelTimeRoundTrip: result.data.durationRoundTrip,
+                        distanceKm: result.data.distanceKm,
+                        calculatedAt: new Date().toISOString()
+                    };
+
+                    console.log(`✅ ${fahrzeug.kennzeichen}: ${result.data.durationRoundTrip} Min Fahrzeit (${result.data.distanceRoundTrip} km)`);
+
+                    // UI aktualisieren
+                    renderAll();
+                    updateCapacityBar();
+
+                    if (window.toast) {
+                        window.toast.success(`Fahrzeit berechnet: ${Math.round(result.data.durationRoundTrip)} Min`);
+                    }
+                }
+            } catch (error) {
+                console.error(`❌ Fahrzeit-Berechnung fehlgeschlagen für ${fahrzeug.kennzeichen}:`, error);
+                if (window.toast) {
+                    window.toast.warning('Fahrzeit konnte nicht berechnet werden - nutze Standardwert');
+                }
+            }
+        }
 
         // ============================================
         // INITIALIZATION
@@ -2845,6 +2917,11 @@
 
             const queueType = LOGISTIK_QUEUES.includes(targetQueue) ? '🚚' : '🔧';
             console.log(`${queueType} ${fahrzeug.kennzeichen} → ${targetQueue} (Position ${fahrzeug.queuePosition})`);
+
+            // 🗺️ 2025-12-09: Fahrzeit berechnen wenn in Logistik-Queue verschoben
+            if (LOGISTIK_QUEUES.includes(targetQueue) && !fahrzeug.logistikDetails?.travelTimeRoundTrip) {
+                calculateTravelTimeForFahrzeug(fahrzeug);  // Async im Hintergrund
+            }
         }
 
         function removeFromQueue(fahrzeugId) {
