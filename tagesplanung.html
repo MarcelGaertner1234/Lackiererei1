@@ -387,6 +387,50 @@
             opacity: 0.5;
         }
 
+        /* Multi-Service Badges */
+        .service-badges {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+            font-size: 9px;
+        }
+
+        .service-badge {
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+
+        .service-badge.fertig {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .service-badge.offen {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+
+        .finish-service-btn {
+            width: 100%;
+            margin-top: 6px;
+            padding: 4px 8px;
+            background: #dcfce7;
+            border: 1px solid #16a34a;
+            border-radius: 4px;
+            color: #16a34a;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .finish-service-btn:hover {
+            background: #16a34a;
+            color: white;
+        }
+
         .queue-item .position {
             background: var(--color-primary);
             color: white;
@@ -2157,6 +2201,23 @@
                 }
             }
 
+            // 🆕 Multi-Service Badges (2025-12-09)
+            const services = fahrzeug.requiredServices || [fahrzeug.serviceTyp];
+            const serviceStatuses = fahrzeug.serviceStatuses || {};
+            const isMultiService = services.length > 1;
+
+            let multiServiceBadges = '';
+            if (isMultiService) {
+                multiServiceBadges = `<div class="service-badges" style="margin-top:4px;">` +
+                    services.map(s => {
+                        const status = serviceStatuses[s]?.status || 'offen';
+                        const isFertig = status === 'fertig';
+                        const label = window.getServiceLabel ? window.getServiceLabel(s) : s;
+                        return `<span class="service-badge ${isFertig ? 'fertig' : 'offen'}">${isFertig ? '✅' : '⏳'} ${label}</span>`;
+                    }).join('') +
+                    `</div>`;
+            }
+
             return `
                 <div class="fahrzeug-card" draggable="true" data-id="${fahrzeug.id}" data-service="${serviceTyp}"
                      ondragstart="onDragStart(event)">
@@ -2169,6 +2230,7 @@
                         ${deadlineText ? `<span>${deadlineText}</span>` : ''}
                         ${abholInfo}
                     </div>
+                    ${multiServiceBadges}
                 </div>
             `;
         }
@@ -2268,20 +2330,105 @@
             const isAbholung = fahrzeug.abholserviceGewuenscht || fahrzeug.fahrzeugAbholung === 'ja';
             const miniIcon = isAbholung ? '🚗' : '🏠';
 
+            // 🆕 Multi-Service Support (2025-12-09)
+            const services = fahrzeug.requiredServices || [fahrzeug.serviceTyp];
+            const serviceStatuses = fahrzeug.serviceStatuses || {};
+            const currentQueue = queueId || fahrzeug.abteilungsQueue;
+            const isMultiService = services.length > 1;
+
+            // Service-Badges HTML
+            let serviceBadgesHtml = '';
+            if (isMultiService) {
+                serviceBadgesHtml = services.map(s => {
+                    const status = serviceStatuses[s]?.status || 'offen';
+                    const isFertig = status === 'fertig';
+                    const label = window.getServiceLabel ? window.getServiceLabel(s) : s;
+                    return `<span class="service-badge ${isFertig ? 'fertig' : 'offen'}">${isFertig ? '✅' : '⏳'} ${label}</span>`;
+                }).join('');
+            }
+
+            // Fertig-Button nur wenn Service in dieser Queue noch nicht fertig
+            const showFinishBtn = services.includes(currentQueue) &&
+                                  serviceStatuses[currentQueue]?.status !== 'fertig';
+            const finishBtnHtml = showFinishBtn ? `
+                <button class="finish-service-btn" onclick="event.stopPropagation(); finishService('${fahrzeug.id}', '${currentQueue}')">
+                    ✅ ${window.getServiceLabel ? window.getServiceLabel(currentQueue) : currentQueue} fertig
+                </button>
+            ` : '';
+
             return `
                 <div class="queue-item" draggable="true" data-id="${fahrzeug.id}"
                      ondragstart="onDragStart(event)">
-                    <span class="position">${position}</span>
-                    <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'} ${miniIcon}</span>
-                    <span class="${badgeClass}" title="${badgeTitle}" onclick="event.stopPropagation(); showHoursDetails('${fahrzeug.id}')">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
-                    <button class="info-btn" onclick="event.stopPropagation(); showDetails('${fahrzeug.id}')" title="Details" style="position:static; opacity:1; margin-left:auto;">ℹ️</button>
-                    <button class="remove-btn" onclick="removeFromQueue('${fahrzeug.id}')" title="Entfernen">✕</button>
+                    <div style="display:flex; align-items:center; gap:8px; width:100%;">
+                        <span class="position">${position}</span>
+                        <span class="kennzeichen">${fahrzeug.kennzeichen || 'N/A'} ${miniIcon}</span>
+                        <span class="${badgeClass}" title="${badgeTitle}" onclick="event.stopPropagation(); showHoursDetails('${fahrzeug.id}')">${typeof hours === 'number' ? hours.toFixed(1) : hours}h</span>
+                        <button class="info-btn" onclick="event.stopPropagation(); showDetails('${fahrzeug.id}')" title="Details" style="position:static; opacity:1; margin-left:auto;">ℹ️</button>
+                        <button class="remove-btn" onclick="removeFromQueue('${fahrzeug.id}')" title="Entfernen">✕</button>
+                    </div>
+                    ${isMultiService ? `<div class="service-badges">${serviceBadgesHtml}</div>` : ''}
+                    ${finishBtnHtml}
                 </div>
             `;
         }
 
         function capitalizeFirst(str) {
             return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // ============================================
+        // MULTI-SERVICE WORKFLOW (2025-12-09)
+        // ============================================
+
+        async function finishService(fahrzeugId, serviceTyp) {
+            const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
+            if (!fahrzeug) {
+                console.error('Fahrzeug nicht gefunden:', fahrzeugId);
+                return;
+            }
+
+            try {
+                // 1. Service als fertig markieren + Queue-Daten clearen
+                await window.getCollection('fahrzeuge').doc(fahrzeugId).update({
+                    [`serviceStatuses.${serviceTyp}.status`]: 'fertig',
+                    [`serviceStatuses.${serviceTyp}.fertigstellungsDatum`]: new Date().toISOString(),
+                    // Queue-Daten clearen → Fahrzeug geht zurück zu Ungeplant
+                    abteilungsQueue: null,
+                    logistikQueue: null,
+                    queuePosition: null,
+                    queueDatum: null
+                });
+
+                // 2. Prüfe ob ALLE Services fertig sind
+                const services = fahrzeug.requiredServices || [fahrzeug.serviceTyp];
+                const updatedStatuses = { ...fahrzeug.serviceStatuses };
+                updatedStatuses[serviceTyp] = { status: 'fertig' };
+
+                const allFinished = services.every(s =>
+                    updatedStatuses[s]?.status === 'fertig'
+                );
+
+                if (allFinished) {
+                    // Alle fertig → Fahrzeug aus Tagesplanung entfernen (status ändern)
+                    await window.getCollection('fahrzeuge').doc(fahrzeugId).update({
+                        status: 'abholbereit',
+                        prozessStatus: 'fertig',
+                        allServicesCompletedAt: new Date().toISOString()
+                    });
+                    showToast(`🎉 ${fahrzeug.kennzeichen}: Alle Services abgeschlossen!`, 'success');
+                } else {
+                    const remaining = services.filter(s => updatedStatuses[s]?.status !== 'fertig');
+                    const remainingLabels = remaining.map(s => window.getServiceLabel ? window.getServiceLabel(s) : s).join(', ');
+                    showToast(`✅ ${window.getServiceLabel ? window.getServiceLabel(serviceTyp) : serviceTyp} fertig! Noch offen: ${remainingLabels}`, 'success');
+                }
+
+                // 3. UI aktualisieren
+                await loadFahrzeuge();
+
+            } catch (error) {
+                console.error('Fehler beim Fertigstellen:', error);
+                showToast(`❌ Fehler: ${error.message}`, 'error');
+            }
         }
 
         // ============================================
