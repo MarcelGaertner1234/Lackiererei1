@@ -2486,14 +2486,112 @@
         let currentServicePlan = [];
 
         /**
+         * Konvertiert servicePlan-Objekt aus Entwurf zu Array-Format für Tagesplanung
+         * @param {Object} fahrzeug - Fahrzeug mit servicePlan-Objekt
+         * @returns {Array} - Service-Plan im Array-Format
+         */
+        function convertEntwurfServicePlan(fahrzeug) {
+            const plan = [];
+            const servicePlan = fahrzeug.servicePlan;
+            let reihenfolge = 1;
+
+            // Definierte Reihenfolge der Services
+            const serviceOrder = ['abhol_fahrt', 'lackier', 'reifen', 'pflege', 'liefer_fahrt'];
+
+            // Standard-Dauern pro Service (in Minuten)
+            const serviceDurations = {
+                'abhol_fahrt': 45,
+                'lackier': 300, // 5h
+                'reifen': 60,
+                'pflege': 120,
+                'liefer_fahrt': 45
+            };
+
+            // Standard-Labels
+            const serviceLabels = {
+                'abhol_fahrt': '🚗 Fahrzeug abholen',
+                'lackier': '🎨 Lackierung',
+                'reifen': '🛞 Reifen',
+                'pflege': '✨ Pflege',
+                'liefer_fahrt': '🚗 Fahrzeug ausliefern'
+            };
+
+            // Sortiert nach serviceOrder durchgehen
+            for (const serviceType of serviceOrder) {
+                if (servicePlan[serviceType]) {
+                    const datum = servicePlan[serviceType];
+                    plan.push({
+                        id: `sp_${Date.now()}_${reihenfolge}`,
+                        queue: serviceType,
+                        label: serviceLabels[serviceType] || serviceType,
+                        datum: datum,
+                        startzeit: '08:00',
+                        dauer: serviceDurations[serviceType] || 60,
+                        reihenfolge: reihenfolge
+                    });
+                    reihenfolge++;
+                }
+            }
+
+            // Auch andere Services aus servicePlan übernehmen (falls vorhanden)
+            for (const [serviceType, datum] of Object.entries(servicePlan)) {
+                if (!serviceOrder.includes(serviceType)) {
+                    plan.push({
+                        id: `sp_${Date.now()}_${reihenfolge}`,
+                        queue: serviceType,
+                        label: serviceType,
+                        datum: datum,
+                        startzeit: '08:00',
+                        dauer: 60,
+                        reihenfolge: reihenfolge
+                    });
+                    reihenfolge++;
+                }
+            }
+
+            // Nach Datum sortieren
+            plan.sort((a, b) => new Date(a.datum) - new Date(b.datum));
+
+            // Startzeiten berechnen (aufeinanderfolgend pro Tag)
+            let currentTime = '08:00';
+            let lastDate = null;
+            for (const step of plan) {
+                // Bei neuem Tag: Reset auf 08:00
+                if (lastDate && step.datum !== lastDate) {
+                    currentTime = '08:00';
+                }
+                step.startzeit = currentTime;
+                lastDate = step.datum;
+
+                // Nächste Startzeit berechnen
+                const [h, m] = currentTime.split(':').map(Number);
+                const totalMinutes = h * 60 + m + step.dauer;
+                const newH = Math.floor(totalMinutes / 60);
+                const newM = totalMinutes % 60;
+                currentTime = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+            }
+
+            console.log('📅 convertEntwurfServicePlan:', plan);
+            return plan;
+        }
+
+        /**
          * Öffnet das Durchplanen-Modal für ein Fahrzeug
          */
         function openDurchplanenModal(fahrzeug) {
             currentDurchplanenFahrzeug = fahrzeug;
 
-            // Generiere initialen Plan
-            const startDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
-            currentServicePlan = generateServicePlan(fahrzeug, startDate, '08:00');
+            // 🔗 Prüfen ob servicePlan aus Entwurf vorhanden (Objekt-Format)
+            if (fahrzeug.servicePlan && typeof fahrzeug.servicePlan === 'object' &&
+                !Array.isArray(fahrzeug.servicePlan) && Object.keys(fahrzeug.servicePlan).length > 0) {
+                // Konvertiere Objekt → Array und nutze gespeicherte Daten aus Entwurf
+                currentServicePlan = convertEntwurfServicePlan(fahrzeug);
+                console.log('📅 servicePlan aus Entwurf übernommen:', currentServicePlan);
+            } else {
+                // Fallback: Neuen Plan generieren (wenn kein Entwurf-servicePlan vorhanden)
+                const startDate = document.getElementById('datePicker')?.value || new Date().toISOString().split('T')[0];
+                currentServicePlan = generateServicePlan(fahrzeug, startDate, '08:00');
+            }
 
             // Rendere Modal
             renderDurchplanenModal();
