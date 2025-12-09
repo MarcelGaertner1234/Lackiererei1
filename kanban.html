@@ -4188,6 +4188,38 @@
                     updateData.abgeholtVon = userName;
                 }
 
+                // 🆕 QUEUE-RESET (2025-12-09): Bei Logistik-Fahrt komplett → Queue löschen
+                // → Fahrzeug erscheint wieder in Tagesplanung für nächsten Service
+                const logistik = fahrzeug.logistikStatus || {};
+                const abholservice = fahrzeug.abholserviceGewuenscht;
+                const hatLeih = fahrzeug.zugewiesenesLeihfahrzeug || fahrzeug.ersatzfahrzeugGewuenscht;
+
+                // Prüfe ob Abhol-Fahrt komplett ist (fzAbholen + ersatzBringen)
+                if (action === 'fzAbholen' || action === 'ersatzBringen') {
+                    const fzAbholenErledigt = !abholservice || logistik.fzAbholen === 'erledigt' || action === 'fzAbholen';
+                    const leihBringenErledigt = !hatLeih || logistik.ersatzBringen === 'erledigt' || action === 'ersatzBringen';
+
+                    if (fzAbholenErledigt && leihBringenErledigt) {
+                        console.log(`🔄 ${fahrzeug.kennzeichen}: Abhol-Fahrt komplett - Queue-Zuordnung wird gelöscht`);
+                        updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                        updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                        updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                    }
+                }
+
+                // Prüfe ob Liefer-Fahrt komplett ist (fzLiefern + ersatzAbholen)
+                if (action === 'fzLiefern' || action === 'ersatzAbholen') {
+                    const fzLiefernErledigt = !abholservice || logistik.fzLiefern === 'erledigt' || action === 'fzLiefern';
+                    const leihAbholenErledigt = !hatLeih || logistik.ersatzAbholen === 'erledigt' || action === 'ersatzAbholen';
+
+                    if (fzLiefernErledigt && leihAbholenErledigt) {
+                        console.log(`🔄 ${fahrzeug.kennzeichen}: Liefer-Fahrt komplett - Queue-Zuordnung wird gelöscht`);
+                        updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                        updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                        updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                    }
+                }
+
                 await db.collection(collectionName).doc(fahrzeugId).update(updateData);
 
                 closeLogistikPhotoModal();
@@ -7135,6 +7167,17 @@
                     console.log('  ℹ️ Additional Service → NOT updating prozessStatus (only serviceStatuses)');
                 }
                 console.groupEnd();
+
+                // 🆕 QUEUE-RESET (2025-12-09): Bei Fertig-Status Queue-Zuordnung löschen
+                // → Fahrzeug erscheint wieder in Tagesplanung für nächsten Service
+                const FERTIG_STATI = ['fertig', 'bereit', 'abholbereit'];
+                if (FERTIG_STATI.includes(newStatus)) {
+                    console.log(`🔄 ${fahrzeug.kennzeichen}: Service ${currentService} fertig - Queue-Zuordnung wird gelöscht`);
+                    updateData.abteilungsQueue = firebase.firestore.FieldValue.delete();
+                    updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                    updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                    updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                }
 
                 // 🆕 2025-11-11: AUTOMATISCHE RECHNUNGS-ERSTELLUNG bei Status "Fertig"
                 // ✅ CRITICAL FIX (2025-11-13): Nur wenn ALLE Services fertig sind (Multi-Service Support)
