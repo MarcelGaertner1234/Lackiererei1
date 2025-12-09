@@ -6174,6 +6174,8 @@ exports.calculateTravelTime = functions
             durationRoundTrip: cacheData.durationMinutes * 2,
             distanceKm: cacheData.distanceKm,
             distanceRoundTrip: cacheData.distanceKm * 2,
+            origin: cacheData.origin || origin,      // Werkstatt-Adresse
+            destination: cacheData.destination || destination, // Kunden-Adresse
             cached: true
           };
         }
@@ -6244,6 +6246,8 @@ exports.calculateTravelTime = functions
         durationRoundTrip: durationMinutes * 2,
         distanceKm,
         distanceRoundTrip: distanceKm * 2,
+        origin,      // Werkstatt-Adresse
+        destination, // Kunden-Adresse
         cached: false
       };
 
