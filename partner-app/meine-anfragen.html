@@ -7291,6 +7291,16 @@
 
                 console.log('✅ Keine Duplikate gefunden - Fahrzeug kann angelegt werden');
 
+                // 🔧 BUG FIX (2025-12-09): fahrzeugAngelegt Flag IN Transaction setzen
+                // PROBLEM: fahrzeugAngelegt wurde NACH Transaction gesetzt → Bei Fehler wird Flag nicht gesetzt
+                // LÖSUNG: Flag in updateData aufnehmen → Atomic mit Status-Update
+                // → Verhindert Race Condition bei gleichzeitiger Annahme durch Admin
+                updateData.fahrzeugAngelegt = true;
+                updateData.fahrzeugAngelegtAm = new Date().toISOString();
+                updateData.fahrzeugId = dataForFirestore.id;
+                updateData.fahrzeugKennzeichen = dataForFirestore.kennzeichen || anfrage.kennzeichen;
+                console.log('🏷️ fahrzeugAngelegt Flag wird IN Transaction gesetzt (atomic)');
+
                 // 4.3 FIRESTORE TRANSACTION (OPTIMISTIC LOCKING gegen Doppel-Annahme!)
                 // WICHTIG: Transaction statt Batch für automatische Retry + Status-Re-Check!
                 const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
@@ -7578,22 +7588,10 @@
 
                 showToast(`✅ Angebot erfolgreich angenommen!\\n\\nFahrzeug-ID: ${fahrzeugData.id}\\nStatus: Terminiert\\n\\nDas Fahrzeug wurde in den Produktionsprozess übernommen.`, 'success');
 
-                // ✅ FIX: fahrzeugAngelegt Flag setzen (NACH allen Operationen!)
-                // WICHTIG: Wird NACH Fotos UND Success-Message gesetzt → Garantiert dass Fahrzeug komplett fertig ist
-                // Verhindert Realtime Listener Race Condition (Flag-Update triggert Listener während Transaction läuft)
-                console.log('🏷️ Setze fahrzeugAngelegt Flag (FINAL STEP)...');
-                try {
-                    await window.getCollection('partnerAnfragen').doc(anfrageId).update({
-                        fahrzeugAngelegt: true,
-                        fahrzeugAngelegtAm: new Date().toISOString(),
-                        fahrzeugId: fahrzeugData.id,  // Verknüpfung zum Fahrzeug
-                        fahrzeugKennzeichen: fahrzeugData.kennzeichen  // Für schnellere Suche
-                    });
-                    console.log('✅ fahrzeugAngelegt Flag gesetzt → Verhindert doppelte Erstellung in Admin-Portal');
-                } catch (flagError) {
-                    console.error('❌ Konnte fahrzeugAngelegt Flag nicht setzen:', flagError);
-                    console.warn('⚠️ WARNUNG: Admin könnte Fahrzeug nochmal anlegen!');
-                }
+                // 🔧 BUG FIX (2025-12-09): fahrzeugAngelegt wird jetzt IN der Transaction gesetzt (Zeile 7294-7302)
+                // → Kein separates Update mehr nötig, Flag ist atomic mit Status-Update
+                // → Verhindert Race Condition: Wenn Transaction erfolgreich, ist Flag garantiert gesetzt
+                console.log('✅ fahrzeugAngelegt Flag wurde bereits IN Transaction gesetzt (atomic)');
 
                 // 🆕 ENTWURF-SYSTEM: Sende Notification an Admins wenn Entwurf bestätigt wurde
                 if (anfrage.isEntwurf) {
