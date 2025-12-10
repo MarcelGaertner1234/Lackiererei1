@@ -64,8 +64,15 @@ function setWerkstattSession(data) {
  * @returns {Object|null} Werkstatt data or null
  */
 function getWerkstattSession() {
-  const data = sessionStorage.getItem(SESSION_KEY_WERKSTATT);
-  return data ? JSON.parse(data) : null;
+  // 🔧 FIX (2025-12-11): try/catch für JSON.parse (korrupte Session-Daten)
+  try {
+    const data = sessionStorage.getItem(SESSION_KEY_WERKSTATT);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error('❌ Fehler beim Parsen der Werkstatt-Session:', error);
+    sessionStorage.removeItem(SESSION_KEY_WERKSTATT);
+    return null;
+  }
 }
 
 /**
@@ -81,8 +88,15 @@ function setMitarbeiterSession(data) {
  * @returns {Object|null} Mitarbeiter data or null
  */
 function getMitarbeiterSession() {
-  const data = sessionStorage.getItem(SESSION_KEY_MITARBEITER);
-  return data ? JSON.parse(data) : null;
+  // 🔧 FIX (2025-12-11): try/catch für JSON.parse (korrupte Session-Daten)
+  try {
+    const data = sessionStorage.getItem(SESSION_KEY_MITARBEITER);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error('❌ Fehler beim Parsen der Mitarbeiter-Session:', error);
+    sessionStorage.removeItem(SESSION_KEY_MITARBEITER);
+    return null;
+  }
 }
 
 /**

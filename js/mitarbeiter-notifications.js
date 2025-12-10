@@ -26,6 +26,18 @@ class MitarbeiterNotificationManager {
     }
 
     /**
+     * 🔧 FIX (2025-12-11): XSS Protection Helper
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
+    /**
      * Initialize the notification manager
      * Called after Firebase is ready and user is logged in
      */
@@ -190,14 +202,15 @@ class MitarbeiterNotificationManager {
         };
         const icon = priorityIcons[notification.priority] || '🔔';
 
+        // 🔧 FIX (2025-12-11): XSS Protection - escapeHtml für User-Daten
         toast.innerHTML = `
             <div class="notification-toast__icon">${icon}</div>
             <div class="notification-toast__content">
-                <h4 class="notification-toast__title">${notification.title}</h4>
-                <p class="notification-toast__message">${notification.message}</p>
+                <h4 class="notification-toast__title">${this.escapeHtml(notification.title)}</h4>
+                <p class="notification-toast__message">${this.escapeHtml(notification.message)}</p>
                 <span class="notification-toast__time">${this.getTimeAgo(notification.createdAt)}</span>
             </div>
-            <button class="notification-toast__close" onclick="window.mitarbeiterNotifications.closeToast('${notification.id}')">×</button>
+            <button class="notification-toast__close" onclick="window.mitarbeiterNotifications.closeToast('${this.escapeHtml(notification.id)}')">×</button>
         `;
 
         // Add to DOM

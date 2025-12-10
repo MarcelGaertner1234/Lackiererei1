@@ -63,6 +63,14 @@ async function initQuotaDisplay() {
     await fetchAndUpdateQuota();
   }, 5 * 60 * 1000);
 
+  // 🔧 FIX (2025-12-11): Memory Leak Prevention - Cleanup bei Page Leave
+  window.addEventListener('beforeunload', () => {
+    if (window.quotaDisplayState.autoRefreshInterval) {
+      clearInterval(window.quotaDisplayState.autoRefreshInterval);
+      window.quotaDisplayState.autoRefreshInterval = null;
+    }
+  });
+
   console.log('✅ [quota-display] Initialized successfully');
 }
 

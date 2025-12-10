@@ -22,6 +22,14 @@
     let firebaseListener = null;
     let toastQueue = [];
 
+    // 🔧 FIX (2025-12-11): XSS Protection Helper
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
     // ========================================
     // INITIALIZATION
     // ========================================
@@ -247,18 +255,19 @@
 
         const toast = document.createElement('div');
         toast.className = 'global-toast';
+        // 🔧 FIX (2025-12-11): XSS Protection - escapeHtml für User-Daten
         toast.innerHTML = `
             <div class="toast-header">
                 <div class="toast-icon">💬</div>
-                <div class="toast-title">${data.partnerName}</div>
+                <div class="toast-title">${escapeHtml(data.partnerName)}</div>
                 <button class="toast-close" onclick="this.parentElement.parentElement.remove()">×</button>
             </div>
             <div class="toast-body">
-                <div class="toast-subtitle">${data.kennzeichen}</div>
-                <div class="toast-message">${truncateText(data.message, 60)}</div>
+                <div class="toast-subtitle">${escapeHtml(data.kennzeichen)}</div>
+                <div class="toast-message">${escapeHtml(truncateText(data.message, 60))}</div>
             </div>
             <div class="toast-action">
-                <button class="toast-btn" onclick="openChat('${data.anfrageId}')">Antworten</button>
+                <button class="toast-btn" onclick="openChat('${escapeHtml(data.anfrageId)}')">Antworten</button>
             </div>
         `;
 
