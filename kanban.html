@@ -697,6 +697,32 @@
             border: 2px dashed var(--color-primary);
         }
 
+        /* 🆕 VEREINFACHTE SERVICE-BADGES (2025-12-10) */
+        .service-badges-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .simple-service-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(0, 122, 255, 0.15) 0%, rgba(0, 122, 255, 0.08) 100%);
+            color: #007AFF;
+            border: 1px solid rgba(0, 122, 255, 0.2);
+            white-space: nowrap;
+        }
+
+        [data-theme="dark"] .simple-service-badge {
+            background: linear-gradient(135deg, rgba(0, 191, 255, 0.2) 0%, rgba(0, 191, 255, 0.1) 100%);
+            color: #00BFF3;
+            border: 1px solid rgba(0, 191, 255, 0.3);
+        }
+
         /* ===== DARK MODE - Kanban Cards ===== */
 
         [data-theme="dark"] .kanban-card {
@@ -4831,6 +4857,31 @@
             return null;
         }
 
+        /**
+         * 🆕 KANBAN-OPTIMIERUNG (2025-12-10): Geplantes Datum für aktuellen Service finden
+         *
+         * Sucht im servicePlan das geplante Datum für die Queue, in der das Fahrzeug
+         * aktuell eingeplant ist.
+         *
+         * @param {Object} fahrzeug - Das Fahrzeug-Objekt mit servicePlan und abteilungsQueue
+         * @returns {string|null} - Das Datum als 'YYYY-MM-DD' String oder null
+         *
+         * @since 2025-12-10 (Kanban-Karten Optimierung)
+         */
+        function getServicePlanDateForCurrentQueue(fahrzeug) {
+            const plan = fahrzeug.servicePlan;
+            const currentQueue = fahrzeug.abteilungsQueue;
+
+            // Kein Plan oder keine Queue → kein Datum
+            if (!plan || !Array.isArray(plan) || !currentQueue) {
+                return null;
+            }
+
+            // Finde den Step für die aktuelle Queue
+            const step = plan.find(p => p.queue === currentQueue);
+            return step?.datum || null; // 'YYYY-MM-DD' oder null
+        }
+
         // Firebase initialisieren
         // ✅ BUG FIX: Firebase Initialisierung Check korrigiert
         // Problem: initFirebase() gibt nichts zurück → success ist undefined → FALSE
@@ -5819,474 +5870,77 @@
             }
         }
 
+        /**
+         * 🆕 OPTIMIERTE KANBAN-KARTE (2025-12-10)
+         * Vereinfachte Darstellung für Mitarbeiter:
+         * - Service-Badges (nur Namen, kein Status)
+         * - Kennzeichen
+         * - Marke/Modell
+         * - "Auftrag anzeigen" Button
+         * - Dringlichkeits-Farbcodierung basierend auf servicePlan
+         */
         function createKanbanCard(fahrzeug) {
             const card = document.createElement('div');
             card.className = 'kanban-card';
             card.draggable = true;
             card.dataset.id = fahrzeug.id;
 
-            // Spezielle Klasse für "bereit"-Fahrzeuge
-            const isBereit = (fahrzeug.prozessStatus === 'bereit');
-            if (isBereit) {
-                card.classList.add('bereit-zur-abnahme');
-            }
-
-            // 📦 ANLIEFERUNG (2025-11-27): Spezielle Klasse für abzuholende Fahrzeuge
-            const isAnlieferung = (fahrzeug.prozessStatus === 'anlieferung');
-
-            // Preis ermitteln - unterstützt vereinbarterPreis UND KVA-Varianten (Partner Portal)
-            let preisWert = 0;
-            if (fahrzeug.vereinbarterPreis && fahrzeug.vereinbarterPreis > 0) {
-                preisWert = parseFloat(fahrzeug.vereinbarterPreis);
-            } else if (fahrzeug.kva?.varianten && fahrzeug.kva.gewaehlteVariante) {
-                preisWert = parseFloat(fahrzeug.kva.varianten[fahrzeug.kva.gewaehlteVariante]?.gesamt) || 0;
-            } else if (fahrzeug.kva?.varianten?.original) {
-                preisWert = parseFloat(fahrzeug.kva.varianten.original.gesamt) || 0;
-            } else if (fahrzeug.kva?.gesamt) {
-                preisWert = parseFloat(fahrzeug.kva.gesamt) || 0;
-            }
-
-            let preis = preisWert > 0
-                ? `€ ${preisWert.toLocaleString('de-DE', {minimumFractionDigits: 2})}`
-                : '-';
-
-            // 💰 PREISE-BERECHTIGUNG: Preis für Mitarbeiter ohne Berechtigung ausblenden
-            let preisCssClass = 'card-preis';
-            if (typeof window.canViewPrices === 'function' && !window.canViewPrices()) {
-                preis = '━━━━━━';
-                preisCssClass = 'card-preis price-hidden';
-            }
-
-            // Badge für "bereit"-Fahrzeuge
-            const bereitBadge = isBereit
-                ? `<div class="bereit-badge">⚠️ ABNAHME AUSSTEHEND!</div>`
-                : '';
-
-            // Link-Button für "bereit"-Fahrzeuge
-            const bereitButton = isBereit
-                ? `<button class="bereit-button" onclick="event.stopPropagation(); safeNavigate('abnahme.html');">
-                     🎯 Zur Abnahme →
-                   </button>`
-                : '';
-
-            // ✅ FIX Bug #2: Payment-Status Quick Action
-            // Button erscheint NUR wenn: 1) Rechnung existiert UND 2) Noch nicht bezahlt
-            const paymentButton = (fahrzeug.rechnung && fahrzeug.rechnung.zahlungsstatus !== 'bezahlt')
-                ? `<button class="payment-btn"
-                           onclick="event.stopPropagation(); openBezahltModalKanban('${fahrzeug.id}', '${fahrzeug.rechnung.rechnungsnummer}');"
-                           style="width: 100%; margin-top: 8px; padding: 8px 12px;
-                                  background: rgba(76, 175, 80, 0.1);
-                                  border: 1px solid rgba(76, 175, 80, 0.3);
-                                  border-radius: 6px;
-                                  color: #4CAF50;
-                                  font-size: 13px;
-                                  font-weight: 600;
-                                  cursor: pointer;
-                                  transition: all 0.2s;">
-                       💳 Als bezahlt markieren
-                   </button>`
-                : '';
-
-            // 📦 ANLIEFERUNG (2025-11-27): Button für "Fahrzeug abgeholt" Bestätigung
-            const anlieferungButton = isAnlieferung
-                ? `<button class="anlieferung-btn"
-                           onclick="event.stopPropagation(); markFahrzeugAsAbgeholt('${fahrzeug.id}');"
-                           style="width: 100%; margin-top: 8px; padding: 10px 12px;
-                                  background: rgba(0, 188, 212, 0.2);
-                                  border: 2px solid rgba(0, 188, 212, 0.5);
-                                  border-radius: 8px;
-                                  color: #00BCD4;
-                                  font-size: 14px;
-                                  font-weight: 700;
-                                  cursor: pointer;
-                                  transition: all 0.2s;">
-                       ✅ Fahrzeug abgeholt
-                   </button>`
-                : '';
-
-            // DRINGLICHKEITS-BADGE - NUR für Planungs-Phasen (angenommen, terminiert, neu)
-            // Grund: In Arbeits-Phasen (lackierung, trocknung) ist Fortschritt wichtiger als Deadline
-            let dringlichkeitBadge = '';
-            const planungsPhasen = ['angenommen', 'terminiert', 'neu'];
-            const isPlanung = planungsPhasen.includes(fahrzeug.prozessStatus || 'angenommen');
-
-            if (isPlanung && fahrzeug.geplantesAbnahmeDatum) {
-                const tage = calculateDaysUntilAbnahme(fahrzeug);
-
-                if (tage !== null) {
-                    let badgeClass = '';
-                    let badgeIcon = '';
-                    let badgeText = '';
-
-                    if (tage < 0) {
-                        // Überfällig!
-                        badgeClass = 'dringlichkeit-badge ueberfaellig';
-                        badgeIcon = '❌';
-                        badgeText = `ÜBERFÄLLIG! (${Math.abs(tage)} Tage)`;
-                        card.classList.add('ueberfaellig-card');
-                    } else if (tage === 0) {
-                        // HEUTE!
-                        badgeClass = 'dringlichkeit-badge dringend';
-                        badgeIcon = '🚨';
-                        badgeText = 'HEUTE!';
-                        card.classList.add('dringend-card');
-                    } else if (tage === 1) {
-                        // MORGEN!
-                        badgeClass = 'dringlichkeit-badge dringend';
-                        badgeIcon = '🚨';
-                        badgeText = 'MORGEN!';
-                        card.classList.add('dringend-card');
-                    } else if (tage <= 7) {
-                        // Diese Woche
-                        badgeClass = 'dringlichkeit-badge diese-woche';
-                        badgeIcon = '⏰';
-                        badgeText = `In ${tage} Tagen`;
-                    } else {
-                        // Geparkt
-                        badgeClass = 'dringlichkeit-badge geparkt';
-                        badgeIcon = '📦';
-                        badgeText = `Noch ${tage} Tage`;
-                    }
-
-                    dringlichkeitBadge = `<div class="${badgeClass}">${badgeIcon} ${badgeText}</div>`;
-                }
-            }
-
-            // SPEZIELLER BADGE für "bereit"-Fahrzeuge mit überfälligem Abnahme-Termin
-            if (fahrzeug.prozessStatus === 'bereit' && fahrzeug.geplantesAbnahmeDatum) {
-                const tage = calculateDaysUntilAbnahme(fahrzeug);
-                if (tage !== null && tage < 0) {
-                    dringlichkeitBadge = `<div class="dringlichkeit-badge ueberfaellig">
-                        ❌ ABNAHME ÜBERFÄLLIG! (${Math.abs(tage)} Tage)
-                    </div>`;
+            // 🆕 DRINGLICHKEIT basierend auf servicePlan-Datum für aktuelle Queue
+            const plannedDate = getServicePlanDateForCurrentQueue(fahrzeug);
+            if (plannedDate) {
+                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                if (plannedDate < today) {
+                    // Überfällig - Rot
                     card.classList.add('ueberfaellig-card');
+                } else if (plannedDate === today) {
+                    // Heute fällig - Orange
+                    card.classList.add('dringend-card');
                 }
             }
 
-            // 🆕 PRIORITÄTS-BADGE (Tagesplanung 2025-12-06)
-            // Zeigt Queue-Position wenn Fahrzeug in einer Abteilungs-Queue eingeplant ist
-            let prioritaetBadge = '';
-            if (fahrzeug.prioritaet && typeof fahrzeug.prioritaet === 'number') {
-                prioritaetBadge = `<div class="priority-badge" title="Queue-Position #${fahrzeug.prioritaet}">${fahrzeug.prioritaet}</div>`;
+            // Service-Labels Mapping
+            const serviceTypeLabels = {
+                'lackier': '🎨 Lackierung',
+                'reifen': '🛞 Reifen',
+                'mechanik': '🔧 Mechanik',
+                'pflege': '✨ Pflege',
+                'tuev': '✅ TÜV',
+                'versicherung': '🛡️ Versicherung',
+                'glas': '🔍 Glas',
+                'klima': '❄️ Klima',
+                'dellen': '🔨 Dellen',
+                'folierung': '🌈 Folierung',
+                'steinschutz': '🛡️ Steinschutz',
+                'werbebeklebung': '📢 Werbung'
+            };
+
+            // Service-Badges erstellen (OHNE Status-Anzeige)
+            let serviceBadges = '';
+            const primaryService = fahrzeug.serviceTyp || 'lackier';
+            const primaryLabel = serviceTypeLabels[primaryService] || '🔧 Service';
+
+            serviceBadges += `<span class="simple-service-badge">${primaryLabel}</span>`;
+
+            // Additional Services
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                fahrzeug.additionalServices.forEach(addService => {
+                    const serviceTyp = addService.serviceTyp || addService;
+                    const label = serviceTypeLabels[serviceTyp] || '🔧 Service';
+                    serviceBadges += `<span class="simple-service-badge">${label}</span>`;
+                });
             }
 
-            // 🆕 MULTI-SERVICE: Function to build service label with details
-            function buildServiceLabel(serviceTyp, serviceData) {
-                const serviceTypeLabels = {
-                    'lackier': '🎨 Lackierung',
-                    'reifen': '🚗 Reifen',
-                    'mechanik': '🔧 Mechanik',
-                    'pflege': '✨ Pflege',
-                    'tuev': '✅ TÜV',
-                    'versicherung': '🛡️ Versicherung',
-                    'glas': '🔍 Glas',
-                    'klima': '❄️ Klima',
-                    'dellen': '🔨 Dellen',
-                    'folierung': '🌈 Folierung',
-                    'steinschutz': '🛡️ Steinschutz',
-                    'werbebeklebung': '📢 Werbebeklebung'
-                };
-
-                let label = serviceTypeLabels[serviceTyp] || '🔧 Service';
-
-                // Add service-specific details if available
-                if (serviceData) {
-                    switch(serviceTyp) {
-                        case 'reifen':
-                            if (serviceData.reifentyp && serviceData.reifenanzahl) {
-                                const typShort = { sommer: 'S', winter: 'W', ganzjahr: 'G' }[serviceData.reifentyp] || serviceData.reifentyp.charAt(0);
-                                label += ` (${serviceData.reifenanzahl}x ${typShort})`;
-                            }
-                            break;
-                        case 'glas':
-                            if (serviceData.scheibentyp) {
-                                const scheibeShort = serviceData.scheibentyp.includes('front') ? 'Front' :
-                                                   serviceData.scheibentyp.includes('heck') ? 'Heck' :
-                                                   serviceData.scheibentyp.includes('seiten') ? 'Seite' : '';
-                                if (scheibeShort) label += ` (${scheibeShort})`;
-                            }
-                            break;
-                        case 'klima':
-                            if (serviceData.klimaservice) {
-                                const serviceShort = { wartung: 'Wartung', fuellen: 'Auffüllen', reparatur: 'Reparatur', komplett: 'Komplett' }[serviceData.klimaservice];
-                                if (serviceShort) label += ` (${serviceShort})`;
-                            }
-                            break;
-                        case 'dellen':
-                            if (serviceData.dellenanzahl) {
-                                label += ` (${serviceData.dellenanzahl}x)`;
-                            }
-                            break;
-                        case 'folierung':
-                            const folierungArt = serviceData?.folierungArt;
-                            if (folierungArt) {
-                                const artShort = { vollfolierung: 'Voll', teilfolierung: 'Teil', akzentfolierung: 'Akzent', akzente: 'Akzent' }[folierungArt];
-                                if (artShort) label += ` (${artShort})`;
-                            }
-                            break;
-                        case 'steinschutz':
-                            // ⚠️ HINWEIS: Hier NUR steinschutzUmfang (Service-Präfix) verwenden!
-                            // Kanban zeigt nur Fahrzeuge (bereits normalisiert), KEINE Partner-Anfragen
-                            // Fahrzeuge haben immer Service-Präfix-Fields (steinschutzUmfang, folierungArt, etc.)
-                            // Siehe REFERENCE_SERVICE_FIELDS.md:892 für Multi-Service Field-Präfix Pattern
-                            if (serviceData.steinschutzUmfang) {
-                                const umfangShort = { vollverklebung: 'Voll', frontpaket: 'Front', teilbereich: 'Teil' }[serviceData.steinschutzUmfang];
-                                if (umfangShort) label += ` (${umfangShort})`;
-                            }
-                            break;
-                        case 'werbebeklebung':
-                            if (serviceData.werbebeklebungKomplexitaet) {
-                                const artShort = { einfach: 'Einfach', mittel: 'Mittel', komplex: 'Komplex' }[serviceData.werbebeklebungKomplexitaet];
-                                if (artShort) label += ` (${artShort})`;
-                            }
-                            break;
-                    }
-                }
-
-                return label;
-            }
-
-            /**
-             * 🆕 MULTI-SERVICE STATUS-TRACKING (2025-11-13): Build service badges WITH STATUS
-             * Zeigt Primary + Additional Services mit ihren jeweiligen Status-Werten
-             */
-            function buildServiceBadgeWithStatus(fahrzeug) {
-                const primaryServiceTyp = fahrzeug.serviceTyp || 'lackier';
-
-                // Status Label Mapping (Deutsch)
-                const statusLabels = {
-                    'neu': 'Neu',
-                    'angenommen': 'Angenommen',
-                    'terminiert': 'Terminiert',
-                    'vorbereitung': 'Vorbereitung',
-                    'lackierung': 'Lackierung',
-                    'trocknung': 'Trocknung',
-                    'montage': 'Montage',
-                    'qualitaetskontrolle': 'Qualität',
-                    'bereit': 'Bereit',
-                    'fertig': 'Fertig',
-                    'abholbereit': 'Abholbereit',
-                    'in_arbeit': 'In Arbeit',
-                    'wuchten': 'Wuchten',
-                    'reparatur': 'Reparatur',
-                    'aufbereitung': 'Aufbereitung',
-                    'pruefung': 'Prüfung',
-                    'diagnose': 'Diagnose',
-                    'bestellung': 'Bestellung',
-                    'angekommen': 'Angekommen',
-                    'termin': 'Termin',
-                    'termin_gebucht': 'Termin gebucht',
-                    'gutachten': 'Gutachten',
-                    'freigabe': 'Freigabe',
-                    'angebot': 'Angebot',
-                    'beauftragt': 'Beauftragt',
-                    'test': 'Test',
-                    'qualitaet': 'Qualität'
-                };
-
-                // Status Colors (für visuelles Feedback)
-                const statusColors = {
-                    'neu': 'rgba(158, 158, 158, 0.7)',              // Grau
-                    'angenommen': 'rgba(0, 122, 255, 0.7)',         // Blau
-                    'terminiert': 'rgba(0, 122, 255, 0.7)',         // Blau
-                    'vorbereitung': 'rgba(255, 152, 0, 0.7)',       // Orange
-                    'in_arbeit': 'rgba(255, 193, 7, 0.7)',          // Gelb
-                    'lackierung': 'rgba(255, 193, 7, 0.7)',         // Gelb
-                    'trocknung': 'rgba(255, 193, 7, 0.7)',          // Gelb
-                    'montage': 'rgba(255, 193, 7, 0.7)',            // Gelb
-                    'wuchten': 'rgba(255, 193, 7, 0.7)',            // Gelb
-                    'reparatur': 'rgba(255, 193, 7, 0.7)',          // Gelb
-                    'aufbereitung': 'rgba(255, 193, 7, 0.7)',       // Gelb
-                    'pruefung': 'rgba(255, 193, 7, 0.7)',           // Gelb
-                    'diagnose': 'rgba(255, 193, 7, 0.7)',           // Gelb
-                    'bestellung': 'rgba(255, 152, 0, 0.7)',         // Orange
-                    'angekommen': 'rgba(255, 193, 7, 0.7)',         // Gelb
-                    'termin': 'rgba(0, 122, 255, 0.7)',             // Blau
-                    'termin_gebucht': 'rgba(0, 122, 255, 0.7)',     // Blau
-                    'gutachten': 'rgba(255, 193, 7, 0.7)',          // Gelb
-                    'freigabe': 'rgba(255, 193, 7, 0.7)',           // Gelb
-                    'angebot': 'rgba(255, 152, 0, 0.7)',            // Orange
-                    'beauftragt': 'rgba(0, 122, 255, 0.7)',         // Blau
-                    'test': 'rgba(255, 193, 7, 0.7)',               // Gelb
-                    'qualitaetskontrolle': 'rgba(156, 39, 176, 0.7)', // Lila
-                    'qualitaet': 'rgba(156, 39, 176, 0.7)',         // Lila
-                    'bereit': 'rgba(76, 175, 80, 0.7)',             // Grün
-                    'fertig': 'rgba(76, 175, 80, 0.7)',             // Grün
-                    'abholbereit': 'rgba(76, 175, 80, 0.7)'         // Grün
-                };
-
-                let badges = '';
-
-                // 1️⃣ PRIMARY SERVICE Badge mit Status
-                const primaryServiceLabel = buildServiceLabel(primaryServiceTyp, fahrzeug.serviceDetails);
-                const primaryStatus = getServiceStatus(fahrzeug, primaryServiceTyp);
-                const primaryStatusLabel = statusLabels[primaryStatus] || primaryStatus;
-                const primaryStatusColor = statusColors[primaryStatus] || 'rgba(0, 122, 255, 0.7)';
-
-                badges += `
-                    <div class="service-status-badge primary" style="background: ${primaryStatusColor}; backdrop-filter: blur(8px); margin-bottom: 6px; font-size: 10px; padding: 5px 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                        <span style="font-weight: 600;">${primaryServiceLabel}</span>
-                        <span style="opacity: 0.9; font-size: 9px; background: rgba(255, 255, 255, 0.2); padding: 2px 6px; border-radius: 4px;">→ ${primaryStatusLabel}</span>
-                    </div>
-                `;
-
-                // 2️⃣ ADDITIONAL SERVICES Badges mit Status
-                if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices) && fahrzeug.additionalServices.length > 0) {
-                    console.log(`🆕 Multi-Service Card: ${fahrzeug.kennzeichen} has ${fahrzeug.additionalServices.length} additional services`);
-
-                    fahrzeug.additionalServices.forEach(additionalService => {
-                        // 🆕 BUG #1 FIX (Nov 13, 2025): Korrekter Feldname mit Fallback
-                        // Problem: serviceData (alt) vs serviceDetails (neu) → Details fehlten in Card Labels
-                        // Lösung: serviceDetails primär, serviceData fallback für alte Fahrzeuge
-                        const additionalLabel = buildServiceLabel(
-                            additionalService.serviceTyp,
-                            additionalService.serviceDetails || additionalService.serviceData || {}
-                        );
-                        const additionalStatus = getServiceStatus(fahrzeug, additionalService.serviceTyp);
-                        const additionalStatusLabel = statusLabels[additionalStatus] || additionalStatus;
-                        const additionalStatusColor = statusColors[additionalStatus] || 'rgba(100, 60, 255, 0.6)';
-
-                        badges += `
-                            <div class="service-status-badge additional" style="background: ${additionalStatusColor}; backdrop-filter: blur(8px); margin-bottom: 6px; font-size: 10px; padding: 5px 8px; border-radius: 6px; border-left: 3px solid rgba(255, 255, 255, 0.5); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                                <span style="font-weight: 600;">+ ${additionalLabel}</span>
-                                <span style="opacity: 0.9; font-size: 9px; background: rgba(255, 255, 255, 0.2); padding: 2px 6px; border-radius: 4px;">→ ${additionalStatusLabel}</span>
-                            </div>
-                        `;
-                    });
-                }
-
-                return badges;
-            }
-
-            // 🆕 MULTI-SERVICE STATUS-TRACKING (2025-11-13): Use new badge function
-            const serviceTypBadge = buildServiceBadgeWithStatus(fahrzeug);
-
-            // 🆕 FERTIGSTELLUNGS-DROPDOWN (2025-12-02): Multi-Service Koordination
-            const fertigstellungsDropdown = buildFertigstellungsDropdown(fahrzeug);
-
-            // ABHOLUNGS-BADGE - FÜR ALLE PHASEN (außer "bereit" = bereits abholbereit)
-            // Zeigt Abholung in ALLEN Spalten, damit Werkstatt frühzeitig planen kann
-            let abholungBadge = '';
-            const showAbholungBadge = (fahrzeug.prozessStatus !== 'bereit' && fahrzeug.prozessStatus !== 'fertig' && fahrzeug.prozessStatus !== 'abholbereit');
-            if (showAbholungBadge && fahrzeug.fahrzeugAbholung === 'ja') {
-                // ✅ FIX Bug #15 (2025-11-24): Use formatFirestoreDate() for Timestamp compatibility
-                const abholdatumText = fahrzeug.abholdatum
-                    ? formatFirestoreDate(fahrzeug.abholdatum)
-                    : 'Termin offen';
-                const abholzeitText = fahrzeug.abholzeit ? ` um ${fahrzeug.abholzeit} Uhr` : '';
-
-                abholungBadge = `
-                    <div class="dringlichkeit-badge" style="background: rgba(0, 122, 255, 0.7); backdrop-filter: blur(8px); margin-bottom: 8px;">
-                        🚙 ABHOLUNG: ${abholdatumText}${abholzeitText}
-                    </div>
-                `;
-
-                // Abholadresse anzeigen (gekürzt)
-                if (fahrzeug.abholadresse) {
-                    const adresseKurz = fahrzeug.abholadresse.length > 45
-                        ? fahrzeug.abholadresse.substring(0, 45) + '...'
-                        : fahrzeug.abholadresse;
-                    abholungBadge += `
-                        <div class="card-info" style="font-size: 11px; color: #666; margin-bottom: 8px; background: #e3f2fd; padding: 5px 8px; border-radius: 6px;">
-                            📍 ${adresseKurz}
-                        </div>
-                    `;
-                }
-            }
-
-            // 🚗 ERSATZFAHRZEUG-BADGE (FIX 2025-11-27)
-            let ersatzfahrzeugBadge = '';
-            if (fahrzeug.ersatzfahrzeugGewuenscht && fahrzeug.kalkulationData?.ersatzfahrzeug) {
-                const ersatzKennzeichen = fahrzeug.kalkulationData.ersatzfahrzeug.kennzeichen || 'Leihwagen';
-                const ersatzTage = fahrzeug.kalkulationData.ersatzfahrzeug.tage || '';
-
-                ersatzfahrzeugBadge = `
-                    <div class="dringlichkeit-badge" style="background: rgba(245, 158, 11, 0.8); backdrop-filter: blur(8px); margin-bottom: 8px;">
-                        🚗 LEIHFAHRZEUG: ${ersatzKennzeichen}${ersatzTage ? ` (${ersatzTage} Tage)` : ''}
-                    </div>
-                `;
-            }
-
-            // 🆕 Phase 1.3: Bearbeitungs-History Badge
-            // Zeigt letzten Mitarbeiter der den Status geändert hat
-            let bearbeitungsBadge = '';
-            if (fahrzeug.bearbeitungsHistory && fahrzeug.bearbeitungsHistory.length > 0) {
-                // Letzter Eintrag
-                const letzteBearbeitung = fahrzeug.bearbeitungsHistory[fahrzeug.bearbeitungsHistory.length - 1];
-                const mitarbeiterName = letzteBearbeitung.mitarbeiterName || 'Unbekannt';
-
-                // Service-Emojis für Services
-                const serviceEmojis = {
-                    'lackierung': '🎨',
-                    'mechanik': '🔧',
-                    'reifen': '🛞',
-                    'pflege': '✨',
-                    'tuev': '📋',
-                    'versicherung': '📄',
-                    'glas': '🔍',
-                    'klima': '❄️',
-                    'dellen': '🔨',
-                    'folierung': '🎬',
-                    'steinschutz': '🛡️',
-                    'werbebeklebung': '📢'
-                };
-
-                // Services als Emojis
-                const services = letzteBearbeitung.services || [];
-                const serviceIcons = services.length > 0
-                    ? ' ' + services.map(s => serviceEmojis[s] || '').join(' ')
-                    : '';
-
-                bearbeitungsBadge = `
-                    <div class="dringlichkeit-badge" style="background: rgba(76, 175, 80, 0.7); backdrop-filter: blur(8px); margin-bottom: 8px; font-size: 10px; padding: 4px 8px;">
-                        👤 ${mitarbeiterName}${serviceIcons}
-                    </div>
-                `;
-            }
-
-            // 🔧 2025-12-07: Phase 2 - "Nicht eingeplant"-Warnung
-            // Fahrzeug ist eingeplant wenn es abteilungsQueue ODER logistikQueue hat
-            const istEingeplant = !!(fahrzeug.abteilungsQueue || fahrzeug.logistikQueue);
-            let nichtEingeplantBadge = '';
-            if (!istEingeplant) {
-                // Nur Warnung zeigen, KEINE Sperre (flexibles Arbeiten erlaubt)
-                nichtEingeplantBadge = `
-                    <div class="dringlichkeit-badge nicht-eingeplant">
-                        ⚠️ Nicht in Tagesplanung eingeplant
-                    </div>
-                `;
-                // Gelber Rahmen für optische Markierung
-                card.classList.add('nicht-eingeplant-card');
-            }
-
+            // Vereinfachte Karten-Struktur
             card.innerHTML = `
-                ${prioritaetBadge}
-                ${nichtEingeplantBadge}
-                ${serviceTypBadge}
-                ${fertigstellungsDropdown}
-                ${bereitBadge}
-                ${dringlichkeitBadge}
-                ${abholungBadge}
-                ${ersatzfahrzeugBadge}
-                ${bearbeitungsBadge}
-                <div id="materialStatus_${window.escapeHtml(fahrzeug.id)}" class="material-status-badge" style="display: none;"></div>
+                <div class="service-badges-row">${serviceBadges}</div>
                 <div class="card-kennzeichen">${window.escapeHtml(fahrzeug.kennzeichen)}</div>
-                <div class="card-info">👤 <span class="card-kunde">${window.escapeHtml(fahrzeug.kundenname) || 'k.A.'}</span></div>
                 <div class="card-info">🚗 ${window.escapeHtml(fahrzeug.marke) || ''} ${window.escapeHtml(fahrzeug.modell) || ''}</div>
-                ${(fahrzeug.farbnummer || fahrzeug.farbname) ? `<div class="card-info">🎨 ${window.escapeHtml(fahrzeug.farbnummer) || ''} ${fahrzeug.farbnummer && fahrzeug.farbname ? '-' : ''} ${window.escapeHtml(fahrzeug.farbname) || ''}</div>` : ''}
-                <div class="${preisCssClass}">${preis}</div>
                 <button class="auftrag-view-btn" onclick="event.stopPropagation(); openAuftragModal('${fahrzeug.id}');" style="width: 100%; margin-top: 8px; padding: 8px 12px; background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.3); border-radius: 6px; color: var(--color-primary); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
                     📄 Auftrag anzeigen
                 </button>
-                ${anlieferungButton}
-                ${paymentButton}
-                ${bereitButton}
             `;
 
-            // Load Material-Status asynchronously (non-blocking)
-            loadMaterialStatusForCard(fahrzeug.id);
-
-            // Click Event - Details anzeigen (öffnet Detail-Modal in liste.html)
+            // Click Event - Details anzeigen
             const cardClickHandler = () => {
                 safeNavigate(`liste.html?showDetails=${fahrzeug.id}`);
             };
