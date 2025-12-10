@@ -436,15 +436,26 @@ class AIAgentEngine {
      * Convert Base64 string to Audio Blob
      * @param {string} base64 - Base64-encoded audio
      * @param {string} format - Audio format (mp3, opus, etc.)
-     * @returns {Blob} Audio blob
+     * @returns {Blob|null} Audio blob oder null bei ungültigem Base64
      */
     base64ToAudioBlob(base64, format = 'mp3') {
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+        // 🔧 FIX (2025-12-11): atob() try/catch für ungültiges Base64
+        if (!base64 || typeof base64 !== 'string') {
+            console.warn('[AIAgent] base64ToAudioBlob: Ungültiger Base64-String');
+            return null;
         }
-        return new Blob([bytes], { type: `audio/${format}` });
+
+        try {
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return new Blob([bytes], { type: `audio/${format}` });
+        } catch (error) {
+            console.error('[AIAgent] base64ToAudioBlob Error:', error.message);
+            return null;
+        }
     }
 
     /**

@@ -172,18 +172,40 @@ const ImageOptimizer = {
     /**
      * Konvertiert DataURL zu Blob (für Firebase Storage Upload)
      * @param {string} dataUrl - Base64 Data URL
-     * @returns {Blob} - Blob-Objekt
+     * @returns {Blob|null} - Blob-Objekt oder null bei ungültiger DataURL
      */
     dataURLtoBlob(dataUrl) {
-        const arr = dataUrl.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while(n--){
-            u8arr[n] = bstr.charCodeAt(n);
+        // 🔧 FIX (2025-12-11): Null-Check für regex match + atob try/catch
+        if (!dataUrl || typeof dataUrl !== 'string') {
+            console.warn('[ImageOptimizer] dataURLtoBlob: Ungültige dataUrl');
+            return null;
         }
-        return new Blob([u8arr], {type:mime});
+
+        try {
+            const arr = dataUrl.split(',');
+            if (arr.length < 2) {
+                console.warn('[ImageOptimizer] dataURLtoBlob: Ungültiges DataURL-Format');
+                return null;
+            }
+
+            const mimeMatch = arr[0].match(/:(.*?);/);
+            if (!mimeMatch || !mimeMatch[1]) {
+                console.warn('[ImageOptimizer] dataURLtoBlob: MIME-Type nicht erkannt');
+                return null;
+            }
+            const mime = mimeMatch[1];
+
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while(n--){
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], {type:mime});
+        } catch (error) {
+            console.error('[ImageOptimizer] dataURLtoBlob Error:', error.message);
+            return null;
+        }
     },
 
     /**

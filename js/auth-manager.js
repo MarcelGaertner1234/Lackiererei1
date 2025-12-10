@@ -41,6 +41,8 @@ function maskEmail(email) {
   if (!email || typeof email !== 'string') return '[no-email]';
   const [local, domain] = email.split('@');
   if (!domain) return '[invalid-email]';
+  // 🔧 FIX (2025-12-11): Null-Check für leeren local-Teil (z.B. "@domain.com")
+  if (!local || local.length === 0) return '[invalid-email]';
   const maskedLocal = local.length > 2
     ? local[0] + '***' + local[local.length - 1]
     : local[0] + '***';
