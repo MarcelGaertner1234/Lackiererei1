@@ -3564,6 +3564,15 @@
         let currentProcess = 'alle'; // Aktuell gewählter Prozess (synchronisiert mit Dropdown Line 817)
         let unsubscribeListener = null; // Realtime Listener cleanup function
 
+        // 🔧 FIX FB2 (2025-12-10): Cleanup Firestore listeners on page leave to prevent memory leaks
+        window.addEventListener('beforeunload', () => {
+            if (unsubscribeListener) {
+                console.log('🧹 [CLEANUP] Unsubscribing Firestore listener on page leave');
+                unsubscribeListener();
+                unsubscribeListener = null;
+            }
+        });
+
         // 🔧 2025-11-25: Filter disabled services from process dropdown
         function filterDisabledProcesses(enabledServices) {
             console.log('🔧 [KANBAN] Filtere deaktivierte Prozesse:', enabledServices);
@@ -4030,7 +4039,8 @@
                     }
                 }
 
-                await db.collection(collectionName).doc(fahrzeugId).update(updateData);
+                // 🔧 FIX FB1 (2025-12-10): Multi-Tenant Safety - use getCollection() instead of db.collection()
+                await window.getCollection(collectionName).doc(fahrzeugId).update(updateData);
                 console.log(`✅ Logistik "${action}" für Fahrzeug ${fahrzeugId} als erledigt markiert`);
 
                 // Board aktualisieren
@@ -4246,7 +4256,8 @@
                     }
                 }
 
-                await db.collection(collectionName).doc(fahrzeugId).update(updateData);
+                // 🔧 FIX FB1 (2025-12-10): Multi-Tenant Safety - use getCollection() instead of db.collection()
+                await window.getCollection(collectionName).doc(fahrzeugId).update(updateData);
 
                 closeLogistikPhotoModal();
                 showToast(`Protokoll gespeichert (${photos.length} Foto${photos.length > 1 ? 's' : ''})`, 'success');
@@ -4810,7 +4821,15 @@
          * @since 2025-12-10 (Auto-Weiterleitung Feature)
          */
         function getNextServiceFromPlan(fahrzeug, currentService) {
-            const plan = fahrzeug.servicePlan;
+            let plan = fahrzeug.servicePlan;
+
+            // 🔧 FIX (2025-12-10): Konvertiere Object→Array für Rückwärtskompatibilität
+            if (plan && typeof plan === 'object' && !Array.isArray(plan) && Object.keys(plan).length > 0) {
+                console.log(`   🔄 servicePlan als Object gefunden → konvertiere zu Array`);
+                plan = Object.entries(plan).map(([queue, datum], idx) => ({
+                    queue, datum, startzeit: '08:00', dauer: 60, reihenfolge: idx + 1
+                }));
+            }
 
             // Kein Plan oder kein Array → kein nächster Service
             if (!plan || !Array.isArray(plan) || plan.length === 0) {
@@ -4867,8 +4886,15 @@
          * @since 2025-12-10 (Kanban-Karten Optimierung)
          */
         function getServicePlanDateForCurrentQueue(fahrzeug) {
-            const plan = fahrzeug.servicePlan;
+            let plan = fahrzeug.servicePlan;
             const currentQueue = fahrzeug.abteilungsQueue;
+
+            // 🔧 FIX (2025-12-10): Konvertiere Object→Array für Rückwärtskompatibilität
+            if (plan && typeof plan === 'object' && !Array.isArray(plan) && Object.keys(plan).length > 0) {
+                plan = Object.entries(plan).map(([queue, datum], idx) => ({
+                    queue, datum, startzeit: '08:00', dauer: 60, reihenfolge: idx + 1
+                }));
+            }
 
             // Kein Plan oder keine Queue → kein Datum
             if (!plan || !Array.isArray(plan) || !currentQueue) {

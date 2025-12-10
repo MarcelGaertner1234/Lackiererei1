@@ -4849,9 +4849,9 @@
 
                 console.log('📊 Services für Kapazitätsvorschau:', services);
 
-                // servicePlan initialisieren falls nicht vorhanden
-                if (!currentEntwurf.servicePlan) {
-                    currentEntwurf.servicePlan = {};
+                // servicePlan initialisieren als ARRAY (nicht Object!) für Konsistenz mit tagesplanung.html
+                if (!currentEntwurf.servicePlan || !Array.isArray(currentEntwurf.servicePlan)) {
+                    currentEntwurf.servicePlan = [];
                 }
 
                 // 🔧 NEU: Tabellen-Layout mit Header-Zeile und Service-Zeilen (3 WOCHEN = 21 Tage, Fertigstellung MITTIG)
@@ -4891,7 +4891,9 @@
 
                         const capacity = calculateDayCapacity(fahrzeuge, day, serviceType);
                         const isSelected = i === 0;
-                        const isPlanned = currentEntwurf.servicePlan[serviceType] === dateStr;
+                        // Array-basierte Prüfung (servicePlan ist jetzt Array)
+                        const isPlanned = Array.isArray(currentEntwurf.servicePlan) &&
+                            currentEntwurf.servicePlan.some(p => p.queue === serviceType && p.datum === dateStr);
 
                         html += `<div class="kapazitaet-day status-${capacity.status} ${isSelected ? 'selected' : ''} ${isPlanned ? 'planned' : ''}"
                             data-service="${serviceType}"
@@ -4921,28 +4923,56 @@
          * @param {string} dateStr - Datum im ISO-Format (z.B. '2026-01-05')
          */
         function selectServiceDay(serviceType, dateStr) {
-            // servicePlan initialisieren falls nicht vorhanden
-            if (!currentEntwurf.servicePlan) {
-                currentEntwurf.servicePlan = {};
+            // servicePlan initialisieren als ARRAY falls nicht vorhanden
+            if (!currentEntwurf.servicePlan || !Array.isArray(currentEntwurf.servicePlan)) {
+                currentEntwurf.servicePlan = [];
             }
 
-            // Toggle: Wenn schon ausgewählt, abwählen
-            if (currentEntwurf.servicePlan[serviceType] === dateStr) {
-                delete currentEntwurf.servicePlan[serviceType];
-                console.log(`📅 Service-Plan: ${serviceType} abgewählt`);
+            // Standard-Dauern für Services (konsistent mit tagesplanung.html)
+            const serviceDurations = {
+                'abhol_fahrt': 45, 'lackier': 300, 'mechanik': 180, 'reifen': 60,
+                'pflege': 120, 'tuev': 60, 'versicherung': 240, 'glas': 90,
+                'klima': 60, 'dellen': 120, 'folierung': 480, 'steinschutz': 180,
+                'werbebeklebung': 240, 'liefer_fahrt': 45
+            };
+
+            // Existierenden Eintrag für diesen Service finden
+            const existingIndex = currentEntwurf.servicePlan.findIndex(p => p.queue === serviceType);
+
+            if (existingIndex !== -1) {
+                // Selbes Datum = abwählen, anderes Datum = updaten
+                if (currentEntwurf.servicePlan[existingIndex].datum === dateStr) {
+                    currentEntwurf.servicePlan.splice(existingIndex, 1);
+                    console.log(`📅 Service-Plan: ${serviceType} abgewählt`);
+                } else {
+                    currentEntwurf.servicePlan[existingIndex].datum = dateStr;
+                    console.log(`📅 Service-Plan: ${serviceType} → ${dateStr}`);
+                }
             } else {
-                currentEntwurf.servicePlan[serviceType] = dateStr;
+                // Neu hinzufügen
+                currentEntwurf.servicePlan.push({
+                    id: `sp_${Date.now()}_${currentEntwurf.servicePlan.length + 1}`,
+                    queue: serviceType,
+                    datum: dateStr,
+                    startzeit: '08:00',
+                    dauer: serviceDurations[serviceType] || 60,
+                    reihenfolge: currentEntwurf.servicePlan.length + 1
+                });
                 console.log(`📅 Service-Plan: ${serviceType} → ${dateStr}`);
 
                 // 🔗 Wenn Abholung ausgewählt, auch Abholdatum-Feld im Formular setzen
                 if (serviceType === 'abhol_fahrt') {
                     const abholdatumInput = document.getElementById('abholdatum');
                     if (abholdatumInput) {
-                        abholdatumInput.value = dateStr; // ISO-Format: 2026-01-07
+                        abholdatumInput.value = dateStr;
                         console.log(`📅 Abholdatum-Feld gesetzt: ${dateStr}`);
                     }
                 }
             }
+
+            // Nach Datum sortieren und Reihenfolge aktualisieren
+            currentEntwurf.servicePlan.sort((a, b) => new Date(a.datum) - new Date(b.datum));
+            currentEntwurf.servicePlan.forEach((p, idx) => p.reihenfolge = idx + 1);
 
             // UI aktualisieren
             updateKapazitaetPreview();
@@ -5340,7 +5370,7 @@
                     abholnotiz: document.getElementById('abholnotiz')?.value || '',
 
                     // 📅 Service-Vorplanung (FIX: Dez 09, 2025)
-                    servicePlan: currentEntwurf.servicePlan || {}
+                    servicePlan: currentEntwurf.servicePlan || []
                 };
 
                 // 🚗 FIX (2025-11-27): Ersatzfahrzeug-Kosten aus Input-Feldern lesen (nicht neu berechnen!)
@@ -6064,7 +6094,7 @@
                     abholnotiz: document.getElementById('abholnotiz')?.value || '',
 
                     // 📅 Service-Vorplanung (FIX: Dez 09, 2025)
-                    servicePlan: currentEntwurf.servicePlan || {},
+                    servicePlan: currentEntwurf.servicePlan || [],
 
                     // Metadata
                     angebotErstelltAm: new Date().toISOString(),
