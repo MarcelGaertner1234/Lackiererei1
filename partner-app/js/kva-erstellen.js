@@ -3,6 +3,17 @@
         let isMultiService = false;  // 🆕 Global variable for Multi-Service detection
         let verfuegbareLeihfahrzeuge = []; // 🆕 2025-11-26: Leihfahrzeuge für Zuweisung
 
+        // 🔧 FIX (2025-12-11): XSS Protection - Escape für HTML Attribute
+        function escapeAttr(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
         // ============================================
         // SERVICE-TEMPLATE DEFINITIONEN (12 Service-Typen)
         // ============================================
@@ -2051,13 +2062,13 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.etn || ''}"
+                                <input type="text" value="${escapeAttr(entry.etn)}"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'etn', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="ETN">
                             </td>
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.benennung || ''}"
+                                <input type="text" value="${escapeAttr(entry.benennung)}"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'benennung', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Benennung">
@@ -2084,13 +2095,13 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.position || ''}"
+                                <input type="text" value="${escapeAttr(entry.position)}"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'position', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Position">
                             </td>
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.art || ''}"
+                                <input type="text" value="${escapeAttr(entry.art)}"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'art', this.value)"
                                        style="width: 80px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Art">
@@ -2107,13 +2118,13 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.position || ''}"
+                                <input type="text" value="${escapeAttr(entry.position)}"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'position', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Position">
                             </td>
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.bereich || ''}"
+                                <input type="text" value="${escapeAttr(entry.bereich)}"
                                        onchange="updateVariantTableEntry('${variant}', '${tableType}', ${index}, 'bereich', this.value)"
                                        style="width: 80px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Bereich">
@@ -2280,7 +2291,7 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.position || ''}"
+                                <input type="text" value="${escapeAttr(entry.position)}"
                                        onchange="updateGlobalTableEntry('${tableType}', ${index}, 'position', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Beschreibung">
@@ -2309,7 +2320,7 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.position || ''}"
+                                <input type="text" value="${escapeAttr(entry.position)}"
                                        onchange="updateGlobalTableEntry('${tableType}', ${index}, 'position', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Position">
@@ -2941,13 +2952,13 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.etn || ''}"
+                                <input type="text" value="${escapeAttr(entry.etn)}"
                                        onchange="updateVariantTableEntryForService('${variant}', '${serviceTyp}', '${tableType}', ${index}, 'etn', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="ETN">
                             </td>
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.benennung || ''}"
+                                <input type="text" value="${escapeAttr(entry.benennung)}"
                                        onchange="updateVariantTableEntryForService('${variant}', '${serviceTyp}', '${tableType}', ${index}, 'benennung', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Benennung">
@@ -2974,13 +2985,13 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.position || ''}"
+                                <input type="text" value="${escapeAttr(entry.position)}"
                                        onchange="updateVariantTableEntryForService('${variant}', '${serviceTyp}', '${tableType}', ${index}, 'position', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Position">
                             </td>
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.art || ''}"
+                                <input type="text" value="${escapeAttr(entry.art)}"
                                        onchange="updateVariantTableEntryForService('${variant}', '${serviceTyp}', '${tableType}', ${index}, 'art', this.value)"
                                        style="width: 80px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Art">
@@ -2997,13 +3008,13 @@
                     rowHtml = `
                         <tr style="background: ${entry.isAutoSync ? 'rgba(76, 175, 80, 0.1)' : 'transparent'};">
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.position || ''}"
+                                <input type="text" value="${escapeAttr(entry.position)}"
                                        onchange="updateVariantTableEntryForService('${variant}', '${serviceTyp}', '${tableType}', ${index}, 'position', this.value)"
                                        style="width: 100%; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Position">
                             </td>
                             <td style="padding: 4px;">
-                                <input type="text" value="${entry.bereich || ''}"
+                                <input type="text" value="${escapeAttr(entry.bereich)}"
                                        onchange="updateVariantTableEntryForService('${variant}', '${serviceTyp}', '${tableType}', ${index}, 'bereich', this.value)"
                                        style="width: 80px; padding: 3px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;"
                                        placeholder="Bereich">
@@ -3216,7 +3227,7 @@
                 const row = `
                     <tr style="background: ${index % 2 === 0 ? 'rgba(255,255,255,0.1)' : 'transparent'};">
                         <td style="padding: 6px;">
-                            <input type="text" value="${entry.position || ''}"
+                            <input type="text" value="${escapeAttr(entry.position)}"
                                 onchange="updateMultiGlobalEntry('arbeitslohn', ${index}, 'position', this.value)"
                                 style="width: 100%; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
                                 placeholder="Position">
@@ -3230,7 +3241,7 @@
                             </select>
                         </td>
                         <td style="padding: 6px;">
-                            <input type="text" value="${entry.art || ''}"
+                            <input type="text" value="${escapeAttr(entry.art)}"
                                 onchange="updateMultiGlobalEntry('arbeitslohn', ${index}, 'art', this.value)"
                                 style="width: 80px; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
                                 placeholder="Art">
@@ -3280,7 +3291,7 @@
                 const row = `
                     <tr style="background: ${index % 2 === 0 ? 'rgba(255,255,255,0.1)' : 'transparent'};">
                         <td style="padding: 6px;">
-                            <input type="text" value="${entry.position || ''}"
+                            <input type="text" value="${escapeAttr(entry.position)}"
                                 onchange="updateMultiGlobalEntry('lackierung', ${index}, 'position', this.value)"
                                 style="width: 100%; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
                                 placeholder="Position">
@@ -3294,7 +3305,7 @@
                             </select>
                         </td>
                         <td style="padding: 6px;">
-                            <input type="text" value="${entry.bereich || ''}"
+                            <input type="text" value="${escapeAttr(entry.bereich)}"
                                 onchange="updateMultiGlobalEntry('lackierung', ${index}, 'bereich', this.value)"
                                 style="width: 80px; padding: 4px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(255,255,255,0.1); color: white; font-size: 11px;"
                                 placeholder="Bereich">
@@ -3371,13 +3382,13 @@
                 const row = `
                     <tr style="background: ${index % 2 === 0 ? 'rgba(0,0,0,0.05)' : 'transparent'};">
                         <td style="padding: 3px;">
-                            <input type="text" value="${entry.etn || ''}"
+                            <input type="text" value="${escapeAttr(entry.etn)}"
                                 onchange="updateMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index}, 'etn', this.value)"
                                 style="width: 100%; padding: 2px; border: 1px solid #ddd; border-radius: 2px; font-size: 9px;"
                                 placeholder="ETN">
                         </td>
                         <td style="padding: 3px;">
-                            <input type="text" value="${entry.benennung || ''}"
+                            <input type="text" value="${escapeAttr(entry.benennung)}"
                                 onchange="updateMultiServiceErsatzteil('${variant}', '${serviceTyp}', ${index}, 'benennung', this.value)"
                                 style="width: 100%; padding: 2px; border: 1px solid #ddd; border-radius: 2px; font-size: 9px;"
                                 placeholder="Benennung">

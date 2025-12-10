@@ -181,8 +181,7 @@
     // ========================================
 
     function startFirebaseListener() {
-        const db = firebase.firestore();
-
+        // 🔧 FIX (2025-12-11): Dead Code entfernt - const db = firebase.firestore(); war ungenutzt
         // 🆕 FIX: Statt collectionGroup - direkte partnerAnfragen Query
         // Höre auf ALLE Anfragen des Partners, dann pro Anfrage auf chat subcollection
 
