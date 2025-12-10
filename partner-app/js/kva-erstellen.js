@@ -4225,7 +4225,8 @@
                 return;
             }
 
-            const db = firebase.firestore();
+            // 🔧 FIX (2025-12-10): firebase.firestore() → window.db
+            const db = window.db;
             const batch = db.batch();
 
             for (const teil of pdfData.ersatzteile) {
