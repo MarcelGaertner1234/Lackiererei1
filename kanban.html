@@ -4766,6 +4766,71 @@
             return allComplete;
         }
 
+        /**
+         * 🆕 AUTO-WEITERLEITUNG (2025-12-10): Nächsten Service aus servicePlan finden
+         *
+         * Diese Funktion analysiert den servicePlan und findet den nächsten
+         * noch nicht abgeschlossenen Service nach dem aktuellen.
+         *
+         * @param {Object} fahrzeug - Das Fahrzeug-Objekt mit servicePlan und serviceStatuses
+         * @param {string} currentService - Der aktuelle Service der gerade fertig wurde
+         * @returns {Object|null} - Das nächste Service-Objekt {queue, datum, startzeit, dauer} oder null
+         *
+         * servicePlan Format (nach Tagesplanung):
+         * [
+         *   { queue: 'lackier', datum: '2025-12-09', startzeit: '08:00', dauer: '~5h' },
+         *   { queue: 'reifen', datum: '2025-12-10', startzeit: '14:15', dauer: '~1h' },
+         *   ...
+         * ]
+         *
+         * @since 2025-12-10 (Auto-Weiterleitung Feature)
+         */
+        function getNextServiceFromPlan(fahrzeug, currentService) {
+            const plan = fahrzeug.servicePlan;
+
+            // Kein Plan oder kein Array → kein nächster Service
+            if (!plan || !Array.isArray(plan) || plan.length === 0) {
+                console.log(`   ℹ️ Kein servicePlan vorhanden → Zurück in Tagesplanung`);
+                return null;
+            }
+
+            console.log(`   📋 servicePlan gefunden: ${plan.length} Schritte`);
+            plan.forEach((step, idx) => console.log(`      ${idx + 1}. ${step.queue} (${step.datum})`));
+
+            // Finde den Index des aktuellen Services
+            const currentIndex = plan.findIndex(p => p.queue === currentService);
+            if (currentIndex === -1) {
+                console.log(`   ⚠️ Aktueller Service "${currentService}" nicht im servicePlan → Zurück in Tagesplanung`);
+                return null;
+            }
+
+            console.log(`   🔍 Aktueller Service "${currentService}" ist Schritt ${currentIndex + 1}/${plan.length}`);
+
+            // Finde den nächsten noch nicht fertigen Service
+            const completedStatuses = ['fertig', 'bereit', 'abholbereit', 'abgeschlossen'];
+
+            for (let i = currentIndex + 1; i < plan.length; i++) {
+                const step = plan[i];
+                const stepStatus = fahrzeug.serviceStatuses?.[step.queue]?.status;
+
+                console.log(`   → Prüfe ${step.queue}: Status = "${stepStatus || 'offen'}"`);
+
+                // Überspringe wenn bereits fertig
+                if (completedStatuses.includes(stepStatus)) {
+                    console.log(`      ⏭️ Überspringe (bereits fertig)`);
+                    continue;
+                }
+
+                // Gefunden! Nächster offener Service
+                console.log(`   ✅ Nächster Service: ${step.queue} (${step.datum} ${step.startzeit || ''})`);
+                return step; // { queue: 'reifen', datum: '2025-12-10', startzeit: '14:15', dauer: '~1h' }
+            }
+
+            // Alle Services im Plan sind fertig
+            console.log(`   ✅ Alle Services im Plan abgeschlossen → Zurück in Tagesplanung`);
+            return null;
+        }
+
         // Firebase initialisieren
         // ✅ BUG FIX: Firebase Initialisierung Check korrigiert
         // Problem: initFirebase() gibt nichts zurück → success ist undefined → FALSE
@@ -7170,22 +7235,53 @@
                 }
                 console.groupEnd();
 
-                // 🆕 QUEUE-RESET (2025-12-09): Bei Fertig-Status Queue-Zuordnung löschen
-                // → Fahrzeug erscheint wieder in Tagesplanung für nächsten Service
+                // 🆕 QUEUE-RESET + AUTO-WEITERLEITUNG (2025-12-10)
+                // Bei Fertig-Status: Prüfe ob es einen nächsten Service im Plan gibt
+                // → Wenn ja: Automatisch in nächste Queue verschieben (priorisiert nach Datum)
+                // → Wenn nein: Queue-Felder löschen → Fahrzeug erscheint in Tagesplanung
                 const FERTIG_STATI = ['fertig', 'bereit', 'abholbereit'];
                 if (FERTIG_STATI.includes(newStatus)) {
-                    console.log(`🔄 ${fahrzeug.kennzeichen}: Service ${currentService} fertig - Queue-Zuordnung wird gelöscht`);
-                    updateData.abteilungsQueue = firebase.firestore.FieldValue.delete();
-                    updateData.logistikQueue = firebase.firestore.FieldValue.delete();
-                    updateData.queuePosition = firebase.firestore.FieldValue.delete();
-                    updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                    console.log(`🔄 ${fahrzeug.kennzeichen}: Service ${currentService} fertig - prüfe nächsten Service...`);
 
                     // 🔧 BUG FIX (2025-12-09): completedQueues Array updaten für Queue-Dependencies
-                    // PROBLEM: canMoveToQueue() in service-types.js prüft completedQueues, aber es wurde nie gesetzt
-                    // LÖSUNG: Füge aktuellen Service zu completedQueues hinzu wenn fertig
-                    // → QUEUE_DEPENDENCIES können jetzt korrekt geprüft werden (z.B. lackier braucht dellen)
                     console.log(`✅ ${fahrzeug.kennzeichen}: Service "${currentService}" zu completedQueues hinzugefügt`);
                     updateData.completedQueues = firebase.firestore.FieldValue.arrayUnion(currentService);
+
+                    // 🆕 AUTO-WEITERLEITUNG: Nächsten Service aus servicePlan finden
+                    const nextService = getNextServiceFromPlan(fahrzeug, currentService);
+
+                    if (nextService) {
+                        // ✅ Nächste Queue zuweisen (priorisiert nach Datum aus servicePlan)
+                        console.log(`🔄 AUTO-WEITERLEITUNG: ${currentService} → ${nextService.queue}`);
+                        updateData.abteilungsQueue = nextService.queue;
+
+                        // Datum aus servicePlan für Sortierung verwenden
+                        if (nextService.datum) {
+                            // Kombiniere Datum + Startzeit für genaue Sortierung
+                            let dateStr = nextService.datum;
+                            if (nextService.startzeit) {
+                                dateStr += 'T' + nextService.startzeit + ':00';
+                            } else {
+                                dateStr += 'T08:00:00'; // Default: 8:00 Uhr
+                            }
+                            const nextDate = new Date(dateStr);
+                            updateData.queueDatum = firebase.firestore.Timestamp.fromDate(nextDate);
+                            console.log(`   📅 queueDatum: ${nextDate.toLocaleString('de-DE')}`);
+                        }
+
+                        // Position zurücksetzen (wird nach queueDatum sortiert)
+                        updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                        // Logistik-Queue löschen (nur abteilungsQueue relevant)
+                        updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                    } else {
+                        // ❌ Kein weiterer Service → Queue-Felder löschen
+                        // → Fahrzeug erscheint wieder in Tagesplanung
+                        console.log(`📋 ${fahrzeug.kennzeichen}: Kein weiterer Service → zurück in Tagesplanung`);
+                        updateData.abteilungsQueue = firebase.firestore.FieldValue.delete();
+                        updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                        updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                        updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                    }
                 }
 
                 // 🆕 2025-11-11: AUTOMATISCHE RECHNUNGS-ERSTELLUNG bei Status "Fertig"
