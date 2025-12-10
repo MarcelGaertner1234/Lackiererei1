@@ -15,7 +15,8 @@ const {
   waitForFirebaseReady,
   loginAsTestAdmin,
   createVehicleDirectly,
-  deleteVehicle
+  deleteVehicle,
+  cleanupAllTestData
 } = require('../helpers/firebase-helper');
 
 test.describe('E2E: Data Pipeline', () => {
@@ -375,34 +376,4 @@ test.describe('E2E: Data Pipeline', () => {
   });
 });
 
-// Cleanup Helper
-async function cleanupAllTestData(page, kennzeichen) {
-  return await page.evaluate(async (kz) => {
-    const db = window.firebaseApp.db();
-    const werkstattId = window.werkstattId || 'mosbach';
-
-    const collections = [
-      `partnerAnfragen_${werkstattId}`,
-      window.getCollectionName('ersatzteile'),
-      window.getCollectionName('bestellungen'),
-      window.getCollectionName('rechnungen')
-    ];
-
-    for (const collectionName of collections) {
-      try {
-        const snapshot = await db.collection(collectionName)
-          .where('kennzeichen', '==', kz)
-          .get();
-
-        for (const doc of snapshot.docs) {
-          await db.collection(collectionName).doc(doc.id).delete();
-        }
-      } catch (e) {
-        console.log(`Cleanup ${collectionName}: ${e.message}`);
-      }
-    }
-
-    console.log(`🧹 All test data cleaned up for ${kz}`);
-    return true;
-  }, kennzeichen);
-}
+// NOTE: cleanupAllTestData is now imported from firebase-helper.js (DRY compliance - 2025-12-10)

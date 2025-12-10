@@ -17,7 +17,8 @@ const {
   createVehicleDirectly,
   updateVehicleStatus,
   getVehicleData,
-  deleteVehicle
+  deleteVehicle,
+  cleanupRechnungen
 } = require('../helpers/firebase-helper');
 
 test.describe('E2E: Werkstatt Workflow', () => {
@@ -258,20 +259,4 @@ async function getRechnungByKennzeichen(page, kennzeichen) {
   }, kennzeichen);
 }
 
-async function cleanupRechnungen(page, kennzeichen) {
-  return await page.evaluate(async (kz) => {
-    const db = window.firebaseApp.db();
-    const rechnungenCollection = window.getCollectionName('rechnungen');
-
-    const snapshot = await db.collection(rechnungenCollection)
-      .where('kennzeichen', '==', kz)
-      .get();
-
-    for (const doc of snapshot.docs) {
-      await db.collection(rechnungenCollection).doc(doc.id).delete();
-    }
-
-    console.log(`🧹 Cleaned up rechnungen for ${kz}`);
-    return true;
-  }, kennzeichen);
-}
+// NOTE: cleanupRechnungen is now imported from firebase-helper.js (DRY compliance - 2025-12-10)

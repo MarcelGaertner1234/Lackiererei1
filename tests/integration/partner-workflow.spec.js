@@ -14,7 +14,10 @@ const { test, expect } = require('@playwright/test');
 const {
   waitForFirebaseReady,
   loginAsTestAdmin,
-  deleteVehicle
+  deleteVehicle,
+  createPartnerAnfrageDirectly,
+  getPartnerAnfrageData,
+  cleanupPartnerAnfrage
 } = require('../helpers/firebase-helper');
 
 test.describe('E2E: Partner Workflow', () => {
@@ -204,47 +207,8 @@ test.describe('E2E: Partner Workflow', () => {
 });
 
 // Helper Functions for Partner Workflow Tests
-
-async function createPartnerAnfrageDirectly(page, data) {
-  return await page.evaluate(async (anfrageData) => {
-    const db = window.firebaseApp.db();
-    const werkstattId = window.werkstattId || 'mosbach';
-    const collectionName = `partnerAnfragen_${werkstattId}`;
-
-    const anfrage = {
-      kennzeichen: anfrageData.kennzeichen,
-      kundenname: anfrageData.kundenname,
-      kundenEmail: (anfrageData.kundenEmail || 'test@example.com').toLowerCase(),
-      serviceTyp: anfrageData.serviceTyp || 'lackier',
-      marke: anfrageData.marke || 'Volkswagen',
-      modell: anfrageData.modell || 'Golf',
-      schadenBeschreibung: anfrageData.schadenBeschreibung || '',
-      ersatzteile: anfrageData.ersatzteile || [],
-      status: 'neu',
-      erstelltAm: new Date().toISOString(),
-      werkstattId: werkstattId
-    };
-
-    const docRef = await db.collection(collectionName).add(anfrage);
-    console.log(`✅ Partner-Anfrage created: ${docRef.id}`);
-    return docRef.id;
-  }, data);
-}
-
-async function getPartnerAnfrageData(page, kennzeichen) {
-  return await page.evaluate(async (kz) => {
-    const db = window.firebaseApp.db();
-    const werkstattId = window.werkstattId || 'mosbach';
-    const collectionName = `partnerAnfragen_${werkstattId}`;
-
-    const snapshot = await db.collection(collectionName)
-      .where('kennzeichen', '==', kz)
-      .limit(1)
-      .get();
-
-    return snapshot.empty ? null : snapshot.docs[0].data();
-  }, kennzeichen);
-}
+// NOTE: createPartnerAnfrageDirectly, getPartnerAnfrageData, cleanupPartnerAnfrage
+// are now imported from firebase-helper.js (DRY compliance - 2025-12-10)
 
 async function updatePartnerAnfrageWithKVA(page, kennzeichen, kvaData) {
   return await page.evaluate(async ({ kz, kva }) => {
@@ -364,34 +328,6 @@ async function executeAnnehmenKVA(page, kennzeichen) {
       angenommenAm: new Date().toISOString()
     });
 
-    return true;
-  }, kennzeichen);
-}
-
-async function cleanupPartnerAnfrage(page, kennzeichen) {
-  return await page.evaluate(async (kz) => {
-    const db = window.firebaseApp.db();
-    const werkstattId = window.werkstattId || 'mosbach';
-    const anfrageCollection = `partnerAnfragen_${werkstattId}`;
-    const ersatzteileCollection = window.getCollectionName('ersatzteile');
-
-    // Delete anfrage
-    const anfrageSnapshot = await db.collection(anfrageCollection)
-      .where('kennzeichen', '==', kz)
-      .get();
-    for (const doc of anfrageSnapshot.docs) {
-      await db.collection(anfrageCollection).doc(doc.id).delete();
-    }
-
-    // Delete ersatzteile
-    const ersatzteileSnapshot = await db.collection(ersatzteileCollection)
-      .where('kennzeichen', '==', kz)
-      .get();
-    for (const doc of ersatzteileSnapshot.docs) {
-      await db.collection(ersatzteileCollection).doc(doc.id).delete();
-    }
-
-    console.log(`🧹 Cleaned up anfrage and ersatzteile for ${kz}`);
     return true;
   }, kennzeichen);
 }

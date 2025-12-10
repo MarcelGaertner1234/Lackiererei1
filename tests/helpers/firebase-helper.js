@@ -785,6 +785,180 @@ async function createLeihfahrzeugBuchung(page, data) {
   }, data);
 }
 
+// ============================================
+// PARTNER ANFRAGE HELPERS (2025-12-10)
+// Centralized from test files for DRY compliance
+// ============================================
+
+/**
+ * Creates a Partner-Anfrage directly in Firestore (bypasses UI)
+ * @param {import('@playwright/test').Page} page
+ * @param {Object} data - Anfrage data
+ * @param {string} data.kennzeichen - License plate (required)
+ * @param {string} data.kundenname - Customer name (required)
+ * @param {string} [data.kundenEmail] - Customer email (default: test@example.com)
+ * @param {string} [data.serviceTyp] - Service type (default: lackier)
+ * @param {string} [data.marke] - Car brand (default: Volkswagen)
+ * @param {string} [data.modell] - Car model (default: Golf)
+ * @param {string} [data.schadenBeschreibung] - Damage description
+ * @param {Array} [data.ersatzteile] - Spare parts array
+ * @returns {Promise<string>} Document ID of created anfrage
+ */
+async function createPartnerAnfrageDirectly(page, data) {
+  console.log(`📝 Creating Partner-Anfrage: ${data.kennzeichen}`);
+
+  return await page.evaluate(async (anfrageData) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+    const collectionName = `partnerAnfragen_${werkstattId}`;
+
+    const anfrage = {
+      kennzeichen: anfrageData.kennzeichen,
+      kundenname: anfrageData.kundenname,
+      kundenEmail: (anfrageData.kundenEmail || 'test@example.com').toLowerCase(),
+      serviceTyp: anfrageData.serviceTyp || 'lackier',
+      marke: anfrageData.marke || 'Volkswagen',
+      modell: anfrageData.modell || 'Golf',
+      schadenBeschreibung: anfrageData.schadenBeschreibung || '',
+      ersatzteile: anfrageData.ersatzteile || [],
+      status: 'neu',
+      erstelltAm: new Date().toISOString(),
+      werkstattId: werkstattId
+    };
+
+    const docRef = await db.collection(collectionName).add(anfrage);
+    console.log(`✅ Partner-Anfrage created: ${docRef.id}`);
+    return docRef.id;
+  }, data);
+}
+
+/**
+ * Retrieves Partner-Anfrage data from Firestore by license plate
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen - License plate to search for
+ * @returns {Promise<Object|null>} Anfrage data or null if not found
+ */
+async function getPartnerAnfrageData(page, kennzeichen) {
+  return await page.evaluate(async (kz) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+    const collectionName = `partnerAnfragen_${werkstattId}`;
+
+    const snapshot = await db.collection(collectionName)
+      .where('kennzeichen', '==', kz)
+      .limit(1)
+      .get();
+
+    return snapshot.empty ? null : snapshot.docs[0].data();
+  }, kennzeichen);
+}
+
+/**
+ * Deletes Partner-Anfrage and associated Ersatzteile for a license plate
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen - License plate to clean up
+ * @returns {Promise<boolean>} Success status
+ */
+async function cleanupPartnerAnfrage(page, kennzeichen) {
+  console.log(`🧹 Cleaning up Partner-Anfrage: ${kennzeichen}`);
+
+  return await page.evaluate(async (kz) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+    const anfrageCollection = `partnerAnfragen_${werkstattId}`;
+    const ersatzteileCollection = window.getCollectionName('ersatzteile');
+
+    // Delete anfrage
+    const anfrageSnapshot = await db.collection(anfrageCollection)
+      .where('kennzeichen', '==', kz)
+      .get();
+    for (const doc of anfrageSnapshot.docs) {
+      await db.collection(anfrageCollection).doc(doc.id).delete();
+    }
+
+    // Delete ersatzteile
+    const ersatzteileSnapshot = await db.collection(ersatzteileCollection)
+      .where('kennzeichen', '==', kz)
+      .get();
+    for (const doc of ersatzteileSnapshot.docs) {
+      await db.collection(ersatzteileCollection).doc(doc.id).delete();
+    }
+
+    console.log(`🧹 Cleaned up anfrage and ersatzteile for ${kz}`);
+    return true;
+  }, kennzeichen);
+}
+
+// ============================================
+// CLEANUP HELPERS (2025-12-10)
+// Centralized from test files for DRY compliance
+// ============================================
+
+/**
+ * Cleans up ALL test data for a license plate across multiple collections
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen - License plate to clean up
+ * @returns {Promise<boolean>} Success status
+ */
+async function cleanupAllTestData(page, kennzeichen) {
+  console.log(`🧹 Cleaning up ALL test data: ${kennzeichen}`);
+
+  return await page.evaluate(async (kz) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+
+    const collections = [
+      `partnerAnfragen_${werkstattId}`,
+      window.getCollectionName('ersatzteile'),
+      window.getCollectionName('bestellungen'),
+      window.getCollectionName('rechnungen')
+    ];
+
+    for (const collectionName of collections) {
+      try {
+        const snapshot = await db.collection(collectionName)
+          .where('kennzeichen', '==', kz)
+          .get();
+
+        for (const doc of snapshot.docs) {
+          await db.collection(collectionName).doc(doc.id).delete();
+        }
+      } catch (e) {
+        console.log(`Cleanup ${collectionName}: ${e.message}`);
+      }
+    }
+
+    console.log(`🧹 All test data cleaned up for ${kz}`);
+    return true;
+  }, kennzeichen);
+}
+
+/**
+ * Deletes Rechnungen (invoices) for a license plate
+ * @param {import('@playwright/test').Page} page
+ * @param {string} kennzeichen - License plate to clean up
+ * @returns {Promise<boolean>} Success status
+ */
+async function cleanupRechnungen(page, kennzeichen) {
+  console.log(`🧹 Cleaning up Rechnungen: ${kennzeichen}`);
+
+  return await page.evaluate(async (kz) => {
+    const db = window.firebaseApp.db();
+    const rechnungenCollection = window.getCollectionName('rechnungen');
+
+    const snapshot = await db.collection(rechnungenCollection)
+      .where('kennzeichen', '==', kz)
+      .get();
+
+    for (const doc of snapshot.docs) {
+      await db.collection(rechnungenCollection).doc(doc.id).delete();
+    }
+
+    console.log(`🧹 Cleaned up rechnungen for ${kz}`);
+    return true;
+  }, kennzeichen);
+}
+
 module.exports = {
   waitForFirebaseReady,
   checkVehicleExists,
@@ -808,5 +982,12 @@ module.exports = {
   updateLeihfahrzeugStatus,
   createPoolEntry,
   createLeihfahrzeugAnfrage,
-  createLeihfahrzeugBuchung
+  createLeihfahrzeugBuchung,
+  // PARTNER ANFRAGE HELPERS (2025-12-10)
+  createPartnerAnfrageDirectly,
+  getPartnerAnfrageData,
+  cleanupPartnerAnfrage,
+  // CLEANUP HELPERS (2025-12-10)
+  cleanupAllTestData,
+  cleanupRechnungen
 };
