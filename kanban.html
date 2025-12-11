@@ -4278,7 +4278,8 @@
                 // 🆕 QUEUE-RESET (2025-12-09): Bei Logistik-Fahrt komplett → Queue löschen
                 // → Fahrzeug erscheint wieder in Tagesplanung für nächsten Service
                 // 🆕 BUG FIX 10 (2025-12-09): Fahrzeug-Objekt aus globalem Array laden
-                const fahrzeug = allFahrzeuge.find(f => f.id === fahrzeugId);
+                // 🛡️ BUG FIX #4 (2025-12-11): String-Vergleich für konsistente ID-Behandlung
+                const fahrzeug = allFahrzeuge.find(f => String(f.id) === String(fahrzeugId));
                 const logistik = fahrzeug?.logistikStatus || {};
                 const abholservice = fahrzeug?.abholserviceGewuenscht;
                 const hatLeih = fahrzeug?.zugewiesenesLeihfahrzeug || fahrzeug?.ersatzfahrzeugGewuenscht;
@@ -5664,7 +5665,8 @@
                 let fahrzeuge = allFahrzeuge.filter(f => {
                     // 🆕 TAGESPLANUNG-FIRST (2025-12-09): Fahrzeuge müssen erst in Tagesplanung eingeplant werden
                     // Bevor sie hier im Kanban erscheinen, müssen sie einer Queue zugeordnet sein
-                    const istEingeplant = !!(f.abteilungsQueue || f.logistikQueue);
+                    // 🛡️ BUG FIX #10 (2025-12-11): Trim leere Strings um Whitespace-only zu vermeiden
+                    const istEingeplant = !!(f.abteilungsQueue?.trim() || f.logistikQueue?.trim());
                     if (!istEingeplant) {
                         console.log(`   ⏭️ SKIP ${f.kennzeichen}: Noch nicht eingeplant (nur in Tagesplanung sichtbar)`);
                         return false;
@@ -6113,7 +6115,14 @@
                         }
                     }
 
-                    await updateFahrzeugStatus(fahrzeugId, newStatus);
+                    // 🛡️ BUG FIX #5 (2025-12-11): Error-Handling für Status-Update
+                    try {
+                        await updateFahrzeugStatus(fahrzeugId, newStatus);
+                    } catch (error) {
+                        console.error('❌ Status-Update fehlgeschlagen:', error);
+                        showToast('❌ Fehler beim Verschieben: ' + error.message);
+                        renderKanbanBoard(); // Board zurücksetzen
+                    }
                 };
 
                 window.listenerRegistry.registerDOM(column, 'dragover', dragOverHandler, `Kanban Column Drag Over: ${column.closest('.kanban-column').dataset.status}`);
@@ -9212,7 +9221,8 @@
                                 serviceDetailsKeys: fahrzeug.serviceDetails ? Object.keys(fahrzeug.serviceDetails) : [],
                                 fahrzeugKeys: Object.keys(fahrzeug).filter(k => k.includes('farb') || k.includes('lack') || k.includes('schaden'))
                             });
-                            return renderServiceDetails(fahrzeug.serviceTyp, fahrzeug.serviceDetails, fahrzeug);
+                            // 🛡️ BUG FIX #9 (2025-12-11): Fallback für serviceDetails wie bei additionalServices
+                            return renderServiceDetails(fahrzeug.serviceTyp, fahrzeug.serviceDetails || fahrzeug.serviceData, fahrzeug);
                         })()}
                     </div>
                 </div>

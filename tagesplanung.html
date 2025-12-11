@@ -2936,7 +2936,8 @@
 
             let html = '';
             plan.forEach((service, index) => {
-                const isChanged = service.datum !== verschiebenOriginalPlan[index].datum;
+                // 🛡️ BUG FIX #1: Optional chaining für Array bounds safety
+                const isChanged = service.datum !== (verschiebenOriginalPlan[index]?.datum || service.datum);
                 const label = service.label || SERVICE_LABELS[service.queue] || service.queue;
 
                 html += `
@@ -2971,6 +2972,13 @@
          */
         function onVerschiebenDatumChange(changedIndex, newDate) {
             const plan = verschiebenFahrzeug.servicePlan;
+
+            // 🛡️ BUG FIX #2: Bounds-Prüfung für changedIndex
+            if (changedIndex < 0 || changedIndex >= plan.length || changedIndex >= verschiebenOriginalPlan.length) {
+                console.error('❌ onVerschiebenDatumChange: Ungültiger Index', changedIndex);
+                return;
+            }
+
             const originalDate = new Date(verschiebenOriginalPlan[changedIndex].datum + 'T00:00:00');
             const newDateObj = new Date(newDate + 'T00:00:00');
 
@@ -3063,7 +3071,8 @@
                     console.log('📅 Neuer Auftragsstart:', firstService.datum);
 
                     // 🆕 48h-Check: Wenn Service außerhalb 48h-Fenster, aus Kanban-Queue entfernen
-                    const firstServiceDate = new Date(firstService.datum);
+                    // 🛡️ BUG FIX #8 (2025-12-11): Konsistente Timezone-Behandlung (lokal statt UTC)
+                    const firstServiceDate = new Date(firstService.datum + 'T00:00:00'); // Parse als lokale Zeit
                     const cutoffDate = new Date();
                     cutoffDate.setHours(0, 0, 0, 0);
                     cutoffDate.setDate(cutoffDate.getDate() + 2); // Übermorgen 00:00 = außerhalb 48h
@@ -3115,7 +3124,8 @@
                             partnerUpdateData['kva.termine.start'] = firstService.datum;
 
                             // 🆕 48h-Check: Gleicher Check wie bei fahrzeuge
-                            const firstServiceDate = new Date(firstService.datum);
+                            // 🛡️ BUG FIX #8 (2025-12-11): Konsistente Timezone-Behandlung
+                            const firstServiceDate = new Date(firstService.datum + 'T00:00:00');
                             const cutoffDate = new Date();
                             cutoffDate.setHours(0, 0, 0, 0);
                             cutoffDate.setDate(cutoffDate.getDate() + 2);
