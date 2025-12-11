@@ -3658,8 +3658,20 @@
                 console.log(`✅ Vereinbarter Preis auto-updated: ${bruttoOriginal.toFixed(2)} €`);
             }
 
-            // Varianten-Preise aktualisieren (Original ≠ Aftermarket basierend auf Ersatzteile-Preisen!)
-            updateVariantenPreise(bruttoOriginal, bruttoAftermarket);
+            // 🛡️ FIX (2025-12-11): Nur 2 Varianten wenn Ersatzteile vorhanden UND Preise unterschiedlich
+            // PROBLEM: Ohne Ersatzteile waren Original und Aftermarket identisch → Partner sah 2 gleiche Preise
+            const hatErsatzteile = ersatzteileData.length > 0;
+            const preiseUnterschiedlich = Math.abs(bruttoOriginal - bruttoAftermarket) > 0.01;
+
+            if (hatErsatzteile && preiseUnterschiedlich) {
+                // 2 Varianten: Original und Aftermarket (unterschiedliche Ersatzteil-Preise)
+                updateVariantenPreise(bruttoOriginal, bruttoAftermarket);
+                console.log('✅ Varianten-Modus: 2 Preise (Ersatzteile vorhanden, Preise unterschiedlich)');
+            } else {
+                // Nur 1 Preis (keine Ersatzteile ODER Preise identisch)
+                updateVariantenPreise(bruttoOriginal, 0);
+                console.log('✅ Einzel-Preis-Modus: Nur Original (keine Ersatzteile oder Preise identisch)');
+            }
         }
 
         /**
@@ -5903,10 +5915,14 @@
                 }
 
                 // 🆕 FIX Nov 30, 2025: Preis-Validierung mit 2-Varianten-Support
+                // 🛡️ FIX Dec 11, 2025: hasVarianten nur wenn BEIDE > 0 UND unterschiedlich
                 const summeBruttoOriginal = parseFloat(document.getElementById('summeBruttoOriginal')?.value) || 0;
                 const summeBruttoAftermarket = parseFloat(document.getElementById('summeBruttoAftermarket')?.value) || 0;
                 const vereinbarterPreis = parseFloat(document.getElementById('vereinbarterPreis')?.value) || 0;
-                const hasVarianten = summeBruttoOriginal > 0 || summeBruttoAftermarket > 0;
+                // Nur Varianten wenn beide Preise > 0 UND unterschiedlich (ohne Ersatzteile → beide gleich → keine Varianten)
+                const hasVarianten = summeBruttoOriginal > 0
+                                  && summeBruttoAftermarket > 0
+                                  && Math.abs(summeBruttoOriginal - summeBruttoAftermarket) > 0.01;
 
                 if (!hasVarianten && !vereinbarterPreis) {
                     showToast('⚠️ Bitte geben Sie einen Preis ein!', 'error', 5000);
