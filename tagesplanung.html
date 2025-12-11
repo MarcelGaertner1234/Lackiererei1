@@ -3061,6 +3061,20 @@
                     updateData.anliefertermin = firstService.datum;  // YYYY-MM-DD für Partner-App Auftragsstart
                     updateData['kva.termine.start'] = firstService.datum;  // YYYY-MM-DD
                     console.log('📅 Neuer Auftragsstart:', firstService.datum);
+
+                    // 🆕 48h-Check: Wenn Service außerhalb 48h-Fenster, aus Kanban-Queue entfernen
+                    const firstServiceDate = new Date(firstService.datum);
+                    const cutoffDate = new Date();
+                    cutoffDate.setHours(0, 0, 0, 0);
+                    cutoffDate.setDate(cutoffDate.getDate() + 2); // Übermorgen 00:00 = außerhalb 48h
+
+                    if (firstServiceDate >= cutoffDate) {
+                        console.log('📅 Service liegt außerhalb 48h-Fenster - entferne aus Kanban');
+                        updateData.abteilungsQueue = firebase.firestore.FieldValue.delete();
+                        updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                        updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                        updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                    }
                 }
 
                 // Wenn abteilungsQueue bereits gesetzt, das queueDatum aktualisieren
@@ -3099,6 +3113,19 @@
                         if (firstService && firstService.datum) {
                             partnerUpdateData.anliefertermin = firstService.datum;
                             partnerUpdateData['kva.termine.start'] = firstService.datum;
+
+                            // 🆕 48h-Check: Gleicher Check wie bei fahrzeuge
+                            const firstServiceDate = new Date(firstService.datum);
+                            const cutoffDate = new Date();
+                            cutoffDate.setHours(0, 0, 0, 0);
+                            cutoffDate.setDate(cutoffDate.getDate() + 2);
+
+                            if (firstServiceDate >= cutoffDate) {
+                                partnerUpdateData.abteilungsQueue = firebase.firestore.FieldValue.delete();
+                                partnerUpdateData.queueDatum = firebase.firestore.FieldValue.delete();
+                                partnerUpdateData.queuePosition = firebase.firestore.FieldValue.delete();
+                                partnerUpdateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                            }
                         }
 
                         await partnerCollection.doc(String(anfrageId)).update(partnerUpdateData);
