@@ -3044,27 +3044,51 @@
             ALL_QUEUES.forEach(q => queuedFahrzeuge[q] = []);
 
             allFahrzeuge.forEach(f => {
-                // 📅 NEU: servicePlan Support (2025-12-09)
+                // 📅 servicePlan Support (2025-12-09) - UPDATED für Array-Format (2025-12-11)
                 // Wenn Fahrzeug einen servicePlan hat, prüfe ob für diesen Tag ein Service geplant ist
-                if (f.servicePlan && typeof f.servicePlan === 'object') {
+                if (f.servicePlan) {
                     let addedToQueue = false;
-                    for (const [serviceType, plannedDate] of Object.entries(f.servicePlan)) {
-                        if (plannedDate === dateStr && queuedFahrzeuge[serviceType] !== undefined) {
-                            // Fahrzeug für diesen Service an diesem Tag eingeplant
-                            queuedFahrzeuge[serviceType].push({
-                                ...f,
-                                // Override für diese Queue
-                                abteilungsQueue: serviceType,
-                                queueDatum: plannedDate
-                            });
-                            addedToQueue = true;
-                        }
-                    }
-                    if (addedToQueue) return; // Mindestens eine Queue gefunden
 
-                    // Prüfe ob irgendein Service für einen anderen Tag geplant ist
-                    const hasAnyPlannedService = Object.values(f.servicePlan).some(d => d);
-                    if (hasAnyPlannedService) return; // Hat Plan für anderen Tag - nicht zu ungeplant
+                    // NEU: Array-Format (aus entwuerfe-bearbeiten.html)
+                    if (Array.isArray(f.servicePlan)) {
+                        for (const step of f.servicePlan) {
+                            if (step.datum === dateStr && queuedFahrzeuge[step.queue] !== undefined) {
+                                queuedFahrzeuge[step.queue].push({
+                                    ...f,
+                                    abteilungsQueue: step.queue,
+                                    queueDatum: step.datum,
+                                    queueStartzeit: step.startzeit,
+                                    queueDauer: step.dauer
+                                });
+                                addedToQueue = true;
+                            }
+                        }
+                        if (addedToQueue) return;
+
+                        // Prüfe ob irgendein Service für einen anderen Tag geplant ist
+                        const hasAnyPlannedService = f.servicePlan.some(s => s.datum);
+                        if (hasAnyPlannedService) return; // Hat Plan für anderen Tag - nicht zu ungeplant
+                    }
+                    // LEGACY: Object-Format (Rückwärtskompatibilität)
+                    else if (typeof f.servicePlan === 'object') {
+                        for (const [serviceType, plannedDate] of Object.entries(f.servicePlan)) {
+                            if (plannedDate === dateStr && queuedFahrzeuge[serviceType] !== undefined) {
+                                // Fahrzeug für diesen Service an diesem Tag eingeplant
+                                queuedFahrzeuge[serviceType].push({
+                                    ...f,
+                                    // Override für diese Queue
+                                    abteilungsQueue: serviceType,
+                                    queueDatum: plannedDate
+                                });
+                                addedToQueue = true;
+                            }
+                        }
+                        if (addedToQueue) return; // Mindestens eine Queue gefunden
+
+                        // Prüfe ob irgendein Service für einen anderen Tag geplant ist
+                        const hasAnyPlannedService = Object.values(f.servicePlan).some(d => d);
+                        if (hasAnyPlannedService) return; // Hat Plan für anderen Tag - nicht zu ungeplant
+                    }
                 }
 
                 // Check if already queued for this date (abteilungsQueue for Service, logistikQueue for Logistik)
