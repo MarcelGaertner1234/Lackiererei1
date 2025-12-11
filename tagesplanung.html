@@ -2840,16 +2840,37 @@
          * Öffnet das Verschieben-Modal für ein bereits geplantes Fahrzeug
          */
         function openVerschiebenModal(fahrzeug) {
-            if (!fahrzeug || !fahrzeug.servicePlan || !Array.isArray(fahrzeug.servicePlan) || fahrzeug.servicePlan.length === 0) {
-                showToast('Fahrzeug hat keinen gültigen Service-Plan', 'error');
+            if (!fahrzeug) {
+                showToast('Kein Fahrzeug ausgewählt', 'error');
                 return;
             }
 
-            verschiebenFahrzeug = JSON.parse(JSON.stringify(fahrzeug)); // Deep copy
-            verschiebenOriginalPlan = JSON.parse(JSON.stringify(fahrzeug.servicePlan));
+            // Deep copy des Fahrzeugs
+            verschiebenFahrzeug = JSON.parse(JSON.stringify(fahrzeug));
+
+            // Wenn kein servicePlan vorhanden, aber abteilungsQueue gesetzt ist,
+            // erstelle einen servicePlan aus den vorhandenen Daten
+            if (!verschiebenFahrzeug.servicePlan || !Array.isArray(verschiebenFahrzeug.servicePlan) || verschiebenFahrzeug.servicePlan.length === 0) {
+                if (verschiebenFahrzeug.abteilungsQueue && verschiebenFahrzeug.queueDatum) {
+                    // Erstelle servicePlan aus abteilungsQueue-Daten
+                    verschiebenFahrzeug.servicePlan = [{
+                        queue: verschiebenFahrzeug.abteilungsQueue,
+                        datum: verschiebenFahrzeug.queueDatum,
+                        startzeit: verschiebenFahrzeug.queueStartzeit || '08:00',
+                        dauer: verschiebenFahrzeug.queueDauer || 240,
+                        reihenfolge: 1
+                    }];
+                    console.log('📅 servicePlan aus abteilungsQueue erstellt:', verschiebenFahrzeug.servicePlan);
+                } else {
+                    showToast('Fahrzeug hat keine Terminplanung. Bitte erst durchplanen.', 'error');
+                    return;
+                }
+            }
+
+            verschiebenOriginalPlan = JSON.parse(JSON.stringify(verschiebenFahrzeug.servicePlan));
 
             document.getElementById('verschiebenKennzeichen').textContent =
-                `${fahrzeug.kennzeichen} - ${fahrzeug.servicePlan.length} Service(s)`;
+                `${fahrzeug.kennzeichen} - ${verschiebenFahrzeug.servicePlan.length} Service(s)`;
 
             renderVerschiebenServices();
             document.getElementById('verschiebenModal').classList.add('active');
@@ -3786,7 +3807,7 @@
                     ${logistikBadgesHtml}
                     ${startStatusHtml}
                     ${eintretenBtnHtml}
-                    ${fahrzeug.servicePlan && Array.isArray(fahrzeug.servicePlan) && fahrzeug.servicePlan.length > 0
+                    ${(fahrzeug.servicePlan && Array.isArray(fahrzeug.servicePlan) && fahrzeug.servicePlan.length > 0) || fahrzeug.abteilungsQueue
                         ? `<button class="verschieben-btn" onclick="event.stopPropagation(); openVerschiebenModal(allFahrzeuge.find(f => f.id === '${fahrzeug.id}'))" title="Termine verschieben">
                                📅 Verschieben
                            </button>`
