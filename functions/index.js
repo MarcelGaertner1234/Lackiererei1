@@ -2598,12 +2598,35 @@ exports.syncStatusToPartnerAnfragen = functions
         const after = change.after.data();
         const fahrzeugId = context.params.fahrzeugId;
 
+        // 🆕 Fields to sync between collections (beyond just status)
+        const syncFields = [
+          "servicePlan",
+          "geplantesAbnahmeDatum",
+          "fertigstellungsdatum",
+          "anliefertermin",
+          "abholtermin",
+          "queueDatum",
+        ];
+
         // Check if status or prozessStatus changed
         const statusChanged = before.status !== after.status;
         const prozessStatusChanged = before.prozessStatus !== after.prozessStatus;
 
-        if (!statusChanged && !prozessStatusChanged) {
+        // 🆕 Check if any sync-relevant field changed
+        const changedSyncFields = syncFields.filter((field) => {
+          const beforeVal = JSON.stringify(before[field]);
+          const afterVal = JSON.stringify(after[field]);
+          return beforeVal !== afterVal;
+        });
+
+        const hasSyncFieldChanges = changedSyncFields.length > 0;
+
+        if (!statusChanged && !prozessStatusChanged && !hasSyncFieldChanges) {
           return null; // No sync needed
+        }
+
+        if (hasSyncFieldChanges) {
+          console.log(`🔄 [SYNC] Sync-Felder geändert: ${changedSyncFields.join(", ")}`);
         }
 
         console.log(`🔄 [SYNC] Fahrzeug ${fahrzeugId} Status geändert:`);
@@ -2685,6 +2708,31 @@ exports.syncStatusToPartnerAnfragen = functions
           lastStatusUpdate: admin.firestore.Timestamp.now(),
           updatedAt: admin.firestore.Timestamp.now(),
         };
+
+        // 🆕 Include all changed sync fields in update
+        for (const field of changedSyncFields) {
+          if (after[field] !== undefined) {
+            updateData[field] = after[field];
+            console.log(`   📋 Sync ${field}: ${JSON.stringify(after[field]).substring(0, 100)}...`);
+          }
+        }
+
+        // 🆕 Also sync nested fields for KVA termine
+        if (after.kva && after.kva.termine) {
+          const beforeTermine = before.kva?.termine || {};
+          const afterTermine = after.kva.termine;
+
+          if (JSON.stringify(beforeTermine) !== JSON.stringify(afterTermine)) {
+            updateData["kva.termine"] = afterTermine;
+            console.log(`   📋 Sync kva.termine`);
+          }
+        }
+
+        // 🆕 Sync angebotDetails.fertigstellungsdatum
+        if (after.angebotDetails?.fertigstellungsdatum !== before.angebotDetails?.fertigstellungsdatum) {
+          updateData["angebotDetails.fertigstellungsdatum"] = after.angebotDetails?.fertigstellungsdatum || null;
+          console.log(`   📋 Sync angebotDetails.fertigstellungsdatum`);
+        }
 
         // Also sync completion date if available
         if (after.status === "fertig" || after.status === "abgeschlossen") {
