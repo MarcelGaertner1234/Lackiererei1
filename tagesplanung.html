@@ -1118,6 +1118,13 @@
             cursor: not-allowed;
         }
 
+        .verschieben-service .service-datum input[type="time"] {
+            padding: 6px 10px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: 14px;
+        }
+
         .verschieben-service .service-zeit {
             color: var(--color-text-muted);
             font-size: 13px;
@@ -2941,7 +2948,10 @@
                             <input type="date"
                                    value="${service.datum}"
                                    onchange="onVerschiebenDatumChange(${index}, this.value)">
-                            ${service.startzeit ? `<span class="service-zeit">${service.startzeit}${service.endzeit ? ' - ' + service.endzeit : ''}</span>` : ''}
+                            <label>Uhrzeit:</label>
+                            <input type="time"
+                                   value="${service.startzeit || '08:00'}"
+                                   onchange="onVerschiebenZeitChange(${index}, this.value)">
                         </div>
                         ${isChanged ? '<div class="auto-shift-hint">Verschoben</div>' : ''}
                     </div>
@@ -2980,13 +2990,22 @@
         }
 
         /**
+         * Handler für Uhrzeitänderung
+         */
+        function onVerschiebenZeitChange(index, newTime) {
+            verschiebenFahrzeug.servicePlan[index].startzeit = newTime;
+            renderVerschiebenServices();
+        }
+
+        /**
          * Speichert die Verschiebung in Firestore
          */
         async function saveVerschiebung() {
             try {
-                // Prüfen ob Änderungen vorliegen
+                // Prüfen ob Änderungen vorliegen (Datum ODER Uhrzeit)
                 const hasChanges = verschiebenFahrzeug.servicePlan.some((service, index) =>
-                    service.datum !== verschiebenOriginalPlan[index].datum
+                    service.datum !== verschiebenOriginalPlan[index].datum ||
+                    service.startzeit !== verschiebenOriginalPlan[index].startzeit
                 );
 
                 if (!hasChanges) {
@@ -3007,6 +3026,16 @@
                     lastModified: firebase.firestore.FieldValue.serverTimestamp(),
                     lastModifiedBy: 'tagesplanung:verschieben'
                 };
+
+                // 🆕 Geplantes Abnahmetermin aktualisieren (letzter Service bestimmt das Ende)
+                const lastService = newPlan[newPlan.length - 1];
+                if (lastService && lastService.datum) {
+                    // Format für geplantesAbnahmeDatum: DD.MM.YYYY (für Partner-App Anzeige)
+                    const [year, month, day] = lastService.datum.split('-');
+                    updateData.geplantesAbnahmeDatum = `${day}.${month}.${year}`;
+                    updateData.abholtermin = lastService.datum; // ISO-Format für Sortierung
+                    console.log('📅 Neues Abnahmetermin:', updateData.geplantesAbnahmeDatum);
+                }
 
                 // Wenn abteilungsQueue bereits gesetzt, das queueDatum aktualisieren
                 const firstService = newPlan[0];
