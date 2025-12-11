@@ -1287,3 +1287,459 @@ document.addEventListener('DOMContentLoaded', () => {
 // RUN #44: Production Firebase Config created
 // Date: 2025-10-16
 // Fixes: 404 Error on GitHub Pages (firebase-config-RUN24.js not found)
+
+// ============================================
+// AGI TRAINING HELPERS (Phase 1 - 2025-12-11)
+// ============================================
+
+/**
+ * Get all labeled photos for ML export
+ * @returns {Promise<Array>} Array of { fahrzeugId, schadenLabels, url, ... }
+ */
+window.getLabeledPhotos = async function() {
+    const fahrzeuge = window.getCollection('fahrzeuge');
+    const snapshot = await fahrzeuge.get();
+
+    const labeledPhotos = [];
+
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.schaedensfotos && Array.isArray(data.schaedensfotos)) {
+            data.schaedensfotos.forEach((foto, index) => {
+                if (foto.schadenLabels) {
+                    labeledPhotos.push({
+                        fahrzeugId: doc.id,
+                        fotoIndex: index,
+                        url: foto.url,
+                        schadenLabels: foto.schadenLabels,
+                        labeledAt: foto.labeledAt,
+                        labeledBy: foto.labeledBy,
+                        confidence: foto.confidence,
+                        damageCode: foto.damageCode,
+                        // Fahrzeug-Kontext fuer ML
+                        kennzeichen: data.kennzeichen,
+                        marke: data.marke,
+                        modell: data.modell,
+                        baujahrVon: data.baujahrVon
+                    });
+                }
+            });
+        }
+    });
+
+    console.log(`[AGI Training] ${labeledPhotos.length} gelabelte Fotos gefunden`);
+    return labeledPhotos;
+};
+
+/**
+ * Get AGI training statistics
+ * @returns {Promise<Object>} Statistics about labeled data
+ */
+window.getAGITrainingStats = async function() {
+    const labeledPhotos = await window.getLabeledPhotos();
+
+    const stats = {
+        totalLabeledPhotos: labeledPhotos.length,
+        byPosition: {},
+        byDamageType: {},
+        bySeverity: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        byConfidence: { sicher: 0, unsicher: 0 },
+        uniqueVehicles: new Set()
+    };
+
+    labeledPhotos.forEach(photo => {
+        const labels = photo.schadenLabels;
+        if (labels) {
+            // Position
+            if (labels.position) {
+                stats.byPosition[labels.position] = (stats.byPosition[labels.position] || 0) + 1;
+            }
+            // Damage Type
+            if (labels.schadensart) {
+                stats.byDamageType[labels.schadensart] = (stats.byDamageType[labels.schadensart] || 0) + 1;
+            }
+            // Severity
+            if (labels.schweregrad) {
+                stats.bySeverity[labels.schweregrad]++;
+            }
+        }
+        // Confidence
+        if (photo.confidence) {
+            stats.byConfidence[photo.confidence]++;
+        }
+        // Unique vehicles
+        stats.uniqueVehicles.add(photo.fahrzeugId);
+    });
+
+    stats.uniqueVehicles = stats.uniqueVehicles.size;
+
+    console.log('[AGI Training] Stats:', stats);
+    return stats;
+};
+
+/**
+ * Export training data as JSON (for ML pipeline)
+ * @returns {Promise<string>} JSON string of training data
+ */
+window.exportTrainingData = async function() {
+    const labeledPhotos = await window.getLabeledPhotos();
+    const stats = await window.getAGITrainingStats();
+
+    const exportData = {
+        exportDate: new Date().toISOString(),
+        werkstattId: window.werkstattId || window.getWerkstattId(),
+        stats: stats,
+        trainingData: labeledPhotos.map(photo => ({
+            // ML Input Features
+            damageCode: photo.damageCode,
+            position: photo.schadenLabels?.position,
+            schadensart: photo.schadenLabels?.schadensart,
+            schweregrad: photo.schadenLabels?.schweregrad,
+            tiefe: photo.schadenLabels?.tiefe,
+            reparaturart: photo.schadenLabels?.reparaturart,
+            // Vehicle Context
+            marke: photo.marke,
+            modell: photo.modell,
+            baujahr: photo.baujahrVon,
+            // Quality Indicator
+            confidence: photo.confidence,
+            labeledBy: photo.labeledBy
+        }))
+    };
+
+    console.log(`[AGI Training] Export: ${exportData.trainingData.length} Datensaetze`);
+    return JSON.stringify(exportData, null, 2);
+};
+
+// ============================================
+// AGI TRAINING SPRINT 2: ARBEITSZEITEN HELPERS
+// ============================================
+
+/**
+ * Save work time record to Firestore
+ * @param {Object} arbeitszeitData - Work time data
+ * @returns {Promise<string>} Document ID
+ */
+window.saveArbeitszeit = async function(arbeitszeitData) {
+    await window.firebaseInitialized;
+    const collectionName = window.getCollectionName('arbeitszeiten');
+
+    const docRef = await db.collection(collectionName).add({
+        ...arbeitszeitData,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(`[AGI Sprint 2] Arbeitszeit gespeichert: ${docRef.id}`);
+    return docRef.id;
+};
+
+/**
+ * Get all work times for a vehicle
+ * @param {string} fahrzeugId - Vehicle ID
+ * @returns {Promise<Array>} Array of work time records
+ */
+window.getArbeitszeitenForFahrzeug = async function(fahrzeugId) {
+    await window.firebaseInitialized;
+    const collectionName = window.getCollectionName('arbeitszeiten');
+
+    const snapshot = await db.collection(collectionName)
+        .where('fahrzeugId', '==', fahrzeugId)
+        .orderBy('startzeit', 'desc')
+        .get();
+
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+/**
+ * Get work time statistics for ML training
+ * @returns {Promise<Object>} Statistics about work times
+ */
+window.getArbeitszeitenStats = async function() {
+    await window.firebaseInitialized;
+    const collectionName = window.getCollectionName('arbeitszeiten');
+
+    const snapshot = await db.collection(collectionName).get();
+
+    const stats = {
+        totalRecords: 0,
+        totalMinuten: 0,
+        byArbeitsart: {},
+        bySkillLevel: {},
+        bySchwierigkeit: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        avgDauerByArbeitsart: {},
+        materialVerbrauch: {}
+    };
+
+    const dauerByArbeitsart = {};
+
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        stats.totalRecords++;
+        stats.totalMinuten += data.dauerMinuten || 0;
+
+        // By work type
+        if (data.arbeitsart) {
+            stats.byArbeitsart[data.arbeitsart] = (stats.byArbeitsart[data.arbeitsart] || 0) + 1;
+            dauerByArbeitsart[data.arbeitsart] = dauerByArbeitsart[data.arbeitsart] || [];
+            dauerByArbeitsart[data.arbeitsart].push(data.dauerMinuten || 0);
+        }
+
+        // By skill level
+        if (data.mitarbeiterSkillLevel) {
+            stats.bySkillLevel[data.mitarbeiterSkillLevel] = (stats.bySkillLevel[data.mitarbeiterSkillLevel] || 0) + 1;
+        }
+
+        // By difficulty
+        if (data.schwierigkeit) {
+            stats.bySchwierigkeit[data.schwierigkeit]++;
+        }
+
+        // Material usage
+        if (data.materialVerbrauch && Array.isArray(data.materialVerbrauch)) {
+            data.materialVerbrauch.forEach(m => {
+                if (m.typ) {
+                    stats.materialVerbrauch[m.typ] = stats.materialVerbrauch[m.typ] || { menge: 0, kosten: 0 };
+                    stats.materialVerbrauch[m.typ].menge += m.menge || 0;
+                    stats.materialVerbrauch[m.typ].kosten += m.kosten || 0;
+                }
+            });
+        }
+    });
+
+    // Calculate averages
+    Object.keys(dauerByArbeitsart).forEach(art => {
+        const durations = dauerByArbeitsart[art];
+        stats.avgDauerByArbeitsart[art] = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
+    });
+
+    console.log('[AGI Sprint 2] Arbeitszeiten Stats:', stats);
+    return stats;
+};
+
+/**
+ * Export work time data for ML training
+ * @returns {Promise<string>} JSON string of training data
+ */
+window.exportArbeitszeitenTrainingData = async function() {
+    await window.firebaseInitialized;
+    const collectionName = window.getCollectionName('arbeitszeiten');
+
+    const snapshot = await db.collection(collectionName).get();
+    const stats = await window.getArbeitszeitenStats();
+
+    const exportData = {
+        exportDate: new Date().toISOString(),
+        werkstattId: window.werkstattId || window.getWerkstattId(),
+        stats: stats,
+        trainingData: snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                // ML Input Features
+                arbeitsart: data.arbeitsart,
+                dauerMinuten: data.dauerMinuten,
+                mitarbeiterSkillLevel: data.mitarbeiterSkillLevel,
+                schwierigkeit: data.schwierigkeit,
+                // Material context
+                materialVerbrauch: data.materialVerbrauch || [],
+                // Time context
+                startzeit: data.startzeit?.toDate?.()?.toISOString(),
+                // Vehicle link (for joining with damage labels)
+                fahrzeugId: data.fahrzeugId,
+                // Notes for qualitative analysis
+                notizen: data.notizen
+            };
+        })
+    };
+
+    console.log(`[AGI Sprint 2] Export: ${exportData.trainingData.length} Arbeitszeit-Datensaetze`);
+    return JSON.stringify(exportData, null, 2);
+};
+
+// ============================================
+// 🤖 AGI TRAINING SPRINT 3: KVA-FEEDBACK
+// ============================================
+
+/**
+ * Speichert KVA-Feedback fuer ein Fahrzeug in Firestore
+ * @param {string} fahrzeugId - ID des Fahrzeugs
+ * @param {Object} feedbackData - Feedback-Daten von KVAFeedback.saveFeedback()
+ * @returns {Promise<boolean>} Erfolg
+ */
+window.saveKVAFeedbackToFirestore = async function(fahrzeugId, feedbackData) {
+    if (!window.db || !window.werkstattId) {
+        console.warn('[KVA-FEEDBACK] Firestore nicht verfuegbar');
+        return false;
+    }
+
+    try {
+        const fahrzeugRef = window.getCollection('fahrzeuge').doc(fahrzeugId);
+
+        // KVA-Feedback direkt im Fahrzeug-Dokument speichern
+        await fahrzeugRef.update({
+            // Tatsaechliche Kosten und Abweichung
+            kpiTatsaechlicheKosten: feedbackData.tatsaechlicheKosten,
+            kpiAbweichung: feedbackData.abweichung,
+            kpiAbweichungProzent: feedbackData.abweichungProzent,
+
+            // ML-Training Felder
+            kpiAbweichungsKategorie: feedbackData.kategorie,
+            kpiAbweichungsGruende: feedbackData.gruende || [],
+            kpiLernnotiz: feedbackData.notiz || '',
+
+            // Metadaten
+            kpiFeedbackTimestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            kpiFeedbackVersion: 'v1.0'
+        });
+
+        console.log(`✅ [KVA-FEEDBACK] Firestore Update erfolgreich fuer ${fahrzeugId}`);
+        return true;
+    } catch (error) {
+        console.error('❌ [KVA-FEEDBACK] Firestore Update fehlgeschlagen:', error);
+        return false;
+    }
+};
+
+/**
+ * Laedt KVA-Feedback-Statistiken fuer ML-Analyse
+ * @param {Object} options - Filter-Optionen
+ * @returns {Promise<Object>} Statistiken
+ */
+window.getKVAFeedbackStats = async function(options = {}) {
+    if (!window.db || !window.werkstattId) {
+        console.warn('[KVA-FEEDBACK] Firestore nicht verfuegbar');
+        return null;
+    }
+
+    const { startDate, endDate } = options;
+
+    try {
+        let query = window.getCollection('fahrzeuge')
+            .where('status', '==', 'abgeschlossen')
+            .where('kpiTatsaechlicheKosten', '>', 0);
+
+        const snapshot = await query.get();
+
+        if (snapshot.empty) {
+            return { count: 0, stats: null };
+        }
+
+        const feedbackData = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.kpiKostenvoranschlag && data.kpiTatsaechlicheKosten) {
+                feedbackData.push({
+                    id: doc.id,
+                    kva: data.kpiKostenvoranschlag,
+                    tatsaechlich: data.kpiTatsaechlicheKosten,
+                    abweichung: data.kpiAbweichung || 0,
+                    abweichungProzent: data.kpiAbweichungProzent || 0,
+                    kategorie: data.kpiAbweichungsKategorie || 'UNBEKANNT',
+                    gruende: data.kpiAbweichungsGruende || [],
+                    timestamp: data.kpiFeedbackTimestamp
+                });
+            }
+        });
+
+        // Statistiken berechnen
+        const stats = {
+            count: feedbackData.length,
+            avgAbweichungProzent: feedbackData.length > 0
+                ? feedbackData.reduce((sum, d) => sum + d.abweichungProzent, 0) / feedbackData.length
+                : 0,
+            kategorien: {},
+            gruende: {}
+        };
+
+        // Kategorien zaehlen
+        feedbackData.forEach(d => {
+            stats.kategorien[d.kategorie] = (stats.kategorien[d.kategorie] || 0) + 1;
+            d.gruende.forEach(g => {
+                stats.gruende[g] = (stats.gruende[g] || 0) + 1;
+            });
+        });
+
+        console.log(`[KVA-FEEDBACK] Stats geladen: ${stats.count} Eintraege, Avg ${stats.avgAbweichungProzent.toFixed(1)}%`);
+        return { count: stats.count, stats, data: feedbackData };
+    } catch (error) {
+        console.error('❌ [KVA-FEEDBACK] Fehler beim Laden der Stats:', error);
+        return null;
+    }
+};
+
+/**
+ * Exportiert KVA-Feedback-Daten fuer ML-Training
+ * @returns {Promise<string>} JSON-Export
+ */
+window.exportKVAFeedbackTrainingData = async function() {
+    if (!window.db || !window.werkstattId) {
+        console.warn('[KVA-FEEDBACK] Firestore nicht verfuegbar');
+        return null;
+    }
+
+    try {
+        const snapshot = await window.getCollection('fahrzeuge')
+            .where('status', '==', 'abgeschlossen')
+            .where('kpiTatsaechlicheKosten', '>', 0)
+            .get();
+
+        const trainingData = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.kpiKostenvoranschlag && data.kpiTatsaechlicheKosten) {
+                trainingData.push({
+                    // Fahrzeug-Features
+                    marke: data.marke || '',
+                    modell: data.modell || '',
+                    baujahr: data.baujahr || '',
+                    fahrzeugTyp: `${data.marke}_${data.modell}`.toLowerCase().replace(/\s+/g, '_'),
+
+                    // Schadensbeschreibung
+                    schadensBeschreibung: data.notizen || '',
+                    serviceTyp: data.serviceTyp || 'lack',
+
+                    // KVA vs. Tatsaechlich
+                    kvaKosten: data.kpiKostenvoranschlag,
+                    tatsaechlicheKosten: data.kpiTatsaechlicheKosten,
+                    abweichung: data.kpiAbweichung || 0,
+                    abweichungProzent: data.kpiAbweichungProzent || 0,
+
+                    // ML-Labels
+                    kategorie: data.kpiAbweichungsKategorie || 'UNBEKANNT',
+                    gruende: data.kpiAbweichungsGruende || [],
+                    lernnotiz: data.kpiLernnotiz || '',
+
+                    // Metadaten
+                    abschlussDatum: data.prozessTimestamps?.abgeschlossen || null,
+                    feedbackTimestamp: data.kpiFeedbackTimestamp?.toDate?.()?.toISOString() || null
+                });
+            }
+        });
+
+        const exportData = {
+            version: '1.0',
+            werkstattId: window.werkstattId,
+            exportDate: new Date().toISOString(),
+            totalRecords: trainingData.length,
+            trainingData
+        };
+
+        console.log(`[AGI Sprint 3] KVA-Export: ${trainingData.length} Datensaetze`);
+        return JSON.stringify(exportData, null, 2);
+    } catch (error) {
+        console.error('❌ [KVA-FEEDBACK] Export fehlgeschlagen:', error);
+        return null;
+    }
+};
+
+// Log AGI Training ready
+console.log('✅ [AGI Training] Helper functions loaded');
+console.log('   - window.getLabeledPhotos()');
+console.log('   - window.getAGITrainingStats()');
+console.log('   - window.exportTrainingData()');
+console.log('   - window.saveArbeitszeit()');
+console.log('   - window.getArbeitszeitenForFahrzeug()');
+console.log('   - window.getArbeitszeitenStats()');
+console.log('   - window.exportArbeitszeitenTrainingData()');
+console.log('   - window.saveKVAFeedbackToFirestore()');
+console.log('   - window.getKVAFeedbackStats()');
+console.log('   - window.exportKVAFeedbackTrainingData()');

@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <!-- FOUC Prevention: Load Theme BEFORE CSS -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbeitszeiten | AGI Training Dashboard</title>
+
+    <!-- Mobile-Responsive CSS Framework -->
+    <link rel="stylesheet" href="mobile-responsive.css">
+
+    <!-- Apple Liquid Glass Design System -->
+    <link rel="stylesheet" href="design-system.css">
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="animations.css">
+    <link rel="stylesheet" href="mobile-first.css">
+
+    <!-- Google Fonts - Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Feather Icons -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'SF Pro Display', 'Inter', var(--font-system);
+            background: var(--color-background);
+            min-height: 100vh;
+            padding: var(--space-6) var(--space-4) 100px;
+            color: var(--color-text-primary);
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+            border: 1px solid var(--color-border-glass);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-md);
+            padding: var(--space-8);
+            animation: slideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .nav-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            padding: 15px;
+            background: var(--color-surface);
+            border-radius: 12px;
+            border: 1px solid var(--color-border-glass);
+        }
+
+        .nav-btn {
+            padding: 10px 20px;
+            background: var(--color-surface-elevated);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 8px;
+            color: var(--color-text-primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-btn:hover {
+            background: var(--color-surface-elevated);
+            color: var(--color-primary);
+            transform: translateY(-2px);
+        }
+
+        .nav-btn.active {
+            background: var(--color-success);
+            color: white;
+            border-color: var(--color-success);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-export {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-export:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        /* KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: var(--color-surface-elevated);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .kpi-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .kpi-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--color-primary);
+            margin-bottom: 5px;
+        }
+
+        .kpi-label {
+            font-size: 14px;
+            color: var(--color-text-secondary);
+            font-weight: 500;
+        }
+
+        /* Chart Grid */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .chart-card {
+            background: var(--color-surface-elevated);
+            border: 1px solid var(--color-border-glass);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s;
+        }
+
+        .chart-card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--color-text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Data Table */
+        .data-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 20px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--color-border-glass);
+        }
+
+        .data-table th {
+            background: var(--color-surface);
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .data-table tr:hover td {
+            background: var(--color-surface);
+        }
+
+        /* Loading State */
+        .loading-spinner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: var(--color-text-secondary);
+        }
+
+        .loading-spinner::before {
+            content: '';
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--color-border-glass);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--color-text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: rgba(76, 175, 80, 0.15);
+            color: #4CAF50;
+        }
+
+        .badge-warning {
+            background: rgba(255, 152, 0, 0.15);
+            color: #FF9800;
+        }
+
+        .badge-info {
+            background: rgba(33, 150, 243, 0.15);
+            color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <nav class="nav-bar">
+            <a href="index.html" class="nav-btn">
+                <i data-feather="home"></i> Start
+            </a>
+            <a href="kanban.html" class="nav-btn">
+                <i data-feather="columns"></i> Kanban
+            </a>
+            <a href="steuerberater-statistiken.html" class="nav-btn">
+                <i data-feather="bar-chart-2"></i> Statistiken
+            </a>
+            <a href="admin-arbeitszeiten.html" class="nav-btn active">
+                <i data-feather="clock"></i> Arbeitszeiten
+            </a>
+        </nav>
+
+        <!-- Header -->
+        <header class="header">
+            <h1>
+                <span style="font-size: 32px;">&#9201;</span>
+                Arbeitszeiten Dashboard
+                <span class="badge badge-info">AGI Training</span>
+            </h1>
+            <div class="header-actions">
+                <button class="btn-export" onclick="exportData()">
+                    <i data-feather="download"></i>
+                    ML Export
+                </button>
+            </div>
+        </header>
+
+        <!-- KPI Cards -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon">&#128202;</div>
+                <div class="kpi-value" id="kpi-total">-</div>
+                <div class="kpi-label">Erfasste Eintraege</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">&#9201;</div>
+                <div class="kpi-value" id="kpi-hours">-</div>
+                <div class="kpi-label">Gesamtstunden</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">&#128176;</div>
+                <div class="kpi-value" id="kpi-material">-</div>
+                <div class="kpi-label">Materialkosten</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon">&#127919;</div>
+                <div class="kpi-value" id="kpi-quality">-</div>
+                <div class="kpi-label">Datenqualitaet</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3 class="chart-title">
+                    <span>&#128736;</span>
+                    Arbeitszeit nach Taetigkeit
+                </h3>
+                <div class="chart-container">
+                    <canvas id="chartByWorkType"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">
+                    <span>&#128119;</span>
+                    Verteilung nach Skill-Level
+                </h3>
+                <div class="chart-container">
+                    <canvas id="chartBySkill"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">
+                    <span>&#128200;</span>
+                    Durchschnittliche Dauer pro Arbeitsart
+                </h3>
+                <div class="chart-container">
+                    <canvas id="chartAvgDuration"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">
+                    <span>&#128293;</span>
+                    Schwierigkeitsverteilung
+                </h3>
+                <div class="chart-container">
+                    <canvas id="chartDifficulty"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Records -->
+        <div class="chart-card">
+            <h3 class="chart-title">
+                <span>&#128203;</span>
+                Letzte Arbeitszeit-Eintraege
+            </h3>
+            <div id="recentRecords">
+                <div class="loading-spinner">Lade Daten...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/work-timer.js"></script>
+
+    <script>
+        // Chart instances
+        let chartWorkType, chartSkill, chartAvgDuration, chartDifficulty;
+
+        // Work type labels (from work-timer.js)
+        const WORK_TYPE_LABELS = {
+            'VORBEREITUNG': 'Vorbereitung',
+            'AUSBEULEN': 'Ausbeulen/PDR',
+            'SPACHTELN': 'Spachteln',
+            'SCHLEIFEN': 'Schleifen',
+            'GRUNDIEREN': 'Grundieren',
+            'LACKIEREN': 'Lackieren',
+            'KLARLACK': 'Klarlack',
+            'POLIEREN': 'Polieren',
+            'MONTAGE': 'Montage',
+            'DEMONTAGE': 'Demontage',
+            'QUALITAET': 'Qualitaetskontrolle',
+            'SONSTIGES': 'Sonstiges'
+        };
+
+        const SKILL_LABELS = {
+            'AZUBI': 'Azubi',
+            'GESELLE': 'Geselle',
+            'MEISTER': 'Meister',
+            'SPEZIALIST': 'Spezialist'
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            feather.replace();
+
+            // Wait for auth
+            await window.authReady;
+
+            // Load data
+            await loadDashboard();
+        });
+
+        async function loadDashboard() {
+            try {
+                await window.firebaseInitialized;
+
+                // Get statistics
+                const stats = await window.getArbeitszeitenStats();
+
+                // Update KPIs
+                updateKPIs(stats);
+
+                // Create charts
+                createCharts(stats);
+
+                // Load recent records
+                await loadRecentRecords();
+
+            } catch (error) {
+                console.error('Fehler beim Laden:', error);
+                document.getElementById('recentRecords').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&#9888;</div>
+                        <p>Fehler beim Laden der Daten</p>
+                        <p><small>${error.message}</small></p>
+                    </div>
+                `;
+            }
+        }
+
+        function updateKPIs(stats) {
+            // Total records
+            document.getElementById('kpi-total').textContent = stats.totalRecords;
+
+            // Total hours
+            const hours = (stats.totalMinuten / 60).toFixed(1);
+            document.getElementById('kpi-hours').textContent = hours + 'h';
+
+            // Material costs
+            let materialTotal = 0;
+            Object.values(stats.materialVerbrauch || {}).forEach(m => {
+                materialTotal += m.kosten || 0;
+            });
+            document.getElementById('kpi-material').textContent = materialTotal.toFixed(0) + ' Euro';
+
+            // Data quality (based on completeness)
+            const quality = calculateQuality(stats);
+            document.getElementById('kpi-quality').textContent = quality + '%';
+        }
+
+        function calculateQuality(stats) {
+            if (stats.totalRecords === 0) return 0;
+
+            // Check different fields for completeness
+            let score = 0;
+
+            // Has work types
+            if (Object.keys(stats.byArbeitsart).length > 0) score += 25;
+
+            // Has skill levels
+            if (Object.keys(stats.bySkillLevel).length > 0) score += 25;
+
+            // Has difficulty ratings
+            const hasDifficulty = Object.values(stats.bySchwierigkeit).some(v => v > 0);
+            if (hasDifficulty) score += 25;
+
+            // Has material data
+            if (Object.keys(stats.materialVerbrauch).length > 0) score += 25;
+
+            return score;
+        }
+
+        function createCharts(stats) {
+            const darkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+            const textColor = darkMode ? '#e0e0e0' : '#333';
+            const gridColor = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+
+            // Chart 1: Work Type Distribution (Bar)
+            const workTypeCtx = document.getElementById('chartByWorkType').getContext('2d');
+            const workTypeLabels = Object.keys(stats.byArbeitsart).map(k => WORK_TYPE_LABELS[k] || k);
+            const workTypeData = Object.values(stats.byArbeitsart);
+
+            chartWorkType = new Chart(workTypeCtx, {
+                type: 'bar',
+                data: {
+                    labels: workTypeLabels,
+                    datasets: [{
+                        label: 'Anzahl Eintraege',
+                        data: workTypeData,
+                        backgroundColor: [
+                            '#4CAF50', '#2196F3', '#FF9800', '#9C27B0',
+                            '#00BCD4', '#E91E63', '#8BC34A', '#FF5722',
+                            '#3F51B5', '#009688', '#FFC107', '#795548'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        },
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+
+            // Chart 2: Skill Level Distribution (Doughnut)
+            const skillCtx = document.getElementById('chartBySkill').getContext('2d');
+            const skillLabels = Object.keys(stats.bySkillLevel).map(k => SKILL_LABELS[k] || k);
+            const skillData = Object.values(stats.bySkillLevel);
+
+            chartSkill = new Chart(skillCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: skillLabels,
+                    datasets: [{
+                        data: skillData,
+                        backgroundColor: ['#FFC107', '#4CAF50', '#2196F3', '#9C27B0']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: textColor }
+                        }
+                    }
+                }
+            });
+
+            // Chart 3: Average Duration (Horizontal Bar)
+            const avgCtx = document.getElementById('chartAvgDuration').getContext('2d');
+            const avgLabels = Object.keys(stats.avgDauerByArbeitsart).map(k => WORK_TYPE_LABELS[k] || k);
+            const avgData = Object.values(stats.avgDauerByArbeitsart);
+
+            chartAvgDuration = new Chart(avgCtx, {
+                type: 'bar',
+                data: {
+                    labels: avgLabels,
+                    datasets: [{
+                        label: 'Durchschnitt (Minuten)',
+                        data: avgData,
+                        backgroundColor: '#2196F3'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        },
+                        y: {
+                            ticks: { color: textColor },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+
+            // Chart 4: Difficulty Distribution (Pie)
+            const diffCtx = document.getElementById('chartDifficulty').getContext('2d');
+            const diffLabels = ['Sehr leicht (1)', 'Leicht (2)', 'Mittel (3)', 'Schwer (4)', 'Sehr schwer (5)'];
+            const diffData = Object.values(stats.bySchwierigkeit);
+
+            chartDifficulty = new Chart(diffCtx, {
+                type: 'pie',
+                data: {
+                    labels: diffLabels,
+                    datasets: [{
+                        data: diffData,
+                        backgroundColor: ['#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#f44336']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: textColor }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadRecentRecords() {
+            const container = document.getElementById('recentRecords');
+
+            try {
+                await window.firebaseInitialized;
+                const collectionName = window.getCollectionName('arbeitszeiten');
+                const db = firebase.firestore();
+
+                const snapshot = await db.collection(collectionName)
+                    .orderBy('startzeit', 'desc')
+                    .limit(20)
+                    .get();
+
+                if (snapshot.empty) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">&#128203;</div>
+                            <p>Noch keine Arbeitszeiten erfasst</p>
+                            <p><small>Nutzen Sie den Timer im Kanban-Board</small></p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Datum</th>
+                                <th>Taetigkeit</th>
+                                <th>Dauer</th>
+                                <th>Skill-Level</th>
+                                <th>Schwierigkeit</th>
+                                <th>Fahrzeug</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const datum = data.startzeit?.toDate?.() || new Date();
+                    const datumStr = datum.toLocaleDateString('de-DE');
+                    const workType = WORK_TYPE_LABELS[data.arbeitsart] || data.arbeitsart || '-';
+                    const skill = SKILL_LABELS[data.mitarbeiterSkillLevel] || data.mitarbeiterSkillLevel || '-';
+
+                    html += `
+                        <tr>
+                            <td>${datumStr}</td>
+                            <td>${workType}</td>
+                            <td><strong>${data.dauerMinuten || 0} min</strong></td>
+                            <td><span class="badge badge-info">${skill}</span></td>
+                            <td>${data.schwierigkeit ? data.schwierigkeit + '/5' : '-'}</td>
+                            <td><small>${data.fahrzeugId?.substring(0, 10) || '-'}...</small></td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                container.innerHTML = html;
+
+            } catch (error) {
+                console.error('Fehler beim Laden der Records:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&#9888;</div>
+                        <p>Fehler beim Laden</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function exportData() {
+            try {
+                const jsonData = await window.exportArbeitszeitenTrainingData();
+
+                // Create download
+                const blob = new Blob([jsonData], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `arbeitszeiten-training-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                alert('ML Training-Daten exportiert!');
+            } catch (error) {
+                console.error('Export-Fehler:', error);
+                alert('Fehler beim Export: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1482,6 +1482,10 @@
     <!-- Image Optimizer -->
     <script src="image-optimizer.js"></script>
 
+    <!-- AGI Training: Damage Labeling System (2025-12-11) -->
+    <script src="js/damage-codes.js?v=agi-phase1"></script>
+    <script src="js/damage-labeler.js?v=agi-phase1"></script>
+
     <!-- Global Chat Notifications -->
     <link rel="stylesheet" href="global-chat-notifications.css">
     <script src="global-chat-notifications.js"></script>
@@ -5255,14 +5259,22 @@
         };
         window.listenerRegistry.registerDOM(photoInput, 'change', photoInputHandler, 'Photo Input Change');
 
+        // AGI Training: Temporaere Labels fuer Photos (vor dem Speichern)
+        let photoLabels = [];
+
         function updatePhotoGrid() {
             photoGrid.innerHTML = '';
             photos.forEach((photo, index) => {
                 const div = document.createElement('div');
                 div.className = 'photo-item';
+                const isLabeled = photoLabels[index] && photoLabels[index].schadenLabels;
                 div.innerHTML = `
                     <img src="${photo}" alt="Foto ${index + 1}">
                     <button class="remove-photo" onclick="removePhoto(${index})">×</button>
+                    <button class="foto-label-btn ${isLabeled ? 'labeled' : ''}" onclick="openPhotoLabeler(${index})" title="Schaden labeln (AGI-Training)">
+                        ${isLabeled ? '✓ Gelabelt' : '🏷️ Labeln'}
+                    </button>
+                    ${isLabeled ? '<span class="foto-label-badge">ML</span>' : ''}
                 `;
                 photoGrid.appendChild(div);
             });
@@ -5279,6 +5291,48 @@
 
             feather.replace();
         }
+
+        // AGI Training: Oeffnet den Schaden-Labeler fuer ein Foto
+        function openPhotoLabeler(index) {
+            if (typeof window.DamageLabeler === 'undefined') {
+                console.warn('[AGI Training] DamageLabeler nicht geladen');
+                showToast('Labeling-Modul wird geladen...', 'info');
+                return;
+            }
+
+            const photoUrl = photos[index];
+            const existingLabel = photoLabels[index] || {};
+
+            // Oeffne Modal mit temporaerer Callback-Funktion
+            // Da wir noch keine Fahrzeug-ID haben, speichern wir lokal
+            window.DamageLabeler.currentFahrzeugId = 'temp_' + Date.now();
+            window.DamageLabeler.currentFotoIndex = index;
+            window.DamageLabeler.currentFotoData = {
+                url: photoUrl,
+                schadenLabels: existingLabel.schadenLabels || null
+            };
+
+            // Override saveLabel to store locally instead of Firestore
+            window.DamageLabeler.saveLabelToFirestore = async function(labelData) {
+                // Speichere temporaer im photoLabels Array
+                photoLabels[index] = labelData;
+                console.log('✅ [AGI Training] Label temporaer gespeichert:', labelData);
+                updatePhotoGrid(); // UI aktualisieren
+            };
+
+            window.DamageLabeler.openModal('temp', index, {
+                url: photoUrl,
+                schadenLabels: existingLabel.schadenLabels || null
+            });
+        }
+
+        // Event Listener fuer gespeicherte Labels (falls das Modal Event feuert)
+        window.addEventListener('damageLabelSaved', function(e) {
+            if (e.detail && e.detail.fotoIndex !== undefined) {
+                photoLabels[e.detail.fotoIndex] = e.detail.labelData;
+                updatePhotoGrid();
+            }
+        });
 
         async function removePhoto(index) {
             const photoUrl = photos[index];
@@ -5297,6 +5351,8 @@
             }
 
             photos.splice(index, 1);
+            // AGI Training: Auch das zugehoerige Label entfernen
+            photoLabels.splice(index, 1);
             updatePhotoGrid();
         }
 
@@ -7703,6 +7759,22 @@
                 notizen: document.getElementById('notizen').value,
                 vereinbarterPreis: parseFloat(document.getElementById('vereinbarterPreis').value) || null,
                 photos,
+                // AGI Training: Schadenslabels für ML-Training (2025-12-11)
+                // Format: Array von { url, schadenLabels, labeledAt, labeledBy, confidence, damageCode }
+                schaedensfotos: photos.map((photoUrl, index) => {
+                    const label = photoLabels[index];
+                    if (label && label.schadenLabels) {
+                        return {
+                            url: photoUrl,
+                            schadenLabels: label.schadenLabels,
+                            labeledAt: label.labeledAt,
+                            labeledBy: label.labeledBy,
+                            confidence: label.confidence,
+                            damageCode: label.damageCode
+                        };
+                    }
+                    return { url: photoUrl }; // Nicht-gelabeltes Foto
+                }),
                 signature: canvas.toDataURL(),
                 unterschriftName: document.getElementById('unterschriftName')?.value || null, // Name des Unterzeichners für Nachvollziehbarkeit
                 pdfUrl: null, // Wird nach Upload gesetzt

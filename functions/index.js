@@ -6259,3 +6259,251 @@ exports.calculateTravelTime = functions
       throw new functions.https.HttpsError('internal', error.message);
     }
   });
+
+// ============================================
+// AGI TRAINING DATA EXPORT (Sprint 4 - 2025-12)
+// Combines all training data for ML pipeline
+// ============================================
+
+/**
+ * Export All Training Data for AGI/ML Pipeline
+ *
+ * Collects and combines:
+ * - Labeled damage photos (from fotos subcollection)
+ * - Work time records (from arbeitszeiten collection)
+ * - KVA feedback (from fahrzeuge with feedback fields)
+ *
+ * Admin-only function - requires admin role in claims
+ *
+ * @param {string} werkstattId - Werkstatt ID (e.g., 'mosbach')
+ * @param {string} startDate - ISO date string (optional)
+ * @param {string} endDate - ISO date string (optional)
+ * @returns {Object} Combined training data as JSON
+ */
+exports.exportAllTrainingData = functions
+  .region('europe-west3')
+  .runWith({
+    timeoutSeconds: 300, // 5 minutes for large exports
+    memory: '1GB'
+  })
+  .https.onCall(async (data, context) => {
+    try {
+      // Security: Only authenticated users with admin role
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          'unauthenticated',
+          'Nutzer muss eingeloggt sein'
+        );
+      }
+
+      // Check for admin role in claims
+      const claims = context.auth.token;
+      const isAdmin = claims.role === 'admin' || claims.admin === true;
+
+      if (!isAdmin) {
+        console.error(`❌ Non-admin user attempted export: ${context.auth.uid}`);
+        throw new functions.https.HttpsError(
+          'permission-denied',
+          'Nur Administratoren können Trainingsdaten exportieren'
+        );
+      }
+
+      const { werkstattId = 'mosbach', startDate, endDate } = data;
+
+      console.log('🤖 [AGI Export] Starting training data export...');
+      console.log(`   Werkstatt: ${werkstattId}`);
+      console.log(`   User: ${context.auth.token.email}`);
+      console.log(`   Date Range: ${startDate || 'all'} - ${endDate || 'all'}`);
+
+      // Build date filter
+      let startTimestamp = null;
+      let endTimestamp = null;
+
+      if (startDate) {
+        startTimestamp = admin.firestore.Timestamp.fromDate(new Date(startDate));
+      }
+      if (endDate) {
+        endTimestamp = admin.firestore.Timestamp.fromDate(new Date(endDate));
+      }
+
+      // ============================================
+      // 1. LABELED DAMAGE PHOTOS
+      // ============================================
+      console.log('📸 Collecting labeled photos...');
+
+      const labeledPhotos = [];
+      const fahrzeugeSnapshot = await db.collection(`fahrzeuge_${werkstattId}`).get();
+
+      for (const fahrzeugDoc of fahrzeugeSnapshot.docs) {
+        const fahrzeugData = fahrzeugDoc.data();
+        const fahrzeugId = fahrzeugDoc.id;
+
+        // Get fotos subcollection
+        let fotosQuery = db.collection(`fahrzeuge_${werkstattId}`)
+          .doc(fahrzeugId)
+          .collection('fotos')
+          .where('schadenLabels', '!=', null);
+
+        const fotosSnapshot = await fotosQuery.get();
+
+        for (const fotoDoc of fotosSnapshot.docs) {
+          const fotoData = fotoDoc.data();
+
+          // Apply date filter if provided
+          if (startTimestamp && fotoData.labeledAt && fotoData.labeledAt < startTimestamp) continue;
+          if (endTimestamp && fotoData.labeledAt && fotoData.labeledAt > endTimestamp) continue;
+
+          labeledPhotos.push({
+            id: fotoDoc.id,
+            fahrzeugId: fahrzeugId,
+            url: fotoData.url || null,
+            uploadedAt: fotoData.uploadedAt?.toDate()?.toISOString() || null,
+            schadenLabels: fotoData.schadenLabels || {},
+            labeledBy: fotoData.labeledBy || null,
+            labeledAt: fotoData.labeledAt?.toDate()?.toISOString() || null,
+            confidence: fotoData.confidence || null,
+            // Vehicle context for ML
+            fahrzeugContext: {
+              marke: fahrzeugData.marke || null,
+              modell: fahrzeugData.modell || null,
+              baujahr: fahrzeugData.baujahr || null,
+              farbcode: fahrzeugData.farbcode || null
+            }
+          });
+        }
+      }
+
+      console.log(`   ✅ Found ${labeledPhotos.length} labeled photos`);
+
+      // ============================================
+      // 2. WORK TIME RECORDS
+      // ============================================
+      console.log('⏱️ Collecting work time records...');
+
+      let arbeitszeitenQuery = db.collection(`arbeitszeiten_${werkstattId}`);
+
+      // Apply date filters
+      if (startTimestamp) {
+        arbeitszeitenQuery = arbeitszeitenQuery.where('startzeit', '>=', startTimestamp);
+      }
+      if (endTimestamp) {
+        arbeitszeitenQuery = arbeitszeitenQuery.where('startzeit', '<=', endTimestamp);
+      }
+
+      const arbeitszeitenSnapshot = await arbeitszeitenQuery.get();
+
+      const arbeitszeiten = arbeitszeitenSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          fahrzeugId: data.fahrzeugId || null,
+          arbeitstyp: data.arbeitstyp || data.schadensart || null,
+          startzeit: data.startzeit?.toDate()?.toISOString() || null,
+          endzeit: data.endzeit?.toDate()?.toISOString() || null,
+          dauerMinuten: data.dauerMinuten || null,
+          mitarbeiterId: data.mitarbeiterId || null,
+          mitarbeiterSkillLevel: data.mitarbeiterSkillLevel || null,
+          schwierigkeit: data.schwierigkeit || null,
+          materialVerbrauch: data.materialVerbrauch || [],
+          werkzeuge: data.werkzeuge || [],
+          notizen: data.notizen || null
+        };
+      });
+
+      console.log(`   ✅ Found ${arbeitszeiten.length} work time records`);
+
+      // ============================================
+      // 3. KVA FEEDBACK DATA
+      // ============================================
+      console.log('💰 Collecting KVA feedback...');
+
+      const kvaFeedback = [];
+
+      for (const fahrzeugDoc of fahrzeugeSnapshot.docs) {
+        const fahrzeugData = fahrzeugDoc.data();
+
+        // Check if this vehicle has KVA feedback
+        if (fahrzeugData.kpiFeedback || fahrzeugData.kpiTatsaechlicheKosten !== undefined) {
+          // Apply date filter if provided
+          const feedbackDate = fahrzeugData.kpiFeedback?.feedbackAt || fahrzeugData.updatedAt;
+          if (startTimestamp && feedbackDate && feedbackDate < startTimestamp) continue;
+          if (endTimestamp && feedbackDate && feedbackDate > endTimestamp) continue;
+
+          kvaFeedback.push({
+            id: fahrzeugDoc.id,
+            marke: fahrzeugData.marke || null,
+            modell: fahrzeugData.modell || null,
+            baujahr: fahrzeugData.baujahr || null,
+            // KVA data
+            kpiKostenvoranschlag: fahrzeugData.kpiKostenvoranschlag || null,
+            kpiTatsaechlicheKosten: fahrzeugData.kpiTatsaechlicheKosten ||
+              fahrzeugData.kpiFeedback?.tatsaechlicheKosten || null,
+            kpiAbweichung: fahrzeugData.kpiAbweichung ||
+              fahrzeugData.kpiFeedback?.abweichung || null,
+            kpiAbweichungProzent: fahrzeugData.kpiAbweichungProzent ||
+              fahrzeugData.kpiFeedback?.abweichungProzent || null,
+            kpiGrundAbweichung: fahrzeugData.kpiGrundAbweichung ||
+              fahrzeugData.kpiFeedback?.grund || null,
+            kpiKategorie: fahrzeugData.kpiFeedback?.kategorie || null,
+            kpiLernnotiz: fahrzeugData.kpiLernnotiz ||
+              fahrzeugData.kpiFeedback?.lernnotiz || null,
+            // Context
+            kundentyp: fahrzeugData.kundentyp || 'privat',
+            serviceTyp: fahrzeugData.serviceTyp || null,
+            feedbackAt: feedbackDate?.toDate()?.toISOString() || null
+          });
+        }
+      }
+
+      console.log(`   ✅ Found ${kvaFeedback.length} KVA feedback records`);
+
+      // ============================================
+      // COMBINE AND RETURN
+      // ============================================
+      const trainingData = {
+        metadata: {
+          exportedAt: new Date().toISOString(),
+          exportedBy: context.auth.token.email,
+          werkstattId: werkstattId,
+          dateRange: {
+            start: startDate || null,
+            end: endDate || null
+          },
+          counts: {
+            labeledPhotos: labeledPhotos.length,
+            arbeitszeiten: arbeitszeiten.length,
+            kvaFeedback: kvaFeedback.length,
+            total: labeledPhotos.length + arbeitszeiten.length + kvaFeedback.length
+          }
+        },
+        schadensfotos: labeledPhotos,
+        arbeitszeiten: arbeitszeiten,
+        kvaFeedback: kvaFeedback
+      };
+
+      // Log export to systemLogs for audit trail
+      await db.collection('systemLogs').add({
+        type: 'agi_training_export',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        userId: context.auth.uid,
+        userEmail: context.auth.token.email,
+        werkstattId: werkstattId,
+        counts: trainingData.metadata.counts,
+        dateRange: trainingData.metadata.dateRange
+      });
+
+      console.log('🤖 [AGI Export] Export complete!');
+      console.log(`   Total records: ${trainingData.metadata.counts.total}`);
+
+      return trainingData;
+
+    } catch (error) {
+      console.error('❌ [exportAllTrainingData] Error:', error);
+
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+
+      throw new functions.https.HttpsError('internal', error.message);
+    }
+  });

@@ -95,7 +95,7 @@ firebase deploy --only firestore:rules        # Security Rules
 | `firebase-config.js` | Firebase Init + Multi-Tenant Helper |
 | `firestore.rules` | Security Rules (2,500+ Zeilen) |
 | `storage.rules` | Storage Access Control |
-| `functions/index.js` | 16+ Cloud Functions |
+| `functions/index.js` | 17+ Cloud Functions |
 
 ---
 
@@ -272,7 +272,7 @@ function getUserRole() {
 
 ---
 
-## Cloud Functions (16+)
+## Cloud Functions (17+)
 
 ### Email (AWS SES)
 - `onStatusChange` - Status-Update Email
@@ -295,9 +295,114 @@ function getUserRole() {
 - `cleanupStaleSessions` - Session-Cleanup (alle 15 Min)
 - `processEmailRetryQueue` - Email-Retry (alle 5 Min)
 
+### AGI/ML
+- `exportAllTrainingData` - Export aller Trainingsdaten (Admin-only)
+
 **Secrets (Firebase Secret Manager):**
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
 - `OPENAI_API_KEY`
+
+---
+
+## AGI Training Features (Sprint 4 - 2025-12)
+
+Die App sammelt strukturierte Trainingsdaten für zukünftige ML/AGI-Integration.
+
+### Neue Module
+
+| Datei | Funktion |
+|-------|----------|
+| `js/damage-codes.js` | Standardisierter Schadenskatalog (50+ Positionen, 20+ Schadensarten) |
+| `js/damage-labeler.js` | Labeling-UI für Schadensfotos |
+| `js/work-timer.js` | Timer-Widget für Arbeitszeit-Tracking |
+| `js/kva-feedback.js` | KVA-Feedback mit 10 Abweichungsgründen |
+| `admin-datenqualitaet.html` | Datenqualitäts-Dashboard |
+| `admin-arbeitszeiten.html` | Arbeitszeit-Reporting |
+
+### Firestore Schema für ML
+
+**Fotos mit Labels:**
+```javascript
+// In fahrzeuge_{werkstattId}/{fahrzeugId}/fotos
+{
+  url: "https://...",
+  schadenLabels: {
+    position: "kotfluegel_vorne_links",  // Standard-Position
+    schadensart: "delle",                 // delle|kratzer|rost|lackschaden|bruch
+    schweregrad: 3,                       // 1-5 Skala
+    groesseSchaetzung: "15x8cm",
+    reparaturart: "ausbeulen"
+  },
+  labeledBy: "mitarbeiter_id",
+  labeledAt: Timestamp,
+  confidence: "sicher"                    // sicher|unsicher
+}
+```
+
+**Arbeitszeiten:**
+```javascript
+// Collection: arbeitszeiten_{werkstattId}
+{
+  fahrzeugId: "xxx",
+  arbeitstyp: "lackieren",
+  startzeit: Timestamp,
+  endzeit: Timestamp,
+  dauerMinuten: 45,
+  mitarbeiterId: "yyy",
+  mitarbeiterSkillLevel: "senior",        // junior|mittel|senior|meister
+  schwierigkeit: 3,                        // 1-5
+  materialVerbrauch: [
+    { typ: "spachtelmasse", menge: 0.2, einheit: "kg" }
+  ]
+}
+```
+
+**KVA-Feedback:**
+```javascript
+// In fahrzeuge_{werkstattId}/{fahrzeugId}
+{
+  kpiFeedback: {
+    tatsaechlicheKosten: 1180.00,
+    abweichung: -70.00,
+    abweichungProzent: -5.6,
+    grund: "weniger_material",
+    kategorie: "material",
+    lernnotiz: "Delle war kleiner als geschätzt",
+    feedbackAt: Timestamp
+  }
+}
+```
+
+### Export Cloud Function
+
+```javascript
+// Aufruf aus admin-datenqualitaet.html
+const result = await firebase.functions()
+  .httpsCallable('exportAllTrainingData')({
+    werkstattId: 'mosbach',
+    startDate: '2025-01-01',  // Optional
+    endDate: '2025-12-31'     // Optional
+  });
+
+// Returns: { metadata, schadensfotos, arbeitszeiten, kvaFeedback }
+```
+
+### ML-Readiness Ziele
+
+| Metrik | Ziel |
+|--------|------|
+| Gelabelte Fotos | 500+ |
+| Arbeitszeit-Einträge | 200+ |
+| KVA-Feedback | 100+ |
+| Datenqualitäts-Score | 70%+ |
+
+### Admin-Dashboard
+
+`admin-datenqualitaet.html` zeigt:
+- Datenqualitäts-Score (0-100%)
+- KPI-Cards für jede Datenart
+- Trend-Charts für Datensammlung
+- Export-Button für ML-Pipeline
 
 ---
 
@@ -431,6 +536,6 @@ async function submit() {
 
 ---
 
-_Version: 10.1 (Updated 2025-12-09)_
+_Version: 10.2 (Updated 2025-12-11 - AGI Training Features)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_

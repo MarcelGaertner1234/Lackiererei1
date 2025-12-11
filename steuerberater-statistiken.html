@@ -458,6 +458,56 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Row 4: KVA-Feedback ML Insights (AGI Training Sprint 3) -->
+            <div class="chart-grid" id="kvaFeedbackSection" style="display: none;">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <i data-feather="cpu"></i>
+                            KVA-Genauigkeit (ML-Training)
+                        </h3>
+                        <span class="badge badge-info" style="font-size: 0.7rem;">AGI-Ready</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="kvaGenauigkeitChart"></canvas>
+                    </div>
+                    <div id="kvaStatsOverview" style="margin-top: 1rem; padding: 1rem; background: var(--color-surface-secondary); border-radius: var(--radius-md);">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;">
+                            <div>
+                                <div id="kvaCountStat" style="font-size: 1.5rem; font-weight: 700; color: var(--color-primary);">-</div>
+                                <div style="font-size: 0.75rem; color: var(--color-text-secondary);">Feedback-Eintraege</div>
+                            </div>
+                            <div>
+                                <div id="kvaAvgAbweichungStat" style="font-size: 1.5rem; font-weight: 700; color: var(--color-success);">-</div>
+                                <div style="font-size: 0.75rem; color: var(--color-text-secondary);">Avg. Abweichung</div>
+                            </div>
+                            <div>
+                                <div id="kvaExaktStat" style="font-size: 1.5rem; font-weight: 700; color: var(--color-warning);">-</div>
+                                <div style="font-size: 0.75rem; color: var(--color-text-secondary);">Exakte KVAs</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <i data-feather="alert-triangle"></i>
+                            Abweichungs-Gruende
+                        </h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="kvaGruendeChart"></canvas>
+                    </div>
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(255, 149, 0, 0.1); border-radius: var(--radius-md); border-left: 3px solid var(--color-warning);">
+                        <p style="font-size: 0.8rem; color: var(--color-text-secondary); margin: 0;">
+                            <i data-feather="info" style="width: 14px; height: 14px; vertical-align: middle;"></i>
+                            Diese Daten werden fuer ML-Training gesammelt, um zukuenftige Kostenvoranschlaege zu verbessern.
+                        </p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -710,6 +760,154 @@
             });
 
             console.log('✅ Alle Chart-Instanzen erstellt');
+
+            // Chart 5 & 6: KVA-Feedback ML Charts (AGI Sprint 3)
+            initKVAFeedbackCharts();
+        }
+
+        // ============================================
+        // KVA-FEEDBACK ML CHARTS (AGI Training Sprint 3)
+        // ============================================
+        let kvaGenauigkeitChart = null;
+        let kvaGruendeChart = null;
+
+        function initKVAFeedbackCharts() {
+            // Chart 5: KVA-Genauigkeit (Doughnut)
+            const ctx5 = document.getElementById('kvaGenauigkeitChart');
+            if (ctx5) {
+                kvaGenauigkeitChart = new Chart(ctx5.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Exakt (+/-2%)', 'Leicht unter', 'Leicht ueber', 'Moderat unter', 'Moderat ueber', 'Stark unter', 'Stark ueber'],
+                        datasets: [{
+                            data: [0, 0, 0, 0, 0, 0, 0],
+                            backgroundColor: [
+                                '#22c55e', // Exakt - green
+                                '#8bc34a', // Leicht unter - light green
+                                '#ffeb3b', // Leicht ueber - yellow
+                                '#4caf50', // Moderat unter - green
+                                '#ff9800', // Moderat ueber - orange
+                                '#2196f3', // Stark unter - blue
+                                '#f44336'  // Stark ueber - red
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: true, position: 'bottom' },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => `${context.label}: ${context.parsed} Fahrzeuge`
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Chart 6: Abweichungs-Gruende (Bar)
+            const ctx6 = document.getElementById('kvaGruendeChart');
+            if (ctx6) {
+                kvaGruendeChart = new Chart(ctx6.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Haeufigkeit',
+                            data: [],
+                            backgroundColor: 'rgba(255, 149, 0, 0.6)',
+                            borderColor: 'rgba(255, 149, 0, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+
+            console.log('✅ KVA-Feedback Charts initialisiert');
+        }
+
+        async function updateKVAFeedbackCharts() {
+            if (!window.getKVAFeedbackStats) {
+                console.log('📊 [KVA-FEEDBACK] getKVAFeedbackStats nicht verfuegbar');
+                return;
+            }
+
+            try {
+                const result = await window.getKVAFeedbackStats();
+                if (!result || result.count === 0) {
+                    console.log('📊 [KVA-FEEDBACK] Keine Feedback-Daten vorhanden');
+                    return;
+                }
+
+                const { stats, data } = result;
+
+                // KVA Feedback Section anzeigen
+                const section = document.getElementById('kvaFeedbackSection');
+                if (section) {
+                    section.style.display = 'grid';
+                }
+
+                // Stats Overview aktualisieren
+                const countEl = document.getElementById('kvaCountStat');
+                const avgEl = document.getElementById('kvaAvgAbweichungStat');
+                const exaktEl = document.getElementById('kvaExaktStat');
+
+                if (countEl) countEl.textContent = stats.count;
+                if (avgEl) avgEl.textContent = `${stats.avgAbweichungProzent.toFixed(1)}%`;
+                if (exaktEl) {
+                    const exaktCount = stats.kategorien['EXAKT'] || 0;
+                    const exaktProzent = stats.count > 0 ? ((exaktCount / stats.count) * 100).toFixed(0) : 0;
+                    exaktEl.textContent = `${exaktProzent}%`;
+                }
+
+                // Chart 5: Genauigkeit aktualisieren
+                if (kvaGenauigkeitChart) {
+                    const kategorien = ['EXAKT', 'LEICHT_UNTER', 'LEICHT_UEBER', 'MODERAT_UNTER', 'MODERAT_UEBER', 'STARK_UNTER', 'STARK_UEBER'];
+                    kvaGenauigkeitChart.data.datasets[0].data = kategorien.map(k => stats.kategorien[k] || 0);
+                    kvaGenauigkeitChart.update();
+                }
+
+                // Chart 6: Gruende aktualisieren
+                if (kvaGruendeChart && stats.gruende) {
+                    const gruendeLabels = {
+                        'MEHR_ARBEIT': 'Mehr Arbeitszeit',
+                        'WENIGER_ARBEIT': 'Weniger Arbeitszeit',
+                        'MEHR_MATERIAL': 'Mehr Material',
+                        'WENIGER_MATERIAL': 'Weniger Material',
+                        'ZUSATZSCHADEN': 'Zusaetzlicher Schaden',
+                        'KOMPLEXITAET': 'Komplexitaet',
+                        'ZUGAENGLICHKEIT': 'Schlechte Zugaenglichkeit',
+                        'TEILEVERFUEGBARKEIT': 'Teile-Probleme',
+                        'EFFIZIENZ': 'Effizienter gearbeitet',
+                        'SONSTIGES': 'Sonstiges'
+                    };
+
+                    const sortedGruende = Object.entries(stats.gruende)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 8);
+
+                    kvaGruendeChart.data.labels = sortedGruende.map(([k]) => gruendeLabels[k] || k);
+                    kvaGruendeChart.data.datasets[0].data = sortedGruende.map(([, v]) => v);
+                    kvaGruendeChart.update();
+                }
+
+                console.log(`✅ [KVA-FEEDBACK] Charts aktualisiert (${stats.count} Eintraege)`);
+            } catch (error) {
+                console.error('❌ [KVA-FEEDBACK] Fehler beim Laden:', error);
+            }
         }
 
         // ============================================
@@ -723,6 +921,9 @@
             updateServiceVerteilungChart(filtered);
             updateGewinnMargeChart(filtered);
             updateKostenAnalyseChart(filtered);
+
+            // AGI Training: KVA-Feedback Charts
+            updateKVAFeedbackCharts();
 
             feather.replace();
         }

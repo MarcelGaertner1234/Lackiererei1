@@ -101,6 +101,9 @@
     <script src="js/settings-manager.js"></script>
     <script src="js/permissions-helper.js"></script>
 
+    <!-- AGI Training Sprint 3: KVA Feedback -->
+    <script src="js/kva-feedback.js?v=agi-sprint3"></script>
+
     <!-- Image Optimizer -->
     <script src="image-optimizer.js"></script>
 
@@ -944,6 +947,22 @@
             </div>
         </div>
 
+        <!-- AGI Training Sprint 3: KVA Feedback Widget -->
+        <div id="kvaFeedbackContainer" class="card" style="display: none; margin-top: 1.5rem; padding: 1.5rem; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border-color);">
+            <div class="card-header" style="margin-bottom: 1rem;">
+                <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                    <i data-feather="trending-up" style="width: 20px; height: 20px; color: var(--primary-color);"></i>
+                    KVA-Feedback (ML-Training)
+                </h3>
+                <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">
+                    Vergleich zwischen Kostenvoranschlag und tatsaechlichen Kosten fuer bessere Schaetzungen
+                </p>
+            </div>
+            <div id="kvaFeedbackWidgetArea">
+                <!-- Widget wird dynamisch eingefuegt -->
+            </div>
+        </div>
+
         <!-- Submit Button -->
         <button type="button" class="btn btn-primary btn-lg btn-full-width" id="submitBtn" onclick="submitAbnahme()" style="display: none;">
             <i data-feather="check-circle"></i>
@@ -1273,6 +1292,9 @@
             document.getElementById('uebergabeSection').style.display = 'block';
             document.getElementById('signatureSection').style.display = 'block';
             document.getElementById('submitBtn').style.display = 'flex';
+
+            // 🤖 AGI Training: KVA-Feedback Widget initialisieren
+            initKVAFeedbackWidget(vehicle);
 
             // 🚚 Übergabe-Typ setzen (Lieferung oder Abholung)
             setUebergabeTypAnzeige(vehicle);
@@ -1933,6 +1955,23 @@
                         }
                     } catch (error) {
                         console.error('❌ [ABSCHLUSS] Fehler beim Übertragen der Nachbestellungen:', error);
+                        // Nicht blockieren - Fahrzeug wird trotzdem abgeschlossen
+                    }
+
+                    // ============================================
+                    // 🤖 AGI TRAINING: KVA-FEEDBACK SPEICHERN (NEU 2025-12)
+                    // ============================================
+                    // Beim Abschluss: Tatsaechliche Kosten vs. KVA erfassen
+                    console.log('📊 [ABSCHLUSS] Speichere KVA-Feedback fuer ML-Training');
+                    try {
+                        const kvaFeedback = await saveKVAFeedbackData(currentVehicle.id);
+                        if (kvaFeedback) {
+                            console.log(`✅ [KVA-FEEDBACK] Abweichung: ${kvaFeedback.abweichungProzent?.toFixed(1)}% (${kvaFeedback.kategorie})`);
+                        } else {
+                            console.log('📊 [KVA-FEEDBACK] Kein Feedback erfasst (kein KVA oder keine Eingabe)');
+                        }
+                    } catch (error) {
+                        console.error('❌ [KVA-FEEDBACK] Fehler beim Speichern:', error);
                         // Nicht blockieren - Fahrzeug wird trotzdem abgeschlossen
                     }
 
@@ -3575,10 +3614,88 @@
             document.getElementById('photoComparison').style.display = 'none';
             document.getElementById('signatureSection').style.display = 'none';
             document.getElementById('submitBtn').style.display = 'none';
+            document.getElementById('kvaFeedbackContainer').style.display = 'none';
             currentVehicle = null;
             nachherPhotos = [];
             updateNachherGrid();
             clearSignature();
+        }
+
+        // ============================================
+        // 🤖 AGI TRAINING: KVA-FEEDBACK WIDGET
+        // ============================================
+
+        /**
+         * Initialisiert das KVA-Feedback-Widget fuer ein Fahrzeug
+         * @param {Object} vehicle - Fahrzeug-Daten mit kpiKostenvoranschlag
+         */
+        function initKVAFeedbackWidget(vehicle) {
+            const container = document.getElementById('kvaFeedbackContainer');
+            const widgetArea = document.getElementById('kvaFeedbackWidgetArea');
+
+            // Nur anzeigen wenn KVA vorhanden
+            const kvaValue = parseFloat(vehicle.kpiKostenvoranschlag);
+            if (!kvaValue || kvaValue <= 0) {
+                container.style.display = 'none';
+                console.log('📊 [KVA-FEEDBACK] Kein KVA vorhanden - Widget ausgeblendet');
+                return;
+            }
+
+            // Pruefen ob KVAFeedback Modul geladen
+            if (!window.KVAFeedback) {
+                console.warn('⚠️ [KVA-FEEDBACK] Modul nicht geladen - Widget deaktiviert');
+                container.style.display = 'none';
+                return;
+            }
+
+            // Widget erstellen und einfuegen
+            try {
+                const widgetHtml = window.KVAFeedback.createFeedbackWidget(vehicle.id, kvaValue, {
+                    showEstimate: true,
+                    compact: false
+                });
+                widgetArea.innerHTML = widgetHtml;
+                container.style.display = 'block';
+
+                // Feather Icons aktualisieren
+                if (typeof feather !== 'undefined') {
+                    feather.replace();
+                }
+
+                console.log(`✅ [KVA-FEEDBACK] Widget initialisiert fuer Fahrzeug ${vehicle.id} (KVA: ${kvaValue}€)`);
+            } catch (error) {
+                console.error('❌ [KVA-FEEDBACK] Fehler beim Erstellen des Widgets:', error);
+                container.style.display = 'none';
+            }
+        }
+
+        /**
+         * Speichert das KVA-Feedback beim Abschluss
+         * Wird von submitAbnahme() aufgerufen
+         * @param {string} fahrzeugId - ID des Fahrzeugs
+         * @returns {Promise<Object|null>} Feedback-Daten oder null
+         */
+        async function saveKVAFeedbackData(fahrzeugId) {
+            if (!window.KVAFeedback) {
+                console.log('📊 [KVA-FEEDBACK] Modul nicht verfuegbar - Feedback wird uebersprungen');
+                return null;
+            }
+
+            try {
+                const feedbackData = await window.KVAFeedback.saveFeedback(fahrzeugId);
+                if (feedbackData) {
+                    console.log('✅ [KVA-FEEDBACK] Feedback gespeichert:', feedbackData);
+
+                    // In Firestore speichern wenn verfuegbar
+                    if (window.saveKVAFeedbackToFirestore) {
+                        await window.saveKVAFeedbackToFirestore(fahrzeugId, feedbackData);
+                    }
+                }
+                return feedbackData;
+            } catch (error) {
+                console.error('❌ [KVA-FEEDBACK] Fehler beim Speichern:', error);
+                return null;
+            }
         }
 
         // ============================================
