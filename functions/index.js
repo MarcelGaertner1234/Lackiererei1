@@ -6507,3 +6507,98 @@ exports.exportAllTrainingData = functions
       throw new functions.https.HttpsError('internal', error.message);
     }
   });
+
+// ============================================
+// SCHEDULED FUNCTION: activateServicePlanQueues
+// ============================================
+// Aktiviert abteilungsQueue für Fahrzeuge mit servicePlan
+// Läuft täglich um 07:00 Uhr Berlin Zeit
+// Setzt abteilungsQueue für Fahrzeuge deren Termin innerhalb 24h liegt
+// @since 2025-12-11
+// ============================================
+
+exports.activateServicePlanQueues = onSchedule({
+  schedule: "0 7 * * *",  // Täglich um 07:00 Berlin
+  timeZone: "Europe/Berlin",
+  region: "europe-west3",
+  memory: "256MiB",
+  timeoutSeconds: 300,
+}, async (event) => {
+  console.log('🚗 activateServicePlanQueues: Starting daily queue activation...');
+
+  try {
+    const werkstaetten = await getActiveWerkstaetten();
+    let totalUpdated = 0;
+
+    // Zeitfenster: Heute und Morgen
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];  // "2025-12-11"
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];  // "2025-12-12"
+
+    console.log(`📅 Date range: ${todayStr} to ${tomorrowStr}`);
+
+    for (const werkstattId of werkstaetten) {
+      console.log(`📦 Processing werkstatt: ${werkstattId}`);
+
+      // Alle nicht abgeschlossenen Fahrzeuge laden
+      const snapshot = await db.collection(`fahrzeuge_${werkstattId}`)
+        .where('status', 'not-in', ['abgeschlossen', 'storniert', 'abgeholt'])
+        .get();
+
+      console.log(`   Found ${snapshot.docs.length} active vehicles`);
+
+      for (const doc of snapshot.docs) {
+        const fahrzeug = doc.data();
+
+        // Skip wenn bereits abteilungsQueue gesetzt
+        if (fahrzeug.abteilungsQueue) {
+          continue;
+        }
+
+        // Prüfe servicePlan Array
+        if (!fahrzeug.servicePlan || !Array.isArray(fahrzeug.servicePlan) || fahrzeug.servicePlan.length === 0) {
+          continue;
+        }
+
+        // Finde ersten Service der heute oder morgen startet
+        const nextService = fahrzeug.servicePlan.find(step => {
+          if (!step || !step.datum) return false;
+          const stepDate = step.datum;  // Format: "2025-12-11"
+          return stepDate === todayStr || stepDate === tomorrowStr;
+        });
+
+        if (nextService) {
+          // abteilungsQueue setzen
+          await doc.ref.update({
+            abteilungsQueue: nextService.queue,
+            queueDatum: nextService.datum,
+            queueStartzeit: nextService.startzeit || null,
+            queueDauer: nextService.dauer || null,
+            queueActivatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            queueActivatedBy: 'system:activateServicePlanQueues'
+          });
+
+          console.log(`   ✅ Activated: ${fahrzeug.kennzeichen} → ${nextService.queue} on ${nextService.datum}`);
+          totalUpdated++;
+        }
+      }
+    }
+
+    // Log Eintrag erstellen
+    await db.collection('systemLogs').add({
+      type: 'activateServicePlanQueues',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      totalUpdated,
+      werkstaetten,
+      dateRange: { from: todayStr, to: tomorrowStr }
+    });
+
+    console.log(`🎉 activateServicePlanQueues: Completed. Updated ${totalUpdated} vehicles.`);
+    return { success: true, totalUpdated };
+
+  } catch (error) {
+    console.error('❌ activateServicePlanQueues ERROR:', error);
+    throw error;
+  }
+});
