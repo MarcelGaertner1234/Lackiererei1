@@ -8,6 +8,7 @@
 const functions = require("firebase-functions");
 const { defineSecret } = require("firebase-functions/params");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const { OpenAI } = require("openai");
@@ -6600,5 +6601,109 @@ exports.activateServicePlanQueues = onSchedule({
   } catch (error) {
     console.error('❌ activateServicePlanQueues ERROR:', error);
     throw error;
+  }
+});
+
+/**
+ * HTTP-Callable Function: Manuell Queue-Aktivierung triggern
+ *
+ * Aufruf: https://europe-west3-auto-lackierzentrum-mosbach.cloudfunctions.net/triggerQueueActivation
+ *
+ * Kann jederzeit aufgerufen werden um Fahrzeuge mit servicePlan
+ * für heute/morgen sofort im Kanban sichtbar zu machen.
+ *
+ * @since 2025-12-11
+ */
+exports.triggerQueueActivation = onRequest({
+  region: "europe-west3",
+  memory: "256MiB",
+  timeoutSeconds: 300,
+  cors: true,
+}, async (req, res) => {
+  console.log('🚗 triggerQueueActivation: Manual trigger started...');
+
+  try {
+    const werkstaetten = await getActiveWerkstaetten();
+    let totalUpdated = 0;
+    const activatedVehicles = [];
+
+    const now = new Date();
+    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const todayStr = now.toISOString().split('T')[0];
+    const tomorrowStr = in24h.toISOString().split('T')[0];
+
+    console.log(`📅 Date range: ${todayStr} to ${tomorrowStr}`);
+
+    for (const werkstattId of werkstaetten) {
+      console.log(`📦 Processing werkstatt: ${werkstattId}`);
+
+      const snapshot = await db.collection(`fahrzeuge_${werkstattId}`)
+        .where('status', '!=', 'abgeschlossen')
+        .get();
+
+      console.log(`   Found ${snapshot.docs.length} active vehicles`);
+
+      for (const doc of snapshot.docs) {
+        const fahrzeug = doc.data();
+
+        // Skip wenn bereits abteilungsQueue gesetzt
+        if (fahrzeug.abteilungsQueue) {
+          continue;
+        }
+
+        // Prüfe servicePlan Array
+        if (!fahrzeug.servicePlan || !Array.isArray(fahrzeug.servicePlan) || fahrzeug.servicePlan.length === 0) {
+          continue;
+        }
+
+        // Finde ersten Service der heute oder morgen startet
+        const nextService = fahrzeug.servicePlan.find(step => {
+          if (!step || !step.datum) return false;
+          return step.datum === todayStr || step.datum === tomorrowStr;
+        });
+
+        if (nextService) {
+          await doc.ref.update({
+            abteilungsQueue: nextService.queue,
+            queueDatum: nextService.datum,
+            queueStartzeit: nextService.startzeit || null,
+            queueDauer: nextService.dauer || null,
+            queueActivatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            queueActivatedBy: 'manual:triggerQueueActivation'
+          });
+
+          console.log(`   ✅ Activated: ${fahrzeug.kennzeichen} → ${nextService.queue} on ${nextService.datum}`);
+          activatedVehicles.push({
+            kennzeichen: fahrzeug.kennzeichen,
+            queue: nextService.queue,
+            datum: nextService.datum
+          });
+          totalUpdated++;
+        }
+      }
+    }
+
+    // Log Eintrag erstellen
+    await db.collection('systemLogs').add({
+      type: 'triggerQueueActivation',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      totalUpdated,
+      werkstaetten,
+      dateRange: { from: todayStr, to: tomorrowStr },
+      triggeredBy: 'manual'
+    });
+
+    console.log(`🎉 triggerQueueActivation: Completed. Updated ${totalUpdated} vehicles.`);
+
+    res.json({
+      success: true,
+      totalUpdated,
+      activatedVehicles,
+      dateRange: { today: todayStr, tomorrow: tomorrowStr }
+    });
+
+  } catch (error) {
+    console.error('❌ triggerQueueActivation ERROR:', error);
+    res.status(500).json({ error: error.message });
   }
 });
