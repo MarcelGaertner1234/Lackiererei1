@@ -3066,6 +3066,37 @@
 
                 await collection.doc(fahrzeugId).update(updateData);
 
+                // 🆕 AUCH partnerAnfragen Collection aktualisieren (Partner-App liest von dort!)
+                const anfrageId = verschiebenFahrzeug.anfrage_id || verschiebenFahrzeug.anfrageId || verschiebenFahrzeug.originalAnfrageId;
+                if (anfrageId) {
+                    console.log('🔄 Aktualisiere partnerAnfragen Dokument:', anfrageId);
+                    try {
+                        const partnerCollection = window.getCollection('partnerAnfragen');
+                        const partnerUpdateData = {
+                            servicePlan: newPlan,
+                            lastModified: firebase.firestore.FieldValue.serverTimestamp(),
+                            lastModifiedBy: 'tagesplanung:verschieben'
+                        };
+
+                        // Datum-Felder nur hinzufügen wenn lastService existiert
+                        if (lastService && lastService.datum) {
+                            const [year, month, day] = lastService.datum.split('-');
+                            partnerUpdateData.geplantesAbnahmeDatum = `${day}.${month}.${year}`;
+                            partnerUpdateData.abholtermin = lastService.datum;
+                            partnerUpdateData.fertigstellungsdatum = lastService.datum;
+                            partnerUpdateData['angebotDetails.fertigstellungsdatum'] = lastService.datum;
+                        }
+
+                        await partnerCollection.doc(String(anfrageId)).update(partnerUpdateData);
+                        console.log('✅ partnerAnfragen erfolgreich aktualisiert');
+                    } catch (partnerError) {
+                        console.warn('⚠️ partnerAnfragen Update fehlgeschlagen (evtl. kein Dokument):', partnerError.message);
+                        // Kein Fehler werfen - fahrzeuge wurde bereits aktualisiert
+                    }
+                } else {
+                    console.log('ℹ️ Keine anfrageId gefunden - nur fahrzeuge Collection aktualisiert');
+                }
+
                 closeVerschiebenModal();
 
                 // UI neu laden
