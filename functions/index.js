@@ -2485,8 +2485,9 @@ exports.fahrzeugStatusChanged = functions
         const after = change.after.data();
         const fahrzeugId = context.params.fahrzeugId;
 
-        // Check if status changed to bereit_abnahme or fertig
-        const notifyStatuses = ["bereit_abnahme", "fertig"];
+        // Check if status changed to bereit_zur_abholung/bereit_abnahme or fertig
+        // 🛡️ FIX (2025-12-11): bereit_zur_abholung hinzugefügt (Frontend-kompatibel)
+        const notifyStatuses = ["bereit_zur_abholung", "bereit_abnahme", "fertig"];
         const statusChanged = before.status !== after.status;
         const shouldNotify = statusChanged && notifyStatuses.includes(after.status);
 
@@ -2517,7 +2518,8 @@ exports.fahrzeugStatusChanged = functions
           // Determine notification text based on status
           let title, message, sprachausgabe, type;
 
-          if (after.status === "bereit_abnahme") {
+          // 🛡️ FIX (2025-12-11): bereit_zur_abholung hinzugefügt (Frontend-kompatibel)
+          if (after.status === "bereit_zur_abholung" || after.status === "bereit_abnahme") {
             title = `Fahrzeug bereit zur Abnahme`;
             message = `${after.marke} ${after.modell} (${after.kennzeichen})`;
             sprachausgabe = `Fahrzeug ${after.marke} ${after.modell} ist bereit zur Abnahme. ` +
@@ -2668,6 +2670,7 @@ exports.syncStatusToPartnerAnfragen = functions
         }
 
         // Mapping: Werkstatt-Status → Partner-freundlicher Status
+        // 🛡️ FIX (2025-12-11): bereit_zur_abholung hinzugefügt (Frontend-kompatibel)
         const statusMapping = {
           // Werkstatt-interne Status → Partner-Anzeige
           "angenommen": "in_bearbeitung",
@@ -2676,7 +2679,8 @@ exports.syncStatusToPartnerAnfragen = functions
           "trocknung": "in_bearbeitung",
           "montage": "in_bearbeitung",
           "qualitaetskontrolle": "in_bearbeitung",
-          "bereit_abnahme": "bereit_abholung",
+          "bereit_zur_abholung": "bereit_abholung", // Frontend (status-helpers.js)
+          "bereit_abnahme": "bereit_abholung",      // Legacy-Support
           "fertig": "abgeschlossen",
           "abgeschlossen": "abgeschlossen",
           "storniert": "storniert",
