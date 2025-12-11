@@ -1035,6 +1035,143 @@
         }
 
         /* ========================================== */
+        /* VERSCHIEBEN-MODAL (2025-12-11)             */
+        /* ========================================== */
+
+        .verschieben-modal {
+            max-width: 500px;
+            width: 95%;
+            max-height: 90vh;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .verschieben-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-4) var(--space-5);
+            border-bottom: 1px solid var(--color-border);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+        }
+
+        .verschieben-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .verschieben-kennzeichen {
+            padding: var(--space-3) var(--space-5);
+            background: var(--color-surface-elevated);
+            font-weight: 600;
+            font-size: 16px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .verschieben-service-list {
+            padding: var(--space-4) var(--space-5);
+            overflow-y: auto;
+            max-height: 400px;
+        }
+
+        .verschieben-service {
+            background: var(--color-surface);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+        }
+
+        .verschieben-service.changed {
+            border-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .verschieben-service .service-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-bottom: var(--space-2);
+            font-weight: 600;
+        }
+
+        .verschieben-service .service-datum {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+        }
+
+        .verschieben-service .service-datum input[type="date"] {
+            padding: 6px 10px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: 14px;
+        }
+
+        .verschieben-service .service-datum input[type="date"]:disabled {
+            background: #f3f4f6;
+            color: #6b7280;
+            cursor: not-allowed;
+        }
+
+        .verschieben-service .service-zeit {
+            color: var(--color-text-muted);
+            font-size: 13px;
+        }
+
+        .verschieben-service .auto-shift-hint {
+            margin-top: var(--space-2);
+            font-size: 12px;
+            color: #d97706;
+            font-weight: 500;
+        }
+
+        .verschieben-arrow {
+            text-align: center;
+            color: var(--color-text-muted);
+            font-size: 20px;
+            padding: var(--space-1) 0;
+        }
+
+        .verschieben-info {
+            margin: 0 var(--space-5);
+            padding: var(--space-3);
+            background: #e0f2fe;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            color: #0369a1;
+            line-height: 1.4;
+        }
+
+        .verschieben-modal .modal-actions {
+            padding: var(--space-4) var(--space-5);
+            border-top: 1px solid var(--color-border);
+            background: var(--color-surface);
+            border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+        }
+
+        /* Verschieben Button Style */
+        .verschieben-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .verschieben-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+        }
+
+        /* ========================================== */
         /* ERWEITERTES DETAIL-MODAL (2025-12-07)      */
         /* ========================================== */
 
@@ -2217,6 +2354,31 @@
         </div>
     </div>
 
+    <!-- Termin verschieben Modal -->
+    <div class="modal-overlay" id="verschiebenModal">
+        <div class="modal verschieben-modal">
+            <div class="verschieben-header">
+                <h3>📅 Termine verschieben</h3>
+                <button class="modal-close" onclick="closeVerschiebenModal()">&times;</button>
+            </div>
+            <div class="verschieben-kennzeichen" id="verschiebenKennzeichen">
+                <!-- Kennzeichen wird dynamisch eingefügt -->
+            </div>
+            <div class="verschieben-service-list" id="verschiebenServiceList">
+                <!-- Service-Liste wird dynamisch eingefügt -->
+            </div>
+            <div class="verschieben-info">
+                Änderung bei einem Service verschiebt alle nachfolgenden Services automatisch um die gleiche Anzahl Tage.
+            </div>
+            <div class="modal-actions">
+                <button class="nav-btn" onclick="closeVerschiebenModal()">Abbrechen</button>
+                <button class="nav-btn primary" onclick="saveVerschiebung()">
+                    <span>💾</span> Speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -2665,6 +2827,173 @@
             document.getElementById('durchplanenModal').classList.remove('active');
             currentDurchplanenFahrzeug = null;
             currentServicePlan = [];
+        }
+
+        // ============================================
+        // VERSCHIEBEN-MODAL FUNKTIONEN (2025-12-11)
+        // ============================================
+
+        let verschiebenFahrzeug = null;
+        let verschiebenOriginalPlan = null;
+
+        /**
+         * Öffnet das Verschieben-Modal für ein bereits geplantes Fahrzeug
+         */
+        function openVerschiebenModal(fahrzeug) {
+            if (!fahrzeug || !fahrzeug.servicePlan || !Array.isArray(fahrzeug.servicePlan) || fahrzeug.servicePlan.length === 0) {
+                showToast('Fahrzeug hat keinen gültigen Service-Plan', 'error');
+                return;
+            }
+
+            verschiebenFahrzeug = JSON.parse(JSON.stringify(fahrzeug)); // Deep copy
+            verschiebenOriginalPlan = JSON.parse(JSON.stringify(fahrzeug.servicePlan));
+
+            document.getElementById('verschiebenKennzeichen').textContent =
+                `${fahrzeug.kennzeichen} - ${fahrzeug.servicePlan.length} Service(s)`;
+
+            renderVerschiebenServices();
+            document.getElementById('verschiebenModal').classList.add('active');
+        }
+
+        /**
+         * Schließt das Verschieben-Modal
+         */
+        function closeVerschiebenModal() {
+            document.getElementById('verschiebenModal').classList.remove('active');
+            verschiebenFahrzeug = null;
+            verschiebenOriginalPlan = null;
+        }
+
+        /**
+         * Rendert die Service-Liste im Verschieben-Modal
+         */
+        function renderVerschiebenServices() {
+            const container = document.getElementById('verschiebenServiceList');
+            const plan = verschiebenFahrzeug.servicePlan;
+
+            // Service-Labels für Anzeige
+            const SERVICE_LABELS = {
+                abhol_fahrt: '🚗 Fahrzeug abholen',
+                lackier: '🎨 Lackierung',
+                mechanik: '🔧 Mechanik',
+                reifen: '🛞 Reifen',
+                pflege: '✨ Pflege/Smart Repair',
+                tuev: '📋 TÜV/AU',
+                versicherung: '🛡️ Versicherung',
+                glas: '🪟 Glas',
+                klima: '❄️ Klima',
+                dellen: '🔨 Dellen/Karosserie',
+                folierung: '🎭 Folierung',
+                steinschutz: '🛡️ Steinschutz',
+                werbebeklebung: '📢 Werbebeklebung',
+                liefer_fahrt: '🚚 Fahrzeug liefern'
+            };
+
+            let html = '';
+            plan.forEach((service, index) => {
+                const isChanged = service.datum !== verschiebenOriginalPlan[index].datum;
+                const label = service.label || SERVICE_LABELS[service.queue] || service.queue;
+
+                html += `
+                    <div class="verschieben-service ${isChanged ? 'changed' : ''}">
+                        <div class="service-header">
+                            ${index + 1}. ${label}
+                        </div>
+                        <div class="service-datum">
+                            <label>Datum:</label>
+                            <input type="date"
+                                   value="${service.datum}"
+                                   onchange="onVerschiebenDatumChange(${index}, this.value)">
+                            ${service.startzeit ? `<span class="service-zeit">${service.startzeit}${service.endzeit ? ' - ' + service.endzeit : ''}</span>` : ''}
+                        </div>
+                        ${isChanged ? '<div class="auto-shift-hint">Verschoben</div>' : ''}
+                    </div>
+                `;
+
+                if (index < plan.length - 1) {
+                    html += '<div class="verschieben-arrow">↓</div>';
+                }
+            });
+
+            container.innerHTML = html;
+        }
+
+        /**
+         * Handler für Datumsänderung - verschiebt alle Folge-Services automatisch
+         */
+        function onVerschiebenDatumChange(changedIndex, newDate) {
+            const plan = verschiebenFahrzeug.servicePlan;
+            const originalDate = new Date(verschiebenOriginalPlan[changedIndex].datum + 'T00:00:00');
+            const newDateObj = new Date(newDate + 'T00:00:00');
+
+            // Differenz in Tagen berechnen
+            const diffMs = newDateObj.getTime() - originalDate.getTime();
+            const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+            console.log(`Verschiebe Service ${changedIndex} um ${diffDays} Tage`);
+
+            // Alle Services ab changedIndex verschieben
+            for (let i = changedIndex; i < plan.length; i++) {
+                const origDate = new Date(verschiebenOriginalPlan[i].datum + 'T00:00:00');
+                origDate.setDate(origDate.getDate() + diffDays);
+                plan[i].datum = origDate.toISOString().split('T')[0];
+            }
+
+            renderVerschiebenServices();
+        }
+
+        /**
+         * Speichert die Verschiebung in Firestore
+         */
+        async function saveVerschiebung() {
+            try {
+                // Prüfen ob Änderungen vorliegen
+                const hasChanges = verschiebenFahrzeug.servicePlan.some((service, index) =>
+                    service.datum !== verschiebenOriginalPlan[index].datum
+                );
+
+                if (!hasChanges) {
+                    showToast('Keine Änderungen zum Speichern', 'info');
+                    closeVerschiebenModal();
+                    return;
+                }
+
+                showToast('Speichere Änderungen...', 'info');
+
+                const fahrzeugId = verschiebenFahrzeug.id;
+                const newPlan = verschiebenFahrzeug.servicePlan;
+
+                // Firestore Update
+                const collection = window.getCollection('fahrzeuge');
+                const updateData = {
+                    servicePlan: newPlan,
+                    lastModified: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastModifiedBy: 'tagesplanung:verschieben'
+                };
+
+                // Wenn abteilungsQueue bereits gesetzt, das queueDatum aktualisieren
+                const firstService = newPlan[0];
+                if (verschiebenFahrzeug.abteilungsQueue) {
+                    // Finde den Service der zur aktuellen abteilungsQueue gehört
+                    const currentQueueService = newPlan.find(s => s.queue === verschiebenFahrzeug.abteilungsQueue);
+                    if (currentQueueService) {
+                        updateData.queueDatum = currentQueueService.datum;
+                    }
+                }
+
+                await collection.doc(fahrzeugId).update(updateData);
+
+                closeVerschiebenModal();
+
+                // UI neu laden
+                await loadFahrzeuge();
+
+                showToast('Termine erfolgreich verschoben!', 'success');
+
+            } catch (error) {
+                console.error('Fehler beim Speichern der Verschiebung:', error);
+                showToast('Fehler beim Speichern: ' + error.message, 'error');
+            }
         }
 
         /**
@@ -3457,9 +3786,14 @@
                     ${logistikBadgesHtml}
                     ${startStatusHtml}
                     ${eintretenBtnHtml}
-                    <button class="durchplanen-btn" onclick="event.stopPropagation(); openDurchplanenModal(allFahrzeuge.find(f => f.id === '${fahrzeug.id}'))" title="Service-Durchplanung">
-                        📅 Durchplanen
-                    </button>
+                    ${fahrzeug.servicePlan && Array.isArray(fahrzeug.servicePlan) && fahrzeug.servicePlan.length > 0
+                        ? `<button class="verschieben-btn" onclick="event.stopPropagation(); openVerschiebenModal(allFahrzeuge.find(f => f.id === '${fahrzeug.id}'))" title="Termine verschieben">
+                               📅 Verschieben
+                           </button>`
+                        : `<button class="durchplanen-btn" onclick="event.stopPropagation(); openDurchplanenModal(allFahrzeuge.find(f => f.id === '${fahrzeug.id}'))" title="Service-Durchplanung">
+                               📅 Durchplanen
+                           </button>`
+                    }
                 </div>
             `;
         }
