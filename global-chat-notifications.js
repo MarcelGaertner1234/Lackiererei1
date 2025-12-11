@@ -331,6 +331,8 @@
     // ========================================
 
     function truncateText(text, maxLength) {
+        // 🔧 FIX (2025-12-11): Null-Check für undefined/null text
+        if (!text) return '';
         if (text.length <= maxLength) return text;
         return text.substring(0, maxLength) + '...';
     }
