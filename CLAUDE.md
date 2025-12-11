@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing (BEFORE any code changes!)
 ```bash
-npm run test:all          # 49 Tests (~90s) - MUST be 100%!
+npm run test:all          # 56 Tests (~90s) - MUST be 100%!
 npm run test:integration  # 36 Firestore tests
 npm run test:smoke        # 13 UI tests
 npm run test:headed       # With browser UI
@@ -445,10 +445,10 @@ Vehicle {
 
 ## Testing Infrastructure
 
-### Test-Suite (49 Tests)
+### Test-Suite (56 Tests)
 | Kategorie | Tests | Beschreibung |
 |-----------|-------|--------------|
-| Integration | 36 | Direkte Firestore-Operationen |
+| Integration | 43 | Direkte Firestore-Operationen |
 | Smoke | 13 | UI-Accessibility |
 
 ### Erfolgsrate
