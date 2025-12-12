@@ -3616,6 +3616,8 @@
         // firebaseApp is provided by firebase-config.js as window.firebaseApp
         let currentProcess = 'alle'; // Aktuell gewählter Prozess (synchronisiert mit Dropdown Line 817)
         let unsubscribeListener = null; // Realtime Listener cleanup function
+        // 🔧 FIX KB4 (2025-12-12): Drag Lock Set für Race Condition Prevention
+        const dragLocks = new Set();
 
         // 🔧 FIX FB2 (2025-12-10): Cleanup Firestore listeners on page leave to prevent memory leaks
         window.addEventListener('beforeunload', () => {
@@ -5442,6 +5444,9 @@
             }
 
             try {
+                // 🔧 FIX KB5 (2025-12-12): Ensure Firebase is initialized before Firestore access
+                await window.firebaseInitialized;
+
                 // Update Firestore
                 await window.getCollection('fahrzeuge').doc(currentBezahltFahrzeugId).update({
                     'rechnung.zahlungsstatus': 'bezahlt',
@@ -6035,6 +6040,14 @@
                     column.closest('.kanban-column').classList.remove('drag-over');
 
                     const fahrzeugId = e.dataTransfer.getData('text/plain');
+
+                    // 🔧 FIX KB4 (2025-12-12): Drag Lock für Race Condition Prevention
+                    if (dragLocks.has(fahrzeugId)) {
+                        console.warn(`⚠️ Drag & Drop für ${fahrzeugId} bereits in Progress - ignoriere`);
+                        return;
+                    }
+                    dragLocks.add(fahrzeugId);
+
                     let newStatus = column.closest('.kanban-column').dataset.status;
 
                     // 🆕 BUG #11 FIX: Auto-Mapping für Pseudo-Universal-Stati
@@ -6122,6 +6135,9 @@
                         console.error('❌ Status-Update fehlgeschlagen:', error);
                         showToast('❌ Fehler beim Verschieben: ' + error.message);
                         renderKanbanBoard(); // Board zurücksetzen
+                    } finally {
+                        // 🔧 FIX KB4 (2025-12-12): Lock freigeben nach Drop-Verarbeitung
+                        dragLocks.delete(fahrzeugId);
                     }
                 };
 
@@ -6390,6 +6406,9 @@
         // Ändert Status von 'anlieferung' → 'angenommen'
         async function markFahrzeugAsAbgeholt(fahrzeugId) {
             try {
+                // 🔧 FIX KB5 (2025-12-12): Ensure Firebase is initialized before Firestore access
+                await window.firebaseInitialized;
+
                 console.log(`📦 markFahrzeugAsAbgeholt: Fahrzeug ${fahrzeugId}`);
 
                 // Fahrzeug finden
@@ -7355,10 +7374,10 @@
 
             try {
                 await window.firebaseInitialized;
-                const collectionName = window.getCollection('arbeitszeiten');
-                const db = firebase.firestore();
+                // 🔧 FIX KB3 (2025-12-12): Multi-Tenant Safety - use getCollection() directly
+                const arbeitszeitenRef = window.getCollection('arbeitszeiten');
 
-                const snapshot = await db.collection(collectionName)
+                const snapshot = await arbeitszeitenRef
                     .where('fahrzeugId', '==', fahrzeugId)
                     .orderBy('startzeit', 'desc')
                     .limit(20)
@@ -9093,10 +9112,21 @@
             return html;
         }
 
+        // 🔧 FIX KB6 (2025-12-12): Double-click prevention for modal
+        let isModalOpening = false;
+
         function openAuftragModal(fahrzeugId) {
+            // 🔧 FIX KB6 (2025-12-12): Prevent double-click
+            if (isModalOpening) {
+                console.warn('⚠️ openAuftragModal: Modal already opening, ignoring duplicate call');
+                return;
+            }
+            isModalOpening = true;
+
             const fahrzeug = allFahrzeuge.find(f => window.compareIds(f.id, fahrzeugId));
             if (!fahrzeug) {
                 console.error('❌ Fahrzeug nicht gefunden:', fahrzeugId);
+                isModalOpening = false;
                 return;
             }
 
@@ -9470,10 +9500,15 @@
 
             // Ersten Tab aktivieren
             switchAuftragTab('overview');
+
+            // 🔧 FIX KB6 (2025-12-12): Reset flag after modal is shown
+            isModalOpening = false;
         }
 
         function closeAuftragModal() {
             document.getElementById('auftragModal').classList.remove('active');
+            // 🔧 FIX KB6 (2025-12-12): Reset flag when modal is closed
+            isModalOpening = false;
         }
 
         function switchAuftragTab(tabName) {

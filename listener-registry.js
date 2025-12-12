@@ -169,12 +169,22 @@ class FirestoreListenerRegistry {
 // SAFE NAVIGATION - Cleanup before redirect
 // ====================================================================
 
+// 🔧 FIX KB6 (2025-12-12): Global navigation lock for double-click prevention
+let isNavigating = false;
+
 /**
  * Navigate to a new page with automatic listener cleanup
  * @param {string} url - Target URL
  * @param {boolean} forceCleanup - Force cleanup even if no listeners
  */
 function safeNavigate(url, forceCleanup = true) {
+  // 🔧 FIX KB6 (2025-12-12): Double-click prevention
+  if (isNavigating) {
+    console.warn(`⚠️ safeNavigate: Navigation already in progress, ignoring duplicate call to ${url}`);
+    return;
+  }
+  isNavigating = true;
+
   console.log(`🚀 Safe navigation to: ${url}`);
 
   // Cleanup all Firestore listeners
@@ -186,6 +196,11 @@ function safeNavigate(url, forceCleanup = true) {
   setTimeout(() => {
     window.location.href = url;
   }, 100); // Small delay to ensure cleanup completes
+
+  // Reset flag after a timeout (in case navigation fails)
+  setTimeout(() => {
+    isNavigating = false;
+  }, 3000);
 }
 
 /**

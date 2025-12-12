@@ -336,6 +336,7 @@ window.firebaseApp = {
 
   // ✅ PHASE 5.1: Multi-Tenant Migration - Nutzt jetzt window.getCollection()
   // ✅ BUG #4 FIX: Added pagination support with optional limit parameter (default: 50)
+  // 🔧 FIX KB7 (2025-12-12): Added error callback for Sync Error Tracking
   listenToFahrzeuge: (callback, limit = 50) => {
     return window.getCollection('fahrzeuge')
       .orderBy('createdAt', 'desc')
@@ -346,6 +347,12 @@ window.firebaseApp = {
           fahrzeuge.push({ id: doc.id, ...doc.data() });
         });
         callback(fahrzeuge);
+      }, error => {
+        // 🔧 FIX KB7 (2025-12-12): Track listener errors
+        console.error('❌ listenToFahrzeuge error:', error);
+        if (window.backgroundSyncTracker) {
+          window.backgroundSyncTracker.trackFailure('RealtimeListener', error, 'fahrzeuge');
+        }
       });
   },
 
@@ -378,6 +385,10 @@ window.firebaseApp = {
           return window.firebaseApp.listenToFahrzeuge(callback, limit);
         }
         console.error('❌ listenToActiveFahrzeuge error:', error);
+        // 🔧 FIX KB7 (2025-12-12): Track listener errors
+        if (window.backgroundSyncTracker) {
+          window.backgroundSyncTracker.trackFailure('RealtimeListenerOptimized', error, 'fahrzeuge');
+        }
       });
   },
 
