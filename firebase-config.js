@@ -1167,7 +1167,31 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('✅ Firebase App initialized');
 
     // Connect to Emulators if in CI/Test mode
-    if (useEmulator) {
+    // 🔧 FIX (2025-12-12): Re-check emulator conditions at runtime
+    // Problem: `useEmulator` evaluated at script load might be wrong due to timing
+    const shouldUseEmulator = useEmulator ||
+                              window.location.port === '8000' ||
+                              navigator.webdriver === true ||
+                              window.location.search.includes('useEmulator=true');
+    console.log('🔍 Emulator check at DOMContentLoaded:', {
+      useEmulatorVar: useEmulator,
+      port: window.location.port,
+      webdriver: navigator.webdriver,
+      urlParam: window.location.search.includes('useEmulator=true'),
+      finalDecision: shouldUseEmulator
+    });
+
+    // 🔍 DEBUG: Store emulator decision for test inspection
+    window.__emulatorDebug = {
+      shouldUseEmulator,
+      useEmulatorVar: useEmulator,
+      port: window.location.port,
+      webdriver: navigator.webdriver,
+      urlParam: window.location.search.includes('useEmulator=true'),
+      timestamp: new Date().toISOString()
+    };
+
+    if (shouldUseEmulator) {
       console.log('🔥 Connecting to Firebase Emulators...');
       console.log('  Firestore: localhost:8080');
       console.log('  Storage: localhost:9199');
@@ -1180,8 +1204,10 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         db.useEmulator('localhost', 8080);
         console.log('✅ Firestore connected to Emulator (localhost:8080)');
+        window.__emulatorDebug.firestoreEmulator = 'connected';
       } catch (e) {
         console.warn('⚠️ Firestore Emulator connection:', e.message);
+        window.__emulatorDebug.firestoreEmulator = 'error: ' + e.message;
       }
 
       // Connect Storage to Emulator

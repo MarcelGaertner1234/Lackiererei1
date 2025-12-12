@@ -435,6 +435,64 @@ async function loginAsTestAdmin(page) {
     // Step 2: Set admin role in Firestore /users collection
     // Using merge: true to allow repeated calls (e.g., in beforeEach hooks)
     // CRITICAL FIX: Security Rules need this document to exist BEFORE any operations
+
+    // 🔍 DIAGNOSTIC: Check db state before Firestore operation
+    const dbDiagnostic = await page.evaluate(() => {
+      const diag = {
+        // 🔍 NEW: Emulator debug info from firebase-config.js
+        emulatorDebug: window.__emulatorDebug || 'NOT SET - firebase-config.js not loaded?',
+        hasFirebaseApp: !!window.firebaseApp,
+        dbFnExists: typeof window.firebaseApp?.db === 'function',
+        dbResult: null,
+        dbType: null,
+        hasCollection: false,
+        windowDb: !!window.db,
+        windowDbType: typeof window.db,
+        firebaseReady: window.firebaseInitialized === true || (window.firebaseInitialized && typeof window.firebaseInitialized.then === 'function'),
+        port: window.location.port,
+        navigatorWebdriver: navigator.webdriver,
+        // Check if db.useEmulator was called by looking at internal settings
+        dbSettings: null,
+      };
+
+      if (diag.dbFnExists) {
+        try {
+          const dbInstance = window.firebaseApp.db();
+          diag.dbResult = !!dbInstance;
+          diag.dbType = typeof dbInstance;
+          diag.hasCollection = typeof dbInstance?.collection === 'function';
+          // Check emulator settings - multiple possible property names
+          diag.dbSettings = {
+            _settings: dbInstance?._settings?.host,
+            INTERNAL: dbInstance?.INTERNAL?._settings?.host,
+            _databaseId: dbInstance?._databaseId?.projectId,
+          };
+        } catch (e) {
+          diag.dbError = e.message;
+        }
+      }
+
+      // Also check if window.db is different from firebaseApp.db()
+      if (window.db && diag.dbFnExists) {
+        try {
+          const windowDbHost = window.db?._settings?.host;
+          const appDbHost = window.firebaseApp.db()?._settings?.host;
+          diag.windowDbHost = windowDbHost || 'unknown';
+          diag.appDbHost = appDbHost || 'unknown';
+          diag.dbsAreSame = window.db === window.firebaseApp.db();
+        } catch (e) {
+          diag.dbCompareError = e.message;
+        }
+      }
+
+      return diag;
+    });
+    console.log('🔍 RUN #71: DB Diagnostic:', JSON.stringify(dbDiagnostic, null, 2));
+
+    if (!dbDiagnostic.hasCollection) {
+      throw new Error(`Firestore DB not available: ${JSON.stringify(dbDiagnostic)}`);
+    }
+
     await page.evaluate(async (uid) => {
       const db = window.firebaseApp.db();
 
@@ -453,9 +511,18 @@ async function loginAsTestAdmin(page) {
           displayName: 'E2E Test Admin'
         };
 
-        // Write user document
-        await db.collection('users').doc(uid).set(userData, { merge: true });
-        console.log('✅ Firestore: Admin role set in /users collection');
+        // 🔍 DIAGNOSTIC: Log before Firestore write
+        console.log('🔍 Attempting Firestore write to /users/' + uid);
+        const writeStart = Date.now();
+
+        // Write user document with timeout wrapper
+        const writePromise = db.collection('users').doc(uid).set(userData, { merge: true });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Firestore write timeout after 10s')), 10000)
+        );
+
+        await Promise.race([writePromise, timeoutPromise]);
+        console.log('✅ Firestore: Admin role set in /users collection (' + (Date.now() - writeStart) + 'ms)');
 
         // CRITICAL: Wait for Firestore to index the document (emulator timing)
         // This delay ensures Security Rules can find the user document

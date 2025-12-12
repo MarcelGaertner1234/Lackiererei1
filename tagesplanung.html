@@ -3002,7 +3002,12 @@
             console.log(`Verschiebe Service ${changedIndex} um ${diffDays} Tage`);
 
             // Alle Services ab changedIndex verschieben
+            // 🛡️ BUG FIX T2 (2025-12-12): Bounds-Check für verschiebenOriginalPlan[i]
             for (let i = changedIndex; i < plan.length; i++) {
+                if (!verschiebenOriginalPlan[i]?.datum) {
+                    console.warn('⚠️ verschiebenOriginalPlan[i] fehlt für Index', i);
+                    continue;
+                }
                 const origDate = new Date(verschiebenOriginalPlan[i].datum + 'T00:00:00');
                 origDate.setDate(origDate.getDate() + diffDays);
                 plan[i].datum = origDate.toISOString().split('T')[0];
@@ -3042,11 +3047,17 @@
                 console.log('📊 verschiebenOriginalPlan:', verschiebenOriginalPlan);
 
                 // Prüfen ob Änderungen vorliegen (Datum ODER Uhrzeit)
+                // 🛡️ BUG FIX T3 (2025-12-12): Optional chaining für verschiebenOriginalPlan[index]
                 const hasChanges = verschiebenFahrzeug.servicePlan.some((service, index) => {
-                    const datumChanged = service.datum !== verschiebenOriginalPlan[index].datum;
-                    const zeitChanged = service.startzeit !== verschiebenOriginalPlan[index].startzeit;
-                    console.log(`  Service ${index}: datum ${service.datum} vs ${verschiebenOriginalPlan[index].datum} = ${datumChanged ? 'CHANGED' : 'same'}`);
-                    console.log(`  Service ${index}: zeit ${service.startzeit} vs ${verschiebenOriginalPlan[index].startzeit} = ${zeitChanged ? 'CHANGED' : 'same'}`);
+                    const originalService = verschiebenOriginalPlan?.[index];
+                    if (!originalService) {
+                        console.warn('⚠️ verschiebenOriginalPlan[index] fehlt für Index', index);
+                        return true; // Neuer Service = Änderung
+                    }
+                    const datumChanged = service.datum !== originalService.datum;
+                    const zeitChanged = service.startzeit !== originalService.startzeit;
+                    console.log(`  Service ${index}: datum ${service.datum} vs ${originalService.datum} = ${datumChanged ? 'CHANGED' : 'same'}`);
+                    console.log(`  Service ${index}: zeit ${service.startzeit} vs ${originalService.startzeit} = ${zeitChanged ? 'CHANGED' : 'same'}`);
                     return datumChanged || zeitChanged;
                 });
 
@@ -3328,7 +3339,14 @@
                 const fahrzeugRef = window.getCollection('fahrzeuge').doc(fahrzeugId);
 
                 // Erster Service für Rückwärtskompatibilität
-                const firstServiceStep = plan.find(s => !LOGISTIK_QUEUES.includes(s.queue)) || plan[0];
+                // 🛡️ BUG FIX T4 (2025-12-12): Optional chaining für plan[0]
+                const firstServiceStep = plan.find(s => !LOGISTIK_QUEUES.includes(s.queue)) || plan?.[0];
+
+                if (!firstServiceStep) {
+                    console.error('❌ saveDurchplanung: Kein gültiger Service-Step gefunden');
+                    toast.error('Fehler: Kein gültiger Service-Step');
+                    return;
+                }
 
                 await fahrzeugRef.update({
                     // Neues servicePlan Array
@@ -3337,7 +3355,7 @@
                     // Rückwärtskompatibilität: Hauptzuweisung aus erstem Service-Schritt
                     queueDatum: firebase.firestore.Timestamp.fromDate(new Date(firstServiceStep.datum)),
                     abteilungsQueue: LOGISTIK_QUEUES.includes(firstServiceStep.queue) ? null : firstServiceStep.queue,
-                    logistikQueue: LOGISTIK_QUEUES.includes(plan[0].queue) ? plan[0].queue : null,
+                    logistikQueue: (plan?.[0]?.queue && LOGISTIK_QUEUES.includes(plan[0].queue)) ? plan[0].queue : null,
                     queuePosition: 1,
                     prioritaet: 1
                 });
