@@ -2586,8 +2586,11 @@
             currentPage = 1;
 
             // Update active button
-            const buttons = document.querySelectorAll('.filter-group')[1].querySelectorAll('.filter-btn');
-            buttons.forEach(btn => btn.classList.remove('active'));
+            // 🔧 FIX L1 (2025-12-12): Null-safety für Array Access
+            const buttons = document.querySelectorAll('.filter-group')[1]?.querySelectorAll('.filter-btn');
+            if (buttons) {
+                buttons.forEach(btn => btn.classList.remove('active'));
+            }
             event.target.classList.add('active');
 
             filterTable();
@@ -2902,10 +2905,18 @@
                 let aVal = a[column] || '';
                 let bVal = b[column] || '';
 
-                // Special handling for dates
+                // 🔧 FIX L3 (2025-12-12): Special handling for dates with Firestore Timestamp support
                 if (column === 'datum') {
-                    aVal = new Date(aVal).getTime() || 0;
-                    bVal = new Date(bVal).getTime() || 0;
+                    // Handle Firestore Timestamps (.toDate()), ISO strings, and Date objects
+                    const parseDate = (val) => {
+                        if (!val) return 0;
+                        if (typeof val.toDate === 'function') return val.toDate().getTime();
+                        if (val instanceof Date) return val.getTime();
+                        const parsed = new Date(val).getTime();
+                        return isNaN(parsed) ? 0 : parsed;
+                    };
+                    aVal = parseDate(aVal);
+                    bVal = parseDate(bVal);
                 }
 
                 // String comparison
@@ -3089,17 +3100,28 @@
             return html;
         }
 
+        // 🔧 FIX L4 (2025-12-12): Double-Click Prevention für viewDetails
+        let isViewingDetails = false;
+
         async function viewDetails(vehicleId) {
-            // ✅ FIX: String-Vergleich für ID (vehicleId kommt als String vom onclick)
-            const vehicle = allVehicles.find(v => window.compareIds(v.id, vehicleId));
-            if (!vehicle) {
-                showToast('Fehler: Fahrzeug nicht gefunden', 'error');
+            // 🔧 FIX L4: Prevent double-click opening modal twice
+            if (isViewingDetails) {
+                console.log('⏳ viewDetails bereits aktiv, ignoriere Doppelklick');
                 return;
             }
+            isViewingDetails = true;
 
-            // Load photos lazily (performance!)
-            let vorherPhotos = [];
-            let nachherPhotos = [];
+            try {
+                // ✅ FIX: String-Vergleich für ID (vehicleId kommt als String vom onclick)
+                const vehicle = allVehicles.find(v => window.compareIds(v.id, vehicleId));
+                if (!vehicle) {
+                    showToast('Fehler: Fahrzeug nicht gefunden', 'error');
+                    return;
+                }
+
+                // Load photos lazily (performance!)
+                let vorherPhotos = [];
+                let nachherPhotos = [];
 
             if (firebaseInitialized && firebaseApp && firebaseApp.getFahrzeugFotos) {
                 try {
@@ -3537,6 +3559,10 @@
             if (typeof feather !== 'undefined') {
                 feather.replace();
             }
+            } finally {
+                // 🔧 FIX L4: Reset lock after modal is shown (with small delay for UX)
+                setTimeout(() => { isViewingDetails = false; }, 500);
+            }
         }
 
         // CLOSE MODAL
@@ -3682,12 +3708,16 @@
         }
 
         function goToPage(page) {
+            // 🔧 FIX L2 (2025-12-12): Bounds-Check für Pagination
+            if (page < 1) page = 1;
+            if (totalPages > 0 && page > totalPages) page = totalPages;
             currentPage = page;
             renderTable();
         }
 
         function goToLastPage() {
-            currentPage = totalPages;
+            // 🔧 FIX L2 (2025-12-12): Sicherstellen dass totalPages mindestens 1 ist
+            currentPage = Math.max(1, totalPages);
             renderTable();
         }
 
