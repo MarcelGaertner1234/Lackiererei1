@@ -5563,10 +5563,23 @@
 
         // ========== ENDE PARTNER-PASSWORT-MODAL FUNKTIONEN ==========
 
+        // 🔧 FIX KU1 (2025-12-12): Double-Click Prevention für Kunde speichern
+        let isSavingKunde = false;
+
         // Neuer Kunde Form Submit
         const neuerKundeFormSubmit = async function(e) {
             e.preventDefault();
 
+            // 🔧 FIX KU1 (2025-12-12): Double-Click Prevention
+            if (isSavingKunde) {
+                console.warn('⚠️ Kunde speichern bereits in Bearbeitung');
+                return;
+            }
+            isSavingKunde = true;
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+
+            try {
             // ✅ Collect selected tags from checkboxes
             const selectedTags = [];
             ['vip', 'stammkunde', 'neukunde', 'flotte', 'gewerbe', 'privat'].forEach(tagId => {
@@ -5830,6 +5843,11 @@
                 console.error('❌ Fehler beim Speichern:', error);
                 showErrorToast('Fehler beim Speichern des Kunden!');
             }
+            } finally {
+                // 🔧 FIX KU1 (2025-12-12): Reset Double-Click Lock
+                isSavingKunde = false;
+                if (submitBtn) submitBtn.disabled = false;
+            }
         };
         window.listenerRegistry.registerDOM(document.getElementById('neuerKundeForm'), 'submit', neuerKundeFormSubmit, 'Neuer Kunde Form Submit');
 
@@ -5898,8 +5916,17 @@
             document.getElementById('neuerKundeModal').classList.add('active');
         }
 
+        // 🔧 FIX KU2 (2025-12-12): Double-Click Prevention für Kunde löschen
+        const deletingKundenIds = new Set();
+
         // Kunde löschen
         async function deleteKunde(kundeId) {
+            // 🔧 FIX KU2 (2025-12-12): Double-Click Prevention
+            if (deletingKundenIds.has(kundeId)) {
+                console.warn('⚠️ Löschung für diesen Kunden bereits in Bearbeitung');
+                return;
+            }
+
             const kunde = allKunden.find(k => window.compareIds(k.id, kundeId));
             if (!kunde) return;
 
@@ -5927,6 +5954,9 @@
 
             if (!confirm(confirmMsg)) return;
 
+            // 🔧 FIX KU2 (2025-12-12): Lock setzen NACH confirm (damit User nicht blockiert wird)
+            deletingKundenIds.add(kundeId);
+
             try {
                 if (firebaseInitialized && firebaseApp) {
                     await firebaseApp.deleteKunde(kundeId);
@@ -5946,6 +5976,9 @@
             } catch (error) {
                 console.error('❌ Fehler beim Löschen:', error);
                 showToast('Fehler beim Löschen des Kunden!', 'error');
+            } finally {
+                // 🔧 FIX KU2 (2025-12-12): Lock wieder freigeben
+                deletingKundenIds.delete(kundeId);
             }
         }
 
