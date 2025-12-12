@@ -2881,6 +2881,9 @@
         let currentEntwurf = null;
         let currentEntwurfId = null;
 
+        // 🔧 FIX E18 (2025-12-12): Unsaved Changes Warning
+        let hasUnsavedChanges = false;
+
         // Kalkulations-Tabellen Data
         let ersatzteileData = [];
         let arbeitslohnData = [];
@@ -2892,6 +2895,15 @@
 
         // Photo Upload Data
         let photos = [];
+
+        // 🔧 FIX E18 (2025-12-12): Warn user before leaving with unsaved changes
+        window.addEventListener('beforeunload', (e) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = 'Sie haben ungespeicherte Änderungen. Wirklich verlassen?';
+                return e.returnValue;
+            }
+        });
 
         // ============================================
         // HELPER: BASE64 TO BLOB (FIX: Nov 17, 2025 - BUG #2)
@@ -2991,9 +3003,16 @@
                 const urlParams = new URLSearchParams(window.location.search);
                 const entwurfIdFromUrl = urlParams.get('id');
                 if (entwurfIdFromUrl) {
-                    console.log('📌 URL-Parameter gefunden, lade Entwurf direkt:', entwurfIdFromUrl);
-                    // Entwurf direkt laden (auch wenn Status != 'offen')
-                    await loadEntwurfById(entwurfIdFromUrl);
+                    // 🔧 FIX E24 (2025-12-12): Validate Entwurf-ID format (alphanumeric, reasonable length)
+                    const isValidId = /^[a-zA-Z0-9_-]{10,50}$/.test(entwurfIdFromUrl);
+                    if (!isValidId) {
+                        console.warn('⚠️ Ungültige Entwurf-ID im URL-Parameter:', entwurfIdFromUrl);
+                        showToast('⚠️ Ungültige Entwurf-ID im URL', 'error', 3000);
+                    } else {
+                        console.log('📌 URL-Parameter gefunden, lade Entwurf direkt:', entwurfIdFromUrl);
+                        // Entwurf direkt laden (auch wenn Status != 'offen')
+                        await loadEntwurfById(entwurfIdFromUrl);
+                    }
                 }
 
                 // 🚗 Ersatzfahrzeug Toggle initialisieren (FIX: Nov 27, 2025)
@@ -3261,10 +3280,13 @@
                 console.log(`📝 Ersatzteil [${index}] Anzahl/Einzelpreis: Original=${newOriginal.toFixed(2)}€, Aftermarket=${newAftermarket.toFixed(2)}€`);
 
                 // UI aktualisieren
+                // 🔧 FIX E22 (2025-12-12): Array Bounds Check for inputs
                 if (row) {
                     const inputs = row.querySelectorAll('input');
-                    inputs[4].value = newOriginal.toFixed(2);      // Original-Spalte
-                    inputs[5].value = newAftermarket.toFixed(2);   // Aftermarket-Spalte
+                    if (inputs.length > 5) {
+                        inputs[4].value = newOriginal.toFixed(2);      // Original-Spalte
+                        inputs[5].value = newAftermarket.toFixed(2);   // Aftermarket-Spalte
+                    }
                 }
             } else if (field === 'preisOriginal') {
                 // Original-Preis direkt geändert
@@ -3380,6 +3402,11 @@
         }
 
         function deleteArbeitslohnRow(index) {
+            // 🔧 FIX E19 (2025-12-12): Array Bounds Check
+            if (index < 0 || index >= arbeitslohnData.length) {
+                console.warn('⚠️ deleteArbeitslohnRow: Ungültiger Index', index);
+                return;
+            }
             if (!confirm('Diese Zeile wirklich löschen?')) return;
             arbeitslohnData.splice(index, 1);
             reRenderArbeitslohnTable();
@@ -3467,6 +3494,11 @@
         }
 
         function deleteLackierungRow(index) {
+            // 🔧 FIX E20 (2025-12-12): Array Bounds Check
+            if (index < 0 || index >= lackierungData.length) {
+                console.warn('⚠️ deleteLackierungRow: Ungültiger Index', index);
+                return;
+            }
             if (!confirm('Diese Zeile wirklich löschen?')) return;
             lackierungData.splice(index, 1);
             reRenderLackierungTable();
@@ -3561,6 +3593,11 @@
         }
 
         function deleteMaterialienRow(index) {
+            // 🔧 FIX E21 (2025-12-12): Array Bounds Check
+            if (index < 0 || index >= materialienData.length) {
+                console.warn('⚠️ deleteMaterialienRow: Ungültiger Index', index);
+                return;
+            }
             if (!confirm('Diese Zeile wirklich löschen?')) return;
             materialienData.splice(index, 1);
             reRenderMaterialienTable();
@@ -3747,10 +3784,8 @@
             try {
                 console.log('📥 Lade Entwurf direkt aus Firestore:', entwurfId);
 
-                const werkstattId = window.werkstattId;
-                const collectionName = `partnerAnfragen_${werkstattId}`;
-
-                const doc = await window.db.collection(collectionName).doc(entwurfId).get();
+                // 🔧 FIX E1 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                const doc = await window.getCollection('partnerAnfragen').doc(entwurfId).get();
 
                 if (!doc.exists) {
                     console.error('❌ Entwurf nicht gefunden:', entwurfId);
@@ -4529,10 +4564,28 @@
                     await updateKapazitaetPreview();
                 }
 
+                // 🔧 FIX E18 (2025-12-12): Reset unsaved changes flag after load
+                hasUnsavedChanges = false;
+                setupChangeTracking();
+
             } catch (error) {
                 console.error('❌ Fehler beim Laden des Entwurfs:', error);
                 showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
             }
+        }
+
+        // 🔧 FIX E18 (2025-12-12): Setup change tracking for form inputs
+        function setupChangeTracking() {
+            const formContainer = document.getElementById('formContainer');
+            if (!formContainer) return;
+
+            // Track changes on all form inputs
+            formContainer.addEventListener('input', () => {
+                hasUnsavedChanges = true;
+            });
+            formContainer.addEventListener('change', () => {
+                hasUnsavedChanges = true;
+            });
         }
 
         // ============================================
@@ -4557,14 +4610,15 @@
                 }
 
                 // Lade verfügbare Leihfahrzeuge
-                const collectionName = `leihfahrzeuge_${werkstattId}`;
-                const snapshot = await window.db.collection(collectionName)
+                // 🔧 FIX E2-E3 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                const leihfahrzeugeRef = window.getCollection('leihfahrzeuge');
+                const snapshot = await leihfahrzeugeRef
                     .where('status', '==', 'verfuegbar')
                     .get();
 
                 if (snapshot.empty) {
                     // Auch ohne Filter versuchen (alle Fahrzeuge)
-                    const allSnapshot = await window.db.collection(collectionName).get();
+                    const allSnapshot = await leihfahrzeugeRef.get();
                     if (allSnapshot.empty) {
                         console.log('ℹ️ Keine Leihfahrzeuge in der Datenbank');
                         const option = document.createElement('option');
@@ -4706,7 +4760,8 @@
                     return null;
                 }
 
-                const settingsRef = window.db.collection(`einstellungen_${werkstattId}`).doc('config');
+                // 🔧 FIX E4 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                const settingsRef = window.getCollection('einstellungen').doc('config');
                 const doc = await settingsRef.get();
 
                 if (doc.exists && doc.data().kapazitaet) {
@@ -4755,7 +4810,8 @@
                 console.log(`📊 Lade Fahrzeuge für Woche: ${startStr} bis ${endStr}`);
 
                 // Fahrzeuge mit queueDatum ODER geplantesAbnahmeDatum in der Woche laden
-                const fahrzeugeRef = window.db.collection(`fahrzeuge_${werkstattId}`);
+                // 🔧 FIX E5 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                const fahrzeugeRef = window.getCollection('fahrzeuge');
 
                 // Alle Fahrzeuge laden und client-seitig filtern
                 // (Firestore unterstützt keine OR-Queries über verschiedene Felder)
@@ -5376,6 +5432,8 @@
                 // Show loading
                 const saveBtn = document.getElementById('saveBtn');
                 const originalText = saveBtn.textContent;
+                // 🔧 FIX E14 (2025-12-12): Double-Click Prevention
+                saveBtn.disabled = true;
                 saveBtn.innerHTML = '<span class="loading"></span> Speichert...';
 
                 // 🔧 BUG #9 FIX (2025-11-20): Email-Format-Validierung
@@ -5457,10 +5515,8 @@
                 });
 
                 // Update Firestore
-                const werkstattId = window.werkstattId; // ✅ SECURITY FIX: No 'mosbach' fallback
-                const collectionName = `partnerAnfragen_${werkstattId}`;
-
-                await window.db.collection(collectionName)
+                // 🔧 FIX E6 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                await window.getCollection('partnerAnfragen')
                     .doc(currentEntwurfId)
                     .update(updatedData);
 
@@ -5470,13 +5526,14 @@
                 // (zugewiesenesErsatzfahrzeug bereits in Zeile ~2850 deklariert)
                 if (zugewiesenesErsatzfahrzeug) {
                     try {
+                        // 🔧 FIX E7-E8 (2025-12-12): Multi-Tenant Safety - use getCollection()
                         // 1. Leihfahrzeug-Dokument laden für Kennzeichen
-                        const leihfahrzeugDoc = await window.db.collection(`leihfahrzeuge_${werkstattId}`).doc(zugewiesenesErsatzfahrzeug).get();
+                        const leihfahrzeugDoc = await window.getCollection('leihfahrzeuge').doc(zugewiesenesErsatzfahrzeug).get();
                         const leihfahrzeugData = leihfahrzeugDoc.exists ? leihfahrzeugDoc.data() : {};
                         const leihfahrzeugKennzeichen = leihfahrzeugData.kennzeichen || 'Leihfahrzeug';
 
                         // 2. Leihfahrzeug-Status auf "vergeben" setzen
-                        await window.db.collection(`leihfahrzeuge_${werkstattId}`).doc(zugewiesenesErsatzfahrzeug).update({
+                        await window.getCollection('leihfahrzeuge').doc(zugewiesenesErsatzfahrzeug).update({
                             status: 'vergeben',
                             aktuelleZuweisung: {
                                 kundenName: document.getElementById('kundenname').value.trim(),
@@ -5502,7 +5559,8 @@
                             werkstattId: werkstattId,
                             createdAt: new Date().toISOString()
                         };
-                        await window.db.collection(`kalenderEvents_${werkstattId}`).add(kalenderEvent);
+                        // 🔧 FIX E9 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                        await window.getCollection('kalenderEvents').add(kalenderEvent);
                         console.log('📅 Kalender-Event für Leihfahrzeug erstellt');
 
                     } catch (leihfahrzeugError) {
@@ -5531,7 +5589,8 @@
                             werkstattId: werkstattId,
                             createdAt: new Date().toISOString()
                         };
-                        await window.db.collection(`kalenderEvents_${werkstattId}`).add(abholEvent);
+                        // 🔧 FIX E10 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                        await window.getCollection('kalenderEvents').add(abholEvent);
                         console.log('📅 Abholtermin im Kalender eingetragen');
                     } catch (abholError) {
                         console.warn('⚠️ Abholtermin Kalender-Event Fehler:', abholError);
@@ -5554,7 +5613,8 @@
                             werkstattId: werkstattId,
                             createdAt: new Date().toISOString()
                         };
-                        await window.db.collection(`kalenderEvents_${werkstattId}`).add(abnahmeEvent);
+                        // 🔧 FIX E11 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                        await window.getCollection('kalenderEvents').add(abnahmeEvent);
                         console.log('📅 Geplante Abnahme im Kalender eingetragen');
                     } catch (abnahmeError) {
                         console.warn('⚠️ Abnahme Kalender-Event Fehler:', abnahmeError);
@@ -5566,15 +5626,21 @@
                 feather.replace();
                 setTimeout(() => {
                     saveBtn.textContent = originalText;
+                    saveBtn.disabled = false; // 🔧 FIX E14: Re-enable after success
                     feather.replace();
                 }, 2000);
+
+                // 🔧 FIX E18 (2025-12-12): Reset unsaved changes flag after successful save
+                hasUnsavedChanges = false;
 
                 showToast('✅ Entwurf aktualisiert', 'success', 3000);
 
             } catch (error) {
                 console.error('❌ Fehler beim Speichern:', error);
                 showToast(`❌ Fehler: ${error.message}`, 'error', 6000);
-                document.getElementById('saveBtn').textContent = 'Entwurf aktualisieren';
+                const saveBtn = document.getElementById('saveBtn');
+                saveBtn.textContent = 'Entwurf aktualisieren';
+                saveBtn.disabled = false; // 🔧 FIX E14: Re-enable after error
                 feather.replace();
             }
         }
@@ -5975,6 +6041,8 @@
                 // Show loading
                 const sendBtn = document.getElementById('sendBtn');
                 const originalText = sendBtn.textContent;
+                // 🔧 FIX E15 (2025-12-12): Double-Click Prevention
+                sendBtn.disabled = true;
                 sendBtn.innerHTML = '<span class="loading"></span> Wird versendet...';
 
                 // Step 1: Ensure Partner Account exists
@@ -6044,8 +6112,6 @@
 
                 // Step 5: Update Entwurf Status ONLY AFTER successful email
                 console.log('📝 Step 5: Entwurf-Status aktualisieren (nach erfolgreicher Email)...');
-                const werkstattId = window.werkstattId; // ✅ SECURITY FIX: No 'mosbach' fallback
-                const collectionName = `partnerAnfragen_${werkstattId}`;
 
                 // 🆕 FIX Nov 30, 2025: 2-Varianten-Support (Original + Aftermarket)
                 const angebotDetails = {
@@ -6061,7 +6127,8 @@
                     summeBruttoAftermarket: summeBruttoAftermarket || null,
                 };
 
-                await window.db.collection(collectionName).doc(currentEntwurfId).update({
+                // 🔧 FIX E12 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                await window.getCollection('partnerAnfragen').doc(currentEntwurfId).update({
                     // Update all fields
                     kundenname: document.getElementById('kundenname').value.trim(),
                     kennzeichen: document.getElementById('kennzeichen').value.trim(),  // FIX: Nov 17, 2025 - BUG #4
@@ -6212,10 +6279,16 @@
                 showToast('📄 Erstelle Kalkulation-PDF...', 'info', 3000);
 
                 const generatePDF = window.functions.httpsCallable('generateAngebotPDF');
-                const pdfResult = await generatePDF({
+                // 🔧 FIX E17 (2025-12-12): PDF Timeout (90s) to prevent infinite hangs
+                const PDF_TIMEOUT_MS = 90000;
+                const pdfPromise = generatePDF({
                     entwurfId: currentEntwurfId,
                     werkstattId: werkstattId
                 });
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('PDF-Generierung Timeout (90s überschritten). Bitte erneut versuchen.')), PDF_TIMEOUT_MS)
+                );
+                const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
 
                 console.log('✅ PDF generiert:', pdfResult.data.filename);
 
@@ -6335,7 +6408,9 @@
                 }
 
                 showToast(errorMsg, 'error', 10000);
-                document.getElementById('sendBtn').textContent = 'Angebot erstellen & versenden';
+                const sendBtn = document.getElementById('sendBtn');
+                sendBtn.textContent = 'Angebot erstellen & versenden';
+                sendBtn.disabled = false; // 🔧 FIX E15: Re-enable after error
                 feather.replace();
             }
         }
@@ -6361,7 +6436,6 @@
                 feather.replace();
 
                 const werkstattId = window.werkstattId; // ✅ SECURITY FIX: No 'mosbach' fallback
-                const collectionName = `partnerAnfragen_${werkstattId}`;
 
                 if (!currentEntwurfId) {
                     throw new Error('Kein Entwurf ausgewählt');
@@ -6369,7 +6443,8 @@
 
                 // Step 1: Clear previous error flags in Firestore
                 console.log('🧹 Clearing error flags...');
-                await window.db.collection(collectionName).doc(currentEntwurfId).update({
+                // 🔧 FIX E13 (2025-12-12): Multi-Tenant Safety - use getCollection()
+                await window.getCollection('partnerAnfragen').doc(currentEntwurfId).update({
                     pdfGenerationFailed: firebase.firestore.FieldValue.delete(),
                     pdfGenerationError: firebase.firestore.FieldValue.delete(),
                     pdfGenerationFailedAt: firebase.firestore.FieldValue.delete()
@@ -6378,10 +6453,16 @@
                 // Step 2: Retry PDF generation
                 console.log('📄 Retrying PDF generation...');
                 const generatePDF = window.functions.httpsCallable('generateAngebotPDF');
-                const pdfResult = await generatePDF({
+                // 🔧 FIX E17 (2025-12-12): PDF Timeout (90s) to prevent infinite hangs
+                const PDF_TIMEOUT_MS = 90000;
+                const pdfPromise = generatePDF({
                     entwurfId: currentEntwurfId,
                     werkstattId: werkstattId
                 });
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('PDF-Generierung Timeout (90s überschritten). Bitte erneut versuchen.')), PDF_TIMEOUT_MS)
+                );
+                const pdfResult = await Promise.race([pdfPromise, timeoutPromise]);
 
                 console.log('✅ PDF retry successful:', pdfResult.data.filename);
                 showToast('✅ PDF erfolgreich generiert!', 'success', 3000);
