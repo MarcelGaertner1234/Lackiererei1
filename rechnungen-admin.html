@@ -1465,8 +1465,23 @@
         /**
          * Manuelle Rechnungserstellung (vom Admin-Panel aus)
          */
+        // 🔧 FIX RE1 (2025-12-12): Double-Click Prevention - KRITISCH für Rechnungen!
+        let isCreatingRechnung = false;
+
         async function manualCreateRechnung(fahrzeugId) {
+            // 🔧 FIX RE1 (2025-12-12): Double-Click Prevention
+            if (isCreatingRechnung) {
+                console.warn('⚠️ manualCreateRechnung: Rechnungserstellung bereits in Bearbeitung');
+                return;
+            }
+
             if (!confirm('Rechnung für dieses Fahrzeug erstellen?')) return;
+
+            isCreatingRechnung = true;
+
+            // Disable all "Rechnung erstellen" buttons
+            const createButtons = document.querySelectorAll('button[onclick*="manualCreateRechnung"]');
+            createButtons.forEach(btn => btn.disabled = true);
 
             try {
                 // Fahrzeug laden
@@ -1686,18 +1701,19 @@
                 // 🚗 PHASE 2: Auto-Freigabe Leihfahrzeug bei Rechnung
                 if (fahrzeugData.zugewiesenesErsatzfahrzeug) {
                     try {
-                        const werkstattId = window.werkstattId;
                         const leihfahrzeugId = fahrzeugData.zugewiesenesErsatzfahrzeug;
 
+                        // 🔧 FIX RE2 (2025-12-12): Multi-Tenant - window.getCollection() statt window.db.collection()
                         // 1. Leihfahrzeug-Status zurücksetzen
-                        await window.db.collection(`leihfahrzeuge_${werkstattId}`).doc(leihfahrzeugId).update({
+                        await window.getCollection('leihfahrzeuge').doc(leihfahrzeugId).update({
                             status: 'verfuegbar',
                             aktuelleZuweisung: null
                         });
                         console.log('🚗 Leihfahrzeug automatisch freigegeben bei Rechnungserstellung');
 
+                        // 🔧 FIX RE3 (2025-12-12): Multi-Tenant - window.getCollection() statt window.db.collection()
                         // 2. Kalender-Event als beendet markieren
-                        const kalenderEventsRef = window.db.collection(`kalenderEvents_${werkstattId}`);
+                        const kalenderEventsRef = window.getCollection('kalenderEvents');
                         const activeEvents = await kalenderEventsRef
                             .where('fahrzeugId', '==', leihfahrzeugId)
                             .where('status', '==', 'aktiv')
@@ -1728,6 +1744,11 @@
             } catch (error) {
                 console.error('❌ Fehler bei manueller Rechnungserstellung:', error);
                 toast.error('❌ Fehler: ' + error.message);
+            } finally {
+                // 🔧 FIX RE1 (2025-12-12): Reset lock and re-enable buttons
+                isCreatingRechnung = false;
+                const createButtons = document.querySelectorAll('button[onclick*="manualCreateRechnung"]');
+                createButtons.forEach(btn => btn.disabled = false);
             }
         }
 
