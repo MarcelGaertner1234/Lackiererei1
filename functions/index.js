@@ -4939,7 +4939,7 @@ exports.sendEntwurfAbgelehntNotification = functions
 exports.generateAngebotPDF = functions
     .region("europe-west3")
     .runWith({
-      memory: "1GB", // Puppeteer needs more memory
+      memory: "2GB", // Puppeteer needs more memory (increased from 1GB due to OOM crash)
       timeoutSeconds: 120 // PDF generation can take time
     })
     .https
