@@ -2078,6 +2078,9 @@
             event.currentTarget.classList.remove('drag-over');
         }
 
+        // 🔧 FIX DP6 (2025-12-12): Drag Race Condition Prevention for handleDrop
+        const draggingIds = new Set();
+
         async function handleDrop(event) {
             event.preventDefault();
             event.currentTarget.classList.remove('drag-over');
@@ -2093,6 +2096,14 @@
                 showToast('❌ Ungültige Drop-Zone', 'error');
                 return;
             }
+
+            // 🔧 FIX DP6 (2025-12-12): Drag Race Condition Prevention
+            const dragKey = `${draggedData.type}_${draggedData.id}_${datum}`;
+            if (draggingIds.has(dragKey)) {
+                console.warn('⚠️ handleDrop: Drop bereits in Bearbeitung');
+                return;
+            }
+            draggingIds.add(dragKey);
 
             try {
                 if (draggedData.type === 'mitarbeiter') {
@@ -2135,6 +2146,8 @@
             } catch (error) {
                 console.error('❌ Drop-Fehler:', error);
                 showToast('❌ Fehler beim Zuweisen', 'error');
+            } finally {
+                draggingIds.delete(dragKey);
             }
 
             // Reset dragged data
@@ -2265,7 +2278,16 @@
 
         // === SCHICHT OPERATIONS ===
 
+        // 🔧 FIX DP1 (2025-12-12): Double-Click Prevention for createSchicht
+        let isCreatingSchicht = false;
+
         async function createSchicht(mitarbeiterId, datum, schichtTypId) {
+            // 🔧 FIX DP1 (2025-12-12): Double-Click Prevention
+            if (isCreatingSchicht) {
+                console.warn('⚠️ createSchicht: Bereits in Bearbeitung');
+                return;
+            }
+            isCreatingSchicht = true;
             try {
                 // Check if schicht already exists
                 const existing = allSchichten.find(s =>
@@ -2362,10 +2384,21 @@
             } catch (error) {
                 console.error('❌ Fehler beim Erstellen der Schicht:', error);
                 showToast('❌ Fehler beim Erstellen der Schicht', 'error');
+            } finally {
+                isCreatingSchicht = false;
             }
         }
 
+        // 🔧 FIX DP7 (2025-12-12): Drag Race Condition Prevention for verschiebeSchicht
+        const movingSchichtIds = new Set();
+
         async function verschiebeSchicht(schichtId, neuesDatum) {
+            // 🔧 FIX DP7 (2025-12-12): Drag Race Condition Prevention
+            if (movingSchichtIds.has(schichtId)) {
+                console.warn('⚠️ verschiebeSchicht: Verschiebung bereits in Bearbeitung');
+                return;
+            }
+            movingSchichtIds.add(schichtId);
             try {
                 const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
 
@@ -2386,10 +2419,21 @@
             } catch (error) {
                 console.error('❌ Fehler beim Verschieben:', error);
                 showToast('❌ Fehler beim Verschieben', 'error');
+            } finally {
+                movingSchichtIds.delete(schichtId);
             }
         }
 
+        // 🔧 FIX DP8 (2025-12-12): Drag Race Condition Prevention for tauschSchicht
+        const swappingSchichtIds = new Set();
+
         async function tauschSchicht(schichtId, neuerMitarbeiterId, datum) {
+            // 🔧 FIX DP8 (2025-12-12): Drag Race Condition Prevention
+            if (swappingSchichtIds.has(schichtId)) {
+                console.warn('⚠️ tauschSchicht: Tausch bereits in Bearbeitung');
+                return;
+            }
+            swappingSchichtIds.add(schichtId);
             try {
                 const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
                 const neuerMitarbeiter = allMitarbeiter.find(m => String(m.id) === String(neuerMitarbeiterId));
@@ -2408,6 +2452,8 @@
             } catch (error) {
                 console.error('❌ Fehler beim Tauschen:', error);
                 showToast('❌ Fehler beim Tauschen', 'error');
+            } finally {
+                swappingSchichtIds.delete(schichtId);
             }
         }
 
@@ -2440,8 +2486,18 @@
             document.getElementById('schichtTypModal').classList.add('show');
         }
 
+        // 🔧 FIX DP2 (2025-12-12): Double-Click Prevention for saveSchichtTyp
+        let isSavingSchichtTyp = false;
+
         async function saveSchichtTyp(event) {
             event.preventDefault();
+
+            // 🔧 FIX DP2 (2025-12-12): Double-Click Prevention
+            if (isSavingSchichtTyp) {
+                console.warn('⚠️ saveSchichtTyp: Speichern bereits in Bearbeitung');
+                return;
+            }
+            isSavingSchichtTyp = true;
 
             const editId = document.getElementById('editSchichtTypId').value;
             const name = document.getElementById('schichtName').value.trim();
@@ -2481,12 +2537,23 @@
             } catch (error) {
                 console.error('❌ Fehler beim Speichern:', error);
                 showToast('❌ Fehler beim Speichern', 'error');
+            } finally {
+                isSavingSchichtTyp = false;
             }
         }
+
+        // 🔧 FIX DP10 (2025-12-12): Delete Lock for deleteSchichtTyp
+        const deletingSchichtTypIds = new Set();
 
         async function deleteSchichtTyp(schichtTypId) {
             const schichtTyp = allSchichtTypen.find(st => String(st.id) === String(schichtTypId));
             if (!schichtTyp) return;
+
+            // 🔧 FIX DP10 (2025-12-12): Delete Lock
+            if (deletingSchichtTypIds.has(schichtTypId)) {
+                console.warn('⚠️ deleteSchichtTyp: Löschung bereits in Bearbeitung');
+                return;
+            }
 
             // Prevent deletion of system types (Urlaub/Krank/Frei)
             if (schichtTyp.isSystemType) {
@@ -2505,6 +2572,7 @@
                 return;
             }
 
+            deletingSchichtTypIds.add(schichtTypId);
             try {
                 await window.getCollection('schichtTypen').doc(schichtTypId).delete();
                 showToast(`✅ Schicht-Typ "${schichtTyp.name}" gelöscht`, 'success');
@@ -2514,15 +2582,26 @@
             } catch (error) {
                 console.error('❌ Fehler beim Löschen:', error);
                 showToast('❌ Fehler beim Löschen', 'error');
+            } finally {
+                deletingSchichtTypIds.delete(schichtTypId);
             }
         }
 
         // === 🆕 SCHICHT LÖSCHEN ===
 
+        // 🔧 FIX DP9 (2025-12-12): Delete Lock for deleteSchicht
+        const deletingSchichtIds = new Set();
+
         async function deleteSchicht(schichtId) {
             const schicht = allSchichten.find(s => String(s.id) === String(schichtId));
             if (!schicht) {
                 showToast('❌ Schicht nicht gefunden', 'error');
+                return;
+            }
+
+            // 🔧 FIX DP9 (2025-12-12): Delete Lock
+            if (deletingSchichtIds.has(schichtId)) {
+                console.warn('⚠️ deleteSchicht: Löschung bereits in Bearbeitung');
                 return;
             }
 
@@ -2536,6 +2615,7 @@
                 return;
             }
 
+            deletingSchichtIds.add(schichtId);
             try {
                 // Delete from Firestore
                 await window.getCollection('schichten').doc(schichtId).delete();
@@ -2592,6 +2672,8 @@
                 } else {
                     showToast('❌ Fehler beim Löschen', 'error');
                 }
+            } finally {
+                deletingSchichtIds.delete(schichtId);
             }
         }
 
@@ -2622,8 +2704,18 @@
             document.getElementById('bereichModal').classList.add('show');
         }
 
+        // 🔧 FIX DP3 (2025-12-12): Double-Click Prevention for saveBereich
+        let isSavingBereich = false;
+
         async function saveBereich(event) {
             event.preventDefault();
+
+            // 🔧 FIX DP3 (2025-12-12): Double-Click Prevention
+            if (isSavingBereich) {
+                console.warn('⚠️ saveBereich: Speichern bereits in Bearbeitung');
+                return;
+            }
+            isSavingBereich = true;
 
             const editId = document.getElementById('editBereichId').value;
             const name = document.getElementById('bereichName').value.trim();
@@ -2631,6 +2723,7 @@
 
             if (!name || !farbe) {
                 showToast('❌ Bitte alle Felder ausfüllen', 'error');
+                isSavingBereich = false;
                 return;
             }
 
@@ -2658,6 +2751,8 @@
             } catch (error) {
                 console.error('❌ Fehler beim Speichern:', error);
                 showToast('❌ Fehler beim Speichern', 'error');
+            } finally {
+                isSavingBereich = false;
             }
         }
 
@@ -2750,8 +2845,18 @@
             document.getElementById('schichtZuweisenModal').classList.remove('show');
         }
 
+        // 🔧 FIX DP4 (2025-12-12): Double-Click Prevention for saveSchichtZuweisung
+        let isSavingZuweisung = false;
+
         async function saveSchichtZuweisung(event) {
             event.preventDefault();
+
+            // 🔧 FIX DP4 (2025-12-12): Double-Click Prevention
+            if (isSavingZuweisung) {
+                console.warn('⚠️ saveSchichtZuweisung: Speichern bereits in Bearbeitung');
+                return;
+            }
+            isSavingZuweisung = true;
 
             const mitarbeiterId = document.getElementById('zuweisenMitarbeiterId').value;
             const datum = document.getElementById('zuweisenDatum').value;
@@ -2759,6 +2864,7 @@
 
             if (!mitarbeiterId || !datum || !schichtTypId) {
                 showToast('❌ Bitte alle Felder ausfüllen', 'error');
+                isSavingZuweisung = false;
                 return;
             }
 
@@ -2820,6 +2926,7 @@
             }
 
             closeSchichtZuweisenModal();
+            isSavingZuweisung = false;
         }
 
         // === 🆕 BEREICH ZUWEISEN MODAL ===
@@ -2958,13 +3065,24 @@
         // Hide context menu when clicking anywhere else
         document.addEventListener('click', hideContextMenu);
 
+        // 🔧 FIX DP5 (2025-12-12): Double-Click Prevention for createSpecialSchicht
+        let isCreatingSpecialSchicht = false;
+
         async function createSpecialSchicht(type) {
             hideContextMenu();
+
+            // 🔧 FIX DP5 (2025-12-12): Double-Click Prevention
+            if (isCreatingSpecialSchicht) {
+                console.warn('⚠️ createSpecialSchicht: Erstellung bereits in Bearbeitung');
+                return;
+            }
+            isCreatingSpecialSchicht = true;
 
             const { mitarbeiterId, datum } = contextMenuData;
 
             if (!mitarbeiterId || !datum) {
                 showToast('❌ Fehler: Keine Daten verfügbar', 'error');
+                isCreatingSpecialSchicht = false;
                 return;
             }
 
@@ -3022,6 +3140,8 @@
             } catch (error) {
                 console.error('❌ Fehler beim Erstellen der Special-Schicht:', error);
                 showToast('❌ Fehler beim Erstellen', 'error');
+            } finally {
+                isCreatingSpecialSchicht = false;
             }
         }
 
