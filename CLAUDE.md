@@ -4,15 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Meta-Learning System (NEU!)
+
+**Das `.claude/` Verzeichnis enthält ein persistentes Wissenssystem:**
+- `.claude/session-reminder.md` - Wird bei Session-Start automatisch angezeigt
+- `.claude/rules/` - Modulare Wissensbasis (Multi-Tenant, Firebase, Gotchas, Testing)
+- `.claude/learnings.jsonl` - Akkumulierte Learnings über Zeit
+- `.claude/settings.json` - Hooks für automatische Context-Injection
+
+**Learnings dokumentieren:**
+```bash
+./.claude/add-learning.sh "Pattern" "Kontext" "category" "files" "impact"
+```
+
+---
+
 ## Documentation Hierarchy
 
-**READ `NEXT_AGENT_MANUAL_TESTING_PROMPT.md` FIRST** for:
-- Testing workflow & error patterns (52+)
-- ALWAYS/NEVER Do guidelines
-- Pre-implementation checklist
-- Session history & learnings
-
-**This file:** Architecture reference, Multi-Tenant patterns, Critical code patterns
+1. **`.claude/session-reminder.md`** - Kritische Patterns (automatisch bei Session-Start)
+2. **`NEXT_AGENT_MANUAL_TESTING_PROMPT.md`** - Testing workflow & 52+ error patterns
+3. **This file:** Architecture reference, Multi-Tenant patterns, Critical code patterns
+4. **`.claude/rules/`** - Detaillierte modulare Guides
 
 ---
 

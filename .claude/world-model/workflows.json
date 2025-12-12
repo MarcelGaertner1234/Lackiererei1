@@ -1,0 +1,109 @@
+{
+  "_meta": {
+    "description": "Workflow-Dokumentation und Prozess-Logik",
+    "version": "1.0",
+    "lastUpdated": "2025-12-12"
+  },
+
+  "hauptworkflow": {
+    "description": "Partner-Anfrage bis Fahrzeug-Abschluss",
+    "steps": [
+      { "step": 1, "name": "Partner erstellt Anfrage", "file": "partner-app/*-anfrage.html", "status": "neu" },
+      { "step": 2, "name": "Werkstatt prüft Anfrage", "file": "kanban.html", "status": "warte_kva" },
+      { "step": 3, "name": "KVA wird erstellt", "file": "kalkulation.html", "status": "kva_gesendet" },
+      { "step": 4, "name": "Partner bestätigt/ablehnt", "file": "partner-app/anfrage-detail.html", "status": "beauftragt|abgelehnt" },
+      { "step": 5, "name": "Fahrzeug wird angelegt", "file": "annahme.html", "status": "angenommen" },
+      { "step": 6, "name": "Arbeit beginnt", "file": "kanban.html", "status": "in_arbeit" },
+      { "step": 7, "name": "Arbeit fertig", "file": "kanban.html", "status": "fertig" },
+      { "step": 8, "name": "Bereit zur Abholung", "file": "kanban.html", "status": "bereit_zur_abholung" },
+      { "step": 9, "name": "Fahrzeug übergeben", "file": "abnahme.html", "status": "abgeschlossen" }
+    ]
+  },
+
+  "prozess_status": {
+    "description": "Logistik-Prozess für Fahrzeuge (134 Referenzen)",
+    "values": {
+      "anlieferung": { "description": "Werkstatt liefert an", "trigger": "ersatzfahrzeugGewuenscht === true" },
+      "selbstbringer": { "description": "Kunde bringt selbst", "trigger": "default" },
+      "abholung": { "description": "Werkstatt holt ab", "trigger": "abholserviceGewuenscht === true" }
+    }
+  },
+
+  "multi_service_workflow": {
+    "description": "Fahrzeug mit mehreren Services (252 additionalServices Refs, 87 servicePlan Refs)",
+    "components": {
+      "additionalServices": { "type": "array", "note": "Liste zusätzlicher Services" },
+      "servicePlan": { "type": "array", "note": "Geplante Reihenfolge der Services" },
+      "serviceStatuses": { "type": "object", "note": "Status pro Service (32 Refs)" }
+    },
+    "flow": [
+      "Haupt-serviceTyp + additionalServices bei Annahme",
+      "servicePlan wird aus Tagesplanung generiert",
+      "Jeder Service hat eigenen Status in serviceStatuses",
+      "Bei Service-Fertig: nächster Service wird aktiviert",
+      "Erst wenn ALLE fertig: Fahrzeug bereit_zur_abholung"
+    ]
+  },
+
+  "leihfahrzeug_workflow": {
+    "description": "Ersatzfahrzeug-Management (298 Code-Refs)",
+    "collection": "leihfahrzeuge",
+    "status_flow": ["verfuegbar", "reserviert", "ausgegeben", "zurueckgegeben"],
+    "key_functions": [
+      "loadVerfuegbareLeihfahrzeuge",
+      "updateLeihfahrzeugDropdown",
+      "onLeihfahrzeugChange",
+      "setupLeihfahrzeugEventsListener"
+    ],
+    "integration": {
+      "entwuerfe": "Leihfahrzeug kann bei Entwurf reserviert werden",
+      "kva": "Leihfahrzeug-Daten in KVA übernommen",
+      "kalender": "Leihfahrzeug-Events im Kalender anzeigen"
+    }
+  },
+
+  "queue_management": {
+    "description": "Warteschlangen-System (505 Code-Refs)",
+    "types": {
+      "abteilungs_queue": "Fahrzeuge pro Abteilung",
+      "tagesplanung_queue": "Tagesplanung mit T1/T2",
+      "kanban_columns": "Kanban-Board Spalten"
+    },
+    "drag_drop": {
+      "draggable_elements": 40,
+      "sortable_usage": 35,
+      "note": "SortableJS für Drag & Drop"
+    }
+  },
+
+  "pdf_workflow": {
+    "description": "PDF-Generierung und -Import",
+    "libraries": ["jspdf", "html2canvas", "pdf-lib"],
+    "functions": {
+      "generation": ["createPDF", "erstelleEntwurfPDF", "generatePreviewPDF", "generateAngebotPDF"],
+      "parsing": ["parseDATPDF", "parseWithOpenAI", "fillFormFromPdf"],
+      "upload": ["handlePdfUpload"]
+    },
+    "dat_import": {
+      "refs": 120,
+      "flow": "PDF hochladen → GPT-4 Vision parsing → Formular füllen"
+    }
+  },
+
+  "notification_system": {
+    "description": "Benachrichtigungen (400 Refs)",
+    "toast": {
+      "total_usage": 174,
+      "types": {
+        "error": 60,
+        "success": 28,
+        "warning": 17,
+        "info": 7
+      }
+    },
+    "push_notifications": {
+      "enabled": true,
+      "triggers": ["Status-Änderung", "Neue Anfrage", "KVA gesendet"]
+    }
+  }
+}
