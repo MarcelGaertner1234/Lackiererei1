@@ -3055,6 +3055,11 @@
                     // Fallback: Zeige Empty State
                     renderMaterialRequests([]);
                 });
+
+            // 🔧 FIX MT1 (2025-12-12): Register listener for cleanup - Memory Leak Prevention
+            if (window.listenerRegistry && materialRequestsUnsubscribe) {
+                window.listenerRegistry.register(materialRequestsUnsubscribe, 'Material Requests Realtime Listener');
+            }
         }
 
         /**
@@ -4019,10 +4024,19 @@
             document.getElementById('bestellGesamtpreis').textContent = `${gesamtpreis.toFixed(2)} €`;
         }
 
+        // 🔧 FIX MT2 (2025-12-12): Double-Click Prevention
+        let isSavingBestellung = false;
+
         /**
          * Speichert Bestellung in Firestore
          */
         async function saveBestellung() {
+            // 🔧 FIX MT2 (2025-12-12): Double-Click Prevention
+            if (isSavingBestellung) {
+                console.warn('⚠️ saveBestellung: Bestellung wird bereits gespeichert');
+                return;
+            }
+
             const menge = parseInt(document.getElementById('bestellMenge').value);
 
             if (!menge || menge < 1) {
@@ -4034,6 +4048,10 @@
                 showToast('Firebase nicht initialisiert. Bitte Seite neu laden.', 'error');
                 return;
             }
+
+            isSavingBestellung = true;
+            const saveBtn = document.querySelector('#bestellDialog button[onclick*="saveBestellung"]');
+            if (saveBtn) saveBtn.disabled = true;
 
             const einzelpreis = parseFloat(document.getElementById('bestellEinzelpreis').value) || 0;
             const gesamtpreis = menge * einzelpreis;
@@ -4111,6 +4129,11 @@
             } catch (error) {
                 console.error('❌ [BESTELLUNG] Fehler beim Speichern:', error);
                 showToast('Fehler beim Speichern der Bestellung: ' + error.message, 'error');
+            } finally {
+                // 🔧 FIX MT2 (2025-12-12): Reset Double-Click lock
+                isSavingBestellung = false;
+                const saveBtn = document.querySelector('#bestellDialog button[onclick*="saveBestellung"]');
+                if (saveBtn) saveBtn.disabled = false;
             }
         }
 
@@ -4739,10 +4762,24 @@
             }
         }
 
+        // 🔧 FIX MT5 (2025-12-12): Double-Click Prevention - Set für parallele Edits
+        const savingBestellungIds = new Set();
+
         /**
          * 🆕 FIX (2025-11-29): Speichert Bestellung-Änderungen in Firestore
          */
         async function saveBestellungEdit(bestellungId) {
+            // 🔧 FIX MT5 (2025-12-12): Double-Click Prevention
+            if (savingBestellungIds.has(bestellungId)) {
+                console.warn(`⚠️ saveBestellungEdit: ${bestellungId} wird bereits gespeichert`);
+                return;
+            }
+            savingBestellungIds.add(bestellungId);
+
+            // Disable save button for this bestellung
+            const saveBtn = document.querySelector(`#edit-form-${bestellungId} button[onclick*="saveBestellungEdit"]`);
+            if (saveBtn) saveBtn.disabled = true;
+
             const lieferant = document.getElementById(`edit-lieferant-${bestellungId}`)?.value?.trim() || null;
             const kontakt = document.getElementById(`edit-kontakt-${bestellungId}`)?.value?.trim() || null;
             const bestellnr = document.getElementById(`edit-bestellnr-${bestellungId}`)?.value?.trim() || null;
@@ -4782,6 +4819,11 @@
             } catch (error) {
                 console.error('❌ Fehler beim Speichern:', error);
                 showToast('❌ Fehler beim Speichern: ' + error.message, 'error');
+            } finally {
+                // 🔧 FIX MT5 (2025-12-12): Reset Double-Click lock
+                savingBestellungIds.delete(bestellungId);
+                const saveBtn = document.querySelector(`#edit-form-${bestellungId} button[onclick*="saveBestellungEdit"]`);
+                if (saveBtn) saveBtn.disabled = false;
             }
         }
 
@@ -5117,11 +5159,20 @@
             if (dialog) dialog.remove();
         }
 
+        // 🔧 FIX MT3 (2025-12-12): Double-Click Prevention
+        let isSubmittingBestellt = false;
+
         /**
          * Speichert Bestelldaten und setzt Status auf 'bestellt'
          */
         async function submitMarkAsBestellt(event, bestellungId) {
             event.preventDefault();
+
+            // 🔧 FIX MT3 (2025-12-12): Double-Click Prevention
+            if (isSubmittingBestellt) {
+                console.warn('⚠️ submitMarkAsBestellt: Bereits in Bearbeitung');
+                return;
+            }
 
             const lieferant = document.getElementById('bestellLieferant').value.trim();
             const kontakt = document.getElementById('bestellKontakt').value.trim();
@@ -5134,6 +5185,11 @@
                 showToast('❌ Bitte Lieferant angeben!', 'warning');
                 return;
             }
+
+            // 🔧 FIX MT3 (2025-12-12): Lock aktivieren + Button deaktivieren
+            isSubmittingBestellt = true;
+            const submitBtn = document.querySelector('#markAsBestelltDialog button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
 
             try {
                 console.log(`📦 [BESTELLUNGEN] Markiere als bestellt: ${bestellungId}`);
@@ -5175,6 +5231,11 @@
             } catch (error) {
                 console.error('❌ [BESTELLUNGEN] Fehler beim Markieren als bestellt:', error);
                 showToast('Fehler: ' + error.message, 'error');
+            } finally {
+                // 🔧 FIX MT3 (2025-12-12): Reset Double-Click lock
+                isSubmittingBestellt = false;
+                const submitBtn = document.querySelector('#markAsBestelltDialog button[type="submit"]');
+                if (submitBtn) submitBtn.disabled = false;
             }
         }
 
@@ -5587,10 +5648,19 @@
             document.getElementById('manualBestellGesamtpreis').value = gesamtpreis.toFixed(2) + ' €';
         }
 
+        // 🔧 FIX MT4 (2025-12-12): Double-Click Prevention
+        let isSavingManual = false;
+
         /**
          * Speichert manuelle Bestellung in Firestore
          */
         async function saveManualBestellung() {
+            // 🔧 FIX MT4 (2025-12-12): Double-Click Prevention
+            if (isSavingManual) {
+                console.warn('⚠️ saveManualBestellung: Bereits in Bearbeitung');
+                return;
+            }
+
             // Validierung
             const etn = document.getElementById('manualBestellEtn').value.trim();
             const benennung = document.getElementById('manualBestellBenennung').value.trim();
@@ -5611,6 +5681,11 @@
                 showToast('❌ Bitte gültigen Preis eingeben!', 'warning', 4000);
                 return;
             }
+
+            // 🔧 FIX MT4 (2025-12-12): Lock aktivieren + Button deaktivieren
+            isSavingManual = true;
+            const saveBtn = document.querySelector('#manualBestellDialog button[onclick*="saveManualBestellung"]');
+            if (saveBtn) saveBtn.disabled = true;
 
             const gesamtpreis = menge * einzelpreis;
 
@@ -5710,6 +5785,11 @@
             } catch (error) {
                 console.error('❌ [MANUAL MATERIAL-ANFRAGE] Fehler beim Speichern:', error);
                 showToast('Fehler beim Speichern der Material-Anfrage: ' + error.message, 'error');
+            } finally {
+                // 🔧 FIX MT4 (2025-12-12): Reset Double-Click lock
+                isSavingManual = false;
+                const saveBtn = document.querySelector('#manualBestellDialog button[onclick*="saveManualBestellung"]');
+                if (saveBtn) saveBtn.disabled = false;
             }
         }
     </script>
