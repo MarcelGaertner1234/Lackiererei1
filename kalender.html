@@ -2983,6 +2983,8 @@
         // ========== QUICK ACTIONS ==========
         let currentQuickActionVehicle = null;
         let currentQuickActionType = null;
+        // 🔧 FIX KA5-KA6 (2025-12-12): Double-Click Prevention für Quick Actions
+        let isQuickActionInProgress = false;
 
         function showQuickActions(event, vehicleId, eventType) {
             event.stopPropagation();
@@ -3016,30 +3018,61 @@
             }
         }
 
-        function quickActionComplete() {
+        // 🔧 FIX KA1 + KA5 (2025-12-12): saveToFirestore → firebaseApp.updateFahrzeug + Double-Click Protection
+        async function quickActionComplete() {
             if (!currentQuickActionVehicle) return;
+
+            // 🔧 FIX KA5: Double-Click Prevention
+            if (isQuickActionInProgress) {
+                console.warn('⚠️ quickActionComplete: Already in progress, ignoring');
+                return;
+            }
 
             const confirmed = confirm(`Fahrzeug ${currentQuickActionVehicle.kennzeichen} als abgeschlossen markieren?`);
             if (confirmed) {
-                currentQuickActionVehicle.status = 'abgeschlossen';
-                currentQuickActionVehicle.abnahmeDatum = formatDate(new Date());
-                currentQuickActionVehicle.abnahmeZeit = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                isQuickActionInProgress = true;
+                try {
+                    currentQuickActionVehicle.status = 'abgeschlossen';
+                    currentQuickActionVehicle.abnahmeDatum = formatDate(new Date());
+                    currentQuickActionVehicle.abnahmeZeit = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
-                saveToFirestore(currentQuickActionVehicle);
-                loadData();
-                closeQuickActions();
+                    // 🔧 FIX KA1: saveToFirestore war NICHT DEFINIERT!
+                    if (firebaseInitialized && firebaseApp && firebaseApp.updateFahrzeug) {
+                        await firebaseApp.updateFahrzeug(currentQuickActionVehicle.id, currentQuickActionVehicle);
+                    }
+                    await loadData();
+                    closeQuickActions();
+                } finally {
+                    isQuickActionInProgress = false;
+                }
             }
         }
 
-        function quickActionReschedule() {
+        // 🔧 FIX KA2 + KA6 (2025-12-12): saveToFirestore → firebaseApp.updateFahrzeug + Double-Click Protection
+        async function quickActionReschedule() {
             if (!currentQuickActionVehicle) return;
+
+            // 🔧 FIX KA6: Double-Click Prevention
+            if (isQuickActionInProgress) {
+                console.warn('⚠️ quickActionReschedule: Already in progress, ignoring');
+                return;
+            }
 
             const newDate = prompt('Neues Datum (TT.MM.JJJJ):', currentQuickActionVehicle.geplantesAbnahmeDatum || '');
             if (newDate) {
-                currentQuickActionVehicle.geplantesAbnahmeDatum = newDate;
-                saveToFirestore(currentQuickActionVehicle);
-                loadData();
-                closeQuickActions();
+                isQuickActionInProgress = true;
+                try {
+                    currentQuickActionVehicle.geplantesAbnahmeDatum = newDate;
+
+                    // 🔧 FIX KA2: saveToFirestore war NICHT DEFINIERT!
+                    if (firebaseInitialized && firebaseApp && firebaseApp.updateFahrzeug) {
+                        await firebaseApp.updateFahrzeug(currentQuickActionVehicle.id, currentQuickActionVehicle);
+                    }
+                    await loadData();
+                    closeQuickActions();
+                } finally {
+                    isQuickActionInProgress = false;
+                }
             }
         }
 
@@ -3061,14 +3094,29 @@
             closeQuickActions();
         }
 
-        function quickActionDelete() {
+        // 🔧 FIX KA4 (2025-12-12): deleteVehicle → firebaseApp.deleteFahrzeug + Double-Click Protection
+        async function quickActionDelete() {
             if (!currentQuickActionVehicle) return;
+
+            // Double-Click Prevention (uses same flag as other quick actions)
+            if (isQuickActionInProgress) {
+                console.warn('⚠️ quickActionDelete: Already in progress, ignoring');
+                return;
+            }
 
             const confirmed = confirm(`Fahrzeug ${currentQuickActionVehicle.kennzeichen} wirklich löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden!`);
             if (confirmed) {
-                deleteVehicle(currentQuickActionVehicle.id);
-                loadData();
-                closeQuickActions();
+                isQuickActionInProgress = true;
+                try {
+                    // 🔧 FIX KA4: deleteVehicle war NICHT DEFINIERT!
+                    if (firebaseInitialized && firebaseApp && firebaseApp.deleteFahrzeug) {
+                        await firebaseApp.deleteFahrzeug(currentQuickActionVehicle.id);
+                    }
+                    await loadData();
+                    closeQuickActions();
+                } finally {
+                    isQuickActionInProgress = false;
+                }
             }
         }
 
@@ -3347,6 +3395,8 @@
         let draggedVehicleId = null;
         let draggedEventType = null;
         let dragGhost = null;
+        // 🔧 FIX KA7 (2025-12-12): Drag Lock Set für Race Condition Prevention
+        const draggingIds = new Set();
 
         function handleDragStart(e) {
             e.stopPropagation();
@@ -3420,6 +3470,7 @@
             }
         }
 
+        // 🔧 FIX KA3 + KA7 (2025-12-12): saveToFirestore → firebaseApp.updateFahrzeug + Drag Lock
         async function handleDrop(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -3432,34 +3483,47 @@
 
             if (!vehicle || !newDate) return;
 
-            // Calculate new time based on drop position (for timeline)
-            let newTime = null;
-            if (e.currentTarget.classList.contains('timeline-content')) {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const relativeY = e.clientY - rect.top;
-                const totalMinutes = Math.floor(relativeY); // 1px = 1 minute
-                const hours = Math.floor(totalMinutes / 60);
-                const minutes = totalMinutes % 60;
-                newTime = `${String(hours).padStart(2, '0')}:${String(Math.floor(minutes / 15) * 15).padStart(2, '0')}`; // Round to 15min
+            // 🔧 FIX KA7: Drag Lock für Race Condition Prevention
+            if (draggingIds.has(draggedVehicleId)) {
+                console.warn('⚠️ handleDrop: Drop bereits in Bearbeitung für Fahrzeug', draggedVehicleId);
+                return;
             }
+            draggingIds.add(draggedVehicleId);
 
-            // Update vehicle based on event type
-            if (draggedEventType === 'annahme') {
-                vehicle.datum = newDate;
-                if (newTime) vehicle.zeit = newTime;
-            } else if (draggedEventType === 'geplant') {
-                vehicle.geplantesAbnahmeDatum = newDate;
-            } else if (draggedEventType === 'abgeschlossen') {
-                vehicle.abnahmeDatum = newDate;
-                if (newTime) vehicle.abnahmeZeit = newTime;
+            try {
+                // Calculate new time based on drop position (for timeline)
+                let newTime = null;
+                if (e.currentTarget.classList.contains('timeline-content')) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relativeY = e.clientY - rect.top;
+                    const totalMinutes = Math.floor(relativeY); // 1px = 1 minute
+                    const hours = Math.floor(totalMinutes / 60);
+                    const minutes = totalMinutes % 60;
+                    newTime = `${String(hours).padStart(2, '0')}:${String(Math.floor(minutes / 15) * 15).padStart(2, '0')}`; // Round to 15min
+                }
+
+                // Update vehicle based on event type
+                if (draggedEventType === 'annahme') {
+                    vehicle.datum = newDate;
+                    if (newTime) vehicle.zeit = newTime;
+                } else if (draggedEventType === 'geplant') {
+                    vehicle.geplantesAbnahmeDatum = newDate;
+                } else if (draggedEventType === 'abgeschlossen') {
+                    vehicle.abnahmeDatum = newDate;
+                    if (newTime) vehicle.abnahmeZeit = newTime;
+                }
+
+                // 🔧 FIX KA3: saveToFirestore war NICHT DEFINIERT!
+                if (firebaseInitialized && firebaseApp && firebaseApp.updateFahrzeug) {
+                    await firebaseApp.updateFahrzeug(vehicle.id, vehicle);
+                }
+                await loadData();
+
+                // Show success toast
+                showToast(`✅ Termin verschoben nach ${newDate}${newTime ? ' um ' + newTime : ''}`);
+            } finally {
+                draggingIds.delete(draggedVehicleId);
             }
-
-            // Save and refresh
-            await saveToFirestore(vehicle);
-            await loadData();
-
-            // Show success toast
-            showToast(`✅ Termin verschoben nach ${newDate}${newTime ? ' um ' + newTime : ''}`);
         }
 
         function showToast(message) {
