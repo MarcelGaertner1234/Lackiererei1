@@ -8,6 +8,7 @@ class ErrorHandler {
     this.retryQueue = [];
     this.maxRetries = 3;
     this.retryDelay = 1000; // Start mit 1 Sekunde
+    this.maxDelay = 30000;  // Maximum 30 Sekunden (Cap für exponential backoff)
   }
 
   // ================================================================
@@ -141,10 +142,10 @@ class ErrorHandler {
           break;
         }
 
-        // Warten vor nächstem Versuch (exponential backoff)
+        // Warten vor nächstem Versuch (exponential backoff mit Cap)
         if (attempt < maxRetries) {
           await this.sleep(delay);
-          delay *= 2; // Verdoppeln für exponential backoff
+          delay = Math.min(delay * 2, this.maxDelay); // Verdoppeln, aber max 30s
         }
       }
     }

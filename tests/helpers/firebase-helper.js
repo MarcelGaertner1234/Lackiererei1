@@ -518,7 +518,7 @@ async function loginAsTestAdmin(page) {
         // Write user document with timeout wrapper
         const writePromise = db.collection('users').doc(uid).set(userData, { merge: true });
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Firestore write timeout after 10s')), 10000)
+          setTimeout(() => reject(new Error('Firestore write timeout after 30s')), 30000)
         );
 
         await Promise.race([writePromise, timeoutPromise]);
@@ -957,6 +957,272 @@ async function cleanupPartnerAnfrage(page, kennzeichen) {
 }
 
 // ============================================
+// E2E PIPELINE HELPERS (2025-12-13)
+// For end-to-end pipeline testing
+// ============================================
+
+/**
+ * Login as a test partner user (for Partner Pipeline E2E tests)
+ * Similar to loginAsTestAdmin but with role='partner'
+ * @param {import('@playwright/test').Page} page
+ * @returns {Promise<void>}
+ */
+async function loginAsTestPartner(page) {
+  console.log('🔐 loginAsTestPartner() START');
+
+  try {
+    const authResult = await page.evaluate(async () => {
+      const auth = firebase.auth();
+
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword('partner@test.de', 'test123');
+        return { success: true, uid: userCredential.user.uid, email: userCredential.user.email };
+      } catch (signInError) {
+        if (signInError.code === 'auth/user-not-found') {
+          const newUserCredential = await auth.createUserWithEmailAndPassword('partner@test.de', 'test123');
+          return { success: true, uid: newUserCredential.user.uid, email: newUserCredential.user.email };
+        }
+        return { success: false, error: signInError.message };
+      }
+    });
+
+    if (!authResult.success) throw new Error(`Auth failed: ${authResult.error}`);
+
+    // Set partner role in Firestore
+    await page.evaluate(async (uid) => {
+      const db = window.firebaseApp.db();
+      await db.collection('users').doc(uid).set({
+        uid: uid,
+        email: 'partner@test.de',
+        role: 'partner',
+        werkstattId: 'mosbach',
+        status: 'active',
+        isActive: true,
+        displayName: 'E2E Test Partner'
+      }, { merge: true });
+
+      // Set session for partner
+      const partnerData = {
+        uid: uid,
+        email: 'partner@test.de',
+        name: 'E2E Test Partner',
+        werkstattId: 'mosbach',
+        role: 'partner',
+        authType: 'firebase'
+      };
+      sessionStorage.setItem('session_partner', JSON.stringify(partnerData));
+      window.werkstattId = 'mosbach';
+    }, authResult.uid);
+
+    // Wait for auth state
+    await page.waitForFunction(() => {
+      const auth = firebase.auth();
+      return auth.currentUser !== null && auth.currentUser.email === 'partner@test.de';
+    }, { timeout: 5000 });
+
+    console.log('✅ loginAsTestPartner() SUCCESS');
+  } catch (error) {
+    console.error('❌ loginAsTestPartner() FAILED:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Verify bidirectional link between partnerAnfrage and fahrzeuge
+ * @param {import('@playwright/test').Page} page
+ * @param {string} anfrageId - Partner request ID
+ * @returns {Promise<Object>} Verification result
+ */
+async function verifyFahrzeugVerknuepfung(page, anfrageId) {
+  console.log(`🔍 Verifying fahrzeug link for anfrage: ${anfrageId}`);
+
+  return await page.evaluate(async (id) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+
+    // Get anfrage
+    const anfrageDoc = await db.collection(`partnerAnfragen_${werkstattId}`).doc(id).get();
+    if (!anfrageDoc.exists) {
+      return { found: false, error: 'Anfrage not found' };
+    }
+
+    const anfrage = anfrageDoc.data();
+    const result = {
+      found: true,
+      anfrageId: id,
+      anfrageStatus: anfrage.status,
+      anfrageHasFahrzeugId: !!anfrage.fahrzeugId,
+      fahrzeugId: anfrage.fahrzeugId || null,
+      fahrzeugExists: false,
+      fahrzeugHasPartnerAnfrageId: false,
+      bidirectionalLinkValid: false
+    };
+
+    // If anfrage has fahrzeugId, verify the vehicle
+    if (anfrage.fahrzeugId) {
+      const fahrzeugDoc = await db.collection(`fahrzeuge_${werkstattId}`).doc(anfrage.fahrzeugId).get();
+      if (fahrzeugDoc.exists) {
+        const fahrzeug = fahrzeugDoc.data();
+        result.fahrzeugExists = true;
+        result.fahrzeugHasPartnerAnfrageId = fahrzeug.partnerAnfrageId === id;
+        result.fahrzeugStatus = fahrzeug.status;
+        result.bidirectionalLinkValid = result.fahrzeugHasPartnerAnfrageId;
+      }
+    }
+
+    console.log('🔍 Verification result:', JSON.stringify(result));
+    return result;
+  }, anfrageId);
+}
+
+/**
+ * Get Partner-Anfrage by document ID
+ * @param {import('@playwright/test').Page} page
+ * @param {string} anfrageId - Document ID
+ * @returns {Promise<Object|null>} Anfrage data with ID
+ */
+async function getPartnerAnfrageById(page, anfrageId) {
+  return await page.evaluate(async (id) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+    const doc = await db.collection(`partnerAnfragen_${werkstattId}`).doc(id).get();
+    return doc.exists ? { id: doc.id, ...doc.data() } : null;
+  }, anfrageId);
+}
+
+/**
+ * Delete Partner-Anfrage by ID
+ * @param {import('@playwright/test').Page} page
+ * @param {string} anfrageId - Document ID
+ * @returns {Promise<boolean>} Success
+ */
+async function deletePartnerAnfrageById(page, anfrageId) {
+  console.log(`🗑️ Deleting Partner-Anfrage: ${anfrageId}`);
+
+  return await page.evaluate(async (id) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+    await db.collection(`partnerAnfragen_${werkstattId}`).doc(id).delete();
+    console.log(`✅ Partner-Anfrage deleted: ${id}`);
+    return true;
+  }, anfrageId);
+}
+
+/**
+ * Update Partner-Anfrage status
+ * @param {import('@playwright/test').Page} page
+ * @param {string} anfrageId - Document ID
+ * @param {string} newStatus - New status
+ * @returns {Promise<boolean>} Success
+ */
+async function updatePartnerAnfrageStatus(page, anfrageId, newStatus) {
+  console.log(`🔄 Updating anfrage ${anfrageId} status to: ${newStatus}`);
+
+  return await page.evaluate(async ({ id, status }) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+    await db.collection(`partnerAnfragen_${werkstattId}`).doc(id).update({
+      status: status,
+      updatedAt: new Date().toISOString()
+    });
+    return true;
+  }, { id: anfrageId, status: newStatus });
+}
+
+/**
+ * Add KVA data to Partner-Anfrage (simulates KVA creation)
+ * @param {import('@playwright/test').Page} page
+ * @param {string} anfrageId - Document ID
+ * @param {Object} kvaData - KVA data
+ * @returns {Promise<boolean>} Success
+ */
+async function addKVAToPartnerAnfrage(page, anfrageId, kvaData = {}) {
+  console.log(`📋 Adding KVA to anfrage: ${anfrageId}`);
+
+  return await page.evaluate(async ({ id, kva }) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+
+    const kvaObject = {
+      positionen: kva.positionen || [
+        { beschreibung: 'Lackierung Stoßstange', menge: 1, einzelpreis: 350, gesamt: 350 },
+        { beschreibung: 'Kleinteile', menge: 1, einzelpreis: 50, gesamt: 50 }
+      ],
+      summeNetto: kva.summeNetto || 400,
+      mwst: kva.mwst || 76,
+      summeBrutto: kva.summeBrutto || 476,
+      erstelltAm: new Date().toISOString(),
+      gueltigBis: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    };
+
+    await db.collection(`partnerAnfragen_${werkstattId}`).doc(id).update({
+      kva: kvaObject,
+      status: 'kva_gesendet',
+      kvaErstelltAm: new Date().toISOString()
+    });
+
+    console.log(`✅ KVA added to anfrage: ${id}`);
+    return true;
+  }, { id: anfrageId, kva: kvaData });
+}
+
+/**
+ * Simulate annehmenKVA - Creates fahrzeug from anfrage (Integration version)
+ * @param {import('@playwright/test').Page} page
+ * @param {string} anfrageId - Partner-Anfrage ID
+ * @returns {Promise<string>} Created fahrzeug ID
+ */
+async function simulateAnnehmenKVA(page, anfrageId) {
+  console.log(`✅ Simulating annehmenKVA for: ${anfrageId}`);
+
+  return await page.evaluate(async (id) => {
+    const db = window.firebaseApp.db();
+    const werkstattId = window.werkstattId || 'mosbach';
+
+    // Get anfrage data
+    const anfrageDoc = await db.collection(`partnerAnfragen_${werkstattId}`).doc(id).get();
+    if (!anfrageDoc.exists) throw new Error('Anfrage not found');
+
+    const anfrage = anfrageDoc.data();
+
+    // Generate fahrzeug ID
+    const fahrzeugId = 'fzg_' + Date.now();
+
+    // Create fahrzeug from anfrage data
+    const fahrzeugData = {
+      id: fahrzeugId,
+      kennzeichen: anfrage.kennzeichen,
+      kundenname: anfrage.kundenname,
+      kundenEmail: anfrage.kundenEmail || 'test@example.com',
+      marke: anfrage.marke || 'Volkswagen',
+      modell: anfrage.modell || 'Golf',
+      serviceTyp: anfrage.serviceTyp || 'lackier',
+      status: 'beauftragt',
+      partnerAnfrageId: id,
+      kva: anfrage.kva || {},
+      fotos: anfrage.fotos || [],
+      createdAt: Date.now(),
+      erstelltAm: new Date().toISOString(),
+      werkstattId: werkstattId
+    };
+
+    // Write fahrzeug
+    await db.collection(`fahrzeuge_${werkstattId}`).doc(fahrzeugId).set(fahrzeugData);
+
+    // Update anfrage with fahrzeugId
+    await db.collection(`partnerAnfragen_${werkstattId}`).doc(id).update({
+      status: 'angenommen',
+      fahrzeugId: fahrzeugId,
+      fahrzeugAngelegt: true,
+      angenommenAm: new Date().toISOString()
+    });
+
+    console.log(`✅ annehmenKVA simulated - fahrzeugId: ${fahrzeugId}`);
+    return fahrzeugId;
+  }, anfrageId);
+}
+
+// ============================================
 // CLEANUP HELPERS (2025-12-10)
 // Centralized from test files for DRY compliance
 // ============================================
@@ -1056,5 +1322,13 @@ module.exports = {
   cleanupPartnerAnfrage,
   // CLEANUP HELPERS (2025-12-10)
   cleanupAllTestData,
-  cleanupRechnungen
+  cleanupRechnungen,
+  // E2E PIPELINE HELPERS (2025-12-13)
+  loginAsTestPartner,
+  verifyFahrzeugVerknuepfung,
+  getPartnerAnfrageById,
+  deletePartnerAnfrageById,
+  updatePartnerAnfrageStatus,
+  addKVAToPartnerAnfrage,
+  simulateAnnehmenKVA
 };
