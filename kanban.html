@@ -4136,7 +4136,10 @@
                 'fzAbholen': '🚗 Fahrzeug abholen - Zustand dokumentieren',
                 'ersatzBringen': '🔄 Ersatzwagen bringen - Übergabe-Protokoll',
                 'ersatzAbholen': '🔙 Ersatzwagen abholen - Rücknahme-Protokoll',
-                'fzLiefern': '🏁 Fahrzeug liefern - Übergabe-Protokoll'
+                'fzLiefern': '🏁 Fahrzeug liefern - Übergabe-Protokoll',
+                // 🐛 FIX (2025-12-15): Labels für kombinierte Aktionen
+                'abhol_fahrt': '🚗 Abhol-Fahrt - Fahrzeug + Leihwagen dokumentieren',
+                'liefer_fahrt': '🏁 Liefer-Fahrt - Fahrzeug + Leihwagen dokumentieren'
             };
 
             // State zurücksetzen
@@ -4285,7 +4288,58 @@
                 const abholservice = fahrzeug?.abholserviceGewuenscht;
                 const hatLeih = fahrzeug?.zugewiesenesLeihfahrzeug || fahrzeug?.ersatzfahrzeugGewuenscht;
 
-                // Prüfe ob Abhol-Fahrt komplett ist (fzAbholen + ersatzBringen)
+                // 🐛 FIX (2025-12-15): Kombinierte Aktionen verarbeiten
+                // → Abhol-Fahrt ist EINE Fahrt mit beiden Sub-Actions
+                if (action === 'abhol_fahrt') {
+                    console.log(`🚗 ${fahrzeug?.kennzeichen || fahrzeugId}: Abhol-Fahrt (kombiniert) wird verarbeitet`);
+
+                    // BEIDE Sub-Actions als erledigt markieren (falls zutreffend)
+                    if (abholservice) {
+                        updateData['logistikStatus.fzAbholen'] = 'erledigt';
+                        updateData['logistikStatus.fzAbholenAm'] = timestamp;
+                        updateData['logistikStatus.fzAbholenVon'] = userName;
+                    }
+                    if (hatLeih) {
+                        updateData['logistikStatus.ersatzBringen'] = 'erledigt';
+                        updateData['logistikStatus.ersatzBringenAm'] = timestamp;
+                        updateData['logistikStatus.ersatzBringenVon'] = userName;
+                    }
+
+                    // prozessStatus setzen → Fahrzeug erscheint im Kanban unter "Angenommen"
+                    updateData.prozessStatus = 'angenommen';
+                    updateData.abgeholtAm = timestamp;
+                    updateData.abgeholtVon = userName;
+
+                    // Queue löschen → Fahrzeug verschwindet aus Logistik
+                    updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                    updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                    updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                }
+
+                // 🐛 FIX (2025-12-15): Kombinierte Aktionen verarbeiten
+                // → Liefer-Fahrt ist EINE Fahrt mit beiden Sub-Actions
+                if (action === 'liefer_fahrt') {
+                    console.log(`🏁 ${fahrzeug?.kennzeichen || fahrzeugId}: Liefer-Fahrt (kombiniert) wird verarbeitet`);
+
+                    // BEIDE Sub-Actions als erledigt markieren (falls zutreffend)
+                    if (abholservice) {
+                        updateData['logistikStatus.fzLiefern'] = 'erledigt';
+                        updateData['logistikStatus.fzLiefernAm'] = timestamp;
+                        updateData['logistikStatus.fzLiefernVon'] = userName;
+                    }
+                    if (hatLeih) {
+                        updateData['logistikStatus.ersatzAbholen'] = 'erledigt';
+                        updateData['logistikStatus.ersatzAbholenAm'] = timestamp;
+                        updateData['logistikStatus.ersatzAbholenVon'] = userName;
+                    }
+
+                    // Queue löschen → Fahrzeug verschwindet aus Logistik
+                    updateData.logistikQueue = firebase.firestore.FieldValue.delete();
+                    updateData.queuePosition = firebase.firestore.FieldValue.delete();
+                    updateData.queueDatum = firebase.firestore.FieldValue.delete();
+                }
+
+                // Legacy: Prüfe ob Abhol-Fahrt komplett ist (fzAbholen + ersatzBringen) - für einzelne Button-Clicks
                 if (action === 'fzAbholen' || action === 'ersatzBringen') {
                     const fzAbholenErledigt = !abholservice || logistik.fzAbholen === 'erledigt' || action === 'fzAbholen';
                     const leihBringenErledigt = !hatLeih || logistik.ersatzBringen === 'erledigt' || action === 'ersatzBringen';
@@ -4298,7 +4352,7 @@
                     }
                 }
 
-                // Prüfe ob Liefer-Fahrt komplett ist (fzLiefern + ersatzAbholen)
+                // Legacy: Prüfe ob Liefer-Fahrt komplett ist (fzLiefern + ersatzAbholen) - für einzelne Button-Clicks
                 if (action === 'fzLiefern' || action === 'ersatzAbholen') {
                     const fzLiefernErledigt = !abholservice || logistik.fzLiefern === 'erledigt' || action === 'fzLiefern';
                     const leihAbholenErledigt = !hatLeih || logistik.ersatzAbholen === 'erledigt' || action === 'ersatzAbholen';
@@ -4380,45 +4434,54 @@
             let buttons = '';
 
             if (columnId === 'abhol_fahrt') {
-                // Zeige Buttons für noch nicht erledigte Sub-Tasks
-                if (abholservice && logistik.fzAbholen !== 'erledigt') {
+                // 🐛 FIX (2025-12-15): EIN kombinierter Button statt zwei getrennte
+                // → Abhol-Fahrt ist EINE Fahrt mit beiden Aktionen (Fzg. abholen + Leih bringen)
+                const fzAbholenNoetig = abholservice && logistik.fzAbholen !== 'erledigt';
+                const leihBringenNoetig = hatLeih && logistik.ersatzBringen !== 'erledigt';
+
+                if (fzAbholenNoetig || leihBringenNoetig) {
+                    // Dynamisches Label je nach Konfiguration
+                    let label = '🚗 Abhol-Fahrt';
+                    if (fzAbholenNoetig && leihBringenNoetig) {
+                        label = '🚗 Abhol-Fahrt (Fzg. + Leih)';
+                    } else if (fzAbholenNoetig) {
+                        label = '🚗 Fahrzeug abholen';
+                    } else {
+                        label = '🔄 Leihfahrzeug bringen';
+                    }
+
                     buttons += `
                         <button class="logistik-action-btn"
-                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'fzAbholen')"
+                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'abhol_fahrt')"
                                 style="background: rgba(59, 130, 246, 0.8); color: white; border: none; padding: 6px 12px;
                                        border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 4px 0 0; flex: 1;">
-                            🚗 Fzg. abholen
-                        </button>
-                    `;
-                }
-                if (hatLeih && logistik.ersatzBringen !== 'erledigt') {
-                    buttons += `
-                        <button class="logistik-action-btn"
-                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'ersatzBringen')"
-                                style="background: rgba(234, 179, 8, 0.8); color: white; border: none; padding: 6px 12px;
-                                       border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 0 0 0; flex: 1;">
-                            🔄 Leih bringen
+                            ${label}
                         </button>
                     `;
                 }
             } else if (columnId === 'liefer_fahrt') {
-                if (abholservice && logistik.fzLiefern !== 'erledigt') {
+                // 🐛 FIX (2025-12-15): EIN kombinierter Button statt zwei getrennte
+                // → Liefer-Fahrt ist EINE Fahrt mit beiden Aktionen (Fzg. liefern + Leih abholen)
+                const fzLiefernNoetig = abholservice && logistik.fzLiefern !== 'erledigt';
+                const leihAbholenNoetig = hatLeih && logistik.ersatzAbholen !== 'erledigt';
+
+                if (fzLiefernNoetig || leihAbholenNoetig) {
+                    // Dynamisches Label je nach Konfiguration
+                    let label = '🏁 Liefer-Fahrt';
+                    if (fzLiefernNoetig && leihAbholenNoetig) {
+                        label = '🏁 Liefer-Fahrt (Fzg. + Leih)';
+                    } else if (fzLiefernNoetig) {
+                        label = '🏁 Fahrzeug liefern';
+                    } else {
+                        label = '🔙 Leihfahrzeug abholen';
+                    }
+
                     buttons += `
                         <button class="logistik-action-btn"
-                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'fzLiefern')"
+                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'liefer_fahrt')"
                                 style="background: rgba(34, 197, 94, 0.8); color: white; border: none; padding: 6px 12px;
                                        border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 4px 0 0; flex: 1;">
-                            🏁 Fzg. liefern
-                        </button>
-                    `;
-                }
-                if (hatLeih && logistik.ersatzAbholen !== 'erledigt') {
-                    buttons += `
-                        <button class="logistik-action-btn"
-                                onclick="event.stopPropagation(); openLogistikPhotoModal('${fahrzeug.id}', 'ersatzAbholen')"
-                                style="background: rgba(249, 115, 22, 0.8); color: white; border: none; padding: 6px 12px;
-                                       border-radius: 6px; cursor: pointer; font-weight: 600; margin: 4px 0 0 0; flex: 1;">
-                            🔙 Leih abholen
+                            ${label}
                         </button>
                     `;
                 }
