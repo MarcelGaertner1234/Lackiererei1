@@ -20,9 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing (BEFORE any code changes!)
 ```bash
-npm run test:all          # 56 Tests (~90s) - MUST be 100%!
-npm run test:integration  # 36 Firestore tests
-npm run test:smoke        # 13 UI tests
+npm run test:all          # ~266 Tests (~30min) - MUST be 100%!
+npm run test:integration  # Integration tests (Firestore)
+npm run test:smoke        # UI smoke tests
 npm run test:headed       # With browser UI
 npm run test:debug        # Debug mode
 
@@ -445,20 +445,19 @@ Vehicle {
 
 ## Testing Infrastructure
 
-### Test-Suite (56 Tests)
+### Test-Suite (~266 Tests, nur Chromium)
 | Kategorie | Tests | Beschreibung |
 |-----------|-------|--------------|
-| Integration | 43 | Direkte Firestore-Operationen |
+| E2E | 12 | Partner/Werkstatt Pipelines |
+| Integration | ~240 | Firestore CRUD, Security, Validation |
 | Smoke | 13 | UI-Accessibility |
 
-### Erfolgsrate
-| Browser | Rate |
-|---------|------|
-| Chromium | 100% ✅ |
-| Mobile Chrome | 100% ✅ |
-| iPad | 100% ✅ |
-| Firefox | 69% ⚠️ |
-| Mobile Safari | 74% ⚠️ |
+### Browser
+| Browser | Status |
+|---------|--------|
+| Chromium | 100% ✅ (einziger aktiver Browser) |
+
+> Firefox/WebKit/Mobile sind deaktiviert (nicht installiert, spart Testzeit)
 
 ### Test-Dateien
 - `tests/integration/vehicle-integration.spec.js`

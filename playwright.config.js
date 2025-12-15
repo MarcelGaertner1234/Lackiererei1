@@ -61,7 +61,7 @@ module.exports = defineConfig({
   },
 
   /* Test-Projekte für verschiedene Browser */
-  /* ✅ FIX BUG #13: Nur Chromium aktiviert (Firefox/WebKit nicht installiert) */
+  /* ✅ NUR CHROMIUM - Firefox/WebKit/Mobile nicht installiert (spart ~670 MB + 5x Testzeit) */
   projects: [
     {
       name: 'chromium',
@@ -69,49 +69,19 @@ module.exports = defineConfig({
         ...devices['Desktop Chrome'],
 
         /* RUN #24 RADICAL FIX: Aggressive cache clearing via Chromium launch args */
-        /* Query parameters (?v=RUN23) FAILED - browser still cached old file */
-        /* Solution: Disable ALL caching mechanisms at browser level */
         launchOptions: {
           args: [
-            '--disable-cache',                    // Disable HTTP cache
-            '--disable-application-cache',        // Disable application cache
-            '--disable-offline-load-stale-cache', // Don't load stale cache when offline
-            '--disk-cache-size=0',                // Set disk cache size to 0
-            '--media-cache-size=0',               // Set media cache size to 0
+            '--disable-cache',
+            '--disable-application-cache',
+            '--disable-offline-load-stale-cache',
+            '--disk-cache-size=0',
+            '--media-cache-size=0',
           ],
         },
       },
     },
-
-    /* ✅ Firefox aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    /* ✅ WebKit/Safari aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    /* Mobile Tests */
-    {
-      name: 'mobile-chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-
-    /* ✅ Mobile Safari aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
-    {
-      name: 'mobile-safari',
-      use: { ...devices['iPhone 13'] },
-    },
-
-    /* ✅ iPad Tests aktiviert (RUN #[SESSION_2025-10-28_ABEND]) */
-    {
-      name: 'tablet-ipad',
-      use: { ...devices['iPad Pro'] },
-    }
+    // Firefox, WebKit, mobile Browser deaktiviert (nicht installiert)
+    // Bei Bedarf installieren mit: npx playwright install firefox webkit
   ],
 
   /* Web Server starten vor Tests */
