@@ -721,6 +721,39 @@
             position: relative;
         }
 
+        /* 🔧 FIX (2025-12-15): Pending-Delivery Styling für Fahrzeuge mit ausstehender Abholung */
+        .kanban-card.pending-delivery {
+            opacity: 0.75;
+            border-left: 4px solid #ff9800 !important;
+            padding-top: 28px; /* Platz für Badge */
+        }
+
+        .pending-delivery-badge {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #ff9800 0%, #e68900 100%);
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 4px 8px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+            box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
+        }
+
+        /* Dark mode für pending-delivery */
+        [data-theme="dark"] .kanban-card.pending-delivery {
+            opacity: 0.7;
+            border-left-color: #ffb74d !important;
+        }
+
+        [data-theme="dark"] .pending-delivery-badge {
+            background: linear-gradient(135deg, #ffb74d 0%, #ff9800 100%);
+            color: #1a1a2e;
+        }
+
         /* ===== DARK MODE - Kanban Cards ===== */
 
         [data-theme="dark"] .kanban-card {
@@ -5740,12 +5773,11 @@
                         return false;
                     }
 
-                    // 🆕 REALITÄTSCHECK (2025-12-07): Fahrzeuge die noch abgeholt werden müssen, hier NICHT zeigen
-                    // Sie erscheinen NUR im Logistik-Tab bis sie physisch angeliefert wurden
-                    if (needsLogistikFirst(f)) {
-                        console.log(`   ⏭️ SKIP ${f.kennzeichen}: Muss erst abgeholt werden (nur im Logistik-Tab)`);
-                        return false;
-                    }
+                    // 🔧 FIX (2025-12-15): Fahrzeuge mit ausstehender Abholung TROTZDEM zeigen
+                    // Mitarbeiter sollen ihre kommenden Aufträge sehen können
+                    // Badge "Noch nicht angeliefert" wird in createFahrzeugCard() hinzugefügt
+                    // ENTFERNT: needsLogistikFirst() Filter - war zu restriktiv
+                    // if (needsLogistikFirst(f)) { ... }
 
                     // 🆕 MULTI-SERVICE: Prüfe ob Fahrzeug den aktuellen Service hat (Primary ODER Additional)
                     // Falls currentProcess === 'alle', zeige alle Fahrzeuge
@@ -6045,14 +6077,26 @@
                 }
             }
 
+            // 🔧 FIX (2025-12-15): Badge für Fahrzeuge mit ausstehender Abholung
+            const wartenAufAbholung = needsLogistikFirst(fahrzeug);
+            if (wartenAufAbholung) {
+                card.classList.add('pending-delivery');
+            }
+
             // 🆕 Queue-Position Badge (wenn vorhanden)
             let positionBadge = '';
             if (fahrzeug.queuePosition && typeof fahrzeug.queuePosition === 'number') {
                 positionBadge = `<div class="queue-position-badge">#${fahrzeug.queuePosition}</div>`;
             }
 
+            // 🔧 FIX (2025-12-15): Badge "Noch nicht angeliefert" wenn Abholung ausstehend
+            const abholBadge = wartenAufAbholung
+                ? `<div class="pending-delivery-badge">🚚 Noch nicht angeliefert</div>`
+                : '';
+
             // Vereinfachte Karten-Struktur (NUR: Position + Kennzeichen + Marke + Button)
             card.innerHTML = `
+                ${abholBadge}
                 ${positionBadge}
                 <div class="card-kennzeichen">${window.escapeHtml(fahrzeug.kennzeichen)}</div>
                 <div class="card-info">🚗 ${window.escapeHtml(fahrzeug.marke) || ''} ${window.escapeHtml(fahrzeug.modell) || ''}</div>
