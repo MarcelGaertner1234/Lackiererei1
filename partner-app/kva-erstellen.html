@@ -682,6 +682,20 @@
         let isMultiService = false;  // 🆕 Global variable for Multi-Service detection
         let verfuegbareLeihfahrzeuge = []; // 🆕 2025-11-26: Leihfahrzeuge für Zuweisung
 
+        // 🔧 XSS-1 (2025-12-16): XSS Prevention - escape user input in HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text).replace(/[&<>"']/g, function(m) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[m];
+            });
+        }
+
         // ============================================
         // SERVICE-TEMPLATE DEFINITIONEN (12 Service-Typen)
         // ============================================
@@ -6482,8 +6496,9 @@
                 photosHTML = schadenFotosHTML + fahrzeugscheinHTML;
             }
 
+            // 🔧 XSS-2 (2025-12-16): Escape all user-provided data from anfrage
             infoBox.innerHTML = `
-                <h3>🚗 Anfrage von ${anfrage.partnerName || 'Unbekannt'}</h3>
+                <h3>🚗 Anfrage von ${escapeHtml(anfrage.partnerName) || 'Unbekannt'}</h3>
                 ${anfrage.kundenEmail || anfrage.kundenTelefon || anfrage.telefon ? `
                     <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #1976d2;">
                         <div style="font-weight: 600; color: #1565c0; margin-bottom: 8px; font-size: 13px;">📞 Kontaktdaten</div>
@@ -6491,13 +6506,13 @@
                             ${anfrage.kundenEmail ? `
                                 <div>
                                     <strong style="color: #1976d2;">Email:</strong>
-                                    <a href="mailto:${anfrage.kundenEmail}" style="color: #1976d2; text-decoration: none;">${anfrage.kundenEmail}</a>
+                                    <a href="mailto:${escapeHtml(anfrage.kundenEmail)}" style="color: #1976d2; text-decoration: none;">${escapeHtml(anfrage.kundenEmail)}</a>
                                 </div>
                             ` : ''}
                             ${(anfrage.kundenTelefon || anfrage.telefon) ? `
                                 <div>
                                     <strong style="color: #1976d2;">Telefon:</strong>
-                                    <a href="tel:${anfrage.kundenTelefon || anfrage.telefon}" style="color: #1976d2; text-decoration: none;">${anfrage.kundenTelefon || anfrage.telefon}</a>
+                                    <a href="tel:${escapeHtml(anfrage.kundenTelefon || anfrage.telefon)}" style="color: #1976d2; text-decoration: none;">${escapeHtml(anfrage.kundenTelefon || anfrage.telefon)}</a>
                                 </div>
                             ` : ''}
                         </div>
@@ -6506,7 +6521,7 @@
                 <div class="info-grid">
                     <div class="info-item">
                         <div class="label">${anfrage.referenzType === 'auftrag' ? 'Auftragsnummer' : 'Kennzeichen'}</div>
-                        <div class="value">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
+                        <div class="value">${escapeHtml(anfrage.auftragsnummer || anfrage.kennzeichen) || 'k.A.'}</div>
                     </div>
                     <div class="info-item">
                         <div class="label">Fahrzeugdaten</div>
@@ -6539,9 +6554,10 @@
                 </div>
                 <div class="schadensbeschreibung">
                     <div class="label">Schadensbeschreibung:</div>
-                    <div class="text">${(() => {
+                    <div class="text">${escapeHtml((() => {
                         // ✅ FIX 3 (2025-11-16): Multi-Service Anmerkungen aggregieren
                         // ✅ FIX #47: Add Array.isArray() check
+                        // 🔧 XSS-3 (2025-12-16): Escape user-provided descriptions
                         const isMultiService = anfrage.serviceTyp === 'multi-service' ||
                                                Array.isArray(anfrage.serviceTyp) ||
                                                anfrage.serviceLabels?.length > 1;
@@ -6560,7 +6576,7 @@
                         }
 
                         return anfrage.schadenBeschreibung || anfrage.anmerkungen || 'Keine Angaben';
-                    })()}</div>
+                    })())}</div>
                 </div>
                 ${anfrage.marke || anfrage.modell || anfrage.baujahr ? `
                     <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #003366;">
@@ -6568,17 +6584,17 @@
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 13px;">
                             ${anfrage.marke ? `
                                 <div>
-                                    <strong>Marke:</strong> ${anfrage.marke}
+                                    <strong>Marke:</strong> ${escapeHtml(anfrage.marke)}
                                 </div>
                             ` : ''}
                             ${anfrage.modell ? `
                                 <div>
-                                    <strong>Modell:</strong> ${anfrage.modell}
+                                    <strong>Modell:</strong> ${escapeHtml(anfrage.modell)}
                                 </div>
                             ` : ''}
                             ${anfrage.baujahr ? `
                                 <div>
-                                    <strong>Baujahr:</strong> ${anfrage.baujahr}
+                                    <strong>Baujahr:</strong> ${escapeHtml(anfrage.baujahr)}
                                 </div>
                             ` : ''}
                             ${anfrage.kilometerstand ? `

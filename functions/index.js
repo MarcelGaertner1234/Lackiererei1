@@ -6647,8 +6647,9 @@ exports.exportAllTrainingData = functions
 // ============================================
 // Aktiviert abteilungsQueue für Fahrzeuge mit servicePlan
 // Läuft täglich um 07:00 Uhr Berlin Zeit
-// Setzt abteilungsQueue für Fahrzeuge deren Termin innerhalb 24h liegt
+// Setzt abteilungsQueue für Fahrzeuge deren Termin innerhalb 48h liegt
 // @since 2025-12-11
+// @updated 2025-12-16 - 48h-Vorschau-System
 // ============================================
 
 exports.activateServicePlanQueues = onSchedule({
@@ -6658,19 +6659,21 @@ exports.activateServicePlanQueues = onSchedule({
   memory: "256MiB",
   timeoutSeconds: 300,
 }, async (event) => {
-  console.log('🚗 activateServicePlanQueues: Starting daily queue activation...');
+  console.log('🚗 activateServicePlanQueues: Starting daily queue activation (48h window)...');
 
   try {
     const werkstaetten = await getActiveWerkstaetten();
     let totalUpdated = 0;
 
-    // Zeitfenster: Heute und Morgen
+    // Zeitfenster: 48h (Heute, Morgen, Übermorgen)
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];  // "2025-12-11"
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];  // "2025-12-12"
+    const todayStr = now.toISOString().split('T')[0];  // "2025-12-16"
+    const cutoffDate = new Date(now);
+    cutoffDate.setDate(cutoffDate.getDate() + 2);  // Übermorgen
+    cutoffDate.setHours(23, 59, 59, 999);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];  // "2025-12-18"
 
-    console.log(`📅 Date range: ${todayStr} to ${tomorrowStr}`);
+    console.log(`📅 48h window: ${todayStr} to ${cutoffStr}`);
 
     for (const werkstattId of werkstaetten) {
       console.log(`📦 Processing werkstatt: ${werkstattId}`);
@@ -6695,11 +6698,12 @@ exports.activateServicePlanQueues = onSchedule({
           continue;
         }
 
-        // Finde ersten Service der heute oder morgen startet
+        // Finde ersten Service innerhalb 48h-Fenster
         const nextService = fahrzeug.servicePlan.find(step => {
           if (!step || !step.datum) return false;
-          const stepDate = step.datum;  // Format: "2025-12-11"
-          return stepDate === todayStr || stepDate === tomorrowStr;
+          const stepDateStr = step.datum;  // Format: "2025-12-11"
+          const stepDate = new Date(stepDateStr + 'T00:00:00');
+          return stepDate >= new Date(todayStr + 'T00:00:00') && stepDate <= cutoffDate;
         });
 
         if (nextService) {
@@ -6725,7 +6729,7 @@ exports.activateServicePlanQueues = onSchedule({
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       totalUpdated,
       werkstaetten,
-      dateRange: { from: todayStr, to: tomorrowStr }
+      dateRange: { from: todayStr, to: cutoffStr, window: '48h' }
     });
 
     console.log(`🎉 activateServicePlanQueues: Completed. Updated ${totalUpdated} vehicles.`);
@@ -6743,9 +6747,10 @@ exports.activateServicePlanQueues = onSchedule({
  * Aufruf: https://europe-west3-auto-lackierzentrum-mosbach.cloudfunctions.net/triggerQueueActivation
  *
  * Kann jederzeit aufgerufen werden um Fahrzeuge mit servicePlan
- * für heute/morgen sofort im Kanban sichtbar zu machen.
+ * für die nächsten 48h sofort im Kanban sichtbar zu machen.
  *
  * @since 2025-12-11
+ * @updated 2025-12-16 - 48h-Vorschau-System
  */
 exports.triggerQueueActivation = onRequest({
   region: "europe-west3",
@@ -6753,19 +6758,22 @@ exports.triggerQueueActivation = onRequest({
   timeoutSeconds: 300,
   cors: true,
 }, async (req, res) => {
-  console.log('🚗 triggerQueueActivation: Manual trigger started...');
+  console.log('🚗 triggerQueueActivation: Manual trigger started (48h window)...');
 
   try {
     const werkstaetten = await getActiveWerkstaetten();
     let totalUpdated = 0;
     const activatedVehicles = [];
 
+    // Zeitfenster: 48h
     const now = new Date();
-    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const todayStr = now.toISOString().split('T')[0];
-    const tomorrowStr = in24h.toISOString().split('T')[0];
+    const cutoffDate = new Date(now);
+    cutoffDate.setDate(cutoffDate.getDate() + 2);  // Übermorgen
+    cutoffDate.setHours(23, 59, 59, 999);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
 
-    console.log(`📅 Date range: ${todayStr} to ${tomorrowStr}`);
+    console.log(`📅 48h window: ${todayStr} to ${cutoffStr}`);
 
     for (const werkstattId of werkstaetten) {
       console.log(`📦 Processing werkstatt: ${werkstattId}`);
@@ -6789,10 +6797,11 @@ exports.triggerQueueActivation = onRequest({
           continue;
         }
 
-        // Finde ersten Service der heute oder morgen startet
+        // Finde ersten Service innerhalb 48h-Fenster
         const nextService = fahrzeug.servicePlan.find(step => {
           if (!step || !step.datum) return false;
-          return step.datum === todayStr || step.datum === tomorrowStr;
+          const stepDate = new Date(step.datum + 'T00:00:00');
+          return stepDate >= new Date(todayStr + 'T00:00:00') && stepDate <= cutoffDate;
         });
 
         if (nextService) {
@@ -6822,17 +6831,17 @@ exports.triggerQueueActivation = onRequest({
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       totalUpdated,
       werkstaetten,
-      dateRange: { from: todayStr, to: tomorrowStr },
+      dateRange: { from: todayStr, to: cutoffStr, window: '48h' },
       triggeredBy: 'manual'
     });
 
-    console.log(`🎉 triggerQueueActivation: Completed. Updated ${totalUpdated} vehicles.`);
+    console.log(`🎉 triggerQueueActivation: Completed. Updated ${totalUpdated} vehicles (48h window).`);
 
     res.json({
       success: true,
       totalUpdated,
       activatedVehicles,
-      dateRange: { today: todayStr, tomorrow: tomorrowStr }
+      dateRange: { from: todayStr, to: cutoffStr, window: '48h' }
     });
 
   } catch (error) {

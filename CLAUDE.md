@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing (BEFORE any code changes!)
 ```bash
-npm run test:all          # ~266 Tests (~30min) - MUST be 100%!
+npm run test:all          # ~266 Tests (~2min) - MUST be 100%!
 npm run test:integration  # Integration tests (Firestore)
 npm run test:smoke        # UI smoke tests
 npm run test:headed       # With browser UI
@@ -486,6 +486,57 @@ git add . && git commit -m "type: description" && git push
 
 ---
 
+## Weltmodell Workflows
+
+Das Weltmodell in `.claude/world-model/` bietet 3 essentielle Workflows:
+
+### Before You Edit (EMPFOHLEN!)
+
+```bash
+# Vor dem Editieren einer Datei - zeigt Patterns, Risiken, Abhängigkeiten
+./.claude/world-model/context-generator.sh kanban.html --full
+```
+
+**Output enthält:**
+- Datei-Info aus dem Weltmodell
+- Relevante Patterns (mit Code-Beispielen)
+- Risk-Level und bekannte Bugs
+- Abhängigkeiten (was bricht wenn X sich ändert)
+- Predictive Bug Detection
+- Git-History der Datei
+
+### Weekly Maintenance
+
+```bash
+# Code-Health-Check (alle Dateien scannen)
+python3 ./.claude/world-model/predict-bugs.py --scan-all
+
+# Learnings analysieren
+python3 ./.claude/world-model/analyze-learnings.py --recommendations
+
+# Weltmodell aktualisieren
+./.claude/world-model/update.sh --full
+```
+
+### Bug Investigation
+
+```bash
+# Risiko-Analyse für spezifische Datei
+./.claude/world-model/query.sh risk kanban.html
+
+# Bug-Prediction mit 12 Erkennungsmustern
+python3 ./.claude/world-model/predict-bugs.py kanban.html
+
+# Hotspots anzeigen
+./.claude/world-model/query.sh hotspot
+```
+
+### Weltmodell Status (2025-12-15)
+
+Alle bekannten Probleme wurden behoben. Das Weltmodell ist vollständig synchronisiert (v3.2).
+
+---
+
 ## Common Gotchas (from Production)
 
 These patterns caused real bugs. Avoid them:
@@ -535,6 +586,6 @@ async function submit() {
 
 ---
 
-_Version: 10.2 (Updated 2025-12-11 - AGI Training Features)_
+_Version: 10.5 (Updated 2025-12-15 - Weltmodell v3.2 synchronized)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_

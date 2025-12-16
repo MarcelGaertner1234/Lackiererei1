@@ -134,6 +134,69 @@
             height: calc(100vh - 140px);
         }
 
+        /* 🆕 48h-Vorschau Section (2025-12-16) */
+        .vorschau-section {
+            background: rgba(0, 102, 204, 0.05);
+            border: 1px solid #0066cc;
+            border-left: 4px solid #0066cc;
+            border-radius: var(--radius-xl);
+            padding: var(--space-4);
+            margin-bottom: var(--space-4);
+        }
+
+        .vorschau-section .section-header {
+            border-radius: var(--radius-lg);
+            padding: var(--space-2) var(--space-3);
+            margin: calc(-1 * var(--space-4));
+            margin-bottom: var(--space-3);
+        }
+
+        .vorschau-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+        }
+
+        .vorschau-card {
+            background: white;
+            border: 1px solid #0066cc;
+            border-radius: var(--radius-lg);
+            padding: var(--space-3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .vorschau-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 102, 204, 0.2);
+        }
+
+        .vorschau-info {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .vorschau-datum-badge {
+            background: #0066cc;
+            color: white;
+            padding: 4px 10px;
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .vorschau-queue-badge {
+            background: rgba(0, 102, 204, 0.1);
+            color: #0066cc;
+            padding: 4px 10px;
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
         /* Ungeplant Section */
         .ungeplant-section {
             background: var(--color-surface);
@@ -2047,6 +2110,19 @@
 
     <!-- Main Container -->
     <div class="main-container">
+        <!-- 🆕 48h-Vorschau Section (2025-12-16) -->
+        <div class="vorschau-section" id="vorschauSection" style="display: none;">
+            <div class="section-header" style="background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); color: white;">
+                <span class="section-title">
+                    📅 Vorschau (nächste 48h)
+                    <span class="count-badge" id="vorschauCount" style="background: white; color: #0066cc;">0</span>
+                </span>
+            </div>
+            <div id="vorschauList" class="vorschau-list">
+                <!-- Fahrzeuge mit servicePlan in 48h-Fenster -->
+            </div>
+        </div>
+
         <!-- Ungeplant Section -->
         <div class="ungeplant-section">
             <div class="section-header">
@@ -2426,6 +2502,7 @@
         // Global State
         let allFahrzeuge = [];
         let ungeplanteFahrzeuge = [];
+        let vorschauFahrzeuge = [];  // 🆕 48h-Vorschau-System (2025-12-16)
         let currentUngeplantTab = 'bereit';  // bereit | logistik | zukunft
         let categorizedUngeplant = { bereit: [], logistik: [], zukunft: [] };
 
@@ -3576,9 +3653,16 @@
             const dateStr = document.getElementById('datePicker').value;
 
             ungeplanteFahrzeuge = [];
+            vorschauFahrzeuge = [];  // 🆕 48h-Vorschau-System (2025-12-16)
             // Reset all 16 queues
             queuedFahrzeuge = {};
             ALL_QUEUES.forEach(q => queuedFahrzeuge[q] = []);
+
+            // 🆕 48h-Fenster berechnen
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const cutoff48h = new Date(today);
+            cutoff48h.setDate(cutoff48h.getDate() + 2);  // Übermorgen 00:00
 
             allFahrzeuge.forEach(f => {
                 // 📅 servicePlan Support (2025-12-09) - UPDATED für Array-Format (2025-12-11)
@@ -3588,8 +3672,11 @@
 
                     // NEU: Array-Format (aus entwuerfe-bearbeiten.html)
                     if (Array.isArray(f.servicePlan)) {
+                        let addedToVorschau = false;  // 🆕 48h-Vorschau
+
                         for (const step of f.servicePlan) {
                             if (step.datum === dateStr && queuedFahrzeuge[step.queue] !== undefined) {
+                                // HEUTE → normale Queue
                                 queuedFahrzeuge[step.queue].push({
                                     ...f,
                                     abteilungsQueue: step.queue,
@@ -3598,9 +3685,23 @@
                                     queueDauer: step.dauer
                                 });
                                 addedToQueue = true;
+                            } else if (step.datum && step.queue) {
+                                // 🆕 48h-Vorschau: Prüfe ob innerhalb 48h-Fenster
+                                const stepDate = new Date(step.datum + 'T00:00:00');
+                                if (stepDate > today && stepDate <= cutoff48h && !addedToVorschau) {
+                                    vorschauFahrzeuge.push({
+                                        ...f,
+                                        vorschauDatum: step.datum,
+                                        vorschauQueue: step.queue,
+                                        vorschauStartzeit: step.startzeit,
+                                        vorschauDauer: step.dauer
+                                    });
+                                    addedToVorschau = true;
+                                }
                             }
                         }
                         if (addedToQueue) return;
+                        if (addedToVorschau) return;  // 🆕 Nicht zu ungeplant, ist in Vorschau
 
                         // Prüfe ob irgendein Service für einen anderen Tag geplant ist
                         const hasAnyPlannedService = f.servicePlan.some(s => s.datum);
@@ -3758,6 +3859,7 @@
         // ============================================
 
         function renderAll() {
+            renderVorschau();  // 🆕 48h-Vorschau (2025-12-16)
             renderUngeplant();
             renderQueues();
         }
@@ -3857,6 +3959,47 @@
             }
 
             container.innerHTML = fahrzeuge.map(f => createFahrzeugCard(f)).join('');
+        }
+
+        // 🆕 48h-Vorschau rendern (2025-12-16)
+        function renderVorschau() {
+            const section = document.getElementById('vorschauSection');
+            const container = document.getElementById('vorschauList');
+            const countBadge = document.getElementById('vorschauCount');
+
+            if (vorschauFahrzeuge.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+            countBadge.textContent = vorschauFahrzeuge.length;
+
+            // Sortiere nach Datum (frühere zuerst)
+            const sorted = [...vorschauFahrzeuge].sort((a, b) => {
+                return new Date(a.vorschauDatum) - new Date(b.vorschauDatum);
+            });
+
+            container.innerHTML = sorted.map(f => {
+                const serviceConfig = window.SERVICE_TYPE_CONFIG?.[f.vorschauQueue] || { label: f.vorschauQueue, icon: '📋' };
+                const datumDate = new Date(f.vorschauDatum + 'T00:00:00');
+                const datumStr = datumDate.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+
+                return `
+                    <div class="vorschau-card" onclick="window.location.href='annahme.html?id=${f.id}'">
+                        <div class="vorschau-info">
+                            <span class="vorschau-datum-badge">${datumStr}</span>
+                            <span class="vorschau-queue-badge">${serviceConfig.icon} ${serviceConfig.label}</span>
+                            <strong>${f.kennzeichen || 'N/A'}</strong>
+                            <span style="color: #6b7280;">${f.modell || ''}</span>
+                        </div>
+                        <div style="font-size: 12px; color: #6b7280;">
+                            ${f.vorschauStartzeit ? `⏰ ${f.vorschauStartzeit}` : ''}
+                            ${f.vorschauDauer ? `(${f.vorschauDauer}h)` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         // Fahrzeug als eingetroffen markieren
