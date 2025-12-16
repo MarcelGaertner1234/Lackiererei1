@@ -6107,7 +6107,88 @@ exports.releaseExpiredLeihfahrzeugReservations = onSchedule({
       releasedCount++;
     }
 
-    console.log(`✅ [releaseExpiredLeihfahrzeugReservations] Released ${releasedCount} expired reservations`);
+    console.log(`✅ [releaseExpiredLeihfahrzeugReservations] Released ${releasedCount} Pool-Reservations`);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🔧 FIX (2025-12-16): 48h Auto-Release für werkstatteigene Leihfahrzeuge
+    // Diese wurden direkt in entwuerfe-bearbeiten.html zugewiesen und haben
+    // reserviertBis + status='vergeben'. Nach 48h ohne Annahme → freigeben.
+    // ═══════════════════════════════════════════════════════════════════════════
+    let werkstattReleasedCount = 0;
+
+    try {
+      // Alle Werkstätten aus settings holen
+      const settingsSnapshot = await db.collection('settings').get();
+      console.log(`🔍 Checking ${settingsSnapshot.size} werkstatt collections for expired direct assignments...`);
+
+      for (const settingsDoc of settingsSnapshot.docs) {
+        const werkstattId = settingsDoc.id;
+        const leihfahrzeugeCollection = `leihfahrzeuge_${werkstattId}`;
+
+        // Finde Leihfahrzeuge mit Status 'vergeben' und abgelaufenem reserviertBis
+        const expiredQuery = await db.collection(leihfahrzeugeCollection)
+          .where('status', '==', 'vergeben')
+          .where('reserviertBis', '<=', now)
+          .get();
+
+        if (expiredQuery.empty) continue;
+
+        console.log(`  📋 Found ${expiredQuery.size} expired direct assignments in ${leihfahrzeugeCollection}`);
+
+        for (const leihfahrzeugDoc of expiredQuery.docs) {
+          const leihfahrzeug = leihfahrzeugDoc.data();
+          const entwurfId = leihfahrzeug.entwurfId || leihfahrzeug.aktuelleZuweisung?.entwurfId;
+
+          console.log(`  ⏰ Releasing: ${leihfahrzeugDoc.id} (Entwurf: ${entwurfId || 'unknown'})`);
+
+          const batch = db.batch();
+
+          // Leihfahrzeug wieder freigeben
+          batch.update(leihfahrzeugDoc.ref, {
+            status: 'verfuegbar',
+            aktuelleZuweisung: admin.firestore.FieldValue.delete(),
+            reserviertBis: admin.firestore.FieldValue.delete(),
+            entwurfId: admin.firestore.FieldValue.delete(),
+            freigegebenAm: admin.firestore.FieldValue.serverTimestamp(),
+            freigegebenGrund: '48h Reservierung abgelaufen (Kunde hat nicht angenommen)'
+          });
+
+          // Optional: Entwurf/Anfrage als 'leihfahrzeug_abgelaufen' markieren
+          if (entwurfId) {
+            const anfrageCollection = `anfragen_${werkstattId}`;
+            const entwurfRef = db.collection(anfrageCollection).doc(entwurfId);
+            const entwurfSnapshot = await entwurfRef.get();
+
+            if (entwurfSnapshot.exists) {
+              const entwurf = entwurfSnapshot.data();
+              // Nur updaten wenn Status noch auf KVA wartet (nicht wenn bereits akzeptiert)
+              if (['kva_gesendet', 'angebot_gesendet', 'warte_kva', 'entwurf_komplett'].includes(entwurf.status)) {
+                batch.update(entwurfRef, {
+                  leihfahrzeugAbgelaufen: true,
+                  leihfahrzeugAbgelaufenAm: admin.firestore.FieldValue.serverTimestamp(),
+                  vorherigeLeitfahrzeugDetails: {
+                    kennzeichen: leihfahrzeug.kennzeichen,
+                    id: leihfahrzeugDoc.id
+                  }
+                });
+                console.log(`    📋 Entwurf ${entwurfId} marked with leihfahrzeugAbgelaufen=true`);
+              }
+            }
+          }
+
+          await batch.commit();
+          werkstattReleasedCount++;
+        }
+      }
+
+      console.log(`✅ [releaseExpiredLeihfahrzeugReservations] Released ${werkstattReleasedCount} expired direct assignments`);
+
+    } catch (werkstattError) {
+      console.error('⚠️ Error processing werkstatt leihfahrzeuge:', werkstattError);
+      // Don't throw - continue with main function completion
+    }
+
+    console.log(`🎉 [releaseExpiredLeihfahrzeugReservations] Total: ${releasedCount + werkstattReleasedCount} released`);
     return null;
 
   } catch (error) {

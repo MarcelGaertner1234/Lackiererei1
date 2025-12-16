@@ -5437,10 +5437,12 @@
                 saveBtn.innerHTML = '<span class="loading"></span> Speichert...';
 
                 // 🔧 BUG #9 FIX (2025-11-20): Email-Format-Validierung
+                // 🔧 SEC-3.1 FIX (2025-12-14): RFC 5322 compliant regex
                 const kundenEmail = document.getElementById('kundenEmail').value.trim();
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
                 if (!kundenEmail || !emailRegex.test(kundenEmail)) {
                     saveBtn.innerHTML = originalText;
+                    saveBtn.disabled = false; // 🔧 FIX E19 (2025-12-16): Re-enable button on validation error
                     toast.error('❌ Ungültige Email-Adresse. Bitte geben Sie eine gültige Email ein.');
                     return;
                 }
@@ -5533,6 +5535,12 @@
                         const leihfahrzeugKennzeichen = leihfahrzeugData.kennzeichen || 'Leihfahrzeug';
 
                         // 2. Leihfahrzeug-Status auf "vergeben" setzen
+                        // 🔧 FIX (2025-12-16): 48h Auto-Release - reserviertBis hinzufügen
+                        // Wenn Kunde das Angebot nicht innerhalb 48h annimmt, wird das Leihfahrzeug
+                        // automatisch wieder freigegeben (via Cloud Function releaseExpiredLeihfahrzeugReservations)
+                        const reserviertBisDate = new Date();
+                        reserviertBisDate.setHours(reserviertBisDate.getHours() + 48);
+
                         await window.getCollection('leihfahrzeuge').doc(zugewiesenesErsatzfahrzeug).update({
                             status: 'vergeben',
                             aktuelleZuweisung: {
@@ -5541,9 +5549,12 @@
                                 entwurfId: currentEntwurfId,
                                 von: new Date().toISOString(),
                                 bis: document.getElementById('geplantesAbnahmeDatum').value || null
-                            }
+                            },
+                            // 48h Reservierung - nach Ablauf wird Fahrzeug automatisch freigegeben
+                            reserviertBis: firebase.firestore.Timestamp.fromDate(reserviertBisDate),
+                            entwurfId: currentEntwurfId
                         });
-                        console.log('🚗 Leihfahrzeug-Status auf "vergeben" gesetzt');
+                        console.log('🚗 Leihfahrzeug-Status auf "vergeben" gesetzt (48h Reservierung bis:', reserviertBisDate.toISOString(), ')');
 
                         // 3. Kalender-Event erstellen
                         const kalenderEvent = {
@@ -6030,9 +6041,9 @@
 
                 console.log('💰 Preis-Validierung:', { summeBruttoOriginal, summeBruttoAftermarket, vereinbarterPreis, hasVarianten });
 
-                // Email format validation
+                // Email format validation (SEC-3.1 fix: RFC 5322 compliant)
                 const email = document.getElementById('kundenEmail').value.trim().toLowerCase();
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
                 if (!emailRegex.test(email)) {
                     showToast('⚠️ Ungültige Email-Adresse!', 'error', 5000);
                     return;
