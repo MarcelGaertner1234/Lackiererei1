@@ -578,6 +578,27 @@ async function submit() {
 
 ---
 
+## Session History (Recent)
+
+### 2025-12-16: 48h-Vorschau-System + Browser-Bug
+
+**Implementiert:**
+- ✅ **48h-Vorschau-System** für servicePlan-Termine
+  - Cloud Function aktiviert jetzt 48h im Voraus (statt 24h)
+  - Neue blaue "Vorschau"-Sektion in `tagesplanung.html`
+  - Neuer blauer CSS-Zustand in `kanban.html`
+  - Deployed & gepusht
+
+**Offenes Issue:**
+- ⚠️ **Foto-Upload in annahme.html funktioniert nicht**
+  - Symptom: Klick auf "+ Foto hinzufügen" tut nichts, keine Fehlermeldung
+  - `document.getElementById('photoInput').click()` in Konsole öffnet keinen Dialog
+  - Vermutung: **Browser-Sicherheitseinschränkung** (Safari/Mac)
+  - Workaround: Anderen Browser testen (Chrome/Firefox)
+  - TODO: Safari-kompatiblen Fallback implementieren
+
+---
+
 ## External Resources
 
 - **GitHub:** https://github.com/MarcelGaertner1234/Lackiererei1
@@ -586,6 +607,6 @@ async function submit() {
 
 ---
 
-_Version: 10.5 (Updated 2025-12-15 - Weltmodell v3.2 synchronized)_
+_Version: 10.6 (Updated 2025-12-16 - 48h-Vorschau-System implementiert)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_
