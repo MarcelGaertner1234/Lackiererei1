@@ -3218,6 +3218,16 @@
                 if (firstService && firstService.datum) {
                     updateData.anliefertermin = firstService.datum;  // YYYY-MM-DD für Partner-App Auftragsstart
                     updateData['kva.termine.start'] = firstService.datum;  // YYYY-MM-DD
+
+                    // 🔧 BUG FIX (2025-12-17): Auch abholdatum setzen für Fallback-Chain Kompatibilität
+                    updateData.abholdatum = firstService.datum;  // YYYY-MM-DD
+
+                    // 🆕 Startzeit auch als separates Feld speichern (2025-12-17)
+                    if (firstService.startzeit) {
+                        updateData.abholzeit = firstService.startzeit;  // z.B. "08:00"
+                        console.log('⏰ Neue Startzeit:', firstService.startzeit);
+                    }
+
                     console.log('📅 Neuer Auftragsstart:', firstService.datum);
 
                     // 🆕 48h-Check: Wenn Service außerhalb 48h-Fenster, aus Kanban-Queue entfernen
@@ -4095,8 +4105,9 @@
             }
 
             // 🆕 Auftragsstart-Anzeige (2025-12-16)
+            // 🔧 BUG FIX (2025-12-17): anliefertermin ZUERST prüfen (ist START-Datum von saveVerschiebung)
             let auftragsstartHtml = '';
-            const auftragsstartDatum = fahrzeug.abholdatum || fahrzeug.abholtermin || fahrzeug.anliefertermin || fahrzeug.geplantesStartDatum;
+            const auftragsstartDatum = fahrzeug.anliefertermin || fahrzeug.abholdatum || fahrzeug.geplantesStartDatum;
             if (auftragsstartDatum) {
                 const startDate = auftragsstartDatum?.toDate ? auftragsstartDatum.toDate() : new Date(auftragsstartDatum);
                 const datumStr = startDate.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
@@ -5215,7 +5226,8 @@
             // Problem: "Abholtermin" und "Geplante Abnahme" zeigten beide das ENDE-Datum!
             // Lösung: Auftragsstart = Ende - Leihdauer (wenn kein explizites abholdatum gesetzt)
             // FIX 25: Firebase Timestamp richtig konvertieren (war RangeError: Invalid time value)
-            let auftragsstart = fahrzeug.abholdatum || fahrzeug.abholDatum || fahrzeug.abholtermin || fahrzeug.anliefertermin || fahrzeug.gewuenschterTermin;
+            // 🔧 BUG FIX (2025-12-17): anliefertermin ZUERST prüfen (ist START-Datum von saveVerschiebung)
+            let auftragsstart = fahrzeug.anliefertermin || fahrzeug.abholdatum || fahrzeug.abholDatum || fahrzeug.gewuenschterTermin;
             if (!auftragsstart && fahrzeug.geplantesAbnahmeDatum) {
                 // Berechne Start aus Ende minus Leihdauer
                 const leihdauer = fahrzeug.kva?.zugewiesenesLeihfahrzeug?.tage
