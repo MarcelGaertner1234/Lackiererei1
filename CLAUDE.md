@@ -597,6 +597,19 @@ async function submit() {
   - Workaround: Anderen Browser testen (Chrome/Firefox)
   - TODO: Safari-kompatiblen Fallback implementieren
 
+### 2025-12-17: Auftragsstart Fallback-Chain Fix
+
+**Kritischer Bug behoben:**
+- Kacheln zeigten END-Datum statt START-Datum
+- Ursache: Falsche Fallback-Reihenfolge (`abholtermin` vor `anliefertermin`)
+- `abholtermin` = END-Datum (lastService.datum), `anliefertermin` = START-Datum (firstService.datum)
+
+**Fix:**
+- 5 Stellen korrigiert: kanban.html (3x), tagesplanung.html (2x)
+- Neue Reihenfolge: `anliefertermin || abholdatum || geplantesStartDatum`
+- saveVerschiebung() erweitert: setzt jetzt auch `abholdatum` und `abholzeit`
+- Commit: `b86c0fa`
+
 ---
 
 ## External Resources
@@ -607,6 +620,6 @@ async function submit() {
 
 ---
 
-_Version: 10.6 (Updated 2025-12-16 - 48h-Vorschau-System implementiert)_
+_Version: 10.7 (Updated 2025-12-17 - Auftragsstart Fallback-Chain Fix)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_
