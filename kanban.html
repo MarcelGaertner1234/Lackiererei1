@@ -3055,11 +3055,8 @@
 
             // Listen for fahrzeug status changed
             window.appEvents.on('fahrzeugStatusChanged', (data) => {
-                console.log('🤖 [KANBAN] AI changed vehicle status:', data.vehicleId, '→', data.newStatus);
-                console.log('   ↳ Firestore realtime listener will auto-refresh the board');
+                // Firestore realtime listener will auto-refresh the board
             });
-
-            console.log('✅ [KANBAN] Event listeners registered successfully');
         }
 
         // Initialize event listeners when page loads
@@ -5083,18 +5080,13 @@
         document.addEventListener('DOMContentLoaded', async function() {
             try {
                 if (typeof initFirebase !== 'undefined') {
-                    // Warte auf Firebase Initialisierung
                     await initFirebase();
 
-                    // ✅ FIX: Prüfe window.firebaseInitialized statt undefined return value
                     if (window.firebaseInitialized && window.firebaseApp) {
                         firebaseApp = window.firebaseApp;
                         firebaseInitialized = true;
-                        console.log('✅ Firebase initialisiert für Kanban');
-                        console.log('   firebaseApp.listenToFahrzeuge:', typeof firebaseApp.listenToFahrzeuge);
 
-                        // Auth-Check für Multi-Tenant Support (Race Condition Fix)
-                        console.log('🔐 [KANBAN] Prüfe Auth State für Multi-Tenant...');
+                        // Auth-Check für Multi-Tenant Support
                         let currentUser = null;
                         let attempts = 0;
                         const maxAttempts = 20;
@@ -5102,37 +5094,28 @@
                         while (!currentUser && attempts < maxAttempts) {
                             currentUser = window.authManager?.getCurrentUser();
                             if (!currentUser) {
-                                console.log(`⏳ [KANBAN] Warte auf Auth State (${attempts + 1}/${maxAttempts})...`);
                                 await new Promise(resolve => setTimeout(resolve, 250));
                                 attempts++;
                             }
                         }
 
                         if (!currentUser) {
-                            console.warn('⚠️ [KANBAN] Kein User eingeloggt - verwende globale Collections');
+                            console.warn('[KANBAN] Kein User eingeloggt - verwende globale Collections');
                         } else {
-                            console.log('✅ [KANBAN] Auth State geladen');
-                            console.log('   User:', currentUser.name);
-                            console.log('   WerkstattId:', currentUser.werkstattId);
-
-                            // 🆕 BUGFIX 2025-11-04 (FIX #41): Partner-Zugriff auf Werkstatt-Seiten blockieren
-                            // Partner dürfen nur das Partner-Portal nutzen, nicht Werkstatt-Seiten
-                            const userRole = currentUser.rolle || currentUser.role; // Support both property names
+                            // Partner-Zugriff auf Werkstatt-Seiten blockieren
+                            const userRole = currentUser.rolle || currentUser.role;
                             if (userRole === 'partner') {
-                                console.warn('🚫 Partner-Zugriff blockiert! Redirect zu Partner-Portal...');
                                 safeNavigate('./partner-app/meine-anfragen.html');
-                                return; // Stop further execution
+                                return;
                             }
                         }
 
-                        // Load Werkstatt Branding (Logo & Page Title)
+                        // Load Werkstatt Branding
                         try {
                             const settings = await window.settingsManager.loadSettings();
                             if (settings?.profil) {
-                                // Update Page Title
                                 document.title = `${settings.profil.name} | Kanban Board`;
 
-                                // Add Logo to Header (if available)
                                 if (settings.profil.logoUrl) {
                                     const header = document.querySelector('.page-header h1');
                                     if (header) {
@@ -5143,27 +5126,20 @@
                                         header.insertBefore(logoImg, header.firstChild);
                                     }
                                 }
-
-                                console.log('✅ [KANBAN] Werkstatt-Branding geladen:', settings.profil.name);
                             }
 
-                            // 🔧 2025-11-25: Filter disabled services from process dropdown
                             if (settings?.enabledServices) {
                                 filterDisabledProcesses(settings.enabledServices);
                             }
                         } catch (error) {
-                            console.warn('⚠️ [KANBAN] Werkstatt-Branding konnte nicht geladen werden:', error);
+                            console.warn('[KANBAN] Werkstatt-Branding konnte nicht geladen werden:', error);
                         }
                     } else {
-                        console.warn('⚠️ Firebase Initialisierung fehlgeschlagen');
-                        console.warn('   window.firebaseInitialized:', window.firebaseInitialized);
-                        console.warn('   window.firebaseApp:', !!window.firebaseApp);
+                        console.warn('[KANBAN] Firebase Initialisierung fehlgeschlagen');
                     }
-                } else {
-                    console.warn('⚠️ initFirebase() nicht definiert');
                 }
             } catch (error) {
-                console.warn('⚠️ Firebase nicht verfügbar, verwende LocalStorage:', error);
+                console.warn('[KANBAN] Firebase nicht verfügbar, verwende LocalStorage:', error);
             }
 
             // Realtime Listener aktivieren (ersetzt loadFahrzeuge)
@@ -5416,19 +5392,9 @@
         // Prozess wechseln
         async function changeProcess() {
             const newProcess = document.getElementById('processSelect').value;
-            console.log('🔄 Prozess gewechselt:', currentProcess, '→', newProcess);
-            console.log('📊 Fahrzeuge gesamt:', allFahrzeuge.length);
-            console.log('📋 ServiceTyp-Verteilung:', allFahrzeuge.reduce((acc, f) => {
-                const typ = f.serviceTyp || 'UNDEFINED';
-                acc[typ] = (acc[typ] || 0) + 1;
-                return acc;
-            }, {}));
 
-            // 🆕 BUG #10 FIX + NEBENWIRKUNG FIX #3: Auto-Korrektur beim Zurück-Wechseln zu Service-Tab
-            // OPTIMIERUNG: Nur wenn von "Alle Prozesse" kommend (nicht bei jedem Tab-Wechsel!)
+            // Auto-Korrektur beim Zurück-Wechseln zu Service-Tab
             if (newProcess !== 'alle' && currentProcess === 'alle') {
-                if (window.DEBUG) console.log('🔍 Auto-Korrektur Check: Prüfe ob Fahrzeuge ungültige Stati haben...');
-                console.log('   (Trigger: Wechsel von "Alle Prozesse" zu Service-Tab)');
 
                 // Map process key to serviceTyp (z.B. 'lackier' → 'lackierung')
                 const serviceTypMap = {
@@ -5486,12 +5452,8 @@
                         showToast(`ℹ️ Auto-Korrektur durchgeführt!\n\n` +
                               `${correctionCount} Fahrzeug(e) hatten ungültige Stati für "${processDefinitions[newProcess].name}".\n` +
                               `Stati wurden automatisch korrigiert.`);
-                    } else if (toCorrect.length === 0) {
-                        console.log('✅ Keine Korrektur nötig - alle Stati sind gültig');
                     }
                 }
-            } else if (newProcess !== 'alle' && currentProcess !== 'alle') {
-                console.log('ℹ️ Auto-Korrektur ÜBERSPRUNGEN (Tab-Wechsel zwischen Services)');
             }
 
             currentProcess = newProcess;
@@ -5588,15 +5550,13 @@
         function renderKanbanBoard() {
             const boardContainer = document.getElementById('kanbanBoard');
 
-            // 🦴 SKELETON LOADER: Hide skeleton, show board
+            // Hide skeleton, show board
             const skeleton = document.getElementById('kanbanSkeleton');
             if (skeleton && skeleton.style.display !== 'none') {
                 skeleton.style.display = 'none';
                 boardContainer.style.display = 'grid';
-                console.log('✅ [SKELETON] Skeleton hidden, kanban board visible');
             }
 
-            // Board leeren
             boardContainer.innerHTML = '';
 
             // Aktuelle Prozess-Definition
@@ -6991,12 +6951,6 @@
                             timestamp: timestamp,
                             userAgent: navigator.userAgent.substring(0, 200)
                         });
-
-                        console.log('✅ Bearbeitungs-History erweitert:', {
-                            mitarbeiter: mitarbeiter.name,
-                            status: `${fahrzeug.prozessStatus} → ${newStatus}`,
-                            services: currentServices
-                        });
                     } catch (e) {
                         console.error('❌ Fehler beim Parsen von Mitarbeiter-Daten:', e);
                     }
@@ -7395,16 +7349,10 @@
                                     );
                                 }
 
-                                // Execute both updates in parallel
                                 await Promise.all(parallelUpdates);
-                                console.log('✅ Rechnung automatisch erstellt:', result.rechnung.rechnungsnummer);
-                                console.log('✅ Rechnung + pendingRabatt parallel aktualisiert');
                             }
                         } catch (error) {
-                            // Fehler loggen, aber Status-Update ist bereits committed
-                            console.error('❌ Fehler bei automatischer Rechnungserstellung (Status bereits gespeichert):', error);
-                            console.error('   → Rechnung kann später manuell erstellt werden');
-                            // Status-Update ist NICHT beeinträchtigt (bereits committed)
+                            console.error('[KANBAN] Fehler bei automatischer Rechnungserstellung:', error);
                         }
                     }
                 } else {
@@ -7415,7 +7363,6 @@
                         Object.assign(allStoredFahrzeuge[index], updateData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allStoredFahrzeuge));
                     }
-                    console.log('✅ Status + Timestamps in LocalStorage aktualisiert');
                 }
 
                 // Board neu rendern
@@ -11183,29 +11130,17 @@
                         scope: './'
                     });
 
-                    console.log('✅ [SW] Service Worker registriert:', registration.scope);
-
-                    // Update-Handling: Neuen SW aktivieren wenn gefunden
                     registration.addEventListener('updatefound', () => {
                         const newWorker = registration.installing;
-                        console.log('🔄 [SW] Update gefunden, installiere...');
-
                         newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                console.log('✅ [SW] Update bereit! Seite neu laden für neue Version.');
-
-                                // Optional: Auto-reload nach 3 Sekunden
-                                // setTimeout(() => window.location.reload(), 3000);
-                            }
+                            // Update ready - could notify user here
                         });
                     });
 
                 } catch (error) {
-                    console.error('❌ [SW] Registrierung fehlgeschlagen:', error);
+                    console.error('[SW] Registrierung fehlgeschlagen:', error);
                 }
             });
-        } else {
-            console.log('ℹ️ [SW] Service Worker nicht registriert (Test-Modus oder nicht unterstützt)');
         }
     </script>
 
@@ -11246,8 +11181,6 @@
                     this.style.setProperty('--tilt-y', `${tiltY}deg`);
                 });
             });
-
-            console.log('✅ 3D Tilt Effect initialized on', cards.length, 'kanban cards');
         }
 
         // Ripple Effect on Buttons and Cards
@@ -11256,11 +11189,9 @@
 
             rippleElements.forEach(element => {
                 element.addEventListener('click', function(e) {
-                    // Remove existing ripples
                     const existingRipple = this.querySelector('.ripple');
                     if (existingRipple) existingRipple.remove();
 
-                    // Create ripple
                     const ripple = document.createElement('span');
                     ripple.classList.add('ripple');
 
@@ -11274,13 +11205,9 @@
                     ripple.style.top = `${y}px`;
 
                     this.appendChild(ripple);
-
-                    // Remove after animation
                     setTimeout(() => ripple.remove(), 600);
                 });
             });
-
-            console.log('✅ Ripple Effect initialized on', rippleElements.length, 'elements');
         }
 
         // Scroll Reveal Animations
@@ -11296,23 +11223,16 @@
                 rootMargin: '0px 0px -50px 0px'
             });
 
-            // Add scroll-reveal class to kanban columns and cards
             document.querySelectorAll('.kanban-column, .kanban-card').forEach(el => {
                 el.classList.add('scroll-reveal');
                 observer.observe(el);
             });
-
-            console.log('✅ Scroll Animations initialized');
         }
 
         // GSAP Entry Animations
         function initGSAPAnimations() {
-            if (typeof gsap === 'undefined') {
-                console.warn('⚠️ GSAP not loaded, skipping entry animations');
-                return;
-            }
+            if (typeof gsap === 'undefined') return;
 
-            // Animate header
             gsap.from('.header', {
                 duration: 0.8,
                 y: -30,
@@ -11320,7 +11240,6 @@
                 ease: 'power3.out'
             });
 
-            // Animate kanban container
             gsap.from('.kanban-container', {
                 duration: 0.8,
                 y: 30,
@@ -11329,7 +11248,6 @@
                 delay: 0.2
             });
 
-            // Animate kanban columns with stagger
             gsap.from('.kanban-column', {
                 duration: 0.6,
                 y: 20,
@@ -11338,25 +11256,17 @@
                 stagger: 0.1,
                 delay: 0.4
             });
-
-            console.log('✅ GSAP Entry Animations initialized');
         }
 
         // Initialize all UX features when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
-            // Respect reduced motion preference
-            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                console.log('⚠️ Reduced motion preference detected, skipping animations');
-                return;
-            }
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-            // Initialize with slight delay to ensure page is fully rendered
             setTimeout(() => {
                 init3DTiltEffect();
                 initRippleEffect();
                 initScrollAnimations();
                 initGSAPAnimations();
-                console.log('🎨 UX Redesign 2025 fully initialized for Kanban');
             }, 100);
         });
 
