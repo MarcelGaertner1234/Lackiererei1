@@ -31,6 +31,13 @@ window.quotaDisplayState = {
   }
 };
 
+// 🚀 PERF: Page Visibility API - Skip API calls when tab is hidden
+let isPageVisible = !document.hidden;
+document.addEventListener('visibilitychange', () => {
+  isPageVisible = !document.hidden;
+  if (window.DEBUG) console.log(`🚀 [quota-display] Page visibility: ${isPageVisible ? 'visible' : 'hidden'}`);
+});
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -40,7 +47,7 @@ window.quotaDisplayState = {
  * Call this AFTER Firebase Auth is initialized
  */
 async function initQuotaDisplay() {
-  console.log('🔵 [quota-display] Initializing...');
+  if (window.DEBUG) console.log('🔵 [quota-display] Initializing...');
 
   // Wait for Firebase Auth
   await window.firebaseInitialized;
@@ -48,7 +55,7 @@ async function initQuotaDisplay() {
   // Check if user is authenticated
   const user = firebase.auth().currentUser;
   if (!user) {
-    console.log('⚠️ [quota-display] User not authenticated, skipping');
+    if (window.DEBUG) console.log('⚠️ [quota-display] User not authenticated, skipping');
     return;
   }
 
@@ -71,7 +78,7 @@ async function initQuotaDisplay() {
     }
   });
 
-  console.log('✅ [quota-display] Initialized successfully');
+  if (window.DEBUG) console.log('✅ [quota-display] Initialized successfully');
 }
 
 // ============================================================================
@@ -161,7 +168,7 @@ function createQuotaWidget() {
   document.getElementById('quota-toggle-btn').addEventListener('click', toggleQuotaPanel);
   document.getElementById('quota-close-btn').addEventListener('click', toggleQuotaPanel);
 
-  console.log('✅ [quota-display] Widget HTML created');
+  if (window.DEBUG) console.log('✅ [quota-display] Widget HTML created');
 }
 
 /**
@@ -190,8 +197,14 @@ function toggleQuotaPanel() {
  * Fetch quota from Cloud Function and update UI
  */
 async function fetchAndUpdateQuota() {
+  // 🚀 PERF: Skip API calls when tab is hidden (saves bandwidth)
+  if (!isPageVisible) {
+    if (window.DEBUG) console.log('📊 [quota-display] Skipping fetch - tab hidden');
+    return;
+  }
+
   try {
-    console.log('📊 [quota-display] Fetching quota...');
+    if (window.DEBUG) console.log('📊 [quota-display] Fetching quota...');
 
     // Get werkstattId from global
     const werkstattId = window.werkstattId || 'mosbach';
@@ -206,7 +219,7 @@ async function fetchAndUpdateQuota() {
 
     const quota = result.data;
 
-    console.log('✅ [quota-display] Quota fetched:', quota);
+    if (window.DEBUG) console.log('✅ [quota-display] Quota fetched:', quota);
 
     // Update UI
     updateQuotaUI(quota);
@@ -446,4 +459,4 @@ if (document.readyState === 'loading') {
   }
 }
 
-console.log('✅ [quota-display] Script loaded');
+if (window.DEBUG) console.log('✅ [quota-display] Script loaded');

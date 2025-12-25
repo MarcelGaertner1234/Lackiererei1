@@ -19,12 +19,27 @@ const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;
 
-// Statische Assets die IMMER gecacht werden sollen
-// ✅ Relative Pfade für GitHub Pages Compatibility
-const STATIC_ASSETS = [
+// 🚀 PERF: CORE_ASSETS - Minimal für schnelle SW-Installation
+// Nur essenzielle Dateien für Offline-Funktionalität
+const CORE_ASSETS = [
     './',
     './index.html',
     './annahme.html',
+    './offline.html', // Fallback-Seite
+
+    // Critical CSS
+    './design-system.css',
+    './components.css',
+    './mobile-first.css',
+
+    // Core JS
+    './firebase-config.js',
+    './js/auth-manager.js'
+];
+
+// 🚀 PERF: LAZY_ASSETS - Werden bei Bedarf gecacht (Runtime Caching)
+// Diese Dateien werden erst gecacht wenn sie angefordert werden
+const LAZY_ASSETS = [
     './abnahme.html',
     './liste.html',
     './kanban.html',
@@ -35,42 +50,35 @@ const STATIC_ASSETS = [
     './admin-dashboard.html',
     './mitarbeiter-verwaltung.html',
     './dienstplan.html',
-    './offline.html', // Fallback-Seite
 
-    // Steuerberater Dashboard (🆕 2025-11-18 - Service Worker Cache Fix)
+    // Steuerberater Dashboard
     './steuerberater-bilanz.html',
     './steuerberater-statistiken.html',
     './steuerberater-kosten.html',
     './steuerberater-export.html',
 
-    // CSS Files (Root)
-    './design-system.css',
-    './components.css',
+    // Non-critical CSS
     './animations.css',
-    './mobile-first.css',
     './liquid-glass.css',
     './mobile-responsive.css',
     './global-chat-notifications.css',
-
-    // CSS Files (css/ Verzeichnis)
     './css/ai-chat-widget.css',
 
-    // JavaScript Files (Root)
-    './firebase-config.js',
+    // Non-critical JS
     './error-handler.js',
     './storage-monitor.js',
     './image-optimizer.js',
     './dark-mode-toggle.js',
     './global-chat-notifications.js',
-
-    // JavaScript Files (js/ Verzeichnis)
-    './js/auth-manager.js',
     './js/settings-manager.js',
     './js/ai-agent-tools.js',
     './js/app-events.js',
     './js/ai-chat-widget.js',
     './js/ai-agent-engine.js'
 ];
+
+// Legacy: Combined for backward compatibility
+const STATIC_ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
 
 // Firebase SDK URLs (extern, sollen gecacht werden)
 const FIREBASE_SDK_URLS = [
@@ -90,12 +98,12 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         (async () => {
             try {
-                // Static Assets Cache
+                // 🚀 PERF: Nur CORE_ASSETS beim Install cachen (schnellere Installation)
                 const staticCache = await caches.open(CACHE_NAME);
-                console.log('[SW] Caching static assets...');
+                console.log('[SW] Caching core assets only (lazy assets cached on demand)...');
 
-                // Cache Assets nacheinander (um Fehler einzeln zu behandeln)
-                for (const asset of STATIC_ASSETS) {
+                // Cache nur Core Assets beim Install
+                for (const asset of CORE_ASSETS) {
                     try {
                         await staticCache.add(asset);
                     } catch (error) {

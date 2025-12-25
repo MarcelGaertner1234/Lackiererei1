@@ -211,13 +211,14 @@ function animateValue(obj, start, end, duration, prefix = '', suffix = '') {
         const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
 
         const current = Math.floor(easeProgress * (end - start) + start);
-        obj.innerHTML = `${prefix}${current}${suffix}`;
+        // 🚀 PERF: textContent statt innerHTML (weniger Layout-Thrashing)
+        obj.textContent = `${prefix}${current}${suffix}`;
 
         if (progress < 1) {
             window.requestAnimationFrame(step);
         } else {
             // Ensure final value is exact
-            obj.innerHTML = `${prefix}${end}${suffix}`;
+            obj.textContent = `${prefix}${end}${suffix}`;
         }
     };
     window.requestAnimationFrame(step);
