@@ -4,16 +4,25 @@
  */
 
 // ============================================
-// NAVIGATION - Sticky Header
+// NAVIGATION - Sticky Header (with Throttle)
 // ============================================
+// 🚀 PERF: Throttled scroll handler (100ms) - prevents 60 events/sec
+let scrollThrottleTimeout = null;
+const nav = document.getElementById('navigation');
+
 window.addEventListener('scroll', () => {
-    const nav = document.getElementById('navigation');
-    if (window.scrollY > 50) {
-        nav.classList.add('scrolled');
-    } else {
-        nav.classList.remove('scrolled');
-    }
-});
+    if (scrollThrottleTimeout) return;
+    scrollThrottleTimeout = setTimeout(() => {
+        scrollThrottleTimeout = null;
+        if (nav) {
+            if (window.scrollY > 50) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        }
+    }, 100);
+}, { passive: true });
 
 // ============================================
 // MOBILE MENU - Toggle
@@ -101,8 +110,6 @@ function handleDemoForm(event) {
         company: formData.get('company')
     };
 
-    console.log('Demo Request:', data);
-
     // Show success message
     alert(`Vielen Dank, ${data.name}! Wir melden uns in Kürze bei Ihnen.`);
 
@@ -140,8 +147,6 @@ document.addEventListener('keydown', (e) => {
 // INITIALIZE - On Page Load
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('✅ VehicleFlow Landing Page loaded');
-
     // Initialize Feather Icons
     if (typeof feather !== 'undefined') {
         feather.replace();
@@ -245,10 +250,7 @@ if ('IntersectionObserver' in window) {
 // ANALYTICS - Track Button Clicks (Optional)
 // ============================================
 function trackEvent(category, action, label) {
-    console.log('Analytics Event:', { category, action, label });
-
     // TODO: Integrate with Google Analytics or similar
-    // Example:
     // if (typeof ga !== 'undefined') {
     //     ga('send', 'event', category, action, label);
     // }

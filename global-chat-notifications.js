@@ -37,7 +37,7 @@
     function initChatNotifications() {
         // Prüfe ob Firebase verfügbar ist
         if (typeof firebase === 'undefined' || !firebase.apps.length) {
-            console.warn('⚠️ Firebase nicht verfügbar - Chat-Notifications deaktiviert');
+            if (window.DEBUG) console.warn('⚠️ Firebase nicht verfügbar - Chat-Notifications deaktiviert');
             return;
         }
 
@@ -48,8 +48,6 @@
         createFloatingBell();
         createToastContainer();
 
-        console.log('✅ Chat-Notifications initialisiert');
-
         // Warte auf Auth State bevor Listener gestartet werden
         waitForAuthAndStartListeners();
     }
@@ -57,11 +55,9 @@
     function waitForAuthAndStartListeners() {
         // Prüfe ob Auth Manager und User verfügbar sind
         if (window.authManager && window.authManager.getCurrentUser()) {
-            console.log('✅ Auth ready - starte Chat-Listeners');
             loadUnreadCount();
             startFirebaseListener();
         } else {
-            console.log('⏳ Warte auf Auth State...');
             // Warte max 10 Sekunden auf Auth
             let attempts = 0;
             const maxAttempts = 20;
@@ -69,12 +65,11 @@
                 attempts++;
                 if (window.authManager && window.authManager.getCurrentUser()) {
                     clearInterval(checkInterval);
-                    console.log('✅ Auth ready - starte Chat-Listeners');
                     loadUnreadCount();
                     startFirebaseListener();
                 } else if (attempts >= maxAttempts) {
                     clearInterval(checkInterval);
-                    console.warn('⚠️ Auth Timeout - Chat-Listeners nicht gestartet');
+                    if (window.DEBUG) console.warn('⚠️ Auth Timeout - Chat-Listeners nicht gestartet');
                 }
             }, 500);
         }
@@ -123,42 +118,37 @@
             const db = firebase.firestore();
             const lastRead = localStorage.getItem('chat_notifications_last_check') || '0';
 
-            // Alle Anfragen laden
-            const anfrageSnapshot = await window.getCollection('partnerAnfragen').get();
+            // 🚀 PERF: Single collectionGroup query instead of N+1 pattern
+            // Previously: 1 query for all anfragen + N queries for each chat = N+1 queries
+            // Now: 1 collectionGroup query = 1 query total
+            const chatSnapshot = await db.collectionGroup('chat')
+                .where('sender', '==', 'partner')
+                .where('timestamp', '>', lastRead)
+                .limit(100) // Limit to prevent excessive reads
+                .get();
 
-            let totalUnread = 0;
-
-            // Für jede Anfrage ungelesene Nachrichten zählen
-            for (const anfrageDoc of anfrageSnapshot.docs) {
-                try {
-                    const chatSnapshot = await window.getCollection('partnerAnfragen')
-                        .doc(anfrageDoc.id)
-                        .collection('chat')
-                        .where('sender', '==', 'partner')
-                        .where('timestamp', '>', lastRead)
-                        .get();
-
-                    totalUnread += chatSnapshot.size;
-                } catch (error) {
-                    // Fallback ohne timestamp filter
-                    const chatSnapshot = await window.getCollection('partnerAnfragen')
-                        .doc(anfrageDoc.id)
-                        .collection('chat')
-                        .where('sender', '==', 'partner')
-                        .get();
-
-                    const unreadMessages = chatSnapshot.docs.filter(doc =>
-                        doc.data().timestamp > lastRead
-                    );
-
-                    totalUnread += unreadMessages.length;
-                }
-            }
-
-            updateBellBadge(totalUnread);
+            updateBellBadge(chatSnapshot.size);
 
         } catch (error) {
-            console.error('❌ Fehler beim Laden der Unread-Counts:', error);
+            // Fallback: Try without timestamp filter if index missing
+            try {
+                const db = firebase.firestore();
+                const lastRead = localStorage.getItem('chat_notifications_last_check') || '0';
+
+                const chatSnapshot = await db.collectionGroup('chat')
+                    .where('sender', '==', 'partner')
+                    .limit(100)
+                    .get();
+
+                // Client-side filter for timestamp
+                const unreadMessages = chatSnapshot.docs.filter(doc =>
+                    doc.data().timestamp > lastRead
+                );
+
+                updateBellBadge(unreadMessages.length);
+            } catch (fallbackError) {
+                if (window.DEBUG) console.error('❌ Fehler beim Laden der Unread-Counts:', fallbackError);
+            }
         }
     }
 
@@ -184,10 +174,9 @@
     function startFirebaseListener() {
         const db = firebase.firestore();
 
-        console.log('✅ Chat-Notifications: Aktiviert (Firestore Rules deployed)');
-
+        // 🚀 PERF: Register listener in registry to prevent memory leaks
         // Höre auf neue Nachrichten in allen chat Subcollections
-        firebaseListener = db.collectionGroup('chat')
+        const unsubscribe = db.collectionGroup('chat')
             .where('sender', '==', 'partner')
             .orderBy('timestamp', 'desc')
             .limit(10)
@@ -209,9 +198,14 @@
                 lastCheck = new Date().toISOString();
                 localStorage.setItem('chat_notifications_last_check', lastCheck);
             }, (error) => {
-                console.error('❌ Firebase Listener Error:', error);
-                console.error('Falls Permission-Error: Firestore Rules prüfen!');
+                if (window.DEBUG) console.error('❌ Firebase Listener Error:', error);
             });
+
+        // 🚀 PERF: Register listener for proper cleanup on navigation
+        firebaseListener = unsubscribe;
+        if (window.listenerRegistry) {
+            window.listenerRegistry.register(unsubscribe, 'globalChatNotifications');
+        }
     }
 
     async function handleNewMessage(message, anfrageId) {
@@ -239,7 +233,7 @@
                 });
             }
         } catch (error) {
-            console.error('Fehler beim Laden der Anfrage-Details:', error);
+            if (window.DEBUG) console.error('Fehler beim Laden der Anfrage-Details:', error);
         }
     }
 
@@ -323,7 +317,7 @@
         // Optional: Kleiner Benachrichtigungston
         const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGmm98OScSgoKWrHq7qVVEwlEnN/yu2sgBS2Bz/LUijQJF2S17edcSgkOUqTr7a5bGAo9lNrywmsfBSZ8y+/YjTcIDl2x6+ulXRIJQZvf8r1sIQUnfsvw240+CAdjuuvspVUSCj+Y3vLGYSICJnbI8d2ROQ');
         audio.volume = 0.3;
-        audio.play().catch(e => console.log('Sound konnte nicht abgespielt werden:', e));
+        audio.play().catch(() => {});
     }
 
     // ========================================
@@ -353,13 +347,11 @@
 
     // Init when Firebase is ready (via firebaseReady Event)
     window.addEventListener('firebaseReady', () => {
-        console.log('🔔 Global Chat-Notifications: firebaseReady empfangen');
         initChatNotifications();
     });
 
     // Fallback: Falls Firebase bereits initialisiert ist (late load)
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-        console.log('🔔 Global Chat-Notifications: Firebase bereits ready');
         initChatNotifications();
     }
 

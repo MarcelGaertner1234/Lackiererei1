@@ -73,7 +73,9 @@ window.WorkTimer = (function() {
         workType: null,
         materials: [],
         notes: '',
-        autoSaveTimer: null
+        autoSaveTimer: null,
+        displayUpdateRAF: null,  // 🚀 PERF: requestAnimationFrame ID for display updates
+        lastDisplayUpdate: 0     // 🚀 PERF: Throttle display updates to 1/sec
     };
 
     // ========================================
@@ -82,7 +84,7 @@ window.WorkTimer = (function() {
 
     function start(fahrzeugId, schadensCode, workType) {
         if (state.isRunning) {
-            console.warn('Timer laeuft bereits');
+            if (window.DEBUG) console.warn('Timer laeuft bereits');
             return false;
         }
 
@@ -99,8 +101,11 @@ window.WorkTimer = (function() {
         // Auto-Save starten
         state.autoSaveTimer = setInterval(autoSave, CONFIG.autoSaveInterval);
 
+        // 🚀 PERF: Start requestAnimationFrame loop for display updates
+        startDisplayUpdateLoop();
+
         updateUI();
-        console.log('Timer gestartet fuer Fahrzeug:', fahrzeugId);
+        if (window.DEBUG) console.log('Timer gestartet fuer Fahrzeug:', fahrzeugId);
         return true;
     }
 
@@ -140,7 +145,7 @@ window.WorkTimer = (function() {
 
         // Nur speichern wenn Mindestdauer erreicht
         if (durationSeconds < CONFIG.minDuration) {
-            console.warn('Arbeitszeit zu kurz, nicht gespeichert');
+            if (window.DEBUG) console.warn('Arbeitszeit zu kurz, nicht gespeichert');
             resetState();
             return null;
         }
@@ -188,6 +193,8 @@ window.WorkTimer = (function() {
             clearInterval(state.autoSaveTimer);
             state.autoSaveTimer = null;
         }
+        // 🚀 PERF: Stop requestAnimationFrame loop
+        stopDisplayUpdateLoop();
     }
 
     // ========================================
@@ -203,10 +210,10 @@ window.WorkTimer = (function() {
                 : `arbeitszeiten_${window.werkstattId || 'default'}`;
 
             const docRef = await db.collection(collectionName).add(workData);
-            console.log('Arbeitszeit gespeichert:', docRef.id);
+            if (window.DEBUG) console.log('Arbeitszeit gespeichert:', docRef.id);
             return docRef.id;
         } catch (error) {
-            console.error('Fehler beim Speichern der Arbeitszeit:', error);
+            if (window.DEBUG) console.error('Fehler beim Speichern der Arbeitszeit:', error);
             // Fallback: LocalStorage
             saveToLocalStorage(workData);
             return null;
@@ -217,9 +224,9 @@ window.WorkTimer = (function() {
         try {
             const key = `worktime_${Date.now()}`;
             localStorage.setItem(key, JSON.stringify(workData));
-            console.log('Arbeitszeit lokal gespeichert:', key);
+            if (window.DEBUG) console.log('Arbeitszeit lokal gespeichert:', key);
         } catch (e) {
-            console.error('LocalStorage Fehler:', e);
+            if (window.DEBUG) console.error('LocalStorage Fehler:', e);
         }
     }
 
@@ -244,12 +251,14 @@ window.WorkTimer = (function() {
                     Object.assign(state, snapshot);
                     if (state.isRunning) {
                         state.autoSaveTimer = setInterval(autoSave, CONFIG.autoSaveInterval);
+                        // 🚀 PERF: Restart display update loop
+                        startDisplayUpdateLoop();
                     }
                     return true;
                 }
             }
         } catch (e) {
-            console.error('Fehler beim Wiederherstellen:', e);
+            if (window.DEBUG) console.error('Fehler beim Wiederherstellen:', e);
         }
         return false;
     }
@@ -306,7 +315,7 @@ window.WorkTimer = (function() {
 
     function addMaterial(materialType, amount) {
         if (!MATERIALS[materialType]) {
-            console.warn('Unbekannter Materialtyp:', materialType);
+            if (window.DEBUG) console.warn('Unbekannter Materialtyp:', materialType);
             return false;
         }
 
@@ -339,7 +348,7 @@ window.WorkTimer = (function() {
     function createTimerWidget(containerId) {
         const container = document.getElementById(containerId);
         if (!container) {
-            console.error('Container nicht gefunden:', containerId);
+            if (window.DEBUG) console.error('Container nicht gefunden:', containerId);
             return null;
         }
 
@@ -406,10 +415,38 @@ window.WorkTimer = (function() {
             document.head.appendChild(styles);
         }
 
-        // UI-Update-Loop starten
-        setInterval(updateTimerDisplay, 1000);
+        // 🚀 PERF: Removed setInterval - using requestAnimationFrame instead
+        // Display updates are now triggered only when timer is running via startDisplayUpdateLoop()
 
         return container.querySelector('#workTimerWidget');
+    }
+
+    // 🚀 PERF: requestAnimationFrame-based display update loop
+    function startDisplayUpdateLoop() {
+        // Cancel any existing loop
+        stopDisplayUpdateLoop();
+
+        function loop(timestamp) {
+            // Throttle to ~1 update per second (1000ms)
+            if (timestamp - state.lastDisplayUpdate >= 1000) {
+                state.lastDisplayUpdate = timestamp;
+                updateTimerDisplay();
+            }
+
+            // Continue loop only if timer is running
+            if (state.isRunning) {
+                state.displayUpdateRAF = requestAnimationFrame(loop);
+            }
+        }
+
+        state.displayUpdateRAF = requestAnimationFrame(loop);
+    }
+
+    function stopDisplayUpdateLoop() {
+        if (state.displayUpdateRAF) {
+            cancelAnimationFrame(state.displayUpdateRAF);
+            state.displayUpdateRAF = null;
+        }
     }
 
     function getTimerStyles() {
@@ -836,7 +873,7 @@ window.WorkTimer = (function() {
 
             return stats;
         } catch (error) {
-            console.error('Fehler beim Laden der Statistiken:', error);
+            if (window.DEBUG) console.error('Fehler beim Laden der Statistiken:', error);
             return null;
         }
     }
@@ -889,7 +926,7 @@ window.WorkTimer = (function() {
 // Bei Seitenlade pruefen ob Timer wiederhergestellt werden soll
 document.addEventListener('DOMContentLoaded', function() {
     if (WorkTimer.restoreState()) {
-        console.log('Timer-Status wiederhergestellt');
+        if (window.DEBUG) console.log('Timer-Status wiederhergestellt');
         WorkTimer.updateUI();
     }
 });

@@ -35,7 +35,7 @@ class StorageMonitor {
       // Fallback: LocalStorage-Size schätzen
       return this.estimateLocalStorageSize();
     } catch (error) {
-      console.error('❌ Storage-Berechnung fehlgeschlagen:', error);
+      if (window.DEBUG) console.error('❌ Storage-Berechnung fehlgeschlagen:', error);
       return this.estimateLocalStorageSize();
     }
   }
@@ -97,8 +97,6 @@ class StorageMonitor {
    * Storage überwachen starten
    */
   startMonitoring() {
-    console.log('📊 Storage-Monitoring gestartet');
-
     // Initial check
     this.checkStorage();
 
@@ -115,7 +113,6 @@ class StorageMonitor {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log('📊 Storage-Monitoring gestoppt');
     }
   }
 
@@ -124,9 +121,6 @@ class StorageMonitor {
    */
   async checkStorage() {
     const usage = await this.getStorageUsage();
-    const formatted = this.formatStorageInfo(usage);
-
-    console.log(`📊 Storage: ${formatted.used} / ${formatted.total} (${formatted.percentage})`);
 
     // Warning-Level prüfen
     if (usage.percentage >= this.criticalThreshold) {
@@ -219,17 +213,14 @@ class StorageMonitor {
           if (fahrzeug && fahrzeug.id < cutoffDate) {
             localStorage.removeItem(key);
             deletedCount++;
-            console.log(`🗑️ Alte Fotos gelöscht: ${key}`);
           }
         } catch (err) {
-          console.warn(`⚠️ Fehler beim Löschen von ${key}:`, err);
+          // Silent fail for cleanup
         }
       }
 
-      console.log(`✅ ${deletedCount} alte Foto-Collections gelöscht`);
       return deletedCount;
     } catch (error) {
-      console.error('❌ Cleanup fehlgeschlagen:', error);
       return 0;
     }
   }
@@ -255,7 +246,6 @@ class StorageMonitor {
       const fahrzeuge = JSON.parse(localStorage.getItem('fahrzeuge') || '[]');
       return fahrzeuge.find(f => String(f.id) === String(fahrzeugId)); // ✅ FIX 2025-11-17: Type-safe ID comparison
     } catch (error) {
-      console.error('Fehler beim Laden des Fahrzeugs:', error);
       return null;
     }
   }
@@ -277,7 +267,6 @@ class StorageMonitor {
       );
 
       if (toArchive.length === 0) {
-        console.log('ℹ️ Keine Fahrzeuge zum Archivieren');
         return 0;
       }
 
@@ -298,10 +287,8 @@ class StorageMonitor {
         localStorage.removeItem(fotoKey); // Fotos löschen (Archiv ohne Fotos)
       }
 
-      console.log(`📦 ${toArchive.length} Fahrzeuge archiviert`);
       return toArchive.length;
     } catch (error) {
-      console.error('❌ Archivierung fehlgeschlagen:', error);
       return 0;
     }
   }
@@ -310,11 +297,9 @@ class StorageMonitor {
    * Storage optimieren (Komprimierung)
    */
   async optimizeStorage() {
-    console.log('🔧 Storage-Optimierung gestartet...');
-
     const tasks = [
-      { name: 'Alte Fotos löschen (>30 Tage)', fn: () => this.cleanupOldPhotos(30) },
-      { name: 'Fahrzeuge archivieren (>90 Tage)', fn: () => this.archiveCompletedVehicles(90) }
+      { name: 'Alte Fotos löschen', fn: () => this.cleanupOldPhotos(30) },
+      { name: 'Fahrzeuge archivieren', fn: () => this.archiveCompletedVehicles(90) }
     ];
 
     let totalSaved = 0;
@@ -322,19 +307,15 @@ class StorageMonitor {
     for (const task of tasks) {
       try {
         const result = await task.fn();
-        console.log(`✅ ${task.name}: ${result} Einträge`);
         totalSaved += result;
       } catch (error) {
-        console.error(`❌ ${task.name} fehlgeschlagen:`, error);
+        // Silent fail
       }
     }
 
     // Finales Storage-Check
     const usage = await this.getStorageUsage();
     const formatted = this.formatStorageInfo(usage);
-
-    console.log(`✅ Storage-Optimierung abgeschlossen`);
-    console.log(`📊 Neuer Stand: ${formatted.used} / ${formatted.total} (${formatted.percentage})`);
 
     return {
       itemsProcessed: totalSaved,
@@ -352,7 +333,6 @@ class StorageMonitor {
   createStorageIndicator(containerId = 'storage-indicator') {
     const container = document.getElementById(containerId);
     if (!container) {
-      console.warn('⚠️ Storage-Indicator Container nicht gefunden');
       return;
     }
 
@@ -444,5 +424,3 @@ window.addEventListener('load', () => {
 
 // Export
 window.storageMonitor = storageMonitor;
-
-console.log('📊 Storage Monitor geladen');

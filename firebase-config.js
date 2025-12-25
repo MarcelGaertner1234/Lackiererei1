@@ -1255,6 +1255,22 @@ document.addEventListener('DOMContentLoaded', () => {
       storage = firebase.storage();  // ✅ FIX: Use firebase.storage() instead of firebaseApp.storage()
       auth = firebase.auth();  // Initialize Auth
 
+      // 🚀 PERF: Enable offline persistence for faster loads and offline support
+      try {
+        db.enablePersistence({ synchronizeTabs: true })
+          .catch((err) => {
+            if (err.code === 'failed-precondition') {
+              // Multiple tabs open, persistence can only be enabled in one tab at a time
+              if (window.DEBUG) console.warn('⚠️ Persistence failed: Multiple tabs open');
+            } else if (err.code === 'unimplemented') {
+              // Browser doesn't support persistence
+              if (window.DEBUG) console.warn('⚠️ Persistence not supported by browser');
+            }
+          });
+      } catch (e) {
+        // Silent fail - persistence is optional
+      }
+
       // Initialize Functions with error handling (SDK might not be loaded)
       // 🆕 PHASE 2.4: Set region to europe-west3 (DSGVO compliance)
       try {

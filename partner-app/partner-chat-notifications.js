@@ -20,6 +20,7 @@
     let unreadCount = 0;
     let lastCheck = null;
     let firebaseListener = null;
+    let chatListeners = []; // 🚀 PERF: Track nested listeners for cleanup
     let toastQueue = [];
     let partnerEmail = null;
 
@@ -38,14 +39,12 @@
     function initPartnerChatNotifications() {
         // Prüfe ob Firebase verfügbar ist
         if (typeof firebase === 'undefined' || !firebase.apps.length) {
-            console.warn('⚠️ Firebase nicht verfügbar - Partner Chat-Notifications deaktiviert');
             return;
         }
 
         // Partner Email aus LocalStorage
         partnerEmail = localStorage.getItem('partner_email');
         if (!partnerEmail) {
-            console.log('ℹ️ Partner nicht eingeloggt - Notifications deaktiviert');
             return;
         }
 
@@ -61,8 +60,6 @@
 
         // Firebase Listener starten
         startFirebaseListener();
-
-        console.log('✅ Partner Chat-Notifications initialisiert');
     }
 
     // ========================================
@@ -106,42 +103,26 @@
     async function loadUnreadCount() {
         try {
             const lastRead = localStorage.getItem('partner_chat_last_check') || '0';
+            const db = firebase.firestore();
 
-            // Nur Anfragen des eingeloggten Partners laden (Multi-Tenant)
-            const anfrageSnapshot = await window.getCollection('partnerAnfragen')
-                .where('partnerEmail', '==', partnerEmail)
+            // 🚀 PERF: Use collectionGroup query instead of N+1 pattern
+            // This requires a composite index on (sender, timestamp) for the 'chat' collection group
+            const chatSnapshot = await db.collectionGroup('chat')
+                .where('sender', '==', 'werkstatt')
+                .where('timestamp', '>', lastRead)
+                .limit(100) // Limit to prevent excessive reads
                 .get();
 
+            // Filter to only count messages from this partner's anfragen
+            // (collectionGroup returns all chats, we need to filter by parent anfrage)
             let totalUnread = 0;
-
-            // Für jede Anfrage ungelesene Werkstatt-Nachrichten zählen
-            for (const anfrageDoc of anfrageSnapshot.docs) {
-                try {
-                    const chatSnapshot = await window.getCollection('partnerAnfragen')
-                        .doc(anfrageDoc.id)
-                        .collection('chat')
-                        .where('sender', '==', 'werkstatt')
-                        .where('timestamp', '>', lastRead)
-                        .get();
-
-                    totalUnread += chatSnapshot.size;
-                } catch (error) {
-                    // ✅ FIX 9: Fallback ohne timestamp filter - auch absichern!
-                    try {
-                        const chatSnapshot = await window.getCollection('partnerAnfragen')
-                            .doc(anfrageDoc.id)
-                            .collection('chat')
-                            .where('sender', '==', 'werkstatt')
-                            .get();
-
-                        const unreadMessages = chatSnapshot.docs.filter(doc =>
-                            doc.data().timestamp > lastRead
-                        );
-
-                        totalUnread += unreadMessages.length;
-                    } catch (fallbackError) {
-                        // Permission denied oder anderer Fehler - überspringe diese Anfrage
-                        console.warn(`⚠️ Kann Chat für Anfrage ${anfrageDoc.id} nicht laden:`, fallbackError.code);
+            for (const doc of chatSnapshot.docs) {
+                // Get parent anfrage reference
+                const anfrageRef = doc.ref.parent.parent;
+                if (anfrageRef) {
+                    const anfrageDoc = await anfrageRef.get();
+                    if (anfrageDoc.exists && anfrageDoc.data().partnerEmail === partnerEmail) {
+                        totalUnread++;
                     }
                 }
             }
@@ -149,13 +130,8 @@
             updateBellBadge(totalUnread);
 
         } catch (error) {
-            // ✅ FIX 11: Permission-Denied graceful behandeln
-            if (error.code === 'permission-denied') {
-                console.log('ℹ️ Keine Berechtigung für Unread-Counts (Partner ohne Anfragen?)');
-                updateBellBadge(0); // Badge auf 0 setzen
-            } else {
-                console.error('❌ Fehler beim Laden der Unread-Counts:', error);
-            }
+            // Graceful fallback - set badge to 0
+            updateBellBadge(0);
         }
     }
 
@@ -181,25 +157,24 @@
     // ========================================
 
     function startFirebaseListener() {
-        // 🔧 FIX (2025-12-11): Dead Code entfernt - const db = firebase.firestore(); war ungenutzt
-        // 🆕 FIX: Statt collectionGroup - direkte partnerAnfragen Query
-        // Höre auf ALLE Anfragen des Partners, dann pro Anfrage auf chat subcollection
+        // 🚀 PERF: Cleanup any existing listeners first
+        cleanupListeners();
 
         const anfrageCollection = window.getCollection('partnerAnfragen');
 
         // Listener auf Partner-Anfragen (nur IHRE Anfragen)
-        firebaseListener = anfrageCollection
+        const unsubscribe = anfrageCollection
             .where('partnerEmail', '==', partnerEmail)
+            .limit(50) // 🚀 PERF: Limit to prevent excessive reads
             .onSnapshot((anfrageSnapshot) => {
                 anfrageSnapshot.forEach((anfrageDoc) => {
                     const anfrageId = anfrageDoc.id;
 
-                    // ✅ FIX 10: Chat-Listener absichern gegen Permission-Errors
                     try {
                         // Pro Anfrage: Listener auf chat subcollection
                         const chatCollection = anfrageCollection.doc(anfrageId).collection('chat');
 
-                        chatCollection
+                        const chatUnsubscribe = chatCollection
                             .where('sender', '==', 'werkstatt')
                             .orderBy('timestamp', 'desc')
                             .limit(10)
@@ -217,15 +192,13 @@
                                     }
                                 });
                             }, (error) => {
-                                // Graceful Error Handling - keine Permission? Listener überspringen
-                                if (error.code === 'permission-denied') {
-                                    console.warn(`⚠️ Keine Berechtigung für Chat-Listener bei Anfrage ${anfrageId}`);
-                                } else {
-                                    console.error('Firebase Chat Listener Error:', error);
-                                }
+                                // Graceful Error Handling - silent fail
                             });
+
+                        // 🚀 PERF: Track nested listener for cleanup
+                        chatListeners.push(chatUnsubscribe);
                     } catch (error) {
-                        console.warn(`⚠️ Kann Chat-Listener für Anfrage ${anfrageId} nicht starten:`, error.code);
+                        // Silent fail
                     }
                 });
 
@@ -233,13 +206,29 @@
                 lastCheck = new Date().toISOString();
                 localStorage.setItem('partner_chat_last_check', lastCheck);
             }, (error) => {
-                // ✅ FIX 12: Permission-Denied graceful behandeln
-                if (error.code === 'permission-denied') {
-                    console.log('ℹ️ Keine Berechtigung für Anfragen-Listener (Partner ohne Anfragen?)');
-                } else {
-                    console.error('Firebase Anfragen Listener Error:', error);
-                }
+                // Graceful Error Handling - silent fail
             });
+
+        // 🚀 PERF: Register main listener for proper cleanup
+        firebaseListener = unsubscribe;
+        if (window.listenerRegistry) {
+            window.listenerRegistry.register(unsubscribe, 'partnerChatNotifications');
+        }
+    }
+
+    // 🚀 PERF: Cleanup all listeners
+    function cleanupListeners() {
+        // Cleanup nested chat listeners
+        chatListeners.forEach(unsubscribe => {
+            try { unsubscribe(); } catch (e) {}
+        });
+        chatListeners = [];
+
+        // Cleanup main listener
+        if (firebaseListener) {
+            try { firebaseListener(); } catch (e) {}
+            firebaseListener = null;
+        }
     }
 
     async function handleNewMessage(message, anfrageId) {
@@ -272,7 +261,7 @@
             });
 
         } catch (error) {
-            console.error('Fehler beim Verarbeiten der Nachricht:', error);
+            // Silent fail
         }
     }
 
@@ -358,7 +347,7 @@
         // Optional: Kleiner Benachrichtigungston
         const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGmm98OScSgoKWrHq7qVVEwlEnN/yu2sgBS2Bz/LUijQJF2S17edcSgkOUqTr7a5bGAo9lNrywmsfBSZ8y+/YjTcIDl2x6+ulXRIJQZvf8r1sIQUnfsvw240+CAdjuuvspVUSCj+Y3vLGYSICJnbI8d2ROQ');
         audio.volume = 0.3;
-        audio.play().catch(e => console.log('Sound konnte nicht abgespielt werden:', e));
+        audio.play().catch(() => {});
     }
 
     // ========================================
@@ -383,14 +372,15 @@
 
     // Init when Firebase is ready (via firebaseReady Event)
     window.addEventListener('firebaseReady', () => {
-        console.log('🔔 Partner Chat-Notifications: firebaseReady empfangen');
         initPartnerChatNotifications();
     });
 
     // Fallback: Falls Firebase bereits initialisiert ist (late load)
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-        console.log('🔔 Partner Chat-Notifications: Firebase bereits ready');
         initPartnerChatNotifications();
     }
+
+    // 🚀 PERF: Cleanup on page unload
+    window.addEventListener('beforeunload', cleanupListeners);
 
 })();

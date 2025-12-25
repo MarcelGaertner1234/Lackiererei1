@@ -10,8 +10,8 @@ class FirestoreListenerRegistry {
     this.domListeners = new Map(); // DOM EventListeners
     this.listenerCounter = 0;
     this.domListenerCounter = 0;
-    console.log('🎧 Firestore Listener Registry initialized');
-    console.log('🖱️ DOM Listener Registry initialized');
+    // 🚀 PERF: Debug logs only when DEBUG enabled
+    if (window.DEBUG) console.log('🎧 Firestore Listener Registry initialized');
   }
 
   /**
@@ -30,7 +30,7 @@ class FirestoreListenerRegistry {
       registeredAt: new Date().toISOString()
     });
 
-    console.log(`🎧 Listener registered: ${listenerId} (${description})`);
+    if (window.DEBUG) console.log(`🎧 Listener registered: ${listenerId} (${description})`);
     return listenerId;
   }
 
@@ -43,10 +43,10 @@ class FirestoreListenerRegistry {
     if (listener) {
       listener.unsubscribe();
       this.listeners.delete(listenerId);
-      console.log(`🔇 Listener unregistered: ${listenerId}`);
+      if (window.DEBUG) console.log(`🔇 Listener unregistered: ${listenerId}`);
       return true;
     }
-    console.warn(`⚠️ Listener not found: ${listenerId}`);
+    if (window.DEBUG) console.warn(`⚠️ Listener not found: ${listenerId}`);
     return false;
   }
 
@@ -73,7 +73,7 @@ class FirestoreListenerRegistry {
     // Actually add the event listener
     element.addEventListener(eventName, handler);
 
-    console.log(`🖱️ DOM Listener registered: ${listenerId} (${eventName} on ${description})`);
+    if (window.DEBUG) console.log(`🖱️ DOM Listener registered: ${listenerId} (${eventName} on ${description})`);
     return listenerId;
   }
 
@@ -86,10 +86,10 @@ class FirestoreListenerRegistry {
     if (listener) {
       listener.element.removeEventListener(listener.eventName, listener.handler);
       this.domListeners.delete(listenerId);
-      console.log(`🔇 DOM Listener unregistered: ${listenerId}`);
+      if (window.DEBUG) console.log(`🔇 DOM Listener unregistered: ${listenerId}`);
       return true;
     }
-    console.warn(`⚠️ DOM Listener not found: ${listenerId}`);
+    if (window.DEBUG) console.warn(`⚠️ DOM Listener not found: ${listenerId}`);
     return false;
   }
 
@@ -97,13 +97,12 @@ class FirestoreListenerRegistry {
    * Unregister all listeners (call before page navigation)
    */
   unregisterAll() {
-    console.log(`🔇 Unregistering ${this.listeners.size} Firestore listeners + ${this.domListeners.size} DOM listeners...`);
+    if (window.DEBUG) console.log(`🔇 Unregistering ${this.listeners.size} Firestore + ${this.domListeners.size} DOM listeners...`);
 
     // Clean up Firestore listeners
     this.listeners.forEach((listener, id) => {
       try {
         listener.unsubscribe();
-        console.log(`✅ Unsubscribed Firestore: ${listener.description}`);
       } catch (error) {
         console.error(`❌ Error unsubscribing ${id}:`, error);
       }
@@ -113,7 +112,6 @@ class FirestoreListenerRegistry {
     this.domListeners.forEach((listener, id) => {
       try {
         listener.element.removeEventListener(listener.eventName, listener.handler);
-        console.log(`✅ Removed DOM listener: ${listener.description}`);
       } catch (error) {
         console.error(`❌ Error removing DOM listener ${id}:`, error);
       }
@@ -121,7 +119,6 @@ class FirestoreListenerRegistry {
 
     this.listeners.clear();
     this.domListeners.clear();
-    console.log('✅ All listeners cleaned up');
   }
 
   /**
@@ -153,6 +150,7 @@ class FirestoreListenerRegistry {
    * Log active listeners (debugging)
    */
   logActiveListeners() {
+    if (!window.DEBUG) return;
     const active = this.getActiveListeners();
     console.log(`🎧 Active listeners: ${active.length} (${this.listeners.size} Firestore + ${this.domListeners.size} DOM)`);
     active.forEach(listener => {
@@ -180,12 +178,12 @@ let isNavigating = false;
 function safeNavigate(url, forceCleanup = true) {
   // 🔧 FIX KB6 (2025-12-12): Double-click prevention
   if (isNavigating) {
-    console.warn(`⚠️ safeNavigate: Navigation already in progress, ignoring duplicate call to ${url}`);
+    if (window.DEBUG) console.warn(`⚠️ safeNavigate: Navigation already in progress, ignoring duplicate call to ${url}`);
     return;
   }
   isNavigating = true;
 
-  console.log(`🚀 Safe navigation to: ${url}`);
+  if (window.DEBUG) console.log(`🚀 Safe navigation to: ${url}`);
 
   // Cleanup all Firestore listeners
   if (window.listenerRegistry && forceCleanup) {
@@ -220,7 +218,6 @@ function confirmAndNavigate(url, message = 'Diese Seite verlassen?') {
 
 window.addEventListener('beforeunload', () => {
   if (window.listenerRegistry) {
-    console.log('🔄 Page unload detected - cleaning up listeners');
     window.listenerRegistry.unregisterAll();
   }
 });
@@ -233,18 +230,8 @@ window.listenerRegistry = new FirestoreListenerRegistry();
 window.safeNavigate = safeNavigate;
 window.confirmAndNavigate = confirmAndNavigate;
 
-console.log('✅ Listener Registry loaded');
-console.log('📖 Usage:');
-console.log('  // Firestore listeners:');
-console.log('  const unsubscribe = db.collection("foo").onSnapshot(...);');
-console.log('  const listenerId = window.listenerRegistry.register(unsubscribe, "Foo listener");');
-console.log('  ');
-console.log('  // DOM listeners:');
-console.log('  const element = document.getElementById("myButton");');
-console.log('  const handler = () => console.log("clicked!");');
-console.log('  const domId = window.listenerRegistry.registerDOM(element, "click", handler, "My Button");');
-console.log('  ');
-console.log('  // Cleanup:');
-console.log('  // window.listenerRegistry.unregister(listenerId);');
-console.log('  // window.listenerRegistry.unregisterDOM(domId);');
-console.log('  // window.safeNavigate("page.html"); // Auto-cleanup all listeners');
+// 🚀 PERF: Usage instructions only logged in DEBUG mode
+if (window.DEBUG) {
+  console.log('✅ Listener Registry loaded');
+  console.log('📖 Usage: window.listenerRegistry.register(unsubscribe, "description")');
+}
