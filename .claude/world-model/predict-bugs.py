@@ -12,11 +12,75 @@ import json
 import sys
 import re
 import os
+import fnmatch
 from pathlib import Path
 from collections import defaultdict
 
 WORLD_MODEL_DIR = Path(__file__).parent
 PROJECT_ROOT = WORLD_MODEL_DIR.parent.parent
+
+# ============================================================================
+# EXCLUDE-LISTEN - Diese Dateien/Verzeichnisse werden NICHT gescannt
+# ============================================================================
+EXCLUDE_DIRS = [
+    'node_modules',
+    '.claude',
+    'libs/',
+    'functions/',      # Server-Side Code (Node.js) - kein window.getCollection()
+    'tests/',          # Test-Code nutzt Admin SDK
+    'backups/',        # Alte Backup-Dateien
+    '.git-backup',
+]
+
+EXCLUDE_FILE_PATTERNS = [
+    'migrate-*.html',   # Einmalige Migration Scripts
+    '*backup*.html',    # Backup-Dateien
+    '* 2.html',         # Duplikate
+    '* 2.js',
+    '* 3.json',
+]
+
+# ============================================================================
+# GLOBALE COLLECTIONS - Diese dürfen db.collection() verwenden
+# ============================================================================
+GLOBAL_COLLECTIONS = [
+    'users',
+    'settings',
+    'partners',
+    'partner',           # Singular auch erlaubt
+    'partnerAutoLoginTokens',
+    'email_logs',
+    'audit_logs',
+    'systemLogs',
+    'openai_usage',
+    'whisper_logs',
+    'ai_logs',
+    'ersatzteile',       # Globale Ersatzteile-Datenbank
+    'leihfahrzeugPool',  # Globaler Pool
+    'leihfahrzeugAnfragen',  # Globale Anfragen
+]
+
+# ============================================================================
+# DATEI-SPEZIFISCHE AUSNAHMEN - Diese Dateien haben spezielle Gründe
+# ============================================================================
+SPECIAL_FILE_EXCEPTIONS = [
+    'debug-urlaubsanfragen.js',  # Debug-Script für Entwicklung
+    'check_request.js',           # Debug-Script
+    'scripts/',                   # Alle Scripts im scripts/ Ordner
+]
+
+# ============================================================================
+# KOMMENTAR-PATTERNS - Zeilen mit diesen Kommentaren werden ignoriert
+# ============================================================================
+IGNORE_COMMENT_PATTERNS = [
+    r'//\s*GLOBAL\s*collection',     # // GLOBAL collection
+    r'//\s*🔧\s*FIX',                 # // 🔧 FIX (bereits gefixt)
+    r'//\s*OK:',                       # // OK: ...
+    r'//\s*CORRECT',                   # // CORRECT
+    r'Fallback',                       # Fallback-Queries für alte Daten
+    r'alte\s*Migration',               # Migration-Fallbacks
+    r'FALLBACK',                       # FALLBACK comments
+]
 
 # Bug-Patterns basierend auf historischen Learnings
 BUG_PATTERNS = {
@@ -25,13 +89,22 @@ BUG_PATTERNS = {
         'exclude_files': ['firebase-config.js'],
         'severity': 'CRITICAL',
         'message': 'Direkter db.collection() Zugriff - Multi-Tenant Violation!',
-        'fix': 'Ersetze durch window.getCollection()'
+        'fix': 'Ersetze durch window.getCollection()',
+        'check_global_collections': True,  # Prüfe ob globale Collection
     },
     'missing_await_firebase': {
         'pattern': r'(?<!await\s)window\.firebaseInitialized',
         'severity': 'HIGH',
         'message': 'Fehlendes await vor firebaseInitialized',
-        'fix': 'Füge await hinzu: await window.firebaseInitialized'
+        'fix': 'Füge await hinzu: await window.firebaseInitialized',
+        'exclude_line_patterns': [
+            r'if\s*\(',           # if-Conditions sind OK
+            r'while\s*\(',        # while-Loops sind OK
+            r'&&',                # Boolean-Checks sind OK
+            r'\|\|',              # Boolean-Checks sind OK
+            r'!window\.firebase', # Negation-Checks sind OK
+            r'//.*firebase',      # Kommentare ignorieren
+        ]
     },
     'unsafe_radio_button': {
         'pattern': r'querySelector\([^)]*:checked[^)]*\)\.value',
@@ -100,6 +173,64 @@ BUG_PATTERNS = {
     }
 }
 
+def should_skip_line(line: str, context_lines: list = None) -> bool:
+    """Prüfe ob eine Zeile übersprungen werden soll (wegen Kommentar).
+
+    Prüft auch die vorherigen 3 Zeilen für Kontext-Kommentare wie:
+    // FALLBACK 2: Globale partnerAnfragen (alte Migration)
+    anfrageSnap = await window.db.collection('partnerAnfragen')...
+    """
+    # Prüfe aktuelle Zeile
+    for pattern in IGNORE_COMMENT_PATTERNS:
+        if re.search(pattern, line, re.IGNORECASE):
+            return True
+
+    # Prüfe Kontext (vorherige Zeilen)
+    if context_lines:
+        for ctx_line in context_lines:
+            for pattern in IGNORE_COMMENT_PATTERNS:
+                if re.search(pattern, ctx_line, re.IGNORECASE):
+                    return True
+
+    return False
+
+def is_global_collection_access(line: str) -> bool:
+    """Prüfe ob die Zeile eine globale Collection verwendet."""
+    for collection in GLOBAL_COLLECTIONS:
+        # Suche nach db.collection('users') oder db.collection("users")
+        if re.search(rf'db\.collection\s*\(\s*[\'\"]{collection}[\'\"]', line):
+            return True
+    return False
+
+def is_variable_collection_access(line: str) -> bool:
+    """Prüfe ob die Zeile eine Variable für Collection-Name verwendet.
+
+    z.B. db.collection(collectionName) - dies ist oft korrekt, da die Variable
+    bereits den werkstattId Suffix enthält.
+    """
+    # Suche nach db.collection(variableName) ohne Quotes
+    match = re.search(r'db\.collection\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)', line)
+    if match:
+        var_name = match.group(1)
+        # Typische Variablennamen die dynamisch zusammengebaut werden
+        dynamic_vars = ['collectionName', 'collection', 'ref', 'colName', 'col']
+        if var_name in dynamic_vars or 'Collection' in var_name or 'collection' in var_name:
+            return True
+    return False
+
+def is_dynamic_werkstatt_collection(line: str) -> bool:
+    """Prüfe ob die Zeile dynamisch werkstattId verwendet.
+
+    z.B. db.collection(`partners_${werkstattId}`) - dies ist KORREKT!
+    """
+    # Template-String mit werkstattId
+    if re.search(r'db\.collection\s*\(\s*`[^`]*\$\{.*werkstatt.*\}[^`]*`\s*\)', line, re.IGNORECASE):
+        return True
+    # String-Concatenation mit werkstattId
+    if re.search(r'db\.collection\s*\([^)]*werkstatt', line, re.IGNORECASE):
+        return True
+    return False
+
 def scan_file(filepath: Path):
     """Scanne eine Datei nach Bug-Patterns."""
     issues = []
@@ -129,6 +260,33 @@ def scan_file(filepath: Path):
         # Suche nach Pattern
         for line_num, line in enumerate(lines, 1):
             if re.search(pattern, line):
+                # NEU: Hole Kontext (vorherige 3 Zeilen)
+                context_start = max(0, line_num - 4)
+                context_lines = lines[context_start:line_num - 1]
+
+                # NEU: Prüfe ob Zeile wegen Kommentar übersprungen werden soll
+                if should_skip_line(line, context_lines):
+                    continue
+
+                # NEU: Prüfe exclude_line_patterns
+                if 'exclude_line_patterns' in pattern_config:
+                    skip = False
+                    for exclude_pattern in pattern_config['exclude_line_patterns']:
+                        if re.search(exclude_pattern, line):
+                            skip = True
+                            break
+                    if skip:
+                        continue
+
+                # NEU: Prüfe ob globale Collection (für multi_tenant_violation)
+                if pattern_config.get('check_global_collections'):
+                    if is_global_collection_access(line):
+                        continue
+                    if is_variable_collection_access(line):
+                        continue
+                    if is_dynamic_werkstatt_collection(line):
+                        continue  # Dynamische werkstattId ist KORREKT
+
                 # Prüfe negative Pattern (wenn vorhanden)
                 if 'negative_pattern' in pattern_config:
                     # Prüfe ob negative Pattern in Nähe (±10 Zeilen)
@@ -151,21 +309,49 @@ def scan_file(filepath: Path):
 
     return issues
 
+def should_exclude_path(filepath: Path) -> bool:
+    """Prüfe ob ein Pfad ausgeschlossen werden soll."""
+    filepath_str = str(filepath)
+    filename = filepath.name
+
+    # Prüfe Verzeichnisse
+    for exclude_dir in EXCLUDE_DIRS:
+        if exclude_dir in filepath_str:
+            return True
+
+    # Prüfe Dateinamen-Patterns
+    for pattern in EXCLUDE_FILE_PATTERNS:
+        if fnmatch.fnmatch(filename, pattern):
+            return True
+
+    # Prüfe spezielle Datei-Ausnahmen
+    for exception in SPECIAL_FILE_EXCEPTIONS:
+        if exception in filepath_str or filename == exception:
+            return True
+
+    return False
+
 def scan_all_files():
     """Scanne alle relevanten Dateien."""
     all_issues = []
+    scanned_count = 0
+    skipped_count = 0
 
     # Finde alle HTML und JS Dateien
     for ext in ['*.html', '*.js']:
         for filepath in PROJECT_ROOT.glob(f'**/{ext}'):
-            # Skip node_modules und .claude
-            if 'node_modules' in str(filepath) or '.claude' in str(filepath):
-                continue
-            if 'libs/' in str(filepath):
+            # NEU: Verwende should_exclude_path()
+            if should_exclude_path(filepath):
+                skipped_count += 1
                 continue
 
             issues = scan_file(filepath)
             all_issues.extend(issues)
+            scanned_count += 1
+
+    # Zeige Statistik
+    print(f"📁 Gescannt: {scanned_count} Dateien | ⏭️ Übersprungen: {skipped_count} Dateien")
+    print()
 
     return all_issues
 
