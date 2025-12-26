@@ -781,7 +781,7 @@
                 schadenLabels: schadenLabels,
                 labeledAt: new Date().toISOString(),
                 labeledBy: this.getCurrentUserId(),
-                confidence: document.querySelector('input[name="labelConfidence"]:checked').value,
+                confidence: document.querySelector('input[name="labelConfidence"]:checked')?.value || 'medium',
                 damageCode: window.generateDamageCode(position, schadensart, schweregrad)
             };
 
