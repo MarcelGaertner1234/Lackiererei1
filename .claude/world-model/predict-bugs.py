@@ -98,12 +98,17 @@ BUG_PATTERNS = {
         'message': 'Fehlendes await vor firebaseInitialized',
         'fix': 'Füge await hinzu: await window.firebaseInitialized',
         'exclude_line_patterns': [
-            r'if\s*\(',           # if-Conditions sind OK
-            r'while\s*\(',        # while-Loops sind OK
-            r'&&',                # Boolean-Checks sind OK
-            r'\|\|',              # Boolean-Checks sind OK
-            r'!window\.firebase', # Negation-Checks sind OK
-            r'//.*firebase',      # Kommentare ignorieren
+            r'if\s*\(',              # if-Conditions sind OK
+            r'while\s*\(',           # while-Loops sind OK
+            r'&&',                   # Boolean-Checks sind OK
+            r'\|\|',                 # Boolean-Checks sind OK
+            r'!window\.firebase',    # Negation-Checks sind OK
+            r'//.*firebase',         # Kommentare ignorieren
+            r'console\.(log|error|warn)',  # Logs ignorieren
+            r'=\s*new\s+Promise',    # Definitionen ignorieren
+            r'=\s*(true|false)',     # Assignments ignorieren
+            r'Promise\.race',        # Bereits awaited
+            r':\s*window\.firebase',  # Object literal property
         ]
     },
     'unsafe_radio_button': {
@@ -141,7 +146,15 @@ BUG_PATTERNS = {
         'pattern': r'["\']fahrzeuge_\w+["\']|["\']partnerAnfragen_\w+["\']',
         'severity': 'HIGH',
         'message': 'Hardcoded werkstattId in Collection-Name',
-        'fix': 'Verwende window.getCollection() für dynamische IDs'
+        'fix': 'Verwende window.getCollection() für dynamische IDs',
+        'exclude_line_patterns': [
+            r'localStorage\.',      # localStorage ignorieren
+            r'^\s*\*',              # JSDoc Zeilen (beginnen mit *)
+            r'//.*Example',         # Beispiel-Kommentare
+            r'@returns',            # JSDoc @returns
+            r'@param',              # JSDoc @param
+            r'//',                  # Alle Kommentare
+        ]
     },
     'double_click_vulnerable': {
         'pattern': r'async\s+function\s+\w*(?:submit|save|create|send)\w*\s*\(',
