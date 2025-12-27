@@ -569,6 +569,12 @@ async function submit() {
     try { await saveData(); }
     finally { btn.disabled = false; }
 }
+
+// ❌ UNGÜLTIG - if-Statement ohne Body (nur Kommentar danach)
+if (window.DEBUG) // console.log('debug:', data)  // Syntax Error!
+
+// ✅ KORREKT - Gesamte Zeile auskommentiert
+// if (window.DEBUG) console.log('debug:', data)
 ```
 
 **Key Rules:**
@@ -610,6 +616,24 @@ async function submit() {
 - saveVerschiebung() erweitert: setzt jetzt auch `abholdatum` und `abholzeit`
 - Commit: `b86c0fa`
 
+### 2025-12-27: LF-BUG-1 Fix + Test-Infrastruktur
+
+**Behoben:**
+- ✅ **LF-BUG-1: formatKategorie function exists** - Test schlug fehl
+  - Root Cause 1: JavaScript Syntax-Fehler `if (window.DEBUG) // console.log(...)` (if ohne Body!)
+  - Root Cause 2: `formatKategorie` wurde zu spät definiert (nach Auth-Redirect)
+  - Fix: 6x Syntax-Fehler korrigiert + Early Global Exports hinzugefügt
+  - Datei: leihfahrzeuge.html
+
+- ✅ **testIgnore für Archive-Ordner**
+  - Problem: `tests/archive/01-vehicle-intake.spec.js` hatte falsche Pfade
+  - Fix: `testIgnore: ['**/archive/**']` in playwright.config.js
+
+- ✅ **node_modules Korruption**
+  - Problem: Nach langen Test-Runs (5+ min) kann node_modules korrupt werden
+  - Symptom: Cascade-Failures (1 Timeout → alle anderen Tests "0ms" skipped)
+  - Fix: `rm -rf node_modules && npm install`
+
 ---
 
 ## External Resources
@@ -620,6 +644,6 @@ async function submit() {
 
 ---
 
-_Version: 10.7 (Updated 2025-12-17 - Auftragsstart Fallback-Chain Fix)_
+_Version: 10.8 (Updated 2025-12-27 - LF-BUG-1 Fix + Test-Infrastruktur)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_
