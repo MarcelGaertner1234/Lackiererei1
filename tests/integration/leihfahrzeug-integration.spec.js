@@ -534,20 +534,15 @@ test.describe('INTEGRATION: Leihfahrzeug Business Logic', () => {
   // ============================================
 
   test('LF-BUG-1: formatKategorie function exists in leihfahrzeuge.html', async ({ page }) => {
-    // Navigate to leihfahrzeuge page (loginAsTestAdmin already sets up werkstattId on index.html)
-    await page.goto('/leihfahrzeuge.html');
-    await waitForFirebaseReady(page);
+    // Navigate to leihfahrzeuge page and check IMMEDIATELY (before auth redirect)
+    await page.goto('/leihfahrzeuge.html', { waitUntil: 'domcontentloaded' });
 
-    // Check if function exists globally (window.formatKategorie)
+    // Check if function exists globally - must be instant before page redirects
     const hasFunction = await page.evaluate(() => {
       return typeof window.formatKategorie === 'function';
     });
 
-    // Assert: Function should exist (we fixed it earlier and made it global)
+    // Assert: Function should exist (defined in EARLY GLOBAL EXPORTS section)
     expect(hasFunction).toBeTruthy();
-
-    // Navigate back to index.html to preserve werkstattId for afterEach cleanup
-    await page.goto('/index.html');
-    await waitForFirebaseReady(page);
   });
 });

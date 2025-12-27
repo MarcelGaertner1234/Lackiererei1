@@ -9,6 +9,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests',
+  testIgnore: ['**/archive/**'],  // Ignore archived tests
 
   /* Maximale Zeit die ein Test laufen darf */
   timeout: 90 * 1000, // 90 Sekunden (buffer for Firebase + Firestore)
