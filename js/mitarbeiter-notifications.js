@@ -224,10 +224,11 @@ class MitarbeiterNotificationManager {
         setTimeout(() => this.closeToast(notification.id), hideDelay);
 
         // Click on toast: Mark as read and navigate if applicable
-        toast.addEventListener('click', (e) => {
+        // 🐛 BUG FIX (2026-01-09): Added async + await for markAsRead to ensure it completes
+        toast.addEventListener('click', async (e) => {
             if (e.target.classList.contains('notification-toast__close')) return;
 
-            this.markAsRead(notification.id);
+            await this.markAsRead(notification.id);
             this.closeToast(notification.id);
 
             // Navigate to relevant page
