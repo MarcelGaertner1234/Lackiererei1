@@ -1736,6 +1736,42 @@
             };
         }
 
+        // 2026-01-09: Hilfsfunktion für fertige Services (für partielle Abnahme)
+        function getCompletedServices(fahrzeug) {
+            const serviceLabels = {
+                lackier: 'Lackierung', lackierung: 'Lackierung',
+                reifen: 'Reifen-Service', mechanik: 'Mechanik',
+                pflege: 'Fahrzeugpflege', glas: 'Glas-Reparatur',
+                klima: 'Klima-Service', tuev: 'TÜV/AU', tuv: 'TÜV/AU',
+                folierung: 'Auto Folierung', dellen: 'Dellenentfernung',
+                versicherung: 'Versicherungsschaden', steinschutz: 'Steinschutzfolie',
+                werbebeklebung: 'Fahrzeugbeschriftung', smartrepair: 'Smart-Repair',
+                politur: 'Politur', unterboden: 'Unterbodenschutz',
+                abholung: 'Abholung', sonstiges: 'Sonstiges'
+            };
+
+            const completedServices = [];
+            const completedStatuses = ['fertig', 'abholbereit', 'abgeschlossen', 'bereit'];
+
+            // Check Primary Service
+            const primaryStatus = getServiceStatus(fahrzeug, fahrzeug.serviceTyp);
+            if (completedStatuses.includes(primaryStatus)) {
+                completedServices.push(serviceLabels[fahrzeug.serviceTyp] || fahrzeug.serviceTyp);
+            }
+
+            // Check Additional Services
+            if (fahrzeug.additionalServices && Array.isArray(fahrzeug.additionalServices)) {
+                fahrzeug.additionalServices.forEach(as => {
+                    const status = getServiceStatus(fahrzeug, as.serviceTyp);
+                    if (completedStatuses.includes(status)) {
+                        completedServices.push(serviceLabels[as.serviceTyp] || as.serviceTyp);
+                    }
+                });
+            }
+
+            return completedServices;
+        }
+
         // 🔧 FIX AB1 (2025-12-12): Double-Click Prevention
         let isSubmittingAbnahme = false;
 
@@ -1785,12 +1821,34 @@
             // 🚚 Übergabe-Typ ermitteln (Lieferung oder Abholung)
             const uebergabeTyp = (currentVehicle.fahrzeugAbholung === 'ja' || currentVehicle.lieferungGewuenscht === true) ? 'lieferung' : 'abholung';
 
-            // 🆕 VALIDATION: Multi-Service Check (alle Services müssen fertig sein)
+            // 🆕 VALIDATION: Multi-Service Check (2026-01-09: Partielle Abnahme erlauben)
             const validation = canCompleteAbnahme(currentVehicle);
+            let isPartialAbnahme = false;
+
             if (!validation.canComplete) {
-                const serviceList = validation.openServices.join(', ');
-                showError(`❌ ABNAHME BLOCKIERT!\n\nFolgende Services sind noch nicht abgeschlossen:\n• ${validation.openServices.join('\n• ')}\n\nBitte schließen Sie alle Services ab, bevor Sie die Abnahme durchführen.`);
-                return;
+                // 2026-01-09: Partielle Abnahme ermöglichen mit Benutzerbestätigung
+                const completedServices = getCompletedServices(currentVehicle);
+
+                if (completedServices.length === 0) {
+                    // Kein Service ist fertig - Abnahme nicht möglich
+                    showError(`❌ ABNAHME NICHT MÖGLICH!\n\nKein Service ist abgeschlossen.\n\nOffene Services:\n• ${validation.openServices.join('\n• ')}\n\nBitte schließen Sie mindestens einen Service ab.`);
+                    return;
+                }
+
+                // Mindestens ein Service ist fertig - partielle Abnahme anbieten
+                const confirmMessage = `⚠️ PARTIELLE ABNAHME\n\n` +
+                    `✅ Fertige Services:\n• ${completedServices.join('\n• ')}\n\n` +
+                    `❌ Offene Services:\n• ${validation.openServices.join('\n• ')}\n\n` +
+                    `Möchten Sie eine TEIL-ÜBERGABE durchführen?\n` +
+                    `(Das Fahrzeug bleibt für die offenen Services im System)`;
+
+                if (!confirm(confirmMessage)) {
+                    showToast('Abnahme abgebrochen. Bitte alle Services abschließen.', 'info');
+                    return;
+                }
+
+                isPartialAbnahme = true;
+                showToast('📋 Teil-Übergabe wird durchgeführt...', 'info');
             }
 
             const signatureData = canvas.toDataURL();
@@ -1855,10 +1913,15 @@
                 kalkulationData: currentVehicle.kalkulationData,
 
                 // Status (5 fields) - statusHistory as LIGHT version (without photos)
-                status: 'abgeschlossen',
-                prozessStatus: 'abgeschlossen',
+                // 2026-01-09: Partielle Abnahme - Status anpassen
+                status: isPartialAbnahme ? 'teilweise_uebergeben' : 'abgeschlossen',
+                prozessStatus: isPartialAbnahme ? 'teilweise_uebergeben' : 'abgeschlossen',
+                isPartialAbnahme: isPartialAbnahme || false,  // 2026-01-09: Flag für partielle Übergabe
+                partielleUebergabeServices: isPartialAbnahme ? getCompletedServices(currentVehicle) : null,  // 2026-01-09: Welche Services wurden übergeben
+                offeneServices: isPartialAbnahme ? validation.openServices : null,  // 2026-01-09: Welche Services sind noch offen
                 prozessTimestamps: currentVehicle.prozessTimestamps,
-                abgeschlossenAm: firebase.firestore.Timestamp.now(),  // 🆕 BUGFIX 2025-11-18: For Steuerberater Bilanz period filtering
+                abgeschlossenAm: isPartialAbnahme ? null : firebase.firestore.Timestamp.now(),  // Nur bei vollständiger Abnahme
+                teilweiseUebergebenAm: isPartialAbnahme ? firebase.firestore.Timestamp.now() : null,  // 2026-01-09: Timestamp für Teil-Übergabe
                 statusHistory: lightStatusHistory,  // ✅ Light version (~10 KB) statt FULL version (2.4 MB)
 
                 // Partner Portal (7 fields)
@@ -2163,7 +2226,12 @@
                 await createPDF(dataForPDF);
             }
 
-            showSuccess('Fahrzeug erfolgreich abgenommen!');
+            // 2026-01-09: Unterschiedliche Erfolgsmeldungen für partielle/vollständige Abnahme
+            if (isPartialAbnahme) {
+                showSuccess('📋 Teil-Übergabe erfolgreich!\nOffene Services: ' + validation.openServices.join(', '));
+            } else {
+                showSuccess('Fahrzeug erfolgreich abgenommen!');
+            }
 
             // 🎬 Feature 5: Success Animation (Flash + Checkmark)
             document.body.classList.add('success-flash');

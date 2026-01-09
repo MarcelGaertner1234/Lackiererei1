@@ -151,6 +151,64 @@
             gap: var(--space-4);
         }
 
+        /* 2026-01-09: Styles für abgelehnte Partner */
+        .rejected-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+
+        .rejected-card {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: var(--space-4);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--space-4);
+            transition: all 0.2s;
+        }
+
+        .rejected-card:hover {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.5);
+        }
+
+        .rejected-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .rejected-info strong {
+            color: var(--color-text-primary);
+            font-size: 1rem;
+        }
+
+        .rejected-info span {
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .rejected-info small {
+            color: var(--color-text-secondary);
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 600px) {
+            .rejected-card {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .rejected-card button {
+                width: 100%;
+                margin-top: 8px;
+            }
+        }
+
         .pending-card {
             background: var(--color-surface);
             border: 1px solid var(--color-border-glass);
@@ -522,6 +580,20 @@
         <div id="pendingList" class="pending-list" style="display: none;">
             <!-- Cards will be inserted here by JavaScript -->
         </div>
+
+        <!-- 2026-01-09: Abgelehnte Partner Sektion -->
+        <div id="rejectedSection" class="rejected-section" style="display: none; margin-top: 40px;">
+            <div class="section-header" style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: var(--color-text-primary);">
+                    <i data-feather="x-circle" style="vertical-align: middle; margin-right: 8px; color: #ef4444;"></i>
+                    Abgelehnte Partner
+                </h3>
+                <span id="rejectedCount" class="badge" style="background: #ef4444; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; display: none;">0</span>
+            </div>
+            <div id="rejectedList" class="rejected-list">
+                <!-- Rejected partners will be inserted here by JavaScript -->
+            </div>
+        </div>
     </div>
 
     <script>
@@ -644,6 +716,8 @@
 
             // console.log('✅ Access granted - loading pending registrations');
             await loadPendingRegistrations();
+            // 2026-01-09: Abgelehnte Partner auch laden
+            await loadRejectedPartners();
         });
 
         // ============================================
@@ -994,24 +1068,146 @@
             }
         }
 
-        // Reject Partner
+        // Reject Partner (2026-01-09: Soft-Delete statt permanentes Löschen)
         async function rejectPartner(partnerId) {
-            if (!confirm('Partner-Registrierung wirklich ablehnen und löschen?')) {
+            const reason = prompt('Bitte Ablehnungsgrund eingeben (optional):');
+
+            if (reason === null) {
+                // User clicked Cancel
+                return;
+            }
+
+            if (!confirm('Partner-Registrierung wirklich ablehnen?\n\nDer Partner kann später reaktiviert werden.')) {
                 return;
             }
 
             try {
-                await window.db.collection('partners').doc(partnerId).delete();
-                // console.log(`✅ Partner ${partnerId} rejected and deleted`);
+                // Soft-Delete: Status auf 'rejected' setzen statt löschen
+                await window.db.collection('partners').doc(partnerId).update({
+                    status: 'rejected',
+                    rejectedAt: firebase.firestore.Timestamp.now(),
+                    rejectedBy: firebase.auth().currentUser?.email || 'admin',
+                    rejectionReason: reason || 'Kein Grund angegeben',
+                    // Audit Trail
+                    statusHistory: firebase.firestore.FieldValue.arrayUnion({
+                        status: 'rejected',
+                        timestamp: new Date().toISOString(),
+                        changedBy: firebase.auth().currentUser?.email || 'admin',
+                        reason: reason || 'Kein Grund angegeben'
+                    })
+                });
 
-                showToast('Partner-Registrierung wurde abgelehnt und gelöscht.', 'info');
+                showToast('Partner-Registrierung wurde abgelehnt. Kann jederzeit reaktiviert werden.', 'info');
 
-                // Reload list
+                // Reload lists
                 await loadPendingRegistrations();
+                await loadRejectedPartners();
 
             } catch (error) {
                 console.error('❌ Error rejecting partner:', error);
                 showToast('Fehler beim Ablehnen: ' + error.message, 'error');
+            }
+        }
+
+        // 2026-01-09: Abgelehnte Partner laden
+        let rejectedPartners = [];
+
+        async function loadRejectedPartners() {
+            try {
+                const snapshot = await window.db.collection('partners')
+                    .where('status', '==', 'rejected')
+                    .orderBy('rejectedAt', 'desc')
+                    .get();
+
+                rejectedPartners = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+
+                renderRejectedList();
+                updateRejectedCount();
+            } catch (error) {
+                console.error('❌ Error loading rejected partners:', error);
+            }
+        }
+
+        function updateRejectedCount() {
+            const badge = document.getElementById('rejectedCount');
+            const section = document.getElementById('rejectedSection');
+
+            if (badge) {
+                badge.textContent = rejectedPartners.length;
+                badge.style.display = rejectedPartners.length > 0 ? 'inline-flex' : 'none';
+            }
+
+            // Sektion nur anzeigen wenn es abgelehnte Partner gibt
+            if (section) {
+                section.style.display = rejectedPartners.length > 0 ? 'block' : 'none';
+            }
+        }
+
+        function renderRejectedList() {
+            const container = document.getElementById('rejectedList');
+            if (!container) return;
+
+            if (rejectedPartners.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>Keine abgelehnten Partner</p></div>';
+                return;
+            }
+
+            container.innerHTML = rejectedPartners.map(partner => {
+                const rejectedDate = partner.rejectedAt?.toDate?.()
+                    ? partner.rejectedAt.toDate().toLocaleDateString('de-DE')
+                    : 'Unbekannt';
+
+                return `
+                    <div class="rejected-card">
+                        <div class="rejected-info">
+                            <strong>${partner.firma || partner.name || 'Unbekannt'}</strong>
+                            <span>${partner.email || 'Keine E-Mail'}</span>
+                            <small>Abgelehnt am: ${rejectedDate}</small>
+                            <small>Grund: ${partner.rejectionReason || 'Kein Grund'}</small>
+                            <small>Von: ${partner.rejectedBy || 'Unbekannt'}</small>
+                        </div>
+                        <button class="btn btn-secondary" onclick="reactivatePartner('${partner.id}')">
+                            <i data-feather="refresh-cw"></i>
+                            Reaktivieren
+                        </button>
+                    </div>
+                `;
+            }).join('');
+
+            feather.replace();
+        }
+
+        // 2026-01-09: Partner reaktivieren
+        async function reactivatePartner(partnerId) {
+            if (!confirm('Partner-Registrierung wieder aktivieren?\n\nDer Partner erscheint dann wieder in der Pending-Liste.')) {
+                return;
+            }
+
+            try {
+                await window.db.collection('partners').doc(partnerId).update({
+                    status: 'pending',
+                    reactivatedAt: firebase.firestore.Timestamp.now(),
+                    reactivatedBy: firebase.auth().currentUser?.email || 'admin',
+                    // Audit Trail
+                    statusHistory: firebase.firestore.FieldValue.arrayUnion({
+                        status: 'reactivated',
+                        timestamp: new Date().toISOString(),
+                        changedBy: firebase.auth().currentUser?.email || 'admin'
+                    })
+                });
+
+                showToast('Partner wurde reaktiviert und ist wieder in der Pending-Liste.', 'success');
+
+                // Reload both lists
+                await loadPendingRegistrations();
+                await loadRejectedPartners();
+
+            } catch (error) {
+                console.error('❌ Error reactivating partner:', error);
+                showToast('Fehler beim Reaktivieren: ' + error.message, 'error');
             }
         }
 
