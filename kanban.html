@@ -2844,6 +2844,130 @@
                 grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
             }
         }
+
+        /* ===== 2026-01-08: UNDO TOAST STYLES ===== */
+        .undo-toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: linear-gradient(135deg, rgba(30, 30, 35, 0.95), rgba(40, 40, 50, 0.95));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 0;
+            z-index: 10001;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            min-width: 320px;
+            max-width: 90vw;
+        }
+
+        .undo-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .undo-toast-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+        }
+
+        .undo-toast-icon {
+            font-size: 1.4rem;
+            flex-shrink: 0;
+        }
+
+        .undo-toast-text {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .undo-toast-text strong {
+            color: rgba(255, 255, 255, 0.95);
+            font-size: 0.95rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .undo-toast-text span {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.85rem;
+        }
+
+        .undo-toast-btn {
+            background: linear-gradient(135deg, #007AFF, #0056CC);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .undo-toast-btn:hover {
+            background: linear-gradient(135deg, #0088FF, #0066DD);
+            transform: scale(1.02);
+        }
+
+        .undo-toast-close {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 1.4rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            line-height: 1;
+            transition: color 0.2s ease;
+        }
+
+        .undo-toast-close:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .undo-toast-progress {
+            height: 3px;
+            background: linear-gradient(90deg, #007AFF, #00C7FF);
+            animation: undoProgress 30s linear forwards;
+        }
+
+        @keyframes undoProgress {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+
+        @media (max-width: 480px) {
+            .undo-toast {
+                left: 16px;
+                right: 16px;
+                transform: translateX(0) translateY(100px);
+                min-width: auto;
+            }
+            .undo-toast.show {
+                transform: translateX(0) translateY(0);
+            }
+            .undo-toast-content {
+                flex-wrap: wrap;
+            }
+            .undo-toast-btn {
+                width: 100%;
+                margin-top: 8px;
+            }
+        }
+        /* ===== END UNDO TOAST STYLES ===== */
     </style>
 
     <!-- ========== MODAL: Als bezahlt markieren (KANBAN) ========== -->
@@ -3656,6 +3780,11 @@
         // 🔧 FIX KB4 (2025-12-12): Drag Lock Set für Race Condition Prevention
         const dragLocks = new Set();
 
+        // 2026-01-08: Undo-Stack für Status-Änderungen (30 Sekunden Timeout)
+        const undoStack = [];
+        const UNDO_TIMEOUT_MS = 30000; // 30 Sekunden
+        let activeUndoToast = null;
+
         // 🔧 FIX FB2 (2025-12-10): Cleanup Firestore listeners on page leave to prevent memory leaks
         window.addEventListener('beforeunload', () => {
             if (unsubscribeListener) {
@@ -3664,6 +3793,133 @@
                 unsubscribeListener = null;
             }
         });
+
+        // ===== 2026-01-08: UNDO SYSTEM =====
+
+        /**
+         * Fügt eine Status-Änderung zum Undo-Stack hinzu
+         * Auto-Expire nach UNDO_TIMEOUT_MS (30 Sekunden)
+         */
+        function pushToUndoStack(entry) {
+            // Nur die letzte Änderung behalten (einfaches Undo)
+            undoStack.length = 0;
+            undoStack.push(entry);
+
+            // Auto-Expire nach Timeout
+            setTimeout(() => {
+                const index = undoStack.findIndex(e => e.timestamp === entry.timestamp);
+                if (index !== -1) {
+                    undoStack.splice(index, 1);
+                    hideUndoToast();
+                }
+            }, UNDO_TIMEOUT_MS);
+        }
+
+        /**
+         * Zeigt den Undo-Toast an
+         */
+        function showUndoToast(kennzeichen, previousStatus, newStatus) {
+            // Bestehenden Toast entfernen
+            hideUndoToast();
+
+            // Neuen Toast erstellen
+            const toast = document.createElement('div');
+            toast.id = 'undoToast';
+            toast.className = 'undo-toast';
+            toast.innerHTML = `
+                <div class="undo-toast-content">
+                    <span class="undo-toast-icon">↩️</span>
+                    <div class="undo-toast-text">
+                        <strong>${kennzeichen}</strong>
+                        <span>${getStatusLabel(previousStatus)} → ${getStatusLabel(newStatus)}</span>
+                    </div>
+                    <button class="undo-toast-btn" onclick="undoLastChange()">
+                        Rückgängig
+                    </button>
+                    <button class="undo-toast-close" onclick="hideUndoToast()">×</button>
+                </div>
+                <div class="undo-toast-progress"></div>
+            `;
+
+            document.body.appendChild(toast);
+            activeUndoToast = toast;
+
+            // Animation starten
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
+            });
+        }
+
+        /**
+         * Versteckt den Undo-Toast
+         */
+        function hideUndoToast() {
+            const toast = document.getElementById('undoToast');
+            if (toast) {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }
+            activeUndoToast = null;
+        }
+
+        /**
+         * Führt den Undo aus - setzt den vorherigen Status wieder
+         */
+        async function undoLastChange() {
+            if (undoStack.length === 0) {
+                showToast('Keine Änderung zum Rückgängig machen', 'info');
+                return;
+            }
+
+            const lastChange = undoStack.pop();
+            hideUndoToast();
+
+            try {
+                // Verhindere dass das Undo selbst wieder ein Undo erzeugt
+                const originalPush = pushToUndoStack;
+                window._skipUndo = true;
+
+                // Status zurücksetzen via directStatusUpdate
+                await directStatusUpdate(lastChange.fahrzeugId, lastChange.previousStatus);
+
+                window._skipUndo = false;
+
+                showToast(`↩️ ${lastChange.kennzeichen}: Status zurückgesetzt auf "${getStatusLabel(lastChange.previousStatus)}"`, 'success');
+            } catch (error) {
+                console.error('❌ Undo fehlgeschlagen:', error);
+                showToast('Rückgängig machen fehlgeschlagen: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Hilfsfunktion: Status-Label für Anzeige
+         */
+        function getStatusLabel(status) {
+            const labels = {
+                'angenommen': 'Angenommen',
+                'neu': 'Neu',
+                'terminiert': 'Terminiert',
+                'vorbereitung': 'Vorbereitung',
+                'lackierung': 'Lackierung',
+                'trocknung': 'Trocknung',
+                'qualitaetskontrolle': 'Qualitätskontrolle',
+                'bereit': 'Bereit',
+                'fertig': 'Fertig',
+                'abholbereit': 'Abholbereit',
+                'in_arbeit': 'In Arbeit',
+                'montage': 'Montage',
+                'wuchten': 'Wuchten',
+                'reparatur': 'Reparatur',
+                'diagnose': 'Diagnose'
+            };
+            return labels[status] || status;
+        }
+
+        // Globale Funktionen exportieren
+        window.undoLastChange = undoLastChange;
+        window.hideUndoToast = hideUndoToast;
+
+        // ===== END UNDO SYSTEM =====
 
         // 🔧 2025-11-25: Filter disabled services from process dropdown
         function filterDisabledProcesses(enabledServices) {
@@ -6885,6 +7141,11 @@
 
                 // console.log(`🔧 Service-Status Update: ${currentService} → ${newStatus}`);
 
+                // 2026-01-08: Vorherigen Status für Undo speichern
+                const previousStatus = fahrzeug.serviceStatuses?.[currentService]?.status
+                    || fahrzeug.prozessStatus
+                    || 'angenommen';
+
                 // Status aktualisieren (Backwards Compatibility)
                 // Nur Primary Service: Update prozessStatus
                 if (currentService === fahrzeug.serviceTyp) {
@@ -7363,6 +7624,20 @@
                         Object.assign(allStoredFahrzeuge[index], updateData);
                         localStorage.setItem('fahrzeuge', JSON.stringify(allStoredFahrzeuge));
                     }
+                }
+
+                // 2026-01-08: Undo-Stack aktualisieren und Toast anzeigen
+                // Skip wenn dies selbst ein Undo ist (verhindert rekursives Undo)
+                if (previousStatus !== newStatus && !window._skipUndo) {
+                    pushToUndoStack({
+                        fahrzeugId: fahrzeugId,
+                        kennzeichen: fahrzeug.kennzeichen,
+                        previousStatus: previousStatus,
+                        newStatus: newStatus,
+                        currentService: currentService,
+                        timestamp: Date.now()
+                    });
+                    showUndoToast(fahrzeug.kennzeichen, previousStatus, newStatus);
                 }
 
                 // Board neu rendern

@@ -3580,6 +3580,23 @@
 
         </div>
 
+        <!-- 2026-01-08: "Mehr laden" Button für Paginierung -->
+        <div id="mehrLadenContainer" style="display: none; text-align: center; margin: 24px 0;">
+            <button id="mehrLadenBtn" onclick="loadMoreAnfragen()" class="btn" style="
+                background: rgba(255,255,255,0.08);
+                border: 1px solid rgba(255,255,255,0.15);
+                color: rgba(255,255,255,0.9);
+                padding: 12px 32px;
+                border-radius: 12px;
+                font-size: 0.95rem;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            ">
+                <span id="mehrLadenText">Mehr Anfragen laden</span>
+                <span id="mehrLadenCount" style="margin-left: 8px; opacity: 0.7;"></span>
+            </button>
+        </div>
+
         <div id="emptyState" class="empty-state" style="display: none;">
             <div class="icon">🚗</div>
             <h3>Willkommen im Partner-Portal!</h3>
@@ -3647,6 +3664,12 @@
         };
 
         let hiddenColumns = []; // Ausgeblendete Spalten (LocalStorage)
+
+        // 2026-01-08: Paginierung für bessere Performance bei vielen Anfragen
+        const PAGE_SIZE = 20; // Anfragen pro "Seite"
+        let displayedCount = PAGE_SIZE; // Aktuell angezeigte Anzahl
+        let totalFilteredCount = 0; // Gesamtzahl nach Filterung
+
         let activeChatAnfrageId = null;
         let chatUnsubscribe = null;
         let unreadCounts = {}; // anfrageId -> unread count
@@ -3953,6 +3976,7 @@
                     document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
                     activeFilters.service = pill.dataset.service;
+                    resetPagination(); // 2026-01-08: Paginierung bei Filter-Wechsel zurücksetzen
                     renderKanban();
                 });
             });
@@ -4592,6 +4616,13 @@
 
             // Single-Service only (Multi-Service Feature removed)
 
+            // 2026-01-08: Paginierung - Gesamtzahl speichern und slice anwenden
+            totalFilteredCount = gefiltert.length;
+            const paginiert = gefiltert.slice(0, displayedCount);
+
+            // "Mehr laden" Button aktualisieren
+            updateMehrLadenButton();
+
             // Spalten leeren
             const statuses = ['neu', 'warte_kva', 'kva_gesendet', 'beauftragt', 'abholung', 'in_arbeit', 'fertig', 'storniert'];
             statuses.forEach(status => {
@@ -4609,8 +4640,8 @@
             const statusCounts = {};
             statuses.forEach(s => statusCounts[s] = 0);
 
-            // Cards in Spalten verteilen
-            gefiltert.forEach(anfrage => {
+            // Cards in Spalten verteilen (mit Paginierung)
+            paginiert.forEach(anfrage => {
                 // NEU: Intelligente Status-Bestimmung (Werkstatt-Status hat Priorität)
                 const status = getDynamicStatus(anfrage);
 
@@ -4703,6 +4734,34 @@
             renderKanban();
 
             // console.log(`✅ switchView: View switch completed!`);
+        }
+
+        // 2026-01-08: Paginierung - "Mehr laden" Button-Logik
+        function updateMehrLadenButton() {
+            const container = document.getElementById('mehrLadenContainer');
+            const countSpan = document.getElementById('mehrLadenCount');
+
+            if (!container || !countSpan) return;
+
+            const remaining = totalFilteredCount - displayedCount;
+
+            if (remaining > 0) {
+                container.style.display = 'block';
+                const nextBatch = Math.min(remaining, PAGE_SIZE);
+                countSpan.textContent = `(+${nextBatch} von ${remaining} weiteren)`;
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function loadMoreAnfragen() {
+            displayedCount += PAGE_SIZE;
+            renderKanban();
+        }
+
+        // Reset Paginierung bei Filter-Änderung
+        function resetPagination() {
+            displayedCount = PAGE_SIZE;
         }
 
         function renderListe() {

@@ -227,6 +227,7 @@
         .status-badge.offen { background: rgba(251, 191, 36, 0.15); color: #f59e0b; }
         .status-badge.bezahlt { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
         .status-badge.ueberfaellig { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        .status-badge.storniert { background: rgba(107, 114, 128, 0.15); color: #6b7280; } /* 2026-01-08: Stornierung Feature */
 
         .btn-table {
             padding: var(--space-1) var(--space-3);
@@ -692,6 +693,7 @@
             <option value="offen">Offen</option>
             <option value="bezahlt">Bezahlt</option>
             <option value="ueberfaellig">Überfällig</option>
+            <option value="storniert">Storniert</option>
         </select>
 
         <div class="search-box">
@@ -763,6 +765,42 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeBezahltModal()">Abbrechen</button>
                 <button id="btn-bezahlt-submit" class="btn btn-primary" onclick="submitBezahlt()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Rechnung stornieren (2026-01-08) -->
+    <div id="stornoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header" style="color: #ef4444;">Rechnung stornieren</div>
+            <div class="form-group">
+                <label>Rechnungsnummer:</label>
+                <input type="text" id="storno-modal-rechnungsnr" disabled>
+            </div>
+            <div class="form-group">
+                <label>Stornierungsgrund *</label>
+                <select id="storno-modal-grund" required>
+                    <option value="">-- Bitte wählen --</option>
+                    <option value="kunde_storniert">Kunde hat storniert</option>
+                    <option value="fehlerhafte_rechnung">Fehlerhafte Rechnung</option>
+                    <option value="doppelte_rechnung">Doppelte Rechnung</option>
+                    <option value="kulanz">Kulanz/Nachlass</option>
+                    <option value="sonstiges">Sonstiges</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Notizen / Begründung *</label>
+                <textarea id="storno-modal-notizen" rows="3" required placeholder="Bitte Begründung eingeben..."></textarea>
+            </div>
+            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4);">
+                <strong style="color: #ef4444;">⚠️ Hinweis:</strong>
+                <p style="margin: var(--space-2) 0 0 0; font-size: var(--font-size-sm);">
+                    Diese Aktion kann nicht rückgängig gemacht werden. Die Rechnung wird als storniert markiert und in der Buchhaltung entsprechend gekennzeichnet.
+                </p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeStornoModal()">Abbrechen</button>
+                <button id="btn-storno-submit" class="btn" style="background: #ef4444; color: white;" onclick="submitStorno()">Stornieren</button>
             </div>
         </div>
     </div>
@@ -1098,7 +1136,7 @@
                 if (r.hasRechnung) {
                     // ✅ FAHRZEUG MIT RECHNUNG: Normale Anzeige
                     const status = getStatus(r.rechnung);
-                    const statusLabel = { offen: 'Offen', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig' }[status];
+                    const statusLabel = { offen: 'Offen', bezahlt: 'Bezahlt', ueberfaellig: 'Überfällig', storniert: 'Storniert' }[status];
 
                     // 🚗 FIX (2025-11-27): Ersatzfahrzeug-Indikator
                     const ersatzfahrzeugInfo = r.kalkulationData?.ersatzfahrzeug || r.kva?.ersatzfahrzeugKosten;
@@ -1113,8 +1151,11 @@
                         <td>${r.kennzeichen}</td>
                         <td><strong>${formatCurrency(r.rechnung.nettoBetrag)}</strong>${ersatzfahrzeugIcon}</td>
                         <td><span class="status-badge ${status}">${statusLabel}</span></td>
-                        <td>
-                            ${status !== 'bezahlt' ? `<button class="btn btn-primary btn-table" onclick="openBezahltModal('${r.fahrzeugId}', '${r.rechnung.rechnungsnummer}')">Als bezahlt markieren</button>` : '-'}
+                        <td style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                            ${status !== 'bezahlt' && status !== 'storniert' ? `<button class="btn btn-primary btn-table" onclick="openBezahltModal('${r.fahrzeugId}', '${r.rechnung.rechnungsnummer}')">Als bezahlt</button>` : ''}
+                            ${status !== 'bezahlt' && status !== 'storniert' ? `<button class="btn btn-table" style="background: #ef4444; color: white;" onclick="openStornoModal('${r.fahrzeugId}', '${r.rechnung.rechnungsnummer}')">Stornieren</button>` : ''}
+                            ${status === 'storniert' ? '<span style="color: #6b7280; font-style: italic;">Storniert</span>' : ''}
+                            ${status === 'bezahlt' ? '<span style="color: #22c55e;">Bezahlt</span>' : ''}
                         </td>
                     `;
                 } else {
@@ -1208,6 +1249,7 @@
 
         function getStatus(rechnung) {
             if (rechnung.zahlungsstatus === 'bezahlt') return 'bezahlt';
+            if (rechnung.zahlungsstatus === 'storniert') return 'storniert'; // 2026-01-08: Stornierung
             const now = new Date();
             const faellig = rechnung.faelligAm?.toDate?.() || new Date(rechnung.faelligAm);
             return now > faellig ? 'ueberfaellig' : 'offen';
@@ -1234,6 +1276,97 @@
         function closeBezahltModal() {
             document.getElementById('bezahltModal').classList.remove('active');
             currentFahrzeugId = null;
+        }
+
+        // ========================================
+        // Stornierung Feature (2026-01-08)
+        // ========================================
+
+        function openStornoModal(fahrzeugId, rechnungsnr) {
+            currentFahrzeugId = fahrzeugId;
+            document.getElementById('storno-modal-rechnungsnr').value = rechnungsnr;
+            document.getElementById('storno-modal-grund').value = '';
+            document.getElementById('storno-modal-notizen').value = '';
+            document.getElementById('stornoModal').classList.add('active');
+        }
+
+        function closeStornoModal() {
+            document.getElementById('stornoModal').classList.remove('active');
+            currentFahrzeugId = null;
+        }
+
+        async function submitStorno() {
+            if (!currentFahrzeugId) return;
+
+            const grund = document.getElementById('storno-modal-grund').value;
+            const notizen = document.getElementById('storno-modal-notizen').value;
+
+            if (!grund) {
+                toast.error('Bitte Stornierungsgrund auswählen!');
+                return;
+            }
+
+            if (!notizen.trim()) {
+                toast.error('Bitte Begründung eingeben!');
+                return;
+            }
+
+            // Double-Click Protection
+            const submitBtn = document.getElementById('btn-storno-submit');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '⏳ Wird storniert...';
+            }
+
+            try {
+                const fahrzeugRef = window.getCollection('fahrzeuge').doc(currentFahrzeugId);
+
+                // Optimistic Locking: Prüfe ob Status noch stornierbar ist
+                const currentDoc = await fahrzeugRef.get();
+                const currentStatus = currentDoc.data()?.rechnung?.zahlungsstatus;
+
+                if (currentStatus === 'storniert') {
+                    toast.error('❌ Rechnung ist bereits storniert!');
+                    closeStornoModal();
+                    await loadRechnungen();
+                    return;
+                }
+
+                if (currentStatus === 'bezahlt') {
+                    toast.error('❌ Bezahlte Rechnungen können nicht storniert werden!\n\nBitte kontaktieren Sie die Buchhaltung.');
+                    closeStornoModal();
+                    return;
+                }
+
+                // Stornierung durchführen mit Audit-Trail
+                await fahrzeugRef.update({
+                    'rechnung.zahlungsstatus': 'storniert',
+                    'rechnung.storniertAm': firebase.firestore.Timestamp.now(),
+                    'rechnung.storniertVon': firebase.auth().currentUser?.displayName || firebase.auth().currentUser?.email || 'Admin',
+                    'rechnung.stornoGrund': grund,
+                    'rechnung.stornoNotizen': notizen,
+                    'rechnung.stornoAuditTrail': firebase.firestore.FieldValue.arrayUnion({
+                        aktion: 'storniert',
+                        zeitpunkt: new Date().toISOString(),
+                        benutzer: firebase.auth().currentUser?.email || 'Admin',
+                        grund: grund,
+                        notizen: notizen
+                    })
+                });
+
+                toast.success('✅ Rechnung erfolgreich storniert!');
+                closeStornoModal();
+                await loadRechnungen();
+
+            } catch (error) {
+                console.error('Fehler bei Stornierung:', error);
+                toast.error('❌ Fehler bei Stornierung: ' + error.message);
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Stornieren';
+                }
+            }
         }
 
         async function submitBezahlt() {
