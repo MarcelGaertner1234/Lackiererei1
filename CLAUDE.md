@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing (BEFORE any code changes!)
 ```bash
-npm run test:all          # ~266 Tests (~2min) - MUST be 100%!
+npm run test:all          # 458 Tests (~14min) - MUST be 100%!
 npm run test:integration  # Integration tests (Firestore)
 npm run test:smoke        # UI smoke tests
 npm run test:headed       # With browser UI
@@ -634,6 +634,50 @@ if (window.DEBUG) // console.log('debug:', data)  // Syntax Error!
   - Symptom: Cascade-Failures (1 Timeout → alle anderen Tests "0ms" skipped)
   - Fix: `rm -rf node_modules && npm install`
 
+### 2026-01-09: Bug-Fix Sprint + Test-Verifizierung ✅
+
+**11 Bugs behoben (100% der verifizierten Bugs):**
+
+| Bug | Datei | Commit |
+|-----|-------|--------|
+| Kanban Undo-Funktion | `kanban.html` | 3ab3ea2 |
+| Paginierung Partner-Anfragen | `partner-app/meine-anfragen.html` | 3ab3ea2 |
+| Neuwagen ohne Kennzeichen | `annahme.html` | 3ab3ea2 |
+| Rechnungsstornierung | `rechnungen-admin.html` | 3ab3ea2 |
+| Draft Auto-Save | `partner-app/*-anfrage.html` | 45deb0a |
+| Partner-Ablehnung (Soft-Delete) | `pending-registrations.html` | 396ec0a |
+| Partielle Abnahme | `abnahme.html` | 396ec0a |
+| Service-Deaktivierung Warnung | `admin-einstellungen.html` | 98e5859 |
+| Mitarbeiter-Löschung Cascade | `mitarbeiter-verwaltung.html` | 98e5859 |
+| KVA-Varianten Erklärungen | `partner-app/kva-erstellen.html` | 98e5859 |
+| Kapazitäts-Warnung Toast | `tagesplanung.html` | 98e5859 |
+
+**Test-Verifizierung:**
+```
+npm run test:all → 458/458 Tests PASSED (14.1 min)
+```
+
+| Kategorie | Tests | Status |
+|-----------|-------|--------|
+| E2E Pipeline | 12 | ✅ |
+| Integration | ~350 | ✅ |
+| Smoke | ~96 | ✅ |
+
+**Test-Umgebung (REQUIRED):**
+```bash
+# Terminal 1: Emulators
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+firebase emulators:start --only firestore,storage,auth --project demo-test
+
+# Terminal 2: Tests
+npm run test:all
+```
+
+**Verbleibend (Optional/Backlog):**
+- Kanban Multi-User Optimistic Locking (Edge Case)
+- Leihfahrzeug-Rückgabe erzwingen (Design-Entscheidung)
+- PDF-Zoom mit PDF.js (Enhancement)
+
 ---
 
 ## External Resources
@@ -644,6 +688,6 @@ if (window.DEBUG) // console.log('debug:', data)  // Syntax Error!
 
 ---
 
-_Version: 10.8 (Updated 2025-12-27 - LF-BUG-1 Fix + Test-Infrastruktur)_
+_Version: 10.9 (Updated 2026-01-09 - Bug-Fix Sprint + 458 Tests PASSED)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_
