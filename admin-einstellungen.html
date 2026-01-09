@@ -2959,6 +2959,31 @@
         }
 
         /**
+         * 2026-01-09: Check for active vehicles using a specific service type
+         */
+        async function getActiveVehiclesForServices(serviceTypes) {
+            const activeVehicles = {};
+            const activeStatuses = ['angenommen', 'in_arbeit', 'warte_ersatzteil', 'vorschau', 'geplant'];
+
+            for (const serviceType of serviceTypes) {
+                try {
+                    const snapshot = await window.getCollection('fahrzeuge')
+                        .where('serviceTyp', '==', serviceType)
+                        .where('prozessStatus', 'in', activeStatuses)
+                        .get();
+
+                    if (!snapshot.empty) {
+                        activeVehicles[serviceType] = snapshot.size;
+                    }
+                } catch (err) {
+                    console.warn(`Konnte aktive Fahrzeuge für ${serviceType} nicht prüfen:`, err);
+                }
+            }
+
+            return activeVehicles;
+        }
+
+        /**
          * Save service settings to Firestore
          */
         async function saveServiceSettings() {
@@ -2981,6 +3006,31 @@
                     if (!confirm('⚠️ WARNUNG: Alle Services sind deaktiviert!\n\nDies bedeutet, dass keine neuen Anfragen erstellt werden können.\n\nTrotzdem speichern?')) {
                         showAlert('⚠️ Abgebrochen', 'warning');
                         return;
+                    }
+                }
+
+                // 2026-01-09: Check for services being disabled that have active vehicles
+                const previousSettings = currentSettings.enabledServices || {};
+                const servicesBeingDisabled = Object.keys(enabledServices).filter(
+                    key => previousSettings[key] === true && enabledServices[key] === false
+                );
+
+                if (servicesBeingDisabled.length > 0) {
+                    showAlert('Prüfe aktive Fahrzeuge...', 'info');
+                    const activeVehicles = await getActiveVehiclesForServices(servicesBeingDisabled);
+
+                    if (Object.keys(activeVehicles).length > 0) {
+                        const warnings = Object.entries(activeVehicles).map(([service, count]) => {
+                            const label = window.getServiceTypeLabel ? window.getServiceTypeLabel(service) : service;
+                            return `• ${label}: ${count} aktive(s) Fahrzeug(e)`;
+                        }).join('\n');
+
+                        const totalActive = Object.values(activeVehicles).reduce((a, b) => a + b, 0);
+
+                        if (!confirm(`⚠️ WARNUNG: ${totalActive} Fahrzeug(e) nutzen Service(s) die deaktiviert werden!\n\n${warnings}\n\nDiese Fahrzeuge können nach dem Deaktivieren nicht mehr im Kanban bearbeitet werden!\n\nTrotzdem fortfahren?`)) {
+                            showAlert('⚠️ Abgebrochen - Aktive Fahrzeuge vorhanden', 'warning');
+                            return;
+                        }
                     }
                 }
 

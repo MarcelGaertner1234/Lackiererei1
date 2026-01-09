@@ -3509,8 +3509,31 @@
 
                 const schichtenCount = schichtenSnapshot.size;
 
-                // 2. Erweiterte Bestätigung mit Schicht-Warnung
+                // 2026-01-09: Check for active vehicles assigned to this employee
+                let activeFahrzeugeCount = 0;
+                const activeStatuses = ['angenommen', 'in_arbeit', 'warte_ersatzteil', 'vorschau', 'geplant'];
+                try {
+                    // Check vehicles where this employee is assigned
+                    const fahrzeugeSnapshot = await window.getCollection('fahrzeuge')
+                        .where('bearbeitetVon', '==', userId)
+                        .get();
+
+                    // Filter for active statuses
+                    activeFahrzeugeCount = fahrzeugeSnapshot.docs.filter(doc => {
+                        const status = doc.data().prozessStatus;
+                        return activeStatuses.includes(status);
+                    }).length;
+                } catch (err) {
+                    console.warn('Konnte Fahrzeuge nicht prüfen:', err);
+                }
+
+                // 2. Erweiterte Bestätigung mit Schicht- und Fahrzeug-Warnung
                 let confirmMessage = `⚠️ Mitarbeiter "${userName}" wirklich löschen?\n\n`;
+
+                if (activeFahrzeugeCount > 0) {
+                    confirmMessage += `🚗 KRITISCH: ${activeFahrzeugeCount} aktive(s) Fahrzeug(e) zugewiesen!\n`;
+                    confirmMessage += `Diese Fahrzeuge werden KEINEM Mitarbeiter mehr zugewiesen sein.\n\n`;
+                }
 
                 if (schichtenCount > 0) {
                     confirmMessage += `🗓️ ACHTUNG: ${schichtenCount} Schicht(en) werden ebenfalls gelöscht!\n\n`;
