@@ -16,6 +16,8 @@ class AIChatWidget {
         this.isOpen = false;
         this.messages = [];
         this.elements = {};
+        // 🐛 BUG FIX (2026-01-10): Store bound handlers for cleanup
+        this._handlers = {};
 
         this.init();
     }
@@ -98,31 +100,40 @@ class AIChatWidget {
 
     /**
      * Attach event listeners
+     * 🐛 BUG FIX (2026-01-10): Store handlers for cleanup in destroy()
      */
     attachEvents() {
-        // Toggle widget
-        this.elements.button.addEventListener('click', () => this.toggle());
-        this.elements.close.addEventListener('click', () => this.close());
-
-        // Send message
-        this.elements.sendButton.addEventListener('click', () => this.sendMessage());
-
-        // Enter to send (Shift+Enter for new line)
-        this.elements.input.addEventListener('keydown', (e) => {
+        // Create bound handlers for cleanup
+        this._handlers.toggle = () => this.toggle();
+        this._handlers.close = () => this.close();
+        this._handlers.send = () => this.sendMessage();
+        this._handlers.keydown = (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 this.sendMessage();
             }
-        });
-
-        // Auto-resize textarea
-        this.elements.input.addEventListener('input', (e) => {
+        };
+        this._handlers.input = (e) => {
             e.target.style.height = 'auto';
             e.target.style.height = e.target.scrollHeight + 'px';
-        });
+        };
+        this._handlers.voice = () => this.toggleVoice();
+
+        // Toggle widget
+        this.elements.button.addEventListener('click', this._handlers.toggle);
+        this.elements.close.addEventListener('click', this._handlers.close);
+
+        // Send message
+        this.elements.sendButton.addEventListener('click', this._handlers.send);
+
+        // Enter to send (Shift+Enter for new line)
+        this.elements.input.addEventListener('keydown', this._handlers.keydown);
+
+        // Auto-resize textarea
+        this.elements.input.addEventListener('input', this._handlers.input);
 
         // Voice button
-        this.elements.voiceButton.addEventListener('click', () => this.toggleVoice());
+        this.elements.voiceButton.addEventListener('click', this._handlers.voice);
     }
 
     /**
@@ -407,6 +418,45 @@ class AIChatWidget {
         }
 
         console.log('🗑️ Chat cleared');
+    }
+
+    /**
+     * Destroy widget and cleanup event listeners
+     * 🐛 BUG FIX (2026-01-10): Prevent memory leaks on navigation
+     */
+    destroy() {
+        // Remove event listeners
+        if (this.elements.button && this._handlers.toggle) {
+            this.elements.button.removeEventListener('click', this._handlers.toggle);
+        }
+        if (this.elements.close && this._handlers.close) {
+            this.elements.close.removeEventListener('click', this._handlers.close);
+        }
+        if (this.elements.sendButton && this._handlers.send) {
+            this.elements.sendButton.removeEventListener('click', this._handlers.send);
+        }
+        if (this.elements.input && this._handlers.keydown) {
+            this.elements.input.removeEventListener('keydown', this._handlers.keydown);
+        }
+        if (this.elements.input && this._handlers.input) {
+            this.elements.input.removeEventListener('input', this._handlers.input);
+        }
+        if (this.elements.voiceButton && this._handlers.voice) {
+            this.elements.voiceButton.removeEventListener('click', this._handlers.voice);
+        }
+
+        // Remove DOM elements
+        const button = document.getElementById('aiChatButton');
+        const widget = document.getElementById('aiChatWidget');
+        if (button) button.parentElement?.remove();
+        if (widget) widget.parentElement?.remove();
+
+        // Clear references
+        this._handlers = {};
+        this.elements = {};
+        this.messages = [];
+
+        console.log('🗑️ AI Chat Widget destroyed');
     }
 }
 
