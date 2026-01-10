@@ -5810,8 +5810,11 @@
                 photosHTML = schadenFotosHTML + fahrzeugscheinHTML;
             }
 
+            // 🔧 BUG-N6 FIX (2026-01-10): XSS Prevention - escapeHtml für alle User-Daten
+            const esc = window.escapeHtml || (s => s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'));
+
             infoBox.innerHTML = `
-                <h3>🚗 Anfrage von ${anfrage.partnerName || 'Unbekannt'}</h3>
+                <h3>🚗 Anfrage von ${esc(anfrage.partnerName) || 'Unbekannt'}</h3>
                 ${anfrage.kundenEmail || anfrage.kundenTelefon || anfrage.telefon ? `
                     <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #1976d2;">
                         <div style="font-weight: 600; color: #1565c0; margin-bottom: 8px; font-size: 13px;">📞 Kontaktdaten</div>
@@ -5819,13 +5822,13 @@
                             ${anfrage.kundenEmail ? `
                                 <div>
                                     <strong style="color: #1976d2;">Email:</strong>
-                                    <a href="mailto:${anfrage.kundenEmail}" style="color: #1976d2; text-decoration: none;">${anfrage.kundenEmail}</a>
+                                    <a href="mailto:${esc(anfrage.kundenEmail)}" style="color: #1976d2; text-decoration: none;">${esc(anfrage.kundenEmail)}</a>
                                 </div>
                             ` : ''}
                             ${(anfrage.kundenTelefon || anfrage.telefon) ? `
                                 <div>
                                     <strong style="color: #1976d2;">Telefon:</strong>
-                                    <a href="tel:${anfrage.kundenTelefon || anfrage.telefon}" style="color: #1976d2; text-decoration: none;">${anfrage.kundenTelefon || anfrage.telefon}</a>
+                                    <a href="tel:${esc(anfrage.kundenTelefon || anfrage.telefon)}" style="color: #1976d2; text-decoration: none;">${esc(anfrage.kundenTelefon || anfrage.telefon)}</a>
                                 </div>
                             ` : ''}
                         </div>
@@ -5834,7 +5837,7 @@
                 <div class="info-grid">
                     <div class="info-item">
                         <div class="label">${anfrage.referenzType === 'auftrag' ? 'Auftragsnummer' : 'Kennzeichen'}</div>
-                        <div class="value">${anfrage.auftragsnummer || anfrage.kennzeichen || 'k.A.'}</div>
+                        <div class="value">${esc(anfrage.auftragsnummer || anfrage.kennzeichen) || 'k.A.'}</div>
                     </div>
                     <div class="info-item">
                         <div class="label">Fahrzeugdaten</div>

@@ -20,11 +20,29 @@
  * }
  */
 function canViewPrices() {
+    // 🔧 BUG-M3 FIX (2026-01-10): Multi-Tenant werkstattId Validierung
+    const userWerkstatt = window.currentUser?.werkstattId;
+    const currentWerkstatt = window.werkstattId;
+
+    // Multi-Tenant Check: User muss zur aktuellen Werkstatt gehören
+    if (userWerkstatt && currentWerkstatt && userWerkstatt !== currentWerkstatt) {
+        console.warn('⚠️ Multi-Tenant Violation: User werkstattId mismatch', {
+            userWerkstatt,
+            currentWerkstatt
+        });
+        return false;
+    }
+
     // 1. Prüfe aktuelle User-Rolle (Stage 1: Admin/Werkstatt)
     const role = window.currentUser?.role;
 
-    // Admin, Werkstatt, Superadmin sehen IMMER Preise
-    if (role === 'admin' || role === 'werkstatt' || role === 'superadmin') {
+    // Superadmin sieht ALLE Preise (systemweit)
+    if (role === 'superadmin') {
+        return true;
+    }
+
+    // Admin, Werkstatt sehen Preise NUR in ihrer Werkstatt
+    if (role === 'admin' || role === 'werkstatt') {
         return true;
     }
 
@@ -56,11 +74,29 @@ function canViewPrices() {
  * }
  */
 function canManageBestellungen() {
+    // 🔧 BUG-M3 FIX (2026-01-10): Multi-Tenant werkstattId Validierung
+    const userWerkstatt = window.currentUser?.werkstattId;
+    const currentWerkstatt = window.werkstattId;
+
+    // Multi-Tenant Check: User muss zur aktuellen Werkstatt gehören
+    if (userWerkstatt && currentWerkstatt && userWerkstatt !== currentWerkstatt) {
+        console.warn('⚠️ Multi-Tenant Violation: User werkstattId mismatch', {
+            userWerkstatt,
+            currentWerkstatt
+        });
+        return false;
+    }
+
     // 1. Prüfe aktuelle User-Rolle (Stage 1: Admin/Werkstatt)
     const role = window.currentUser?.role;
 
-    // Admin, Werkstatt, Superadmin dürfen IMMER bestellen
-    if (role === 'admin' || role === 'werkstatt' || role === 'superadmin') {
+    // Superadmin darf ALLES (systemweit)
+    if (role === 'superadmin') {
+        return true;
+    }
+
+    // Admin, Werkstatt dürfen bestellen (in ihrer Werkstatt)
+    if (role === 'admin' || role === 'werkstatt') {
         return true;
     }
 

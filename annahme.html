@@ -3600,8 +3600,9 @@
             await loadKunden();
 
             // Auto-Save Entwurf wiederherstellen (nur wenn NICHT Nachannahme-Modus)
+            // 🔧 BUG-M2 FIX (2026-01-10): await hinzugefügt (defensive - falls loadDraft async wird)
             if (!window.istNachannahme) {
-                loadDraft();
+                await loadDraft();
 
                 const farbnummerInput = document.getElementById('farbnummer');
                 if (farbnummerInput) {
@@ -3798,7 +3799,8 @@
                                 datum: annahmeData.datum,
                                 zeit: annahmeData.zeit,
                                 physischeAnnahmeErfolgt: true,
-                                physischeAnnahmeDatum: new Date().toISOString(),
+                                // 🔧 BUG-N4 FIX (2026-01-10): Firestore.Timestamp statt toISOString
+                                physischeAnnahmeDatum: firebase.firestore.Timestamp.now(),
                                 serviceDetails: annahmeData.serviceDetails,
                                 lastModified: Date.now()
                             };
@@ -3838,45 +3840,23 @@
                             }
                         }
 
-                        // BUGFIX 2025-11-04: Pass complete customer data object
-                        const kundeId = await firebaseApp.registriereKundenbesuch({
-                            name: annahmeData.kundenname,
-                            email: annahmeData.kundenEmail || '',
-                            telefon: annahmeData.telefon || '',
-                            notizen: annahmeData.notizen || ''
-                        });
-                        if (kundeId) {
-                            annahmeData.kundenId = kundeId;
-                            // console.log('   ✅ Kunde registriert, ID:', kundeId);
-                        } else {
-                            // console.log('   ⚠️ Keine KundenID erhalten');
-                        }
+                        // ═══════════════════════════════════════════════════════════
+                        // 🔧 BUG-A2 FIX (2026-01-10): Atomare Speicher-Reihenfolge
+                        // PROBLEM: Sequential Writes ohne Transaktion → verwaiste Daten bei Fehler
+                        // LÖSUNG: Fahrzeug ZUERST speichern, dann optionale Daten (Kunde, Fotos)
+                        // ═══════════════════════════════════════════════════════════
 
-                        // console.log('   b) Speichere Fotos in Firestore...');
-                        try {
-                            await firebaseApp.savePhotosToFirestore(annahmeData.id, annahmeData.photos, 'vorher');
-                            // console.log('   ✅ Fotos in Firestore gespeichert');
-                        } catch (e) {
-                            console.error('   ❌ Fehler beim Speichern der Fotos in Firestore:', e);
-                            console.warn('   → Fallback: Speichere Fotos in LocalStorage');
-                            firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
-                        }
-
-                        // console.log('   c) Speichere Fahrzeugdaten in Firestore...');
+                        // SCHRITT 1: Fahrzeugdaten vorbereiten (BEVOR irgendwas gespeichert wird)
                         const dataForFirestore = {...annahmeData};
 
                         // BUGFIX 2025-11-04: Speichere partnerEmail für Firestore Security Rules
-                        // Ermöglicht Partner-Zugriff auf ihre eigenen Fahrzeuge
                         if (annahmeData.kundenEmail && annahmeData.kundenEmail.includes('@')) {
                             dataForFirestore.partnerEmail = annahmeData.kundenEmail;
-                            // console.log('   🔑 partnerEmail gesetzt:', dataForFirestore.partnerEmail);
                         }
 
                         delete dataForFirestore.photos;
 
-                        // ═══════════════════════════════════════════════════════════
                         // SAFETY CHECK: Sicherstellen, dass editedData existiert
-                        // ═══════════════════════════════════════════════════════════
                         if (!dataForFirestore.pdfImport || !dataForFirestore.pdfImport.editedData) {
                             console.error('❌ KRITISCHER FEHLER: pdfImport.editedData fehlt!');
                             console.error('   Wiederherstelle von globalen Arrays...');
@@ -3891,13 +3871,6 @@
                                 },
                                 manualPriceOverride: document.getElementById('manualPriceOverride')?.checked || false
                             };
-
-                            // console.log('✅ editedData wiederhergestellt:', {
-                                ersatzteile: dataForFirestore.pdfImport.editedData.ersatzteile.length,
-                                arbeitslohn: dataForFirestore.pdfImport.editedData.arbeitslohn.length,
-                                lackierung: dataForFirestore.pdfImport.editedData.lackierung.length,
-                                materialien: dataForFirestore.pdfImport.editedData.materialien.length
-                            });
                         }
 
                         // Zusätzliche Validierung: Warnen wenn Daten verloren gegangen sind
@@ -3910,11 +3883,45 @@
                         if (totalRows > 0 && savedRows === 0) {
                             console.error('⚠️⚠️⚠️ WARNUNG: Tabellen-Daten gehen verloren!');
                             console.error('   Global:', totalRows, 'Zeilen | Zu speichern:', savedRows, 'Zeilen');
-                        } else if (totalRows === savedRows) {
-                            // console.log(`✅ Tabellen-Daten-Validierung erfolgreich: ${totalRows} Zeilen werden gespeichert`);
                         }
 
-                        await firebaseApp.saveFahrzeug(dataForFirestore);
+                        // SCHRITT 2: Fahrzeug ZUERST speichern (KRITISCHE OPERATION)
+                        // Wenn dies fehlschlägt, werden keine verwaisten Daten erstellt
+                        try {
+                            await firebaseApp.saveFahrzeug(dataForFirestore);
+                        } catch (error) {
+                            console.error('❌ KRITISCH: Fahrzeug konnte nicht gespeichert werden:', error);
+                            showToast('❌ Fehler beim Speichern des Fahrzeugs. Bitte erneut versuchen.', 'error');
+                            return; // Exit early - keine verwaisten Daten
+                        }
+
+                        // SCHRITT 3: Kunde registrieren (NICHT-KRITISCH - Fahrzeug existiert bereits)
+                        let kundeId = null;
+                        try {
+                            kundeId = await firebaseApp.registriereKundenbesuch({
+                                name: annahmeData.kundenname,
+                                email: annahmeData.kundenEmail || '',
+                                telefon: annahmeData.telefon || '',
+                                notizen: annahmeData.notizen || ''
+                            });
+                            if (kundeId) {
+                                annahmeData.kundenId = kundeId;
+                                // Update Fahrzeug mit kundenId
+                                await firebaseApp.updateFahrzeug(annahmeData.id, { kundenId: kundeId });
+                            }
+                        } catch (kundeError) {
+                            console.warn('⚠️ Kundenregistrierung fehlgeschlagen (Fahrzeug bereits gespeichert):', kundeError);
+                            // Fahrzeug existiert bereits - Kunde kann später verknüpft werden
+                        }
+
+                        // SCHRITT 4: Fotos speichern (NICHT-KRITISCH - mit Fallback)
+                        try {
+                            await firebaseApp.savePhotosToFirestore(annahmeData.id, annahmeData.photos, 'vorher');
+                        } catch (e) {
+                            console.error('   ❌ Fehler beim Speichern der Fotos in Firestore:', e);
+                            console.warn('   → Fallback: Speichere Fotos in LocalStorage');
+                            firebaseApp.savePhotosLocal(annahmeData.id, annahmeData.photos, 'vorher');
+                        }
                         // console.log('   ✅ Fahrzeug in Firestore gespeichert');
 
                         // ============================================
@@ -4040,8 +4047,9 @@
                                         partnerId: partnerResult.data.partnerId,
                                         partnerName: annahmeData.kundenname,
                                         serviceTyp: annahmeData.serviceTyp || 'lackier',
-                                        timestamp: new Date().toISOString(),
-                                        erstelltAm: new Date().toISOString(),
+                                        // 🔧 BUG-N4 FIX (2026-01-10): Firestore.Timestamp statt toISOString
+                                        timestamp: firebase.firestore.Timestamp.now(),
+                                        erstelltAm: firebase.firestore.Timestamp.now(),
 
                                         // Vehicle reference
                                         referenzType: 'kennzeichen',
@@ -5204,7 +5212,11 @@
             const timestamp = Date.now();
             const entwurfId = `temp_${timestamp}`; // Temporary ID for photos before final save
 
+            // 🔧 BUG-M1 FIX (2026-01-10): Race Condition - updatePhotoGrid() nach JEDEM Upload
             (async () => {
+                const totalFiles = files.length;
+                let uploadedCount = 0;
+
                 for (const file of files) {
                     try {
                         // Create unique filename
@@ -5222,14 +5234,26 @@
 
                         // Store URL instead of Base64
                         photos.push(downloadURL);
-                        // console.log(`✅ Foto hochgeladen: ${storagePath}`);
+                        uploadedCount++;
+
+                        // 🔧 BUG-M1 FIX: Grid nach JEDEM Upload aktualisieren (nicht erst am Ende)
+                        updatePhotoGrid();
+
+                        // Fortschritts-Feedback bei mehreren Fotos
+                        if (totalFiles > 1) {
+                            showToast(`📷 Foto ${uploadedCount}/${totalFiles} hochgeladen`, 'success', 1500);
+                        }
 
                     } catch (error) {
                         console.error('❌ Fehler beim Foto-Upload:', error);
                         showToast(`Fehler beim Upload von "${file.name}": ${error.message}`, 'error', 5000);
                     }
                 }
-                updatePhotoGrid();
+
+                // Finale Bestätigung
+                if (totalFiles > 1 && uploadedCount === totalFiles) {
+                    showToast(`✅ Alle ${totalFiles} Fotos erfolgreich hochgeladen`, 'success', 2000);
+                }
             })();
             e.target.value = '';
         };
