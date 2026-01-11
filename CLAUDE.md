@@ -678,6 +678,36 @@ npm run test:all
 - Leihfahrzeug-Rückgabe erzwingen (Design-Entscheidung)
 - PDF-Zoom mit PDF.js (Enhancement)
 
+### 2026-01-11: Bug-Scan Sessions #8 & #9
+
+**39 Bugs in 9 Sessions behoben (100% verified bugs fixed)**
+
+**Session #8 (2 Bugs behoben):**
+| Bug | Datei | Fix | Commit |
+|-----|-------|-----|--------|
+| Service Worker Offline Crash | `sw.js:274` | try-catch für cacheFirst + Offline Response | `15ccc62` |
+| Tilt-Listener Memory Leak | `kanban.html:11437` | data-tilt-initialized Guard | `15ccc62` |
+
+**Session #9 (1 Bug behoben):**
+| Bug | Datei | Fix | Commit |
+|-----|-------|-----|--------|
+| XSS via javascript: URI | `partner-app/js/kva-erstellen.js` | openPhotoUrl() mit URL-Whitelist | `8fcff4d` |
+
+**Bug-Kategorien Gesamt:**
+| Kategorie | Anzahl | Severity |
+|-----------|--------|----------|
+| Multi-Tenant Violations | 10 | KRITISCH |
+| XSS Prevention | 14 | SICHERHEIT |
+| Race Conditions | 3 | HOCH |
+| Memory Leak Prevention | 3 | MITTEL |
+| Service Worker | 1 | MITTEL |
+| Promise Error Handling | 15 | MITTEL |
+| JSON.parse Error Handling | 4 | MITTEL |
+| FileReader.onerror | 6 | MITTEL |
+| Timestamp Konsistenz | 3 | NIEDRIG |
+
+**Commits:** `632dff8`, `9b1521c`, `b506f7d`, `c3a8f2e`, `edf2139`, `7c1eb98`, `d0186a4`, `15ccc62`, `8fcff4d`
+
 ---
 
 ## External Resources
@@ -688,6 +718,6 @@ npm run test:all
 
 ---
 
-_Version: 10.9 (Updated 2026-01-09 - Bug-Fix Sprint + 458 Tests PASSED)_
+_Version: 11.0 (Updated 2026-01-11 - Bug-Scan Sessions #8 & #9, 39 Bugs behoben)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_
