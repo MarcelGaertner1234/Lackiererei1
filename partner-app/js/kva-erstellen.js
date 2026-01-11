@@ -25,6 +25,20 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // ✅ FIX BUG-S9-1 (2026-01-11): Sichere window.open für Foto-URLs
+        // Verhindert XSS via javascript: URIs
+        function openPhotoUrl(url) {
+            if (!url || typeof url !== 'string') return;
+            // Nur HTTP(S) und data: URIs erlauben
+            if (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('data:image/')) {
+                window.open(url, '_blank');
+            } else {
+                console.warn('[Security] Blocked unsafe URL:', url);
+            }
+        }
+        // Global verfügbar machen für onclick
+        window.openPhotoUrl = openPhotoUrl;
+
         // ============================================
         // SERVICE-TEMPLATE DEFINITIONEN (12 Service-Typen)
         // ============================================
@@ -5810,7 +5824,7 @@
                         <div style="font-size: 12px; color: #666; margin-bottom: 5px;">📸 Schadenfotos (${schadenFotos.length})</div>
                         <div class="photos-preview">
                             ${schadenFotos.map((foto, index) => `
-                                <img src="${foto}" alt="Schadenfoto ${index + 1}" onclick="window.open('${foto}', '_blank')">
+                                <img src="${foto}" alt="Schadenfoto ${index + 1}" onclick="openPhotoUrl('${escapeAttr(foto)}')">
                             `).join('')}
                         </div>
                     </div>
@@ -5821,7 +5835,7 @@
                         <div style="font-size: 12px; color: #e65100; margin-bottom: 5px;">📄 Fahrzeugschein (${fahrzeugscheinFotos.length})</div>
                         <div class="photos-preview">
                             ${fahrzeugscheinFotos.map((foto, index) => `
-                                <img src="${foto}" alt="Fahrzeugschein ${index + 1}" style="border: 2px solid #ff9800;" onclick="window.open('${foto}', '_blank')">
+                                <img src="${foto}" alt="Fahrzeugschein ${index + 1}" style="border: 2px solid #ff9800;" onclick="openPhotoUrl('${escapeAttr(foto)}')">
                             `).join('')}
                         </div>
                     </div>
@@ -5973,7 +5987,7 @@
                                 <div style="font-size: 13px; color: #e65100; margin-bottom: 8px;">📄 Fahrzeugschein (${anfrage.fahrzeugscheinFotos.length} Foto${anfrage.fahrzeugscheinFotos.length > 1 ? 's' : ''})</div>
                                 <div class="photos-preview">
                                     ${anfrage.fahrzeugscheinFotos.map((foto, index) => `
-                                        <img src="${foto}" alt="Fahrzeugschein ${index + 1}" onclick="window.open('${foto}', '_blank')">
+                                        <img src="${foto}" alt="Fahrzeugschein ${index + 1}" onclick="openPhotoUrl('${escapeAttr(foto)}')">
                                     `).join('')}
                                 </div>
                             </div>
