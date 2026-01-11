@@ -14,6 +14,17 @@
                 .replace(/>/g, '&gt;');
         }
 
+        // ✅ FIX BUG-S5 (2026-01-11): XSS Protection - Escape für innerHTML Content
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // ============================================
         // SERVICE-TEMPLATE DEFINITIONEN (12 Service-Typen)
         // ============================================
@@ -6263,7 +6274,7 @@
                                 <div><strong>Dimension:</strong> ${reifenGroesse}</div>
                                 <div><strong>Anzahl:</strong> ${reifenAnzahl} Reifen</div>
                             </div>
-                            ${reifenInfo ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${reifenInfo}</p>` : ''}
+                            ${reifenInfo ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${escapeHtml(reifenInfo)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6286,7 +6297,7 @@
                                 ${lackFarbcode ? `<div style="grid-column: 1 / -1;"><strong>Farbcode:</strong> ${lackFarbcode}</div>` : ''}
                                 ${lackTeile ? `<div style="grid-column: 1 / -1;"><strong>Zu lackierende Teile:</strong> ${lackTeile}</div>` : ''}
                             </div>
-                            ${lackBeschreibung ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Schadensbeschreibung:</strong> ${lackBeschreibung}</p>` : ''}
+                            ${lackBeschreibung ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Schadensbeschreibung:</strong> ${escapeHtml(lackBeschreibung)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6297,10 +6308,10 @@
                             <h4 style="color: #6a1b9a; margin: 0 0 10px 0; font-size: 14px;">🔧 Mechanik Details</h4>
                             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 13px;">
                                 <div><strong>Art der Reparatur:</strong> ${formatReparaturArt(serviceData.art || serviceData.mechanik_art || serviceData.reparaturart || serviceData.mechanik_reparaturart)}</div>
-                                <div><strong>Symptome:</strong> ${serviceData.symptome || serviceData.beschreibung || serviceData.mechanik_symptome || serviceData.mechanik_beschreibung || 'k.A.'}</div>
+                                <div><strong>Symptome:</strong> ${escapeHtml(serviceData.symptome || serviceData.beschreibung || serviceData.mechanik_symptome || serviceData.mechanik_beschreibung || 'k.A.')}</div>
                                 ${(serviceData.km || serviceData.mechanik_km) ? `<div><strong>Kilometerstand:</strong> ${(serviceData.km || serviceData.mechanik_km).toLocaleString('de-DE')} km</div>` : ''}
                             </div>
-                            ${(serviceData.beschreibung || serviceData.mechanik_beschreibung) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Problem-Beschreibung:</strong> ${serviceData.beschreibung || serviceData.mechanik_beschreibung}</p>` : ''}
+                            ${(serviceData.beschreibung || serviceData.mechanik_beschreibung) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Problem-Beschreibung:</strong> ${escapeHtml(serviceData.beschreibung || serviceData.mechanik_beschreibung)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6318,7 +6329,7 @@
                                     (serviceData.ozon || serviceData.pflege_ozon) ? 'Ozonbehandlung' : null
                                 ].filter(Boolean).join(', ') || 'Keine'}</div>` : ''}
                             </div>
-                            ${(serviceData.anforderungen || serviceData.pflege_anforderungen) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Besondere Anforderungen:</strong> ${serviceData.anforderungen || serviceData.pflege_anforderungen}</p>` : ''}
+                            ${(serviceData.anforderungen || serviceData.pflege_anforderungen) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Besondere Anforderungen:</strong> ${escapeHtml(serviceData.anforderungen || serviceData.pflege_anforderungen)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6342,7 +6353,7 @@
                                 <div><strong>Fälligkeit:</strong> ${serviceData.ablauf || serviceData.tuev_ablauf || serviceData.faelligkeit || serviceData.tuev_faelligkeit || 'k.A.'}</div>
                                 ${(serviceData.vorbereitung || serviceData.tuev_vorbereitung) ? `<div style="grid-column: 1 / -1;"><strong>Vorbereitung:</strong> ${formatVorbereitung(serviceData.vorbereitung || serviceData.tuev_vorbereitung)}</div>` : ''}
                             </div>
-                            ${(serviceData.info || serviceData.tuev_info) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Zusätzliche Informationen:</strong> ${serviceData.info || serviceData.tuev_info}</p>` : ''}
+                            ${(serviceData.info || serviceData.tuev_info) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Zusätzliche Informationen:</strong> ${escapeHtml(serviceData.info || serviceData.tuev_info)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6357,7 +6368,7 @@
                                 <div><strong>Gutachten:</strong> ${formatGutachten(serviceData.gutachten || serviceData.versicherung_gutachten)}</div>
                                 ${(serviceData.teile || serviceData.versicherung_teile) ? `<div style="grid-column: 1 / -1;"><strong>Beschädigte Teile:</strong> ${serviceData.teile || serviceData.versicherung_teile}</div>` : ''}
                             </div>
-                            ${(serviceData.hergang || serviceData.versicherung_hergang) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Schadenshergang:</strong> ${serviceData.hergang || serviceData.versicherung_hergang}</p>` : ''}
+                            ${(serviceData.hergang || serviceData.versicherung_hergang) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Schadenshergang:</strong> ${escapeHtml(serviceData.hergang || serviceData.versicherung_hergang)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6374,7 +6385,7 @@
                                 ${(serviceData.anzahl || serviceData.glas_anzahl) ? `<div><strong>Anzahl:</strong> ${serviceData.anzahl || serviceData.glas_anzahl}</div>` : ''}
                                 ${(serviceData.groesse || serviceData.glas_groesse) ? `<div><strong>Schadensgröße:</strong> ${formatGroesse(serviceData.groesse || serviceData.glas_groesse)}</div>` : ''}
                             </div>
-                            ${(serviceData.info || serviceData.glas_info || anfrage.anmerkungen) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${serviceData.info || serviceData.glas_info || anfrage.anmerkungen}</p>` : ''}
+                            ${(serviceData.info || serviceData.glas_info || anfrage.anmerkungen) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${escapeHtml(serviceData.info || serviceData.glas_info || anfrage.anmerkungen)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6389,7 +6400,7 @@
                                 ${((serviceData.symptome || serviceData.klima_symptome) && (serviceData.symptome || serviceData.klima_symptome).length > 0) ? `<div style="grid-column: 1 / -1;"><strong>Symptome:</strong> ${(serviceData.symptome || serviceData.klima_symptome).map(s => formatKlimaSymptom(s)).join(', ')}</div>` : ''}
                                 ${(serviceData.letzteWartung || serviceData.klima_letzteWartung) ? `<div><strong>Letzte Wartung:</strong> ${serviceData.letzteWartung || serviceData.klima_letzteWartung}</div>` : ''}
                             </div>
-                            ${(serviceData.info || serviceData.klima_info || serviceData.problem || serviceData.klima_problem) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${serviceData.info || serviceData.klima_info || serviceData.problem || serviceData.klima_problem}</p>` : ''}
+                            ${(serviceData.info || serviceData.klima_info || serviceData.problem || serviceData.klima_problem) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${escapeHtml(serviceData.info || serviceData.klima_info || serviceData.problem || serviceData.klima_problem)}</p>` : ''}
                         </div>
                     `;
                     break;
@@ -6404,7 +6415,7 @@
                                 ${(serviceData.position || serviceData.dellen_position) ? `<div style="grid-column: 1 / -1;"><strong>Positionen:</strong> ${serviceData.position || serviceData.dellen_position}</div>` : ''}
                                 <div><strong>Lackschaden:</strong> ${(serviceData.lackschaden || serviceData.dellen_lackschaden) ? '⚠️ Ja (Lackierung nötig)' : '✅ Nein (nur PDR)'}</div>
                             </div>
-                            ${(serviceData.info || serviceData.dellen_info) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${serviceData.info || serviceData.dellen_info}</p>` : ''}
+                            ${(serviceData.info || serviceData.dellen_info) ? `<p style="margin-top: 10px; font-size: 12px; color: #666;"><strong>Anmerkungen:</strong> ${escapeHtml(serviceData.info || serviceData.dellen_info)}</p>` : ''}
                         </div>
                     `;
                     break;
