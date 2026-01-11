@@ -66,8 +66,13 @@ async function initQuotaDisplay() {
   await fetchAndUpdateQuota();
 
   // Auto-refresh every 5 minutes
+  // ✅ FIX BUG-S3 (2026-01-11): try-catch für async setInterval
   window.quotaDisplayState.autoRefreshInterval = setInterval(async () => {
-    await fetchAndUpdateQuota();
+    try {
+      await fetchAndUpdateQuota();
+    } catch (error) {
+      console.error('Quota-Refresh fehlgeschlagen:', error);
+    }
   }, 5 * 60 * 1000);
 
   // 🔧 FIX (2025-12-11): Memory Leak Prevention - Cleanup bei Page Leave

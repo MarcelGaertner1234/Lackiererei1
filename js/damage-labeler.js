@@ -708,7 +708,9 @@
             document.getElementById('labelTiefe').value = 'mittel';
             document.getElementById('labelReparatur').value = '';
             document.getElementById('labelNotizen').value = '';
-            document.querySelector('input[name="labelConfidence"][value="sicher"]').checked = true;
+            // ✅ FIX BUG-S1 (2026-01-11): Null-safe querySelector
+            const radioBtn = document.querySelector('input[name="labelConfidence"][value="sicher"]');
+            if (radioBtn) radioBtn.checked = true;
 
             this.updateSchweregradText();
             this.updatePricePreview();
@@ -728,7 +730,9 @@
             if (labels.notizen) document.getElementById('labelNotizen').value = labels.notizen;
 
             const confidence = labels.confidence || 'sicher';
-            document.querySelector(`input[name="labelConfidence"][value="${confidence}"]`).checked = true;
+            // ✅ FIX BUG-S2 (2026-01-11): Null-safe querySelector
+            const confidenceBtn = document.querySelector(`input[name="labelConfidence"][value="${confidence}"]`);
+            if (confidenceBtn) confidenceBtn.checked = true;
 
             this.updateSchweregradText();
             this.updateSchadensartInfo();
@@ -779,7 +783,8 @@
             // Metadaten
             const labelData = {
                 schadenLabels: schadenLabels,
-                labeledAt: new Date().toISOString(),
+                // ✅ FIX BUG-S4 (2026-01-11): Firestore Timestamp statt toISOString
+                labeledAt: firebase.firestore.Timestamp.now(),
                 labeledBy: this.getCurrentUserId(),
                 confidence: document.querySelector('input[name="labelConfidence"]:checked')?.value || 'medium',
                 damageCode: window.generateDamageCode(position, schadensart, schweregrad)
