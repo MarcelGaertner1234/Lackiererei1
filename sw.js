@@ -270,15 +270,26 @@ async function cacheFirst(request, cacheName) {
         return cached;
     }
 
-    console.log(`[SW] 🌐 Cache Miss, fetching: ${request.url}`);
-    const response = await fetch(request);
+    // ✅ FIX BUG-S8-1 (2026-01-11): try-catch für fetch bei Network-Error
+    try {
+        console.log(`[SW] 🌐 Cache Miss, fetching: ${request.url}`);
+        const response = await fetch(request);
 
-    // Cache die Response für zukünftige Requests
-    if (response.ok) {
-        cache.put(request, response.clone());
+        // Cache die Response für zukünftige Requests
+        if (response.ok) {
+            cache.put(request, response.clone());
+        }
+
+        return response;
+    } catch (error) {
+        console.log(`[SW] ❌ Network failed in cacheFirst: ${request.url}`, error.message);
+        // Return offline fallback oder empty response
+        return new Response('Offline - Ressource nicht verfügbar', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain' }
+        });
     }
-
-    return response;
 }
 
 /**
