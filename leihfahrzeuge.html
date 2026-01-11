@@ -1364,7 +1364,8 @@
                 };
 
                 // Use originalId as pool document ID for easy lookup
-                await db.collection('leihfahrzeugPool').doc(`${window.werkstattId}_${vehicleId}`).set(poolData, { merge: true });
+                // 🔧 BUG-L1 FIX (2026-01-11): Multi-Tenant - window.getCollection statt db.collection
+                await window.getCollection('leihfahrzeugPool').doc(`${window.werkstattId}_${vehicleId}`).set(poolData, { merge: true });
 
                 // if (window.DEBUG) console.log('Pool updated for vehicle:', vehicleId);
 
@@ -1463,7 +1464,7 @@
 
             try {
                 // Load all available vehicles from pool (excluding own werkstatt)
-                const snapshot = await db.collection('leihfahrzeugPool')
+                const snapshot = await window.getCollection('leihfahrzeugPool')
                     .where('verfuegbar', '==', true)
                     .get();
 
@@ -1530,7 +1531,7 @@
                 const eigeneWerkstattName = settingsDoc.data()?.name || 'Anfragende Werkstatt';
 
                 // Create request in global collection
-                const anfrageRef = db.collection('leihfahrzeugAnfragen').doc();
+                const anfrageRef = window.getCollection('leihfahrzeugAnfragen').doc();
                 await anfrageRef.set({
                     poolFahrzeugId: poolId,
                     besitzerWerkstattId: besitzerWerkstattId,
@@ -1576,7 +1577,7 @@
             }
 
             try {
-                const snapshot = await db.collection('leihfahrzeugAnfragen')
+                const snapshot = await window.getCollection('leihfahrzeugAnfragen')
                     .where('besitzerWerkstattId', '==', window.werkstattId)
                     .where('status', '==', 'pending')
                     .get();
@@ -1614,7 +1615,7 @@
 
             try {
                 // Load pending requests for our werkstatt
-                const snapshot = await db.collection('leihfahrzeugAnfragen')
+                const snapshot = await window.getCollection('leihfahrzeugAnfragen')
                     .where('besitzerWerkstattId', '==', window.werkstattId)
                     .where('status', '==', 'pending')
                     .get();
@@ -1678,7 +1679,7 @@
             isApprovingRequest = true;
             try {
                 // 1. Get pool vehicle details FIRST (needed for IDs)
-                const poolDoc = await db.collection('leihfahrzeugPool').doc(poolFahrzeugId).get();
+                const poolDoc = await window.getCollection('leihfahrzeugPool').doc(poolFahrzeugId).get();
                 const poolData = poolDoc.data();
 
                 // 2. Calculate 48h expiry timestamp
@@ -1686,7 +1687,7 @@
                 const reserviertBis = new Date(now.getTime() + 48 * 60 * 60 * 1000); // 48h from now
 
                 // 3. Update request status with expiry data
-                await db.collection('leihfahrzeugAnfragen').doc(anfrageId).update({
+                await window.getCollection('leihfahrzeugAnfragen').doc(anfrageId).update({
                     status: 'genehmigt',
                     genehmigtAm: firebase.firestore.FieldValue.serverTimestamp(),
                     // 48h Expiry System fields
@@ -1699,7 +1700,7 @@
                 });
 
                 // 4. Mark pool vehicle as unavailable
-                await db.collection('leihfahrzeugPool').doc(poolFahrzeugId).update({
+                await window.getCollection('leihfahrzeugPool').doc(poolFahrzeugId).update({
                     verfuegbar: false,
                     reserviertFuer: anfragerWerkstattId,
                     reserviertBis: firebase.firestore.Timestamp.fromDate(reserviertBis)
@@ -1743,7 +1744,7 @@
 
             isRejectingRequest = true;
             try {
-                await db.collection('leihfahrzeugAnfragen').doc(anfrageId).update({
+                await window.getCollection('leihfahrzeugAnfragen').doc(anfrageId).update({
                     status: 'abgelehnt',
                     ablehnungsgrund: grund || 'Keine Angabe',
                     abgelehntAm: firebase.firestore.FieldValue.serverTimestamp()

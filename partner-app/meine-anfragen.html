@@ -3756,11 +3756,13 @@
             if (window.firebaseInitialized && window.werkstattId) {
                 clearInterval(authCheckInterval);
 
+                // 🔧 BUG-L6 FIX (2026-01-11): Kein throw in async setInterval - UI-Feedback stattdessen
                 try {
                     await initFirebase();
                 } catch (error) {
                     console.error('initFirebase failed:', error.message);
-                    throw error;
+                    showToast('Firebase-Initialisierung fehlgeschlagen. Bitte Seite neu laden.', 'error');
+                    return;
                 }
 
                 loadHiddenColumns();
@@ -3769,14 +3771,16 @@
                     await checkLogin();
                 } catch (error) {
                     console.error('checkLogin failed:', error.message);
-                    throw error;
+                    showToast('Login-Prüfung fehlgeschlagen. Bitte neu einloggen.', 'error');
+                    return;
                 }
 
                 try {
                     await loadAnfragen();
                 } catch (error) {
                     console.error('loadAnfragen failed:', error.message);
-                    throw error;
+                    showToast('Anfragen konnten nicht geladen werden. Bitte Seite neu laden.', 'error');
+                    return;
                 }
 
                 initFilter();
@@ -4044,6 +4048,9 @@
                         console.error('❌ Realtime Listener Error:', error);
                         loading.innerHTML = '<p style="color: #c62828;">⚠️ Fehler beim Laden der Anfragen</p>';
                     });
+
+                // 🔧 BUG-L5 FIX (2026-01-11): Memory Leak Prevention - Listener registrieren
+                window.listenerRegistry?.register(anfrageNUnsubscribe, 'partnerAnfragen-realtime-listener');
 
             } catch (error) {
                 console.error('❌ Fehler beim Setup des Realtime Listeners:', error);
@@ -6548,7 +6555,8 @@
 
                 // SCHRITT 2: ATOMIC BATCH TRANSACTION (⚡ KRITISCH!)
                 // console.log('🔥 Starte Atomic Batch Transaction...');
-                const batch = db.batch();
+                // 🔧 BUG-L2 FIX (2026-01-11): window.db.batch() statt db.batch()
+                const batch = window.db.batch();
 
                 // Operation 1: partnerAnfragen UPDATE
                 const anfrageRef = window.getCollection('partnerAnfragen').doc(anfrageId);
@@ -6603,7 +6611,8 @@
 
                         if (!remainingFotosSnapshot.empty) {
                             console.warn(`⚠️ ${remainingFotosSnapshot.size} verwaiste Foto(s) gefunden! Bereinige...`);
-                            const cleanupBatch = db.batch();
+                            // 🔧 BUG-L2 FIX (2026-01-11): window.db.batch() statt db.batch()
+                            const cleanupBatch = window.db.batch();
                             remainingFotosSnapshot.docs.forEach(doc => {
                                 cleanupBatch.delete(doc.ref);
                             });
