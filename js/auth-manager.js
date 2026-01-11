@@ -618,10 +618,15 @@ function setupSessionHeartbeat(intervalMs = 60000) {
   }
 
   // Setup new heartbeat
+  // ✅ FIX BUG-T5 (2026-01-11): try-catch für async setInterval
   window.sessionHeartbeatInterval = setInterval(async () => {
-    const mitarbeiter = getMitarbeiterSession();
-    if (mitarbeiter) {
-      await updateSessionActivity();
+    try {
+      const mitarbeiter = getMitarbeiterSession();
+      if (mitarbeiter) {
+        await updateSessionActivity();
+      }
+    } catch (error) {
+      console.error('Session heartbeat failed:', error);
     }
   }, intervalMs);
 

@@ -3688,8 +3688,11 @@
          */
         function updateErsatzteileSumme() {
             const summe = ersatzteileData.reduce((sum, teil) => sum + (teil.gesamtpreis || 0), 0);
-            document.getElementById('ersatzteileSumme').textContent = summe.toFixed(2) + ' €';
-            document.getElementById('ersatzteileCount').textContent = ersatzteileData.length;
+            // ✅ FIX BUG-T1 (2026-01-11): Null-safe getElementById
+            const summeEl = document.getElementById('ersatzteileSumme');
+            const countEl = document.getElementById('ersatzteileCount');
+            if (summeEl) summeEl.textContent = summe.toFixed(2) + ' €';
+            if (countEl) countEl.textContent = ersatzteileData.length;
             updateGesamtkosten();
         }
 
@@ -3796,8 +3799,11 @@
          */
         function updateArbeitslohnSumme() {
             const summe = arbeitslohnData.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
-            document.getElementById('arbeitslohnSumme').textContent = summe.toFixed(2) + ' €';
-            document.getElementById('arbeitslohnCount').textContent = arbeitslohnData.length;
+            // ✅ FIX BUG-T2 (2026-01-11): Null-safe getElementById
+            const summeEl = document.getElementById('arbeitslohnSumme');
+            const countEl = document.getElementById('arbeitslohnCount');
+            if (summeEl) summeEl.textContent = summe.toFixed(2) + ' €';
+            if (countEl) countEl.textContent = arbeitslohnData.length;
             updateGesamtkosten();
         }
 
@@ -3904,8 +3910,11 @@
          */
         function updateLackierungSumme() {
             const summe = lackierungData.reduce((sum, item) => sum + (item.gesamtpreis || 0), 0);
-            document.getElementById('lackierungSumme').textContent = summe.toFixed(2) + ' €';
-            document.getElementById('lackierungCount').textContent = lackierungData.length;
+            // ✅ FIX BUG-T3 (2026-01-11): Null-safe getElementById
+            const summeEl = document.getElementById('lackierungSumme');
+            const countEl = document.getElementById('lackierungCount');
+            if (summeEl) summeEl.textContent = summe.toFixed(2) + ' €';
+            if (countEl) countEl.textContent = lackierungData.length;
             updateGesamtkosten();
         }
 

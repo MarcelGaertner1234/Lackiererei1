@@ -43,10 +43,14 @@ function toggleMobileMenu() {
 // SMOOTH SCROLL - Navigation Links
 // ============================================
 function scrollToDemo() {
-    document.getElementById('contact').scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
-    });
+    // ✅ FIX BUG-T4 (2026-01-11): Null-safe getElementById
+    const contactEl = document.getElementById('contact');
+    if (contactEl) {
+        contactEl.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+        });
+    }
 }
 
 function scrollToFeatures() {
