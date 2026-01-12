@@ -1830,3 +1830,45 @@ console.log('   - window.exportArbeitszeitenTrainingData()');
 console.log('   - window.saveKVAFeedbackToFirestore()');
 console.log('   - window.getKVAFeedbackStats()');
 console.log('   - window.exportKVAFeedbackTrainingData()');
+
+/**
+ * ============================================
+ * 🔧 SAFARI FILE INPUT FIX (2026-01-12)
+ * ============================================
+ * Das capture="environment" Attribut wird auf macOS Safari ignoriert.
+ * Auf iOS funktioniert es, aber auf macOS öffnet es nur den Dateiauswähler.
+ * Diese Funktion entfernt das Attribut auf nicht-iOS Geräten.
+ */
+
+/**
+ * Optimiert File-Inputs für Safari-Kompatibilität
+ * - Entfernt capture-Attribut auf macOS (wird dort sowieso ignoriert)
+ * - Behält capture-Attribut auf iOS für Kamera-Zugriff
+ *
+ * @param {string} [selector='input[type="file"][capture]'] - CSS-Selector für File-Inputs
+ */
+window.optimizeFileInputsForSafari = function(selector = 'input[type="file"][capture]') {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    if (!isIOS) {
+        const fileInputs = document.querySelectorAll(selector);
+        fileInputs.forEach(input => {
+            if (input.hasAttribute('capture')) {
+                input.removeAttribute('capture');
+                console.log('[Safari Fix] capture-Attribut entfernt für:', input.id || 'unnamed input');
+            }
+        });
+    }
+};
+
+// Auto-run on DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        window.optimizeFileInputsForSafari();
+    });
+} else {
+    // DOM already loaded
+    window.optimizeFileInputsForSafari();
+}
+
+console.log('   - window.optimizeFileInputsForSafari()');

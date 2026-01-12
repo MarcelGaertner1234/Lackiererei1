@@ -488,8 +488,13 @@
             display: flex;
         }
 
+        /* 🔧 FIX Safari (2026-01-12): visibility: hidden statt display: none für ältere Safari-Versionen */
         #photoInput {
-            display: none;
+            visibility: hidden;
+            position: absolute;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
         }
 
         /* Signature Canvas */
@@ -5228,47 +5233,60 @@
             const timestamp = Date.now();
             const entwurfId = `temp_${timestamp}`; // Temporary ID for photos before final save
 
-            // 🔧 BUG-M1 FIX (2026-01-10): Race Condition - updatePhotoGrid() nach JEDEM Upload
+            // 🔧 Session #11 (2026-01-12): Paralleler Upload mit Promise.all für bessere Performance
+            // Ursprünglich sequenziell wegen BUG-M1, jetzt parallel mit Grid-Update nach jedem Upload
             (async () => {
                 const totalFiles = files.length;
                 let uploadedCount = 0;
+                const storage = firebase.storage();
 
-                for (const file of files) {
+                // Zeige Lade-Indikator
+                if (totalFiles > 1) {
+                    showToast(`📷 ${totalFiles} Fotos werden hochgeladen...`, 'info', 2000);
+                }
+
+                // Paralleler Upload mit Promise.all
+                const uploadPromises = files.map(async (file, index) => {
                     try {
-                        // Create unique filename
+                        // Create unique filename mit Index für Eindeutigkeit
                         const fileTimestamp = Date.now();
                         const sanitizedFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-                        const storagePath = `entwuerfe/${werkstattId}/${entwurfId}/photo_${fileTimestamp}_${sanitizedFilename}`;
+                        const storagePath = `entwuerfe/${werkstattId}/${entwurfId}/photo_${fileTimestamp}_${index}_${sanitizedFilename}`;
 
                         // Upload to Firebase Storage
-                        const storage = firebase.storage();
                         const storageRef = storage.ref(storagePath);
                         await storageRef.put(file);
 
                         // Get download URL
                         const downloadURL = await storageRef.getDownloadURL();
 
-                        // Store URL instead of Base64
+                        // Store URL (thread-safe da photos.push atomisch ist)
                         photos.push(downloadURL);
                         uploadedCount++;
 
-                        // 🔧 BUG-M1 FIX: Grid nach JEDEM Upload aktualisieren (nicht erst am Ende)
+                        // Grid nach jedem erfolgreichen Upload aktualisieren
                         updatePhotoGrid();
 
-                        // Fortschritts-Feedback bei mehreren Fotos
-                        if (totalFiles > 1) {
-                            showToast(`📷 Foto ${uploadedCount}/${totalFiles} hochgeladen`, 'success', 1500);
-                        }
+                        return { success: true, url: downloadURL, filename: file.name };
 
                     } catch (error) {
                         console.error('❌ Fehler beim Foto-Upload:', error);
                         showToast(`Fehler beim Upload von "${file.name}": ${error.message}`, 'error', 5000);
+                        return { success: false, error: error.message, filename: file.name };
                     }
-                }
+                });
+
+                // Warte auf alle Uploads
+                const results = await Promise.all(uploadPromises);
+                const successCount = results.filter(r => r.success).length;
 
                 // Finale Bestätigung
-                if (totalFiles > 1 && uploadedCount === totalFiles) {
-                    showToast(`✅ Alle ${totalFiles} Fotos erfolgreich hochgeladen`, 'success', 2000);
+                if (totalFiles > 1) {
+                    if (successCount === totalFiles) {
+                        showToast(`✅ Alle ${totalFiles} Fotos erfolgreich hochgeladen`, 'success', 2000);
+                    } else {
+                        showToast(`⚠️ ${successCount}/${totalFiles} Fotos hochgeladen`, 'warning', 3000);
+                    }
                 }
             })();
             e.target.value = '';
