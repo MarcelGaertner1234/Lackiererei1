@@ -30,7 +30,7 @@
  * - 'weekday' → Freitag
  * - 'short' → Fr, 08.11.2025
  */
-export function formatDate(date, format = 'DD.MM.YYYY') {
+function formatDate(date, format = 'DD.MM.YYYY') {
     const d = new Date(date);
 
     if (isNaN(d.getTime())) {
@@ -75,7 +75,7 @@ export function formatDate(date, format = 'DD.MM.YYYY') {
  * @param {Date|string|number} time - Time to format
  * @returns {string} Formatted time string (HH:MM)
  */
-export function formatTime(time) {
+function formatTime(time) {
     const t = new Date(time);
 
     if (isNaN(t.getTime())) {
@@ -94,7 +94,7 @@ export function formatTime(time) {
  * @param {Date|string|number} datetime - Datetime to format
  * @returns {string} Formatted datetime string (DD.MM.YYYY HH:MM)
  */
-export function formatDateTime(datetime) {
+function formatDateTime(datetime) {
     const dt = new Date(datetime);
 
     if (isNaN(dt.getTime())) {
@@ -116,7 +116,7 @@ export function formatDateTime(datetime) {
  * @param {number} [breakMinutes=0] - Break duration in minutes
  * @returns {number} Work hours (decimal)
  */
-export function calculateWorkHours(start, end, breakMinutes = 0) {
+function calculateWorkHours(start, end, breakMinutes = 0) {
     const startTime = new Date(start);
     const endTime = new Date(end);
 
@@ -142,7 +142,7 @@ export function calculateWorkHours(start, end, breakMinutes = 0) {
  * @param {string} timeStr - Time string (HH:MM)
  * @returns {number} Minutes since midnight
  */
-export function timeToMinutes(timeStr) {
+function timeToMinutes(timeStr) {
     const [hours, minutes] = timeStr.split(':').map(Number);
 
     if (isNaN(hours) || isNaN(minutes)) {
@@ -158,7 +158,7 @@ export function timeToMinutes(timeStr) {
  * @param {number} minutes - Minutes since midnight
  * @returns {string} Time string (HH:MM)
  */
-export function minutesToTime(minutes) {
+function minutesToTime(minutes) {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
@@ -173,7 +173,7 @@ export function minutesToTime(minutes) {
  * @param {Date|string|number} date - Date
  * @returns {number} ISO week number (1-53)
  */
-export function getWeekNumber(date) {
+function getWeekNumber(date) {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() + 4 - (d.getDay() || 7));
@@ -187,7 +187,7 @@ export function getWeekNumber(date) {
  * @param {Date|string|number} date - Any date in the week
  * @returns {Date} First day of week (Monday)
  */
-export function getFirstDayOfWeek(date) {
+function getFirstDayOfWeek(date) {
     const d = new Date(date);
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
@@ -199,7 +199,7 @@ export function getFirstDayOfWeek(date) {
  * @param {Date|string|number} date - Any date in the week
  * @returns {Date} Last day of week (Sunday)
  */
-export function getLastDayOfWeek(date) {
+function getLastDayOfWeek(date) {
     const firstDay = getFirstDayOfWeek(date);
     return new Date(firstDay.getTime() + 6 * 24 * 60 * 60 * 1000);
 }
@@ -209,7 +209,7 @@ export function getLastDayOfWeek(date) {
  * @param {Date|string|number} date - Any date in the week
  * @returns {Date[]} Array of 7 dates (Monday to Sunday)
  */
-export function getWeekDays(date) {
+function getWeekDays(date) {
     const firstDay = getFirstDayOfWeek(date);
     const days = [];
 
@@ -229,7 +229,7 @@ export function getWeekDays(date) {
  * @param {Date|string|number} date - Date to check
  * @returns {boolean} True if workday
  */
-export function isWorkday(date) {
+function isWorkday(date) {
     const d = new Date(date);
     const day = d.getDay();
     return day >= 1 && day <= 5; // Monday = 1, Friday = 5
@@ -241,7 +241,7 @@ export function isWorkday(date) {
  * @param {Date|string|number} endDate - End date
  * @returns {number} Number of business days
  */
-export function calculateBusinessDays(startDate, endDate) {
+function calculateBusinessDays(startDate, endDate) {
     const start = new Date(startDate);
     const end = new Date(endDate);
 
@@ -274,7 +274,7 @@ export function calculateBusinessDays(startDate, endDate) {
  * @param {number} days - Number of business days to add
  * @returns {Date} Resulting date
  */
-export function addBusinessDays(date, days) {
+function addBusinessDays(date, days) {
     const d = new Date(date);
     let count = 0;
 
@@ -297,7 +297,7 @@ export function addBusinessDays(date, days) {
  * @param {Date|string|number} date - Any date in the month
  * @returns {Date} First day of month
  */
-export function getFirstDayOfMonth(date) {
+function getFirstDayOfMonth(date) {
     const d = new Date(date);
     return new Date(d.getFullYear(), d.getMonth(), 1);
 }
@@ -307,7 +307,7 @@ export function getFirstDayOfMonth(date) {
  * @param {Date|string|number} date - Any date in the month
  * @returns {Date} Last day of month
  */
-export function getLastDayOfMonth(date) {
+function getLastDayOfMonth(date) {
     const d = new Date(date);
     return new Date(d.getFullYear(), d.getMonth() + 1, 0);
 }
@@ -317,7 +317,7 @@ export function getLastDayOfMonth(date) {
  * @param {Date|string|number} date - Any date in the month
  * @returns {number} Number of days in month
  */
-export function getDaysInMonth(date) {
+function getDaysInMonth(date) {
     const lastDay = getLastDayOfMonth(date);
     return lastDay.getDate();
 }
@@ -331,7 +331,7 @@ export function getDaysInMonth(date) {
  * @param {Date|string|number} date - Date to check
  * @returns {boolean} True if today
  */
-export function isToday(date) {
+function isToday(date) {
     const d = new Date(date);
     const today = new Date();
     return d.toDateString() === today.toDateString();
@@ -342,7 +342,7 @@ export function isToday(date) {
  * @param {Date|string|number} date - Date
  * @returns {string} Relative date string
  */
-export function getRelativeDateString(date) {
+function getRelativeDateString(date) {
     const d = new Date(date);
     const today = new Date();
     const yesterday = new Date(today);
@@ -362,7 +362,53 @@ export function getRelativeDateString(date) {
 }
 
 // ============================================================================
-// EXPORT NOTE
+// EXPORTS (Browser + Node.js)
 // ============================================================================
+
+// Browser: Assign to window object
+if (typeof window !== 'undefined') {
+    window.formatDate = formatDate;
+    window.formatTime = formatTime;
+    window.formatDateTime = formatDateTime;
+    window.calculateWorkHours = calculateWorkHours;
+    window.timeToMinutes = timeToMinutes;
+    window.minutesToTime = minutesToTime;
+    window.getWeekNumber = getWeekNumber;
+    window.getFirstDayOfWeek = getFirstDayOfWeek;
+    window.getLastDayOfWeek = getLastDayOfWeek;
+    window.getWeekDays = getWeekDays;
+    window.isWorkday = isWorkday;
+    window.calculateBusinessDays = calculateBusinessDays;
+    window.addBusinessDays = addBusinessDays;
+    window.getFirstDayOfMonth = getFirstDayOfMonth;
+    window.getLastDayOfMonth = getLastDayOfMonth;
+    window.getDaysInMonth = getDaysInMonth;
+    window.isToday = isToday;
+    window.getRelativeDateString = getRelativeDateString;
+}
+
+// Node.js: CommonJS export for Jest unit tests
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        formatDate,
+        formatTime,
+        formatDateTime,
+        calculateWorkHours,
+        timeToMinutes,
+        minutesToTime,
+        getWeekNumber,
+        getFirstDayOfWeek,
+        getLastDayOfWeek,
+        getWeekDays,
+        isWorkday,
+        calculateBusinessDays,
+        addBusinessDays,
+        getFirstDayOfMonth,
+        getLastDayOfMonth,
+        getDaysInMonth,
+        isToday,
+        getRelativeDateString
+    };
+}
 
 console.log('✅ Date/Time Helper Utilities loaded');

@@ -7,6 +7,8 @@
  * @version 3.2.0
  * @created 2025-11-09
  * @author Claude Code (Quick Win #2: Utility Extraction)
+ *
+ * Session #15 (2026-01-12): CommonJS Export für Unit Tests hinzugefügt
  */
 
 /// <reference path="../types.js" />
@@ -20,7 +22,7 @@
  * @param {string} email - Email address to validate
  * @returns {{valid: boolean, error: string|null}} Validation result
  */
-export function validateEmail(email) {
+function validateEmail(email) {
     if (!email || email.trim() === '') {
         return { valid: false, error: 'E-Mail-Adresse ist erforderlich' };
     }
@@ -44,7 +46,7 @@ export function validateEmail(email) {
  * @param {string} phone - Phone number to validate
  * @returns {{valid: boolean, error: string|null, formatted: string|null}} Validation result
  */
-export function validatePhone(phone) {
+function validatePhone(phone) {
     if (!phone || phone.trim() === '') {
         return { valid: false, error: 'Telefonnummer ist erforderlich', formatted: null };
     }
@@ -81,7 +83,7 @@ export function validatePhone(phone) {
  * @param {string} plate - License plate to validate
  * @returns {{valid: boolean, error: string|null, formatted: string|null}} Validation result
  */
-export function validateKennzeichen(plate) {
+function validateKennzeichen(plate) {
     if (!plate || plate.trim() === '') {
         return { valid: false, error: 'Kennzeichen ist erforderlich', formatted: null };
     }
@@ -118,7 +120,7 @@ export function validateKennzeichen(plate) {
  * @param {string} fin - FIN/VIN to validate
  * @returns {{valid: boolean, error: string|null}} Validation result
  */
-export function validateFIN(fin) {
+function validateFIN(fin) {
     if (!fin || fin.trim() === '') {
         return { valid: false, error: 'Fahrzeugidentifikationsnummer (FIN) ist erforderlich' };
     }
@@ -150,7 +152,7 @@ export function validateFIN(fin) {
  * @param {string} plz - Postal code to validate
  * @returns {{valid: boolean, error: string|null}} Validation result
  */
-export function validatePLZ(plz) {
+function validatePLZ(plz) {
     if (!plz || plz.trim() === '') {
         return { valid: false, error: 'Postleitzahl ist erforderlich' };
     }
@@ -175,7 +177,7 @@ export function validatePLZ(plz) {
  * @param {string} fieldName - Field name for error message
  * @returns {{valid: boolean, error: string|null}} Validation result
  */
-export function validateRequired(value, fieldName = 'Feld') {
+function validateRequired(value, fieldName = 'Feld') {
     if (!value || String(value).trim() === '') {
         return { valid: false, error: `${fieldName} ist erforderlich` };
     }
@@ -192,7 +194,7 @@ export function validateRequired(value, fieldName = 'Feld') {
  * @param {string} dateStr - Date string to validate
  * @returns {{valid: boolean, error: string|null, date: Date|null}} Validation result
  */
-export function validateDate(dateStr) {
+function validateDate(dateStr) {
     if (!dateStr || dateStr.trim() === '') {
         return { valid: false, error: 'Datum ist erforderlich', date: null };
     }
@@ -235,7 +237,7 @@ export function validateDate(dateStr) {
  * @param {boolean} [options.integer=false] - Require integer
  * @returns {{valid: boolean, error: string|null, number: number|null}} Validation result
  */
-export function validateNumber(value, options = {}) {
+function validateNumber(value, options = {}) {
     const { min, max, integer = false } = options;
 
     if (value === null || value === undefined || String(value).trim() === '') {
@@ -284,7 +286,7 @@ export function validateNumber(value, options = {}) {
  *   kennzeichen: { validator: validateKennzeichen }
  * });
  */
-export function validateForm(formData, validationRules) {
+function validateForm(formData, validationRules) {
     const errors = {};
     let hasErrors = false;
 
@@ -302,7 +304,35 @@ export function validateForm(formData, validationRules) {
 }
 
 // ============================================================================
-// EXPORT NOTE
+// EXPORTS (Browser + Node.js)
 // ============================================================================
+
+// Browser: Assign to window object
+if (typeof window !== 'undefined') {
+    window.validateEmail = validateEmail;
+    window.validatePhone = validatePhone;
+    window.validateKennzeichen = validateKennzeichen;
+    window.validateFIN = validateFIN;
+    window.validatePLZ = validatePLZ;
+    window.validateRequired = validateRequired;
+    window.validateDate = validateDate;
+    window.validateNumber = validateNumber;
+    window.validateForm = validateForm;
+}
+
+// Node.js: CommonJS export for Jest unit tests
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        validateEmail,
+        validatePhone,
+        validateKennzeichen,
+        validateFIN,
+        validatePLZ,
+        validateRequired,
+        validateDate,
+        validateNumber,
+        validateForm
+    };
+}
 
 console.log('✅ Validation Utilities loaded');
