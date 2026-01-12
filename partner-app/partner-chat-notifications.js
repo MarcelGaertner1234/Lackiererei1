@@ -24,13 +24,13 @@
     let toastQueue = [];
     let partnerEmail = null;
 
-    // 🔧 FIX (2025-12-11): XSS Protection Helper
-    function escapeHtml(text) {
+    // ✅ SESSION #16 (2026-01-12): escapeHtml() konsolidiert - nutzt window.escapeHtml mit Fallback
+    const escapeHtml = window.escapeHtml || function(text) {
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = String(text);
         return div.innerHTML;
-    }
+    };
 
     // ========================================
     // INITIALIZATION

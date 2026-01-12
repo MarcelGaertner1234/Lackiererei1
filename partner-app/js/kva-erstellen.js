@@ -3,8 +3,8 @@
         let isMultiService = false;  // 🆕 Global variable for Multi-Service detection
         let verfuegbareLeihfahrzeuge = []; // 🆕 2025-11-26: Leihfahrzeuge für Zuweisung
 
-        // 🔧 FIX (2025-12-11): XSS Protection - Escape für HTML Attribute
-        function escapeAttr(text) {
+        // ✅ SESSION #16 (2026-01-12): escapeHtml/escapeAttr konsolidiert - nutzt window.escapeHtml/escapeAttr mit Fallback
+        const escapeAttr = window.escapeAttr || function(text) {
             if (text === null || text === undefined) return '';
             return String(text)
                 .replace(/&/g, '&amp;')
@@ -12,10 +12,9 @@
                 .replace(/'/g, '&#39;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
-        }
+        };
 
-        // ✅ FIX BUG-S5 (2026-01-11): XSS Protection - Escape für innerHTML Content
-        function escapeHtml(text) {
+        const escapeHtml = window.escapeHtml || function(text) {
             if (text === null || text === undefined) return '';
             return String(text)
                 .replace(/&/g, '&amp;')
@@ -23,7 +22,7 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
-        }
+        };
 
         // ✅ FIX BUG-S9-1 (2026-01-11): Sichere window.open für Foto-URLs
         // Verhindert XSS via javascript: URIs
