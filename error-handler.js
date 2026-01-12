@@ -100,6 +100,7 @@ class ErrorHandler {
    * Error an Analytics senden
    */
   sendToAnalytics(errorInfo) {
+    // Firebase Analytics (existing)
     try {
       if (typeof firebase !== 'undefined' && firebase.analytics) {
         firebase.analytics().logEvent('error_occurred', {
@@ -110,6 +111,28 @@ class ErrorHandler {
       }
     } catch (e) {
       console.warn('Analytics logging fehlgeschlagen:', e);
+    }
+
+    // ✅ SESSION #14: Sentry Integration
+    // Send errors to Sentry for centralized monitoring
+    try {
+      if (typeof Sentry !== 'undefined' && Sentry.captureException) {
+        Sentry.captureException(new Error(errorInfo.message), {
+          level: errorInfo.code === 'permission-denied' ? 'warning' : 'error',
+          extra: {
+            code: errorInfo.code,
+            context: errorInfo.context,
+            metadata: errorInfo.metadata,
+            timestamp: errorInfo.timestamp
+          },
+          tags: {
+            error_code: errorInfo.code,
+            error_context: errorInfo.context
+          }
+        });
+      }
+    } catch (sentryError) {
+      console.warn('Sentry logging fehlgeschlagen:', sentryError);
     }
   }
 

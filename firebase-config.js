@@ -1357,6 +1357,52 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('  Project ID: ' + firebaseConfig.projectId);
     console.log('  Emulator Mode: ' + useEmulator);
 
+    // ============================================
+    // ✅ SESSION #14: SENTRY ERROR MONITORING
+    // ============================================
+    // Initialize Sentry for automatic crash reports and performance monitoring
+    // Only in production (not during tests/emulator mode)
+    if (typeof Sentry !== 'undefined' && !shouldUseEmulator) {
+        try {
+            Sentry.init({
+                // PLACEHOLDER DSN - Replace with real Sentry DSN when available
+                dsn: "https://YOUR_SENTRY_DSN_HERE@sentry.io/YOUR_PROJECT_ID",
+
+                // Environment Detection
+                environment: window.location.hostname === 'localhost'
+                    ? 'development'
+                    : 'production',
+
+                // Performance Monitoring (10% sampling in production)
+                tracesSampleRate: 0.1,
+
+                // Multi-Tenant Context: Add werkstattId to all events
+                beforeSend(event) {
+                    event.tags = event.tags || {};
+                    event.tags.werkstattId = window.werkstattId || 'unknown';
+                    event.tags.userId = window.authManager?.getCurrentUser()?.uid || 'anonymous';
+                    return event;
+                },
+
+                // Ignore common false positives
+                ignoreErrors: [
+                    'ResizeObserver loop limit exceeded',
+                    'ResizeObserver loop completed with undelivered notifications',
+                    'Non-Error promise rejection captured',
+                    /canvas/i,
+                    'Network request failed',
+                    'Failed to fetch'
+                ]
+            });
+
+            console.log('✅ Sentry initialized (Session #14)');
+        } catch (sentryError) {
+            console.warn('⚠️ Sentry initialization failed:', sentryError.message);
+        }
+    } else if (shouldUseEmulator) {
+        console.log('ℹ️ Sentry skipped (Emulator Mode)');
+    }
+
   } catch (error) {
     console.error('❌ Firebase initialization error:', error);
     window.firebaseInitialized = false;

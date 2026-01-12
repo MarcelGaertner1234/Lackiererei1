@@ -14,7 +14,7 @@
 // KONFIGURATION
 // ============================================
 
-const CACHE_VERSION = 'v6.16-pwa-manifest';
+const CACHE_VERSION = 'v6.17-sentry-integration';
 const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;
@@ -92,6 +92,9 @@ const FIREBASE_SDK_URLS = [
     'https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js'
 ];
 
+// ✅ SESSION #14: Sentry SDK URL (extern, soll gecacht werden)
+const SENTRY_SDK_URL = 'https://browser.sentry-cdn.com/8.0.0/bundle.tracing.replay.min.js';
+
 // ============================================
 // INSTALL EVENT - Cache initialisieren
 // ============================================
@@ -125,6 +128,15 @@ self.addEventListener('install', (event) => {
                     } catch (error) {
                         console.warn(`[SW] Failed to cache Firebase SDK ${sdk}:`, error.message);
                     }
+                }
+
+                // ✅ SESSION #14: Sentry SDK Cache
+                console.log('[SW] Caching Sentry SDK...');
+                try {
+                    await firebaseCache.add(SENTRY_SDK_URL);
+                    console.log('[SW] ✅ Sentry SDK cached');
+                } catch (error) {
+                    console.warn(`[SW] Failed to cache Sentry SDK:`, error.message);
                 }
 
                 console.log('[SW] ✅ Installation complete!');
@@ -221,6 +233,11 @@ async function handleRequest(request) {
 
         // 2. FIREBASE SDKs - Cache First (selten aktualisiert)
         if (url.hostname === 'www.gstatic.com' && url.pathname.includes('firebase')) {
+            return await cacheFirst(request, FIREBASE_CACHE);
+        }
+
+        // 2b. ✅ SESSION #14: SENTRY SDK - Cache First (selten aktualisiert)
+        if (url.hostname === 'browser.sentry-cdn.com') {
             return await cacheFirst(request, FIREBASE_CACHE);
         }
 

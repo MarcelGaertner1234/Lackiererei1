@@ -34,6 +34,25 @@
 
                 console.error(`❌ Background Sync Failed [${operation}]:`, error);
 
+                // ✅ SESSION #14: Sentry Tracking for background sync failures
+                if (typeof Sentry !== 'undefined' && Sentry.captureException) {
+                    try {
+                        Sentry.captureException(error instanceof Error ? error : new Error(String(error)), {
+                            level: 'warning',
+                            tags: {
+                                sync_operation: operation,
+                                vehicle_id: vehicleId || 'unknown'
+                            },
+                            extra: {
+                                failureCount: this.failures.length,
+                                operation: operation
+                            }
+                        });
+                    } catch (sentryError) {
+                        console.warn('Sentry tracking failed:', sentryError);
+                    }
+                }
+
                 // Show ONE warning toast after multiple failures
                 if (this.failures.length >= this.maxFailuresBeforeWarning && !this.warningShown) {
                     this.warningShown = true;
@@ -3010,6 +3029,12 @@
             </div>
         </div>
     </div>
+
+    <!-- ✅ SESSION #14: Sentry Error Monitoring (BEFORE Firebase) -->
+    <script
+      src="https://browser.sentry-cdn.com/8.0.0/bundle.tracing.replay.min.js"
+      crossorigin="anonymous"
+    ></script>
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
