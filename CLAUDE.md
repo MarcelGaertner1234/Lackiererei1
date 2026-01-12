@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing (BEFORE any code changes!)
 ```bash
-npm run test:all          # 458 Tests (~14min) - MUST be 100%!
+npm run test:all          # 453 Tests (~19min) - MUST be 100%!
 npm run test:integration  # Integration tests (Firestore)
 npm run test:smoke        # UI smoke tests
 npm run test:headed       # With browser UI
@@ -654,7 +654,7 @@ if (window.DEBUG) // console.log('debug:', data)  // Syntax Error!
 
 **Test-Verifizierung:**
 ```
-npm run test:all → 458/458 Tests PASSED (14.1 min)
+npm run test:all → 453/453 Tests PASSED (19.2 min)
 ```
 
 | Kategorie | Tests | Status |
