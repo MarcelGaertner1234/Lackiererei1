@@ -14,7 +14,7 @@
 // KONFIGURATION
 // ============================================
 
-const CACHE_VERSION = 'v6.15-serper-shopping-api';
+const CACHE_VERSION = 'v6.16-pwa-manifest';
 const CACHE_NAME = `fahrzeugannahme-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fahrzeugannahme-images-${CACHE_VERSION}`;
 const FIREBASE_CACHE = `fahrzeugannahme-firebase-${CACHE_VERSION}`;
@@ -31,6 +31,10 @@ const CORE_ASSETS = [
     './design-system.css',
     './components.css',
     './mobile-first.css',
+
+    // PWA Manifest & Icons (Session #13)
+    './manifest.json',
+    './icons/icon.svg',
 
     // Core JS
     './firebase-config.js',
