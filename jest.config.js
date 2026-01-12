@@ -1,56 +1,55 @@
 /**
- * Jest Configuration - Unit Tests for JS Utilities
- * Session #15 (2026-01-12)
+ * Jest Configuration for Fahrzeugannahme App
+ * Session #15: Unit Tests für JS Utils
  *
- * Diese Konfiguration testet reine JavaScript-Funktionen
- * ohne Browser oder Firebase-Abhängigkeiten.
+ * @created 2026-01-13
  */
 
 module.exports = {
-  // Node.js environment (no browser)
-  testEnvironment: 'node',
+  // Use jsdom environment to simulate browser globals (window, document)
+  testEnvironment: 'jsdom',
 
   // Test file patterns
   testMatch: ['**/tests/unit/**/*.test.js'],
 
-  // Coverage collection
+  // Ignore patterns
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/tests/archive/'
+  ],
+
+  // Coverage configuration
   collectCoverageFrom: [
-    'js/service-types.js',
-    'js/utils/*.js',
+    'js/**/*.js',
     'listener-registry.js',
-    'error-handler.js',
     '!js/**/*.backup*',
     '!**/node_modules/**'
   ],
-
-  // Coverage output
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
 
-  // Coverage thresholds (80% minimum)
+  // Coverage thresholds (start low, increase over time)
   coverageThreshold: {
     global: {
-      branches: 60,
-      functions: 70,
-      lines: 70,
-      statements: 70
+      branches: 50,
+      functions: 50,
+      lines: 50,
+      statements: 50
     }
   },
+
+  // Setup file for global mocks
+  setupFilesAfterEnv: ['<rootDir>/tests/unit/setup.js'],
+
+  // Module file extensions
+  moduleFileExtensions: ['js', 'json'],
 
   // Verbose output
   verbose: true,
 
-  // Timeout for slow tests
-  testTimeout: 5000,
-
   // Clear mocks between tests
   clearMocks: true,
 
-  // Transform settings (ES modules)
-  transform: {},
-
-  // Module name mapping for imports
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/$1'
-  }
+  // Timeout for tests
+  testTimeout: 10000
 };

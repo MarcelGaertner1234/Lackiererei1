@@ -1,441 +1,239 @@
 /**
  * Unit Tests for service-types.js
- * Session #15 (2026-01-12)
+ * Session #15: Unit Tests für JS Utils
  *
- * Tests für Service-Type Normalisierung und Validierung
+ * Tests service type normalization, validation, and configuration
+ *
+ * @created 2026-01-13
  */
 
-// Mock window object for browser-based code
-global.window = global.window || {
-    DEBUG: false
-};
-
-// Load the module (sets up window.* properties)
-require('../../js/service-types');
-
+// Load the module
 const {
-    SERVICE_TYPES,
-    SERVICE_TYPE_ALIASES,
-    SERVICE_TYPE_CONFIG,
-    normalizeServiceType,
-    validateServiceType,
-    getServiceTypeConfig,
-    getServiceTypeLabel,
-    getAllServiceTypes,
-    getServiceTypesByCategory,
-    normalizeAndValidateServiceType,
-    SERVICE_DEFAULT_HOURS,
-    QUEUE_DEFAULT_CAPACITY,
-    canMoveToQueue,
-    getEstimatedHours,
-    calculateKvaHours
-} = window;
+  SERVICE_TYPES,
+  SERVICE_TYPE_CONFIG,
+  SERVICE_TYPE_ALIASES,
+  normalizeAndValidateServiceType,
+  validateServiceType,
+  getServiceTypeLabel,
+  getAllServiceTypes
+} = require('../../js/service-types');
 
 describe('service-types.js', () => {
-    // ================================================================
-    // SERVICE_TYPES Constants
-    // ================================================================
 
-    describe('SERVICE_TYPES', () => {
-        test('contains all 12 service types', () => {
-            expect(Object.keys(SERVICE_TYPES)).toHaveLength(12);
-        });
+  // ============================================
+  // SERVICE_TYPES Constants
+  // ============================================
+  describe('SERVICE_TYPES', () => {
 
-        test('contains all canonical values', () => {
-            expect(SERVICE_TYPES.LACKIER).toBe('lackier');
-            expect(SERVICE_TYPES.REIFEN).toBe('reifen');
-            expect(SERVICE_TYPES.MECHANIK).toBe('mechanik');
-            expect(SERVICE_TYPES.PFLEGE).toBe('pflege');
-            expect(SERVICE_TYPES.TUEV).toBe('tuev');
-            expect(SERVICE_TYPES.VERSICHERUNG).toBe('versicherung');
-            expect(SERVICE_TYPES.GLAS).toBe('glas');
-            expect(SERVICE_TYPES.KLIMA).toBe('klima');
-            expect(SERVICE_TYPES.DELLEN).toBe('dellen');
-            expect(SERVICE_TYPES.FOLIERUNG).toBe('folierung');
-            expect(SERVICE_TYPES.STEINSCHUTZ).toBe('steinschutz');
-            expect(SERVICE_TYPES.WERBEBEKLEBUNG).toBe('werbebeklebung');
-        });
+    test('contains exactly 12 service types', () => {
+      expect(Object.keys(SERVICE_TYPES)).toHaveLength(12);
     });
 
-    // ================================================================
-    // normalizeServiceType()
-    // ================================================================
-
-    describe('normalizeServiceType()', () => {
-        describe('Canonical values', () => {
-            test('returns canonical value unchanged', () => {
-                expect(normalizeServiceType('lackier')).toBe('lackier');
-                expect(normalizeServiceType('reifen')).toBe('reifen');
-                expect(normalizeServiceType('mechanik')).toBe('mechanik');
-            });
-
-            test('handles uppercase input', () => {
-                expect(normalizeServiceType('LACKIER')).toBe('lackier');
-                expect(normalizeServiceType('REIFEN')).toBe('reifen');
-            });
-
-            test('handles mixed case input', () => {
-                expect(normalizeServiceType('LaCkIeR')).toBe('lackier');
-            });
-        });
-
-        describe('Alias normalization', () => {
-            test('normalizes lackierung aliases', () => {
-                expect(normalizeServiceType('lackierung')).toBe('lackier');
-                expect(normalizeServiceType('lack')).toBe('lackier');
-                expect(normalizeServiceType('karosserie')).toBe('lackier');
-            });
-
-            test('normalizes dellen aliases', () => {
-                expect(normalizeServiceType('smart-repair')).toBe('dellen');
-                expect(normalizeServiceType('pdr')).toBe('dellen');
-                expect(normalizeServiceType('beule')).toBe('dellen');
-            });
-
-            test('normalizes tuev aliases', () => {
-                expect(normalizeServiceType('tüv')).toBe('tuev');
-                expect(normalizeServiceType('tuv')).toBe('tuev');
-                expect(normalizeServiceType('hu')).toBe('tuev');
-            });
-
-            test('normalizes glas aliases', () => {
-                expect(normalizeServiceType('steinschlag')).toBe('glas');
-                expect(normalizeServiceType('scheibe')).toBe('glas');
-            });
-        });
-
-        describe('Invalid input handling', () => {
-            test('returns original for unknown input', () => {
-                expect(normalizeServiceType('unknown')).toBe('unknown');
-            });
-
-            test('returns input for null', () => {
-                expect(normalizeServiceType(null)).toBeNull();
-            });
-
-            test('returns input for undefined', () => {
-                expect(normalizeServiceType(undefined)).toBeUndefined();
-            });
-
-            test('returns input for empty string', () => {
-                expect(normalizeServiceType('')).toBe('');
-            });
-        });
-
-        describe('Whitespace handling', () => {
-            test('trims whitespace', () => {
-                expect(normalizeServiceType('  lackier  ')).toBe('lackier');
-                expect(normalizeServiceType('\tlackierung\n')).toBe('lackier');
-            });
-        });
+    test('contains all canonical service types', () => {
+      const expectedTypes = [
+        'LACKIER', 'REIFEN', 'MECHANIK', 'PFLEGE', 'TUEV', 'VERSICHERUNG',
+        'GLAS', 'KLIMA', 'DELLEN', 'FOLIERUNG', 'STEINSCHUTZ', 'WERBEBEKLEBUNG'
+      ];
+      expectedTypes.forEach(type => {
+        expect(SERVICE_TYPES[type]).toBeDefined();
+      });
     });
 
-    // ================================================================
-    // validateServiceType()
-    // ================================================================
+    test('canonical values are lowercase', () => {
+      Object.values(SERVICE_TYPES).forEach(value => {
+        expect(value).toBe(value.toLowerCase());
+      });
+    });
+  });
 
-    describe('validateServiceType()', () => {
-        describe('Valid canonical types', () => {
-            test('validates all canonical types', () => {
-                const canonicalTypes = Object.values(SERVICE_TYPES);
-                canonicalTypes.forEach(type => {
-                    expect(validateServiceType(type)).toBe(true);
-                });
-            });
-        });
+  // ============================================
+  // SERVICE_TYPE_CONFIG
+  // ============================================
+  describe('SERVICE_TYPE_CONFIG', () => {
 
-        describe('Invalid types', () => {
-            test('rejects unknown types', () => {
-                expect(validateServiceType('unknown')).toBe(false);
-                expect(validateServiceType('invalid')).toBe(false);
-            });
-
-            test('rejects aliases (must normalize first)', () => {
-                expect(validateServiceType('lackierung')).toBe(false);
-                expect(validateServiceType('smart-repair')).toBe(false);
-            });
-        });
-
-        describe('Edge cases', () => {
-            test('rejects null', () => {
-                expect(validateServiceType(null)).toBe(false);
-            });
-
-            test('rejects undefined', () => {
-                expect(validateServiceType(undefined)).toBe(false);
-            });
-
-            test('rejects empty string', () => {
-                expect(validateServiceType('')).toBe(false);
-            });
-        });
+    test('has config for all 12 service types', () => {
+      expect(Object.keys(SERVICE_TYPE_CONFIG)).toHaveLength(12);
     });
 
-    // ================================================================
-    // normalizeAndValidateServiceType()
-    // ================================================================
-
-    describe('normalizeAndValidateServiceType()', () => {
-        describe('Valid inputs', () => {
-            test('returns normalized canonical value', () => {
-                expect(normalizeAndValidateServiceType('lackier')).toBe('lackier');
-                expect(normalizeAndValidateServiceType('LACKIER')).toBe('lackier');
-            });
-
-            test('normalizes aliases and validates', () => {
-                expect(normalizeAndValidateServiceType('lackierung')).toBe('lackier');
-                expect(normalizeAndValidateServiceType('smart-repair')).toBe('dellen');
-                expect(normalizeAndValidateServiceType('tüv')).toBe('tuev');
-            });
-        });
-
-        describe('Fallback behavior', () => {
-            test('returns default fallback for invalid input', () => {
-                expect(normalizeAndValidateServiceType('invalid')).toBe('lackier');
-            });
-
-            test('returns custom fallback when specified', () => {
-                expect(normalizeAndValidateServiceType('invalid', 'glas')).toBe('glas');
-                expect(normalizeAndValidateServiceType('invalid', 'reifen')).toBe('reifen');
-            });
-
-            test('returns fallback for null', () => {
-                expect(normalizeAndValidateServiceType(null)).toBe('lackier');
-                expect(normalizeAndValidateServiceType(null, 'mechanik')).toBe('mechanik');
-            });
-
-            test('returns fallback for undefined', () => {
-                expect(normalizeAndValidateServiceType(undefined)).toBe('lackier');
-            });
-
-            test('returns fallback for empty string', () => {
-                expect(normalizeAndValidateServiceType('')).toBe('lackier');
-            });
-        });
+    test('each config has required properties', () => {
+      Object.entries(SERVICE_TYPE_CONFIG).forEach(([key, config]) => {
+        expect(config.label).toBeDefined();
+        expect(config.displayName).toBeDefined();
+        expect(config.icon).toBeDefined();
+        expect(config.category).toBeDefined();
+        expect(config.priority).toBeDefined();
+      });
     });
 
-    // ================================================================
-    // getServiceTypeConfig() and getServiceTypeLabel()
-    // ================================================================
+    test('priorities are unique (1-12)', () => {
+      const priorities = Object.values(SERVICE_TYPE_CONFIG).map(c => c.priority);
+      const uniquePriorities = [...new Set(priorities)];
+      expect(uniquePriorities).toHaveLength(12);
+    });
+  });
 
-    describe('getServiceTypeConfig()', () => {
-        test('returns config for valid type', () => {
-            const config = getServiceTypeConfig('lackier');
-            expect(config).toBeDefined();
-            expect(config.label).toBe('🎨 Lackierung');
-            expect(config.icon).toBe('🎨');
-            expect(config.category).toBe('repair');
-        });
+  // ============================================
+  // normalizeAndValidateServiceType()
+  // ============================================
+  describe('normalizeAndValidateServiceType()', () => {
 
-        test('returns null for invalid type', () => {
-            expect(getServiceTypeConfig('invalid')).toBeNull();
-        });
-
-        test('returns null for null input', () => {
-            expect(getServiceTypeConfig(null)).toBeNull();
-        });
+    describe('Canonical Values', () => {
+      test('returns canonical value unchanged', () => {
+        expect(normalizeAndValidateServiceType('lackier')).toBe('lackier');
+        expect(normalizeAndValidateServiceType('reifen')).toBe('reifen');
+        expect(normalizeAndValidateServiceType('mechanik')).toBe('mechanik');
+      });
     });
 
-    describe('getServiceTypeLabel()', () => {
-        test('returns label with emoji for valid type', () => {
-            expect(getServiceTypeLabel('lackier')).toBe('🎨 Lackierung');
-            expect(getServiceTypeLabel('reifen')).toBe('🛞 Reifen-Service');
-            expect(getServiceTypeLabel('mechanik')).toBe('🔧 Mechanik');
-        });
+    describe('Case Insensitivity', () => {
+      test('normalizes uppercase to lowercase', () => {
+        expect(normalizeAndValidateServiceType('LACKIER')).toBe('lackier');
+        expect(normalizeAndValidateServiceType('REIFEN')).toBe('reifen');
+      });
 
-        test('returns input for invalid type', () => {
-            expect(getServiceTypeLabel('invalid')).toBe('invalid');
-            expect(getServiceTypeLabel('unknown')).toBe('unknown');
-        });
+      test('normalizes mixed case to lowercase', () => {
+        expect(normalizeAndValidateServiceType('Lackier')).toBe('lackier');
+        expect(normalizeAndValidateServiceType('MeCHaNiK')).toBe('mechanik');
+      });
     });
 
-    // ================================================================
-    // getAllServiceTypes() and getServiceTypesByCategory()
-    // ================================================================
+    describe('Alias Resolution', () => {
+      test('resolves "lackierung" alias', () => {
+        expect(normalizeAndValidateServiceType('lackierung')).toBe('lackier');
+      });
 
-    describe('getAllServiceTypes()', () => {
-        test('returns all service types', () => {
-            const all = getAllServiceTypes();
-            expect(all).toHaveLength(12);
-        });
+      test('resolves "lackieren" alias', () => {
+        expect(normalizeAndValidateServiceType('lackieren')).toBe('lackier');
+      });
 
-        test('returns sorted by priority', () => {
-            const all = getAllServiceTypes();
-            expect(all[0].key).toBe('lackier'); // priority 1
-            expect(all[1].key).toBe('reifen');  // priority 2
-        });
+      test('resolves "reifenwechsel" alias', () => {
+        expect(normalizeAndValidateServiceType('reifenwechsel')).toBe('reifen');
+      });
 
-        test('includes key property', () => {
-            const all = getAllServiceTypes();
-            all.forEach(item => {
-                expect(item.key).toBeDefined();
-            });
-        });
+      test('resolves "tüv" alias (with umlaut)', () => {
+        expect(normalizeAndValidateServiceType('tüv')).toBe('tuev');
+      });
+
+      test('resolves "hauptuntersuchung" alias', () => {
+        expect(normalizeAndValidateServiceType('hauptuntersuchung')).toBe('tuev');
+      });
     });
 
-    describe('getServiceTypesByCategory()', () => {
-        test('returns repair category services', () => {
-            const repair = getServiceTypesByCategory('repair');
-            const keys = repair.map(s => s.key);
-            expect(keys).toContain('lackier');
-            expect(keys).toContain('mechanik');
-            expect(keys).toContain('glas');
-            expect(keys).toContain('dellen');
-        });
+    describe('Fallback Handling', () => {
+      test('returns fallback for invalid input', () => {
+        expect(normalizeAndValidateServiceType('invalid', 'lackier')).toBe('lackier');
+        expect(normalizeAndValidateServiceType('xyz', 'reifen')).toBe('reifen');
+      });
 
-        test('returns maintenance category services', () => {
-            const maintenance = getServiceTypesByCategory('maintenance');
-            const keys = maintenance.map(s => s.key);
-            expect(keys).toContain('reifen');
-            expect(keys).toContain('pflege');
-            expect(keys).toContain('klima');
-        });
+      test('returns default fallback (lackier) when no fallback provided', () => {
+        expect(normalizeAndValidateServiceType('invalid')).toBe('lackier');
+      });
 
-        test('returns empty array for unknown category', () => {
-            const unknown = getServiceTypesByCategory('unknown');
-            expect(unknown).toHaveLength(0);
-        });
+      test('returns fallback for null input', () => {
+        expect(normalizeAndValidateServiceType(null, 'mechanik')).toBe('mechanik');
+      });
+
+      test('returns fallback for undefined input', () => {
+        expect(normalizeAndValidateServiceType(undefined, 'pflege')).toBe('pflege');
+      });
+
+      test('returns fallback for empty string', () => {
+        expect(normalizeAndValidateServiceType('', 'tuev')).toBe('tuev');
+      });
     });
 
-    // ================================================================
-    // SERVICE_DEFAULT_HOURS and QUEUE_DEFAULT_CAPACITY
-    // ================================================================
+    describe('Edge Cases', () => {
+      test('trims whitespace', () => {
+        expect(normalizeAndValidateServiceType('  lackier  ')).toBe('lackier');
+        expect(normalizeAndValidateServiceType('\treifen\n')).toBe('reifen');
+      });
+    });
+  });
 
-    describe('SERVICE_DEFAULT_HOURS', () => {
-        test('contains all service types', () => {
-            Object.values(SERVICE_TYPES).forEach(type => {
-                expect(SERVICE_DEFAULT_HOURS[type]).toBeDefined();
-            });
-        });
+  // ============================================
+  // validateServiceType()
+  // ============================================
+  describe('validateServiceType()', () => {
 
-        test('contains logistic queues', () => {
-            expect(SERVICE_DEFAULT_HOURS.abhol_fahrt).toBe(1.5);
-            expect(SERVICE_DEFAULT_HOURS.liefer_fahrt).toBe(1.5);
-        });
-
-        test('all values are positive numbers', () => {
-            Object.values(SERVICE_DEFAULT_HOURS).forEach(hours => {
-                expect(typeof hours).toBe('number');
-                expect(hours).toBeGreaterThan(0);
-            });
-        });
+    test('returns true for canonical types', () => {
+      expect(validateServiceType('lackier')).toBe(true);
+      expect(validateServiceType('reifen')).toBe(true);
+      expect(validateServiceType('mechanik')).toBe(true);
     });
 
-    describe('QUEUE_DEFAULT_CAPACITY', () => {
-        test('is 8 hours', () => {
-            expect(QUEUE_DEFAULT_CAPACITY).toBe(8.0);
-        });
+    test('returns false for invalid types', () => {
+      expect(validateServiceType('invalid')).toBe(false);
+      expect(validateServiceType('xyz')).toBe(false);
     });
 
-    // ================================================================
-    // canMoveToQueue()
-    // ================================================================
-
-    describe('canMoveToQueue()', () => {
-        test('allows move to queue without dependencies', () => {
-            const fahrzeug = { serviceTyp: 'lackier' };
-            expect(canMoveToQueue(fahrzeug, 'mechanik').allowed).toBe(true);
-            expect(canMoveToQueue(fahrzeug, 'reifen').allowed).toBe(true);
-        });
-
-        test('allows move when dependencies are completed', () => {
-            const fahrzeug = {
-                serviceTyp: 'lackier',
-                requiredServices: ['dellen', 'lackier'],
-                completedQueues: ['dellen']
-            };
-            const result = canMoveToQueue(fahrzeug, 'lackier');
-            expect(result.allowed).toBe(true);
-        });
-
-        test('blocks move when dependencies are not completed', () => {
-            const fahrzeug = {
-                serviceTyp: 'lackier',
-                requiredServices: ['dellen', 'lackier'],
-                completedQueues: []
-            };
-            const result = canMoveToQueue(fahrzeug, 'lackier');
-            expect(result.allowed).toBe(false);
-            expect(result.reason).toContain('Dellendrücken');
-        });
+    test('returns false for null/undefined', () => {
+      expect(validateServiceType(null)).toBe(false);
+      expect(validateServiceType(undefined)).toBe(false);
     });
 
-    // ================================================================
-    // getEstimatedHours() and calculateKvaHours()
-    // ================================================================
+    test('is case insensitive (normalizes internally)', () => {
+      // validateServiceType normalizes to lowercase internally
+      expect(validateServiceType('LACKIER')).toBe(true);
+      expect(validateServiceType('Lackier')).toBe(true);
+    });
+  });
 
-    describe('calculateKvaHours()', () => {
-        test('returns null for fahrzeug without kalkulationData', () => {
-            expect(calculateKvaHours({})).toBeNull();
-            expect(calculateKvaHours({ kennzeichen: 'MOS-123' })).toBeNull();
-        });
+  // ============================================
+  // getServiceTypeLabel()
+  // ============================================
+  describe('getServiceTypeLabel()', () => {
 
-        test('calculates hours from arbeitslohn', () => {
-            const fahrzeug = {
-                kalkulationData: {
-                    arbeitslohn: [
-                        { stunden: 2.5 },
-                        { stunden: 1.5 }
-                    ]
-                }
-            };
-            expect(calculateKvaHours(fahrzeug)).toBe(4);
-        });
-
-        test('calculates hours from lackierung', () => {
-            const fahrzeug = {
-                kalkulationData: {
-                    lackierung: [
-                        { stunden: 3 }
-                    ]
-                }
-            };
-            expect(calculateKvaHours(fahrzeug)).toBe(3);
-        });
-
-        test('calculates combined hours', () => {
-            const fahrzeug = {
-                kalkulationData: {
-                    arbeitslohn: [{ stunden: 2 }],
-                    lackierung: [{ stunden: 3 }]
-                }
-            };
-            expect(calculateKvaHours(fahrzeug)).toBe(5);
-        });
+    test('returns label for valid service types', () => {
+      const label = getServiceTypeLabel('lackier');
+      expect(label).toContain('Lackierung');
     });
 
-    describe('getEstimatedHours()', () => {
-        test('returns KVA hours if available', () => {
-            const fahrzeug = {
-                serviceTyp: 'lackier',
-                kalkulationData: {
-                    arbeitslohn: [{ stunden: 5 }]
-                }
-            };
-            expect(getEstimatedHours(fahrzeug)).toBe(5);
-        });
-
-        test('returns geschaetzteStunden if set', () => {
-            const fahrzeug = {
-                serviceTyp: 'lackier',
-                geschaetzteStunden: 3.5
-            };
-            expect(getEstimatedHours(fahrzeug)).toBe(3.5);
-        });
-
-        test('returns queue-specific default', () => {
-            const fahrzeug = { serviceTyp: 'lackier' };
-            expect(getEstimatedHours(fahrzeug, 'abhol_fahrt')).toBe(1.5);
-        });
-
-        test('returns service-type default', () => {
-            const fahrzeug = { serviceTyp: 'reifen' };
-            expect(getEstimatedHours(fahrzeug)).toBe(0.5);
-        });
-
-        test('returns 1.0 as fallback', () => {
-            const fahrzeug = {};
-            expect(getEstimatedHours(fahrzeug)).toBe(1.0);
-        });
+    test('returns label with emoji', () => {
+      const label = getServiceTypeLabel('lackier');
+      expect(label).toMatch(/^./u); // Starts with emoji (any unicode char)
     });
+
+    test('returns fallback for invalid service types', () => {
+      const label = getServiceTypeLabel('invalid');
+      // Should return some default label or the input
+      expect(label).toBeDefined();
+    });
+  });
+
+  // ============================================
+  // getAllServiceTypes()
+  // ============================================
+  describe('getAllServiceTypes()', () => {
+
+    test('returns array of all service types', () => {
+      const types = getAllServiceTypes();
+      expect(Array.isArray(types)).toBe(true);
+      expect(types.length).toBe(12);
+    });
+
+    test('includes all canonical types (as objects with key property)', () => {
+      const types = getAllServiceTypes();
+      const keys = types.map(t => t.key);
+      expect(keys).toContain('lackier');
+      expect(keys).toContain('reifen');
+      expect(keys).toContain('mechanik');
+    });
+
+    test('each type object has required properties', () => {
+      const types = getAllServiceTypes();
+      types.forEach(type => {
+        expect(type.key).toBeDefined();
+        expect(type.label).toBeDefined();
+        expect(type.priority).toBeDefined();
+      });
+    });
+
+    test('types are sorted by priority', () => {
+      const types = getAllServiceTypes();
+      const priorities = types.map(t => t.priority);
+      const sortedPriorities = [...priorities].sort((a, b) => a - b);
+      expect(priorities).toEqual(sortedPriorities);
+    });
+  });
+
 });

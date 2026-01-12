@@ -1,160 +1,171 @@
 /**
  * Unit Tests for escape-html.js
- * Session #15 (2026-01-12)
+ * Session #15: Unit Tests für JS Utils
  *
- * Tests für XSS Prevention Helper Funktionen
+ * Tests XSS prevention functions: escapeHtml() and escapeAttr()
+ *
+ * @created 2026-01-13
  */
 
-// Mock window object BEFORE requiring the module
-global.window = global.window || {};
-
+// Load the module
 const { escapeHtml, escapeAttr } = require('../../js/utils/escape-html');
 
 describe('escape-html.js', () => {
-    // ================================================================
-    // escapeHtml() Tests
-    // ================================================================
 
-    describe('escapeHtml()', () => {
-        describe('HTML tag escaping', () => {
-            test('escapes < and > characters', () => {
-                expect(escapeHtml('<div>')).toBe('&lt;div&gt;');
-            });
+  // ============================================
+  // escapeHtml() Tests
+  // ============================================
+  describe('escapeHtml()', () => {
 
-            test('escapes script tags', () => {
-                expect(escapeHtml('<script>alert("xss")</script>'))
-                    .toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
-            });
+    describe('Basic HTML Entity Escaping', () => {
+      test('escapes < (less than)', () => {
+        expect(escapeHtml('<')).toBe('&lt;');
+      });
 
-            test('escapes nested tags', () => {
-                expect(escapeHtml('<div><span>text</span></div>'))
-                    .toBe('&lt;div&gt;&lt;span&gt;text&lt;/span&gt;&lt;/div&gt;');
-            });
-        });
+      test('escapes > (greater than)', () => {
+        expect(escapeHtml('>')).toBe('&gt;');
+      });
 
-        describe('Quote escaping', () => {
-            test('escapes double quotes', () => {
-                expect(escapeHtml('" onclick="')).toBe('&quot; onclick=&quot;');
-            });
+      test('escapes & (ampersand)', () => {
+        expect(escapeHtml('&')).toBe('&amp;');
+      });
 
-            test('escapes single quotes', () => {
-                expect(escapeHtml("'")).toBe('&#039;');
-            });
+      test('escapes " (double quote)', () => {
+        expect(escapeHtml('"')).toBe('&quot;');
+      });
 
-            test('escapes both quote types', () => {
-                expect(escapeHtml(`"text" 'more'`)).toBe('&quot;text&quot; &#039;more&#039;');
-            });
-        });
-
-        describe('Ampersand escaping', () => {
-            test('escapes & character', () => {
-                expect(escapeHtml('&')).toBe('&amp;');
-            });
-
-            test('escapes & before other entities (order matters)', () => {
-                expect(escapeHtml('&<>')).toBe('&amp;&lt;&gt;');
-            });
-
-            test('handles multiple ampersands', () => {
-                expect(escapeHtml('a & b & c')).toBe('a &amp; b &amp; c');
-            });
-        });
-
-        describe('Null/undefined handling', () => {
-            test('returns empty string for null', () => {
-                expect(escapeHtml(null)).toBe('');
-            });
-
-            test('returns empty string for undefined', () => {
-                expect(escapeHtml(undefined)).toBe('');
-            });
-        });
-
-        describe('Non-string input handling', () => {
-            test('converts number to string', () => {
-                expect(escapeHtml(123)).toBe('123');
-            });
-
-            test('converts boolean to string', () => {
-                expect(escapeHtml(true)).toBe('true');
-            });
-
-            test('converts object to string', () => {
-                expect(escapeHtml({})).toBe('[object Object]');
-            });
-        });
-
-        describe('Edge cases', () => {
-            test('returns empty string for empty input', () => {
-                expect(escapeHtml('')).toBe('');
-            });
-
-            test('preserves regular text', () => {
-                expect(escapeHtml('Hello World')).toBe('Hello World');
-            });
-
-            test('preserves special characters that dont need escaping', () => {
-                expect(escapeHtml('äöüß@#$%')).toBe('äöüß@#$%');
-            });
-
-            test('handles mixed content', () => {
-                expect(escapeHtml('Hello <b>World</b> & "Friends"'))
-                    .toBe('Hello &lt;b&gt;World&lt;/b&gt; &amp; &quot;Friends&quot;');
-            });
-        });
+      test('escapes \' (single quote)', () => {
+        expect(escapeHtml("'")).toBe('&#039;');
+      });
     });
 
-    // ================================================================
-    // escapeAttr() Tests
-    // ================================================================
+    describe('XSS Attack Prevention', () => {
+      test('escapes script tags', () => {
+        const input = '<script>alert("XSS")</script>';
+        const expected = '&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;';
+        expect(escapeHtml(input)).toBe(expected);
+      });
 
-    describe('escapeAttr()', () => {
-        describe('Basic escaping (same as escapeHtml)', () => {
-            test('escapes < and >', () => {
-                expect(escapeAttr('<div>')).toBe('&lt;div&gt;');
-            });
+      test('escapes onclick attribute injection', () => {
+        const input = '" onclick="alert(1)"';
+        const expected = '&quot; onclick=&quot;alert(1)&quot;';
+        expect(escapeHtml(input)).toBe(expected);
+      });
 
-            test('escapes quotes', () => {
-                expect(escapeAttr('"test"')).toBe('&quot;test&quot;');
-            });
+      test('escapes img onerror injection', () => {
+        const input = '<img src="x" onerror="alert(1)">';
+        const expected = '&lt;img src=&quot;x&quot; onerror=&quot;alert(1)&quot;&gt;';
+        expect(escapeHtml(input)).toBe(expected);
+      });
 
-            test('escapes ampersand', () => {
-                expect(escapeAttr('&')).toBe('&amp;');
-            });
-        });
-
-        describe('Whitespace escaping (additional)', () => {
-            test('escapes newlines', () => {
-                expect(escapeAttr('line1\nline2')).toBe('line1&#10;line2');
-            });
-
-            test('escapes carriage returns', () => {
-                expect(escapeAttr('line1\rline2')).toBe('line1&#13;line2');
-            });
-
-            test('escapes tabs', () => {
-                expect(escapeAttr('col1\tcol2')).toBe('col1&#9;col2');
-            });
-
-            test('escapes mixed whitespace', () => {
-                expect(escapeAttr('a\nb\tc\rd')).toBe('a&#10;b&#9;c&#13;d');
-            });
-        });
-
-        describe('Null/undefined handling', () => {
-            test('returns empty string for null', () => {
-                expect(escapeAttr(null)).toBe('');
-            });
-
-            test('returns empty string for undefined', () => {
-                expect(escapeAttr(undefined)).toBe('');
-            });
-        });
-
-        describe('Non-string input handling', () => {
-            test('converts number to string', () => {
-                expect(escapeAttr(42)).toBe('42');
-            });
-        });
+      test('escapes javascript: protocol', () => {
+        const input = 'javascript:alert(1)';
+        // Should pass through unchanged (no HTML special chars)
+        expect(escapeHtml(input)).toBe('javascript:alert(1)');
+      });
     });
+
+    describe('Null and Undefined Handling', () => {
+      test('returns empty string for null', () => {
+        expect(escapeHtml(null)).toBe('');
+      });
+
+      test('returns empty string for undefined', () => {
+        expect(escapeHtml(undefined)).toBe('');
+      });
+    });
+
+    describe('Type Coercion', () => {
+      test('converts numbers to string', () => {
+        expect(escapeHtml(123)).toBe('123');
+      });
+
+      test('converts booleans to string', () => {
+        expect(escapeHtml(true)).toBe('true');
+        expect(escapeHtml(false)).toBe('false');
+      });
+
+      test('converts objects to string', () => {
+        expect(escapeHtml({})).toBe('[object Object]');
+      });
+
+      test('converts arrays to string', () => {
+        expect(escapeHtml([1, 2, 3])).toBe('1,2,3');
+      });
+    });
+
+    describe('Edge Cases', () => {
+      test('returns empty string for empty input', () => {
+        expect(escapeHtml('')).toBe('');
+      });
+
+      test('handles strings with multiple special characters', () => {
+        const input = '<div class="test">Hello & Goodbye</div>';
+        const expected = '&lt;div class=&quot;test&quot;&gt;Hello &amp; Goodbye&lt;/div&gt;';
+        expect(escapeHtml(input)).toBe(expected);
+      });
+
+      test('does not double-escape already escaped content', () => {
+        // Note: This IS expected behavior - & becomes &amp;
+        expect(escapeHtml('&amp;')).toBe('&amp;amp;');
+      });
+
+      test('preserves normal text without special characters', () => {
+        expect(escapeHtml('Hello World')).toBe('Hello World');
+      });
+
+      test('preserves German umlauts', () => {
+        expect(escapeHtml('Äöü ß')).toBe('Äöü ß');
+      });
+    });
+  });
+
+  // ============================================
+  // escapeAttr() Tests
+  // ============================================
+  describe('escapeAttr()', () => {
+
+    describe('Basic Entity Escaping (same as escapeHtml)', () => {
+      test('escapes < > & " \'', () => {
+        expect(escapeAttr('<>&"\'')).toBe('&lt;&gt;&amp;&quot;&#039;');
+      });
+    });
+
+    describe('Whitespace Escaping', () => {
+      test('escapes newlines', () => {
+        expect(escapeAttr('line1\nline2')).toBe('line1&#10;line2');
+      });
+
+      test('escapes carriage returns', () => {
+        expect(escapeAttr('line1\rline2')).toBe('line1&#13;line2');
+      });
+
+      test('escapes tabs', () => {
+        expect(escapeAttr('col1\tcol2')).toBe('col1&#9;col2');
+      });
+
+      test('escapes mixed whitespace', () => {
+        const input = 'a\nb\rc\td';
+        const expected = 'a&#10;b&#13;c&#9;d';
+        expect(escapeAttr(input)).toBe(expected);
+      });
+    });
+
+    describe('Null and Undefined Handling', () => {
+      test('returns empty string for null', () => {
+        expect(escapeAttr(null)).toBe('');
+      });
+
+      test('returns empty string for undefined', () => {
+        expect(escapeAttr(undefined)).toBe('');
+      });
+    });
+
+    describe('Type Coercion', () => {
+      test('converts numbers to string', () => {
+        expect(escapeAttr(42)).toBe('42');
+      });
+    });
+  });
+
 });

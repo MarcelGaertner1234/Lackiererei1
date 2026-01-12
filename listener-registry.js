@@ -235,3 +235,14 @@ if (window.DEBUG) {
   console.log('✅ Listener Registry loaded');
   console.log('📖 Usage: window.listenerRegistry.register(unsubscribe, "description")');
 }
+
+// ============================================================================
+// SESSION #15: COMMONJS EXPORTS FOR UNIT TESTS (2026-01-13)
+// ============================================================================
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    FirestoreListenerRegistry,
+    safeNavigate,
+    confirmAndNavigate
+  };
+}

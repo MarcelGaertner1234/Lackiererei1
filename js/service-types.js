@@ -756,3 +756,21 @@ if (window.DEBUG) {
         tagesplanungHelpers: ['SERVICE_DEFAULT_HOURS', 'QUEUE_DEFAULT_CAPACITY', 'QUEUE_DEPENDENCIES', 'canMoveToQueue', 'getEstimatedHours']
     });
 }
+
+// ============================================================================
+// SESSION #15: COMMONJS EXPORTS FOR UNIT TESTS (2026-01-13)
+// ============================================================================
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        SERVICE_TYPES: window.SERVICE_TYPES,
+        SERVICE_TYPE_CONFIG: window.SERVICE_TYPE_CONFIG,
+        SERVICE_TYPE_ALIASES: window.SERVICE_TYPE_ALIASES,
+        normalizeAndValidateServiceType: window.normalizeAndValidateServiceType,
+        normalizeServiceType: window.normalizeServiceType,
+        validateServiceType: window.validateServiceType,
+        getServiceTypeLabel: window.getServiceTypeLabel,
+        getServiceTypeConfig: window.getServiceTypeConfig,
+        getAllServiceTypes: window.getAllServiceTypes,
+        getServiceTypesByCategory: window.getServiceTypesByCategory
+    };
+}
