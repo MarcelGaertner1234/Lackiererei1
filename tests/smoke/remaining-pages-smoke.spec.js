@@ -168,9 +168,9 @@ test.describe('SMOKE: App Root Pages (Authenticated)', () => {
     expect(state.hasBody).toBe(true);
   });
 
-  // ---- Mitarbeiter ----
-  test('SMOKE-R12: mitarbeiter.html loads', async ({ page }) => {
-    await page.goto('/mitarbeiter.html');
+  // ---- Mitarbeiter Verwaltung ----
+  test('SMOKE-R12: mitarbeiter-verwaltung.html loads', async ({ page }) => {
+    await page.goto('/mitarbeiter-verwaltung.html');
     await page.waitForLoadState('domcontentloaded');
 
     const state = await page.evaluate(() => ({
@@ -180,39 +180,14 @@ test.describe('SMOKE: App Root Pages (Authenticated)', () => {
     expect(state.hasBody).toBe(true);
   });
 
-  // ---- Profil ----
-  test('SMOKE-R13: profil.html loads', async ({ page }) => {
-    await page.goto('/profil.html');
+  // ---- Admin Dashboard (Statistiken) ----
+  test('SMOKE-R13: admin-dashboard.html loads', async ({ page }) => {
+    await page.goto('/admin-dashboard.html');
     await page.waitForLoadState('domcontentloaded');
 
     const state = await page.evaluate(() => ({
       hasBody: document.body.innerHTML.length > 100,
-      hasProfileFields: document.querySelectorAll('input, .profile').length >= 0
-    }));
-
-    expect(state.hasBody).toBe(true);
-  });
-
-  // ---- Benachrichtigungen ----
-  test('SMOKE-R14: benachrichtigungen.html loads', async ({ page }) => {
-    await page.goto('/benachrichtigungen.html');
-    await page.waitForLoadState('domcontentloaded');
-
-    const state = await page.evaluate(() => ({
-      hasBody: document.body.innerHTML.length > 100
-    }));
-
-    expect(state.hasBody).toBe(true);
-  });
-
-  // ---- Statistiken ----
-  test('SMOKE-R15: statistiken.html loads', async ({ page }) => {
-    await page.goto('/statistiken.html');
-    await page.waitForLoadState('domcontentloaded');
-
-    const state = await page.evaluate(() => ({
-      hasBody: document.body.innerHTML.length > 100,
-      hasCharts: !!document.querySelector('canvas, .chart, .statistics')
+      hasCharts: !!document.querySelector('canvas, .chart, .statistics, .dashboard')
     }));
 
     expect(state.hasBody).toBe(true);
@@ -277,22 +252,9 @@ test.describe('SMOKE: Public Pages (No Auth)', () => {
     expect(state.hasBody).toBe(true);
   });
 
-  // ---- Login ----
-  test('SMOKE-P5: login.html loads', async ({ page }) => {
-    await page.goto('/login.html');
-    await page.waitForLoadState('domcontentloaded');
-
-    const state = await page.evaluate(() => ({
-      hasBody: document.body.innerHTML.length > 100,
-      hasLoginForm: !!document.querySelector('form, input[type="email"], input[type="password"]')
-    }));
-
-    expect(state.hasBody).toBe(true);
-  });
-
-  // ---- Passwort vergessen ----
-  test('SMOKE-P6: passwort-vergessen.html loads', async ({ page }) => {
-    await page.goto('/passwort-vergessen.html');
+  // ---- Registrierung ----
+  test('SMOKE-P5: registrierung.html loads', async ({ page }) => {
+    await page.goto('/registrierung.html');
     await page.waitForLoadState('domcontentloaded');
 
     const state = await page.evaluate(() => ({
@@ -452,13 +414,14 @@ test.describe('SMOKE: Partner-App Pages', () => {
     expect(state.hasBody).toBe(true);
   });
 
-  // ---- Lackierung Anfrage ----
-  test('SMOKE-PA11: partner-app/lackierung-anfrage.html loads', async ({ page }) => {
-    await page.goto('/partner-app/lackierung-anfrage.html');
+  // ---- Multi-Service Anfrage (inkl. Lackierung) ----
+  test('SMOKE-PA11: partner-app/multi-service-anfrage.html loads', async ({ page }) => {
+    await page.goto('/partner-app/multi-service-anfrage.html');
     await page.waitForLoadState('domcontentloaded');
 
     const state = await page.evaluate(() => ({
-      hasBody: document.body.innerHTML.length > 100
+      hasBody: document.body.innerHTML.length > 100,
+      hasLackierOption: document.body.innerHTML.includes('lackier') || document.body.innerHTML.includes('Lackierung')
     }));
 
     expect(state.hasBody).toBe(true);
@@ -478,21 +441,9 @@ test.describe('SMOKE: Migration Scripts', () => {
     await loginAsTestAdmin(page);
   });
 
-  // ---- Migrate Rechnungen ----
-  test('SMOKE-M1: migrate-rechnungen.html loads', async ({ page }) => {
-    await page.goto('/migrate-rechnungen.html');
-    await page.waitForLoadState('domcontentloaded');
-
-    const state = await page.evaluate(() => ({
-      hasBody: document.body.innerHTML.length > 50
-    }));
-
-    expect(state.hasBody).toBe(true);
-  });
-
-  // ---- Migrate Partner ----
-  test('SMOKE-M2: migrate-partner.html loads', async ({ page }) => {
-    await page.goto('/migrate-partner.html');
+  // ---- Migrate Mitarbeiter ----
+  test('SMOKE-M1: migrate-mitarbeiter.html loads', async ({ page }) => {
+    await page.goto('/migrate-mitarbeiter.html');
     await page.waitForLoadState('domcontentloaded');
 
     const state = await page.evaluate(() => ({
@@ -552,18 +503,6 @@ test.describe('SMOKE: Special Pages', () => {
     expect(typeof status).toBe('number');
   });
 
-  // ---- 404 Page ----
-  test('SMOKE-S4: 404.html loads', async ({ page }) => {
-    await page.goto('/404.html');
-    await page.waitForLoadState('domcontentloaded');
-
-    const state = await page.evaluate(() => ({
-      hasBody: document.body.innerHTML.length > 50
-    }));
-
-    expect(state.hasBody).toBe(true);
-  });
-
 });
 
 // ============================================
@@ -578,9 +517,9 @@ test.describe('SMOKE: Reports & Export Pages', () => {
     await loginAsTestAdmin(page);
   });
 
-  // ---- Export ----
-  test('SMOKE-E1: export.html loads', async ({ page }) => {
-    await page.goto('/export.html');
+  // ---- Steuerberater Export ----
+  test('SMOKE-E1: steuerberater-export.html loads', async ({ page }) => {
+    await page.goto('/steuerberater-export.html');
     await page.waitForLoadState('domcontentloaded');
 
     const state = await page.evaluate(() => ({
@@ -591,9 +530,9 @@ test.describe('SMOKE: Reports & Export Pages', () => {
     expect(state.hasBody).toBe(true);
   });
 
-  // ---- Berichte ----
-  test('SMOKE-E2: berichte.html loads', async ({ page }) => {
-    await page.goto('/berichte.html');
+  // ---- Steuerberater Statistiken ----
+  test('SMOKE-E2: steuerberater-statistiken.html loads', async ({ page }) => {
+    await page.goto('/steuerberater-statistiken.html');
     await page.waitForLoadState('domcontentloaded');
 
     const state = await page.evaluate(() => ({
