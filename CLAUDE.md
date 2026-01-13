@@ -708,6 +708,30 @@ npm run test:all
 
 **Commits:** `632dff8`, `9b1521c`, `b506f7d`, `c3a8f2e`, `edf2139`, `7c1eb98`, `d0186a4`, `15ccc62`, `8fcff4d`
 
+### 2026-01-13: Session #16 - Code Deduplication
+
+**Refactoring durchgeführt:**
+
+| Kategorie | Änderung | Impact |
+|-----------|----------|--------|
+| Date/Time Helpers | 51x `toLocaleDateString` → `window.formatDate()` | 5 Dateien |
+| Weekend Checks | 6x `getDay() === 0 \|\| 6` → `window.isWorkday()` | 2 Dateien |
+| Email Validation | `isValidEmail()` Helper (RFC 5322) | functions/index.js |
+
+**Geänderte Dateien:**
+- `annahme.html` - +date-helpers.js, 14x formatDate()
+- `mitarbeiter-dienstplan.html` - +date-helpers.js, 5x formatDate()
+- `mitarbeiter-verwaltung.html` - +date-helpers.js, 2x formatDate()
+- `partner-app/anfrage-detail.html` - +date-helpers.js, 19x formatDate(), 2x isWorkday()
+- `partner-app/meine-anfragen.html` - +date-helpers.js, 11x formatDate(), 4x isWorkday()
+- `functions/index.js` - isValidEmail() Helper hinzugefügt
+
+**Verifizierung:**
+- 221 Unit Tests bestanden (100%)
+- JavaScript-Syntax geprüft
+
+**Commit:** `931d9c3`
+
 ---
 
 ## External Resources
@@ -718,6 +742,6 @@ npm run test:all
 
 ---
 
-_Version: 11.0 (Updated 2026-01-11 - Bug-Scan Sessions #8 & #9, 39 Bugs behoben)_
+_Version: 12.0 (Updated 2026-01-13 - Session #16 Code Deduplication, 221 Unit Tests)_
 _Für Error Patterns → NEXT_AGENT_MANUAL_TESTING_PROMPT.md_
 _Für Business/Navigation → Root CLAUDE.md_

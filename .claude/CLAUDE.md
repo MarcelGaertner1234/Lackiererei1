@@ -107,10 +107,11 @@ python3 ./.claude/world-model/analyze-learnings.py --recommendations
 npm run test:all  # MUSS 100% sein vor Push!
 ```
 
-### Weltmodell Status (2026-01-12)
+### Weltmodell Status (2026-01-13)
 39 Bugs in 9 Sessions behoben + Test-Cleanup in Session #10.
-Tests: 453/453 (100% Pass Rate). System synchronisiert auf v3.4.
-Letzte Änderungen: 12 nicht-existierende Seiten-Tests bereinigt.
+Session #16: Code Deduplication (51x formatDate(), 6x isWorkday(), isValidEmail()).
+Tests: 453 Playwright + 221 Unit Tests (100% Pass Rate). System synchronisiert auf v3.5.
+Letzte Änderungen: Date/Time Helpers konsolidiert, Email-Validation zentralisiert.
 
 ---
 
@@ -197,8 +198,8 @@ Für vollständige Architektur-Details:
 
 ---
 
-_Version: 3.4 (2026-01-12)_
+_Version: 3.5 (2026-01-13)_
 _Meta-Learning System + Erweitertes Weltmodell_
-_39 Bugs in 9 Sessions behoben + Test-Cleanup (Session #10)_
-_453 Tests, 100% Pass Rate_
+_39 Bugs in 9 Sessions behoben + Session #16 Code Deduplication_
+_453 Playwright + 221 Unit Tests, 100% Pass Rate_
 _Inspiriert von Jürgen Schmidhubers Meta-Learning Konzept_
