@@ -3657,6 +3657,8 @@
     <script src="../firebase-config.js?v=a4192c4"></script>
     <script src="../js/auth-manager.js"></script>
     <script src="../js/settings-manager.js"></script>
+    <!-- ✅ SESSION #16: Date Helpers für Code-Deduplication -->
+    <script src="../js/utils/date-helpers.js"></script>
 
     <!-- ✅ ACCESSIBILITY (Session #12): Skip-Links, Focus Management, ARIA -->
     <script src="../js/accessibility.js" defer></script>
@@ -4928,14 +4930,10 @@
             // 1 Tag zurück
             abhol.setDate(abhol.getDate() - 1);
 
-            // Wenn Samstag (6) → Gehe zu Freitag
-            if (abhol.getDay() === 6) {
+            // ✅ SESSION #16: Refactored mit window.isWorkday()
+            // Wenn Wochenende → zurück bis zum letzten Arbeitstag
+            while (!window.isWorkday(abhol)) {
                 abhol.setDate(abhol.getDate() - 1);
-            }
-
-            // Wenn Sonntag (0) → Gehe zu Freitag (2 Tage zurück)
-            if (abhol.getDay() === 0) {
-                abhol.setDate(abhol.getDate() - 2);
             }
 
             return abhol;
@@ -4948,7 +4946,7 @@
             const date = typeof datum === 'string' ? new Date(datum) : datum;
             const wochentage = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
             const wochentag = wochentage[date.getDay()];
-            const formatted = date.toLocaleDateString('de-DE');
+            const formatted = window.formatDate(date);
 
             return `${formatted} (${wochentag})`;
         }
@@ -5025,7 +5023,7 @@
 
                 case 'tuev':
                     if (data.pruefung) html += `<div>✅ ${capitalize(data.pruefung)}</div>`;
-                    if (data.faelligkeit) html += `<div>📅 Fällig: ${new Date(data.faelligkeit).toLocaleDateString('de-DE')}</div>`;
+                    if (data.faelligkeit) html += `<div>📅 Fällig: ${window.formatDate(data.faelligkeit)}</div>`;
                     if (data.vorbereitung) html += `<div>🔧 ${capitalize(data.vorbereitung)}</div>`;
                     break;
 
@@ -5127,7 +5125,7 @@
                                 <div class="variante-info">OEM-Qualität</div>
                             </div>
                         </div>
-                        ${erstelltAm ? `<div class="varianten-datum">Erstellt: ${new Date(erstelltAm).toLocaleDateString('de-DE')}</div>` : ''}
+                        ${erstelltAm ? `<div class="varianten-datum">Erstellt: ${window.formatDate(erstelltAm)}</div>` : ''}
                         ${anfrage.abholdatum || anfrage.anliefertermin || anfrage.kva?.abholungKundenfahrzeugDatum || anfrage.geplantesAbnahmeDatum ? `
                         <div style="margin-top: 8px; padding: 6px 10px; background: #e3f2fd; border-radius: 4px; font-size: 11px; color: #1565c0;">
                             ${(() => {
@@ -5166,7 +5164,7 @@
                             <span>Angebot erstellt</span>
                         </div>
                         <div class="angebot-preis">${anfrage.angebotDetails.preis.toFixed(2)}€</div>
-                        ${anfrage.angebotDetails.erstelltAm ? `<div class="angebot-datum">${new Date(anfrage.angebotDetails.erstelltAm).toLocaleDateString('de-DE')}</div>` : ''}
+                        ${anfrage.angebotDetails.erstelltAm ? `<div class="angebot-datum">${window.formatDate(anfrage.angebotDetails.erstelltAm)}</div>` : ''}
                     </div>
                 `;
             }
@@ -5523,7 +5521,7 @@
                             ${typeof betrag === 'number' ? betrag.toFixed(2) : betrag}€
                         </div>
                         <div style="font-size: 10px; opacity: 1; margin-top: 2px; color: white !important;">
-                            ${rechnungsnummer}${erstelltAm instanceof Date && !isNaN(erstelltAm) ? ' • ' + erstelltAm.toLocaleDateString('de-DE') : ''}
+                            ${rechnungsnummer}${erstelltAm instanceof Date && !isNaN(erstelltAm) ? ' • ' + window.formatDate(erstelltAm) : ''}
                         </div>
                         <a href="rechnungen.html?id=${anfrage.id}"
                            onclick="event.stopPropagation();"
@@ -5555,7 +5553,7 @@
                 const endeDate = new Date(anfrage.kva.termine.ende).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
                 terminAnzeige = `<div>⏰ ${startDate}-${endeDate}</div>`;
             } else if (anfrage.anliefertermin) {
-                terminAnzeige = `<div>⏰ ${new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')}</div>`;
+                terminAnzeige = `<div>⏰ ${window.formatDate(anfrage.anliefertermin)}</div>`;
             }
 
             // Foto-Galerie vorbereiten (max 2 Fotos + Badge für restliche)
@@ -5648,7 +5646,7 @@
                     ` : terminAnzeige ? `
                     <div class="card-info-row">
                         <span class="card-info-label">Wunschtermin:</span>
-                        <span class="card-info-value">${anfrage.anliefertermin ? new Date(anfrage.anliefertermin).toLocaleDateString('de-DE') : 'Nicht angegeben'}</span>
+                        <span class="card-info-value">${anfrage.anliefertermin ? window.formatDate(anfrage.anliefertermin) : 'Nicht angegeben'}</span>
                     </div>
                     ` : ''}
                     ${(anfrage.anliefertermin || anfrage.kva?.anlieferungDatum) ? `
@@ -6287,18 +6285,14 @@
 
         // 🔧 BUG #14 FIX (2025-11-26): Zentrale Abholtermin-Berechnung (statt inline Code)
         // Berechnet Abholtermin: 1 Tag vor Start, Wochenenden werden auf Freitag verschoben
+        // ✅ SESSION #16: Refactored mit window.isWorkday()
         function calculateAbholtermin(startDatum) {
             const abhol = new Date(startDatum);
             abhol.setDate(abhol.getDate() - 1);
 
-            // Wenn Samstag (6) → Gehe zu Freitag
-            if (abhol.getDay() === 6) {
+            // Wenn Wochenende → zurück bis zum letzten Arbeitstag
+            while (!window.isWorkday(abhol)) {
                 abhol.setDate(abhol.getDate() - 1);
-            }
-
-            // Wenn Sonntag (0) → Gehe zu Freitag (2 Tage zurück)
-            if (abhol.getDay() === 0) {
-                abhol.setDate(abhol.getDate() - 2);
             }
 
             return abhol.toISOString().split('T')[0];
@@ -7282,9 +7276,9 @@
             // Bestätigung
             // 🔧 FIX (2025-11-17): Fallback für Entwürfe (haben kein anliefertermin)
             const anlieferterminText = anfrage.anliefertermin
-                ? new Date(anfrage.anliefertermin).toLocaleDateString('de-DE')
+                ? window.formatDate(anfrage.anliefertermin)
                 : (anfrage.geplantesAbnahmeDatum
-                    ? new Date(anfrage.geplantesAbnahmeDatum).toLocaleDateString('de-DE')
+                    ? window.formatDate(anfrage.geplantesAbnahmeDatum)
                     : 'Noch nicht festgelegt');
 
             const preisText = anfrage.angebotDetails?.preis
@@ -8347,8 +8341,8 @@
                 // IDs & Timestamps (EINDEUTIGE ID!)
                 id: fahrzeugId,
                 createdAt: firestoreTimestamp,  // ✅ FIX Bug #14 (2025-11-24): CRITICAL - Required for Kanban .orderBy('createdAt') query!
-                datum: heute.toLocaleDateString('de-DE'),
-                zeit: heute.toLocaleTimeString('de-DE'),
+                datum: window.formatDate(heute),
+                zeit: window.formatTime(heute),
 
                 // Fahrzeugdaten (aus anfrage ODER serviceData.fahrzeugdaten)
                 // WICHTIG: Kennzeichen IMMER in Großbuchstaben für konsistente Suche!
@@ -9878,7 +9872,7 @@
                 }
 
                 // Hinweis-Box mit Datum
-                const datum = partner.konditionenDatum ? new Date(partner.konditionenDatum).toLocaleDateString('de-DE') : 'unbekannt';
+                const datum = partner.konditionenDatum ? window.formatDate(partner.konditionenDatum) : 'unbekannt';
                 document.getElementById('hinweisText').innerHTML =
                     `Individuelle Konditionen telefonisch geklärt am <strong>${datum}</strong> mit Auto-Lackierzentrum Mosbach.`;
             } else {

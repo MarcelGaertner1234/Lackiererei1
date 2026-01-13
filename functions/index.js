@@ -124,6 +124,22 @@ function escapeHtml(text) {
 }
 
 // ============================================
+// HELPER: Email Validation (SESSION #16)
+// ============================================
+
+/**
+ * Validates email address using RFC 5322 compliant regex
+ * Supports user+tag@domain.com, international domains, etc.
+ * @param {string} email - The email to validate
+ * @returns {boolean} - True if valid
+ */
+function isValidEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  return emailRegex.test(email);
+}
+
+// ============================================
 // HELPER: Get All Active Werkstätten (BUG #8 FIX)
 // ============================================
 
@@ -3279,9 +3295,8 @@ exports.ensurePartnerAccount = functions
         );
       }
 
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      // ✅ SESSION #16: Email Validation mit zentraler Helper-Funktion
+      if (!isValidEmail(email)) {
         throw new functions.https.HttpsError(
             "invalid-argument",
             "Ungültiges Email-Format"
@@ -4522,9 +4537,8 @@ exports.sendEntwurfEmail = functions
         );
       }
 
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(kundenEmail)) {
+      // ✅ SESSION #16: Email Validation mit zentraler Helper-Funktion
+      if (!isValidEmail(kundenEmail)) {
         throw new functions.https.HttpsError(
             "invalid-argument",
             "Ungültiges Email-Format"
